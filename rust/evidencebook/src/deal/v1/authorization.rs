@@ -72,14 +72,16 @@ fn kind_name(k: ActKind) -> &'static str {
 }
 
 fn at_of(r: &Record) -> Result<i64, String> {
-    crate::row_status::parse_time(&r.block.at)
-        .map_err(|e| format!("its at {:?}: {e}", r.block.at))
+    crate::row_status::parse_time(&r.block.at).map_err(|e| format!("its at {:?}: {e}", r.block.at))
 }
 
 /// Checks every act that cites a check (Go `CheckAuthorizations`). `journal`
 /// is the holder's journal records of the deal's task in journal order;
 /// `acts` its deal-book perform and settle records in book order.
-pub fn check_authorizations(journal: &[Record], acts: &[Record]) -> Result<Vec<ActAuthorization>, Error> {
+pub fn check_authorizations(
+    journal: &[Record],
+    acts: &[Record],
+) -> Result<Vec<ActAuthorization>, Error> {
     let w = walk_journal(journal)?;
     let mut used: BTreeMap<usize, usize> = BTreeMap::new();
     let mut out = Vec::new();
@@ -129,16 +131,19 @@ pub fn check_authorizations(journal: &[Record], acts: &[Record]) -> Result<Vec<A
             return Err(bad("its verdict denies".into()));
         }
         if let Some(prev) = used.get(&ai) {
-            return Err(bad(format!("its approval already authorized act {}", prev + 1)));
+            return Err(bad(format!(
+                "its approval already authorized act {}",
+                prev + 1
+            )));
         }
         used.insert(ai, i);
-        for k in ci + 1..journal.len() {
-            let at = at_of(&journal[k]).unwrap_or(0);
-            if at <= act_at && changes_details(&journal[k]) {
+        for (k, rec) in journal.iter().enumerate().skip(ci + 1) {
+            let at = at_of(rec).unwrap_or(0);
+            if at <= act_at && changes_details(rec) {
                 return Err(bad(format!(
                     "journal record {} ({}) changed the details after its check: a new check is needed",
                     k + 1,
-                    journal[k].block.record_type
+                    rec.block.record_type
                 )));
             }
         }
@@ -153,7 +158,10 @@ pub fn check_authorizations(journal: &[Record], acts: &[Record]) -> Result<Vec<A
             intent: String::new(),
         };
         if ab.approver == "standing_intent" {
-            a.limit_approvals = w.limits_at[&ai].iter().map(|&j| w.digests[j].clone()).collect();
+            a.limit_approvals = w.limits_at[&ai]
+                .iter()
+                .map(|&j| w.digests[j].clone())
+                .collect();
             a.intent = w.digests[w.intent_at[&ai]].clone();
         }
         out.push(a);
@@ -203,7 +211,12 @@ fn walk_journal(journal: &[Record]) -> Result<JournalWalk, Error> {
     let mut last: Option<i64> = None;
     let mut nonces: BTreeMap<String, usize> = BTreeMap::new();
     for (i, r) in journal.iter().enumerate() {
-        let bad = |m: String| stage_err(STAGE_AUTHORIZATION, format!("journal record {}: {m}", i + 1));
+        let bad = |m: String| {
+            stage_err(
+                STAGE_AUTHORIZATION,
+                format!("journal record {}: {m}", i + 1),
+            )
+        };
         let n = nonce_of(r);
         if !n.is_empty() {
             if let Some(j) = nonces.get(n) {
@@ -216,7 +229,9 @@ fn walk_journal(journal: &[Record]) -> Result<JournalWalk, Error> {
         }
         let at = at_of(r).map_err(bad)?;
         if last.is_some_and(|l| at < l) {
-            return Err(bad("its at is earlier than the record before it: at never decreases".into()));
+            return Err(bad(
+                "its at is earlier than the record before it: at never decreases".into(),
+            ));
         }
         last = Some(at);
         let one = |rel: &str, t: &str| -> Result<usize, Error> {
@@ -271,7 +286,9 @@ fn walk_journal(journal: &[Record]) -> Result<JournalWalk, Error> {
                 if b.choice == CHOICE_CONFIRM {
                     let j = one("approves", TYPE_INTENT)?;
                     let prop = intent_of(&journal[j]);
-                    let replaced = journal[j + 1..i].iter().any(|k| k.block.record_type == TYPE_INTENT);
+                    let replaced = journal[j + 1..i]
+                        .iter()
+                        .any(|k| k.block.record_type == TYPE_INTENT);
                     let late = confirmed.get(&j).copied().unwrap_or(false) || replaced;
                     lim.confirm(&b, prop, late).map_err(bad)?;
                     if b.proceed && !late {
@@ -303,7 +320,9 @@ fn walk_journal(journal: &[Record]) -> Result<JournalWalk, Error> {
                     };
                     w.limits_at.insert(i, confirmations.clone());
                     w.intent_at.insert(i, fi);
-                } else if (v.result == "pause" || v.result == "deny") && !v.options.contains(&b.choice) {
+                } else if (v.result == "pause" || v.result == "deny")
+                    && !v.options.contains(&b.choice)
+                {
                     return Err(bad("the choice is not one of the verdict's options".into()));
                 }
                 let bc = b.card_commitment.as_deref().unwrap_or("");
@@ -315,7 +334,10 @@ fn walk_journal(journal: &[Record]) -> Result<JournalWalk, Error> {
                     return Err(bad("the card shown is not the card checked: the approval's card_commitment differs from the verdict's".into()));
                 }
                 if person_approver(&b.approver) && bc.is_empty() {
-                    return Err(bad("the person's approval commits to the card it answered (card_commitment)".into()));
+                    return Err(bad(
+                        "the person's approval commits to the card it answered (card_commitment)"
+                            .into(),
+                    ));
                 }
             }
             _ => {}
@@ -334,7 +356,10 @@ fn changes_details(r: &Record) -> bool {
         Body::Intent(b) => {
             r.block.counterparty.is_some()
                 || (b.r#move.as_deref().is_some_and(|m| !m.is_empty())
-                    && b.asked.as_ref().and_then(|a| a.item.as_deref()).is_some_and(|i| !i.is_empty()))
+                    && b.asked
+                        .as_ref()
+                        .and_then(|a| a.item.as_deref())
+                        .is_some_and(|i| !i.is_empty()))
         }
         Body::AgentMove(b) => b.r#move == "chose",
         _ => false,
@@ -385,7 +410,11 @@ impl Limits {
             self.allowed = next;
             self.set = true;
         }
-        let names_item = b.asked.as_ref().and_then(|a| a.item.as_deref()).is_some_and(|i| !i.is_empty());
+        let names_item = b
+            .asked
+            .as_ref()
+            .and_then(|a| a.item.as_deref())
+            .is_some_and(|i| !i.is_empty());
         if names_item || b.r#move.as_deref() == Some("picked") {
             self.delegated.retain(|d| d != "item");
         }
@@ -404,7 +433,8 @@ impl Limits {
             max_total_minor: self.max_total,
             allowed: self.allowed_or_none(),
             delegated: (!self.delegated.is_empty()).then(|| self.delegated.clone()),
-            bounds_commitment: (self.bounds_known && !self.bounds.is_empty()).then(|| self.bounds.clone()),
+            bounds_commitment: (self.bounds_known && !self.bounds.is_empty())
+                .then(|| self.bounds.clone()),
             ..Default::default()
         }
     }
@@ -416,7 +446,12 @@ impl Limits {
         set
     }
 
-    fn confirm(&mut self, b: &V0ApprovalBody, prop: Option<&IntentBody>, late: bool) -> Result<(), String> {
+    fn confirm(
+        &mut self,
+        b: &V0ApprovalBody,
+        prop: Option<&IntentBody>,
+        late: bool,
+    ) -> Result<(), String> {
         if late {
             if b.proceed {
                 return Err("a proposal replaced by a later intent, or already confirmed, cannot be confirmed (proceed must be false)".into());
@@ -429,7 +464,10 @@ impl Limits {
         let (Some(limits), Some(prop)) = (&b.limits, prop) else {
             return Err("a confirmation states the limits it replaces and puts in force".into());
         };
-        if !same_json(&self.without_unknown_bounds(limits.previous.clone()), &self.in_force()) {
+        if !same_json(
+            &self.without_unknown_bounds(limits.previous.clone()),
+            &self.in_force(),
+        ) {
             return Err("limits.previous is not the limits in force".into());
         }
         let mut next = self.in_force();
@@ -463,14 +501,23 @@ impl Limits {
         if !same_json(&got, &next) {
             return Err("limits.new is not what the intent proposed".into());
         }
-        let more = (prop.max_total_minor.is_some() && self.max_total.is_some() && prop.max_total_minor > self.max_total)
+        let more = (prop.max_total_minor.is_some()
+            && self.max_total.is_some()
+            && prop.max_total_minor > self.max_total)
             || (prop.allowed.is_some()
                 && self.set
-                && !prop.allowed.as_deref().unwrap().iter().all(|a| self.allowed.contains(a)))
+                && !prop
+                    .allowed
+                    .as_deref()
+                    .unwrap()
+                    .iter()
+                    .all(|a| self.allowed.contains(a)))
             || (!prop_bounds.is_empty() && prop_bounds != self.bounds)
             || !added.is_empty();
         if !more {
-            return Err("the intent asks for no higher limit and no new action: nothing to confirm".into());
+            return Err(
+                "the intent asks for no higher limit and no new action: nothing to confirm".into(),
+            );
         }
         self.max_total = next.max_total_minor;
         self.allowed = next.allowed.clone().unwrap_or_default();

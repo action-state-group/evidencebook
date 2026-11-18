@@ -119,7 +119,10 @@ pub fn start(input: &StartInput) -> Result<StartResult, Error> {
     if input.counterpart_agreement_held
         && (input.same_offer_and_rows.is_none() || input.offerer_names_acceptor.is_none())
     {
-        return Err(start_err("a held counterpart agreement gives same_offer_and_rows and offerer_names_acceptor".into()));
+        return Err(start_err(
+            "a held counterpart agreement gives same_offer_and_rows and offerer_names_acceptor"
+                .into(),
+        ));
     }
     if !input.counterpart_agreement_held || input.same_offer_and_rows == Some(false) {
         if input.side == SIDE_OFFERER {
@@ -237,7 +240,11 @@ pub(crate) fn start_input(b: &StartBooks) -> Result<StartInput, Error> {
     };
     let own = match first.record.agree() {
         Some(a) if a.kind == KIND_AGREEMENT => a,
-        _ => return Err(bad("the holder's book does not open with its agreement".into())),
+        _ => {
+            return Err(bad(
+                "the holder's book does not open with its agreement".into()
+            ))
+        }
     };
     if own.offer.digest != offer_digest {
         return Err(bad("the holder's agreement does not cite the offer".into()));
@@ -285,13 +292,18 @@ pub(crate) fn start_input(b: &StartBooks) -> Result<StartInput, Error> {
     };
     let cp = match cp_first.record.agree() {
         Some(a) if a.kind == KIND_AGREEMENT => a,
-        _ => return Err(bad("the counterpart's book does not open with its agreement".into())),
+        _ => {
+            return Err(bad(
+                "the counterpart's book does not open with its agreement".into(),
+            ))
+        }
     };
     input.counterpart_agreement_held = true;
     input.same_offer_and_rows =
         Some(cp.offer.digest == offer_digest && cp.rows_digest == own.rows_digest);
     let seen = offerer_book[0].record.block.seen.value();
-    input.offerer_names_acceptor = Some(seen.map(String::as_str) == Some(acceptor_book[0].record_id.as_str()));
+    input.offerer_names_acceptor =
+        Some(seen.map(String::as_str) == Some(acceptor_book[0].record_id.as_str()));
     let offerer = offerer_book[0].record.agree().cloned().unwrap_or_default();
     input.offerer_agreement_time = record_time(&offerer_book[0], offerer.witness_list())?;
     Ok(input)

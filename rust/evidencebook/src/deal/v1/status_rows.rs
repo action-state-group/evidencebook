@@ -90,7 +90,10 @@ pub(crate) fn statement_items(r: &Record) -> &[StatementItem] {
 }
 
 fn row_items<'a>(r: &'a Record, row: &str) -> Vec<&'a StatementItem> {
-    statement_items(r).iter().filter(|it| it.row == row).collect()
+    statement_items(r)
+        .iter()
+        .filter(|it| it.row == row)
+        .collect()
 }
 
 fn project_date(d: &Date) -> row_status::Date {
@@ -101,7 +104,10 @@ fn project_date(d: &Date) -> row_status::Date {
     }
 }
 
-pub(crate) fn row_inputs_with(b: &RowBooks, at: &str) -> Result<(Vec<Input>, Vec<RowSources>), Error> {
+pub(crate) fn row_inputs_with(
+    b: &RowBooks,
+    at: &str,
+) -> Result<(Vec<Input>, Vec<RowSources>), Error> {
     let Some(of) = b.offer.propose() else {
         return Err(bad(format!(
             "the offer is a {} record",
@@ -113,18 +119,29 @@ pub(crate) fn row_inputs_with(b: &RowBooks, at: &str) -> Result<(Vec<Input>, Vec
     };
     let own = match first.record.agree() {
         Some(a) if a.kind == KIND_AGREEMENT => a,
-        _ => return Err(bad("the holder's book does not open with its agreement".into())),
+        _ => {
+            return Err(bad(
+                "the holder's book does not open with its agreement".into()
+            ))
+        }
     };
     let own_role = own.role.as_str();
-    let other_role = if own_role == ROLE_BUYER { ROLE_SELLER } else { ROLE_BUYER };
+    let other_role = if own_role == ROLE_BUYER {
+        ROLE_SELLER
+    } else {
+        ROLE_BUYER
+    };
+    // Go's map {own role: own book, other role: counterpart}: a role that
+    // is neither reads no book.
     let book = |role: &str| -> (&[TimedRecord], BookKind) {
         if role == own_role {
             (&b.own, BookKind::Own)
-        } else {
+        } else if role == other_role {
             (&b.counterpart, BookKind::Counterpart)
+        } else {
+            (&[], BookKind::Counterpart)
         }
     };
-    let _ = other_role;
     let tr = &of.terms_rows;
 
     let mut named = BTreeMap::new();
@@ -133,7 +150,12 @@ pub(crate) fn row_inputs_with(b: &RowBooks, at: &str) -> Result<(Vec<Input>, Vec
         let mut t = None;
         let (recs, kind) = book(&n.side);
         for (i, r) in recs.iter().enumerate() {
-            if r.record.block.marks.as_ref().is_some_and(|m| m.contains(name)) {
+            if r.record
+                .block
+                .marks
+                .as_ref()
+                .is_some_and(|m| m.contains(name))
+            {
                 t = r.time.clone();
                 named_src.insert(name.clone(), RecRef { book: kind, i });
                 break;
@@ -151,7 +173,9 @@ pub(crate) fn row_inputs_with(b: &RowBooks, at: &str) -> Result<(Vec<Input>, Vec
     let mut rulings: Vec<(usize, &RulingBody, &TimedRecord)> = Vec::new();
     if own.adjudicator.value().is_some() {
         for (i, r) in b.case_book.iter().enumerate() {
-            if r.record.block.record_type == TYPE_RULING && r.record.block.deal_id == b.offer.block.deal_id {
+            if r.record.block.record_type == TYPE_RULING
+                && r.record.block.deal_id == b.offer.block.deal_id
+            {
                 if let Body::Ruling(rb) = &r.record.body {
                     rulings.push((i, rb, r));
                 }
@@ -260,8 +284,12 @@ pub(crate) fn row_inputs_with(b: &RowBooks, at: &str) -> Result<(Vec<Input>, Vec
                 let (recs, kind) = book(against);
                 for (i, r) in recs.iter().enumerate() {
                     if let Body::Perform(p) = &r.record.body {
-                        if p.remedy_for.as_ref().is_some_and(|f| f.row == row.id) && p.act == remedy.kind {
-                            input.remedies.push(row_status::Remedy { time: r.time.clone() });
+                        if p.remedy_for.as_ref().is_some_and(|f| f.row == row.id)
+                            && p.act == remedy.kind
+                        {
+                            input.remedies.push(row_status::Remedy {
+                                time: r.time.clone(),
+                            });
                             src.remedies.push(RecRef { book: kind, i });
                         }
                     }
@@ -296,9 +324,26 @@ fn seen_in_time(
         return Ok(());
     }
     let end = res.window_end;
-    let books = |role: &str| if role == own_role { own } else { counterpart };
+    let other_role = if own_role == ROLE_BUYER {
+        ROLE_SELLER
+    } else {
+        ROLE_BUYER
+    };
+    let books = |role: &str| -> &[TimedRecord] {
+        if role == own_role {
+            own
+        } else if role == other_role {
+            counterpart
+        } else {
+            &[]
+        }
+    };
     for d in input.disputes.iter_mut() {
-        let other = if d.side == ROLE_BUYER { ROLE_SELLER } else { ROLE_BUYER };
+        let other = if d.side == ROLE_BUYER {
+            ROLE_SELLER
+        } else {
+            ROLE_BUYER
+        };
         let mut standing: Option<usize> = None;
         let mut floor: Option<&String> = None;
         for (j, r) in books(other).iter().enumerate() {

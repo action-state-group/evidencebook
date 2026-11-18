@@ -67,7 +67,11 @@ impl Serialize for StatusTime {
 
 impl<'de> Deserialize<'de> for StatusTime {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<StatusTime, D::Error> {
-        let bad = || D::Error::custom("xdealv1: a status time is a string, null or {\"stamp\": n} with n >= 1");
+        let bad = || {
+            D::Error::custom(
+                "xdealv1: a status time is a string, null or {\"stamp\": n} with n >= 1",
+            )
+        };
         match Value::deserialize(d)? {
             Value::Null => Ok(StatusTime::None),
             Value::String(s) => Ok(StatusTime::Known(s)),
@@ -313,7 +317,9 @@ fn timed(rs: &[StatusRecord]) -> Vec<TimedRecord> {
 
 /// The payment rows' checks that ran, by row id: a check not run is left
 /// out, so RowInputs reads that row as not run.
-pub(crate) fn payment_checks(payments: &BTreeMap<String, PaymentResult>) -> BTreeMap<String, String> {
+pub(crate) fn payment_checks(
+    payments: &BTreeMap<String, PaymentResult>,
+) -> BTreeMap<String, String> {
     payments
         .iter()
         .filter(|(_, p)| !p.check.is_empty())
@@ -334,7 +340,11 @@ pub fn build_status(b: &StatusBooks) -> Result<StatusValue, Error> {
     };
     let own = match first.record.agree() {
         Some(a) if a.kind == KIND_AGREEMENT => a,
-        _ => return Err(status_err("the holder's book does not open with its agreement")),
+        _ => {
+            return Err(status_err(
+                "the holder's book does not open with its agreement",
+            ))
+        }
     };
     let time_of = |r: RecRef| -> StatusTime {
         match r.book {
@@ -381,11 +391,19 @@ pub fn build_status(b: &StatusBooks) -> Result<StatusValue, Error> {
         rulings_unnamed: b.rulings_unnamed,
     };
     let own_role = own.role.as_str();
+    let other_role = if own_role == ROLE_BUYER {
+        ROLE_SELLER
+    } else {
+        ROLE_BUYER
+    };
+    // Go's bookOfRole map: a role that is neither side's reads no book.
     let book_of_role = |role: &str| -> (&[StatusRecord], BookKind) {
         if role == own_role {
             (&b.own, BookKind::Own)
-        } else {
+        } else if role == other_role {
             (&b.counterpart, BookKind::Counterpart)
+        } else {
+            (&[], BookKind::Counterpart)
         }
     };
     for (k, input) in ins.iter().enumerate() {
@@ -514,7 +532,10 @@ fn status_start(b: &StatusBooks) -> Result<StatusStart, Error> {
     let offerer_time = if input.side == SIDE_OFFERER {
         b.own[0].time.clone()
     } else {
-        b.counterpart.first().map(|r| r.time.clone()).unwrap_or_default()
+        b.counterpart
+            .first()
+            .map(|r| r.time.clone())
+            .unwrap_or_default()
     };
     Ok(StatusStart {
         side: input.side,
@@ -554,7 +575,11 @@ fn named_by_other(own: &[StatusRecord], counterpart: &[StatusRecord], rf: RecRef
 
 /// The adjudicator's first final ruling on the row in the case book, none
 /// when its case book forked with different ones.
-pub(crate) fn effective_ruling<'a>(b: &'a StatusBooks, row: &str, conflicting: bool) -> Option<&'a RulingBody> {
+pub(crate) fn effective_ruling<'a>(
+    b: &'a StatusBooks,
+    row: &str,
+    conflicting: bool,
+) -> Option<&'a RulingBody> {
     if conflicting {
         return None;
     }
@@ -578,7 +603,10 @@ fn remedy_made(book: &[StatusRecord], row: &str) -> StatusTime {
 
 /// The index of the first record that is a settle or perform whose
 /// remedy_for is the row (Go `firstRemedy`).
-pub(crate) fn first_remedy<'a>(records: impl Iterator<Item = &'a Record>, row: &str) -> Option<usize> {
+pub(crate) fn first_remedy<'a>(
+    records: impl Iterator<Item = &'a Record>,
+    row: &str,
+) -> Option<usize> {
     for (i, r) in records.enumerate() {
         let rf = match &r.body {
             Body::Perform(p) => p.remedy_for.as_ref(),
@@ -648,7 +676,11 @@ pub(crate) fn resolve_time(t: &StatusTime, stamps: &BTreeMap<u64, String>) -> Op
 /// A status row's input as a reader computes it at `at`, each stamp it can
 /// resolve given its time, and each dispute's seen_in_time recomputed from
 /// those times (Go `ResolveRow`).
-pub fn resolve_row(row: &StatusRow, at: &str, stamps: &BTreeMap<u64, String>) -> Result<Input, Error> {
+pub fn resolve_row(
+    row: &StatusRow,
+    at: &str,
+    stamps: &BTreeMap<u64, String>,
+) -> Result<Input, Error> {
     let r = |st: &StatusTime| resolve_time(st, stamps);
     let input = &row.input;
     let mut out = Input {
@@ -733,7 +765,7 @@ pub fn resolve_row(row: &StatusRow, at: &str, stamps: &BTreeMap<u64, String>) ->
                 }
             }
             if let Some(st) = standing {
-                if let Some(t) = row.statement_named_by_other.get(st).and_then(|t| r(t)) {
+                if let Some(t) = row.statement_named_by_other.get(st).and_then(r) {
                     if t <= end {
                         seen = true;
                     }
@@ -796,10 +828,21 @@ fn carried_statements(stmts: &[row_status::Statement], window_end: &str) -> Vec<
         if t.as_str() <= window_end {
             continue;
         }
-        let other = if s.side == ROLE_BUYER { ROLE_SELLER } else { ROLE_BUYER };
-        if possible.get(other).is_some_and(|p| p.contains(&s.value.as_str())) {
+        let other = if s.side == ROLE_BUYER {
+            ROLE_SELLER
+        } else {
+            ROLE_BUYER
+        };
+        if possible
+            .get(other)
+            .is_some_and(|p| p.contains(&s.value.as_str()))
+        {
             keep[i] = true;
         }
     }
-    keep.iter().enumerate().filter(|(_, k)| **k).map(|(i, _)| i).collect()
+    keep.iter()
+        .enumerate()
+        .filter(|(_, k)| **k)
+        .map(|(i, _)| i)
+        .collect()
 }

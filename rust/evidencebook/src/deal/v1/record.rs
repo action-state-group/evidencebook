@@ -22,6 +22,7 @@ use crate::deal::{
 /// A v1 record's body, one variant per record type (§3.2): this module's
 /// body types, and v0's for the journey overlay and rules_verdict.
 #[derive(Clone, Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)] // the v0 overlay bodies are large; records are few and boxing would change the public shape
 pub enum Body {
     Propose(ProposeBody),
     Agree(AgreeBody),
@@ -167,15 +168,36 @@ impl Serialize for Record {
 }
 
 impl<'de> Deserialize<'de> for Record {
+    /// Reads a record as Go's `Record.UnmarshalJSON` does: it refuses text
+    /// the types would not encode back to, wherever a record is read (a
+    /// record inside status books included).
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Record, D::Error> {
-        let r = RecordIn::deserialize(d)?;
-        let body = Body::from_value(&r.block.record_type, r.body)
-            .map_err(|e| D::Error::custom(format!("a {} body: {e}", r.block.record_type)))?;
-        Ok(Record {
-            block: r.block,
-            body,
-        })
+        let doc = Value::deserialize(d)?;
+        let r = record_from(&doc).map_err(D::Error::custom)?;
+        let want = jcs(&doc).map_err(D::Error::custom)?;
+        let got = serde_json::to_value(&r).map_err(D::Error::custom)?;
+        if jcs(&got).map_err(D::Error::custom)? != want {
+            return Err(D::Error::custom(
+                "xdealv1: the record's text does not read as its type: it would encode to other bytes",
+            ));
+        }
+        Ok(r)
     }
+}
+
+/// Reads a record value into the types, with no round-trip check.
+fn record_from(doc: &Value) -> Result<Record, serde_json::Error> {
+    let r: RecordIn = serde_json::from_value(doc.clone())?;
+    let body = Body::from_value(&r.block.record_type, r.body).map_err(|e| {
+        <serde_json::Error as serde::de::Error>::custom(format!(
+            "a {} body: {e}",
+            r.block.record_type
+        ))
+    })?;
+    Ok(Record {
+        block: r.block,
+        body,
+    })
 }
 
 /// Reads a v1 record's JSON text (Go `xdealv1.Decode`). It refuses what
@@ -194,7 +216,7 @@ pub fn decode(data: &[u8]) -> Result<Record, Error> {
 /// would not encode back to.
 pub(crate) fn decode_value(doc: &Value) -> Result<Record, Error> {
     let want = jcs(doc)?;
-    let r: Record = serde_json::from_value(doc.clone())?;
+    let r = record_from(doc)?;
     if jcs(&serde_json::to_value(&r)?)? != want {
         return Err(Error::Invalid(
             "the record's text does not read as its type: it would encode to other bytes".into(),

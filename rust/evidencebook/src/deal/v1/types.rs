@@ -534,7 +534,11 @@ pub struct VerdictBody {
 
 impl Serialize for VerdictBody {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        join_v0(s, &self.v0, vec![("nonce", Some(Value::String(self.nonce.clone())))])
+        join_v0(
+            s,
+            &self.v0,
+            vec![("nonce", Some(Value::String(self.nonce.clone())))],
+        )
     }
 }
 
@@ -557,7 +561,11 @@ pub struct ApprovalBody {
 
 impl Serialize for ApprovalBody {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        join_v0(s, &self.v0, vec![("nonce", Some(Value::String(self.nonce.clone())))])
+        join_v0(
+            s,
+            &self.v0,
+            vec![("nonce", Some(Value::String(self.nonce.clone())))],
+        )
     }
 }
 

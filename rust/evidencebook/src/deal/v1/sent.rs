@@ -52,7 +52,11 @@ pub struct OfferContext {
 pub fn pair(capsule: &[u8], envelope: &[u8], payload: &[u8]) -> Result<Vec<u8>, Error> {
     let mut members: Map<String, Value> = match serde_json::from_slice(capsule)? {
         Value::Object(m) => m,
-        _ => return Err(Error::Invalid("xdealv1: the Capsule is not a JSON object".into())),
+        _ => {
+            return Err(Error::Invalid(
+                "xdealv1: the Capsule is not a JSON object".into(),
+            ))
+        }
     };
     let id = members
         .get("capsule_id")
@@ -61,12 +65,16 @@ pub fn pair(capsule: &[u8], envelope: &[u8], payload: &[u8]) -> Result<Vec<u8>, 
         .to_string();
     let verified = agent_action_capsule::envelope::verify(&id, envelope);
     if !verified.ok {
-        return Err(Error::Invalid("xdealv1: the envelope does not verify".into()));
+        return Err(Error::Invalid(
+            "xdealv1: the envelope does not verify".into(),
+        ));
     }
     members.insert("signature".into(), json!(hex::encode(envelope)));
     members.insert("key_id".into(), json!(hex::encode(&verified.public_key)));
     let agent_input: Value = serde_json::from_slice(payload)?;
-    Ok(serde_json::to_vec(&json!({"record": members, "agent_input": agent_input}))?)
+    Ok(serde_json::to_vec(
+        &json!({"record": members, "agent_input": agent_input}),
+    )?)
 }
 
 /// Checks a sent pair on its own (Go `VerifySent`): the Capsule verifies
@@ -82,15 +90,25 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
         .map_err(|e| bad(format!("not a pair {{record, agent_input}}: {e}")))?;
     let obj = p.as_object();
     let ok_shape = obj.is_some_and(|o| {
-        o.len() == 2 && o.get("record").is_some_and(Value::is_object) && o.contains_key("agent_input")
+        o.len() == 2
+            && o.get("record").is_some_and(Value::is_object)
+            && o.contains_key("agent_input")
     });
     if !ok_shape {
         return Err(bad("not a pair {record, agent_input}".into()));
     }
     let mut record = p["record"].as_object().cloned().unwrap_or_default();
     let agent_input = p["agent_input"].clone();
-    let sig_hex = record.get("signature").and_then(Value::as_str).unwrap_or("").to_string();
-    let key_id = record.get("key_id").and_then(Value::as_str).unwrap_or("").to_string();
+    let sig_hex = record
+        .get("signature")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let key_id = record
+        .get("key_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     if sig_hex.is_empty() || key_id.is_empty() {
         return Err(bad("the Capsule carries no signature and key_id".into()));
     }
@@ -98,11 +116,15 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
     record.remove("key_id");
     let capsule = Value::Object(record.clone());
     let capsule_bytes = jcs(&capsule).map_err(|e| bad(format!("the Capsule: {e}")))?;
-    let format_ok = capsule.get("format_version").and_then(Value::as_str) == Some(crate::seal::FORMAT_VERSION)
+    let format_ok = capsule.get("format_version").and_then(Value::as_str)
+        == Some(crate::seal::FORMAT_VERSION)
         && capsule.get("canonicalization_id").and_then(Value::as_str)
             == Some(crate::canonical::CANONICALIZATION_JCS);
     let strict = agent_action_capsule::verify::decode_capsule_json(&capsule_bytes);
-    let result = strict.as_ref().ok().map(|s| agent_action_capsule::verify::verify(s, None));
+    let result = strict
+        .as_ref()
+        .ok()
+        .map(|s| agent_action_capsule::verify::verify(s, None));
     let capsule_id = match &result {
         Some(r) if format_ok && r.ok && r.capsule_id.is_some() => r.capsule_id.clone().unwrap(),
         _ => return Err(bad("the Capsule does not verify".into())),
@@ -115,7 +137,9 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
         return Err(bad("the signature does not verify".into()));
     }
     if hex::encode(&verified.public_key) != key_id {
-        return Err(bad("the Capsule is signed by another key than its key_id".into()));
+        return Err(bad(
+            "the Capsule is signed by another key than its key_id".into()
+        ));
     }
     let header = record.contains_key("evidence_record_header");
     let chained = record.get("chain").is_some_and(|c| !c.is_null());
@@ -129,16 +153,22 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
     }
     let input_text = serde_json::to_vec(&agent_input)?;
     let d = digest(&input_text).map_err(|e| bad(format!("agent_input: {e}")))?;
-    let committed = capsule
-        .pointer("/model_attestation/compute_attestation/agent_input_digest")
+    let attestation = capsule.get("model_attestation"); // vocabulary-gate: AAC capsule member
+    let committed = attestation
+        .and_then(|a| a.pointer("/compute_attestation/agent_input_digest"))
         .and_then(Value::as_str);
     if committed != Some(d.as_str()) {
-        return Err(bad("agent_input is not the record the Capsule commits (agent_input_digest)".into()));
+        return Err(bad(
+            "agent_input is not the record the Capsule commits (agent_input_digest)".into(),
+        ));
     }
     check(&input_text)?;
     let r = decode(&input_text)?;
     check_terms_member(record.get(SETTLEMENT_MEMBER), &r)?;
-    let action_id = capsule.get("action_id").and_then(Value::as_str).unwrap_or("");
+    let action_id = capsule
+        .get("action_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     if action_id != format!("{}{SENT_SUFFIX}", r.block.deal_id) {
         return Err(bad(format!(
             "action_id {action_id:?} is not the record's deal_id followed by {SENT_SUFFIX}"
@@ -146,7 +176,9 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
     }
     let ag = r.agree().cloned();
     let sendable = r.block.record_type == TYPE_PROPOSE
-        || ag.as_ref().is_some_and(|a| a.kind == KIND_DECLINE || a.kind == KIND_CANCELLATION);
+        || ag
+            .as_ref()
+            .is_some_and(|a| a.kind == KIND_DECLINE || a.kind == KIND_CANCELLATION);
     if !sendable {
         return Err(bad(format!(
             "a {} is not sent whole: only an offer, a decline or a cancellation is",
@@ -164,14 +196,19 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
     };
     check(&serde_json::to_vec(&ctx.offer)?)?;
     let Some(of) = ctx.offer.propose() else {
-        return Err(bad(format!("the offer given is a {}", ctx.offer.block.record_type)));
+        return Err(bad(format!(
+            "the offer given is a {}",
+            ctx.offer.block.record_type
+        )));
     };
     let od = record_digest(&ctx.offer)?;
     if ag.offer != ref_to(&od) || r.block.deal_id != ctx.offer.block.deal_id {
         return Err(bad(format!("the {} does not answer this offer", ag.kind)));
     }
     if ag.kind == KIND_DECLINE && of.to.value() != Some(&key_id) {
-        return Err(bad("a decline is signed by the key the offer was sent to".into()));
+        return Err(bad(
+            "a decline is signed by the key the offer was sent to".into()
+        ));
     }
     if ag.kind == KIND_CANCELLATION && ctx.signer != key_id {
         return Err(bad("a cancellation is signed by the offer's signer".into()));
@@ -202,7 +239,11 @@ fn is_payment_row(row: &Row) -> bool {
 /// The ids of the payment rows of an offer's terms, in order (Go
 /// `PaymentRows`).
 pub fn payment_rows(tr: &TermsRows) -> Vec<String> {
-    tr.rows.iter().filter(|r| is_payment_row(r)).map(|r| r.id.clone()).collect()
+    tr.rows
+        .iter()
+        .filter(|r| is_payment_row(r))
+        .map(|r| r.id.clone())
+        .collect()
 }
 
 /// The terms leg an offer's sent Capsule carries as its settlement member,
@@ -215,7 +256,12 @@ pub fn terms_leg(offer: &Record) -> Result<Vec<u8>, Error> {
             offer.block.record_type
         )));
     };
-    let found: Vec<&Row> = of.terms_rows.rows.iter().filter(|r| is_payment_row(r)).collect();
+    let found: Vec<&Row> = of
+        .terms_rows
+        .rows
+        .iter()
+        .filter(|r| is_payment_row(r))
+        .collect();
     if found.len() != 1 {
         return Err(Error::Invalid(format!(
             "xdealv1: a terms leg carries one payment's amount; the terms have {} payment rows",
@@ -223,7 +269,11 @@ pub fn terms_leg(offer: &Record) -> Result<Vec<u8>, Error> {
         )));
     }
     let row = found[0];
-    let role = if of.role == row.owed_by { "payer" } else { "payee" };
+    let role = if of.role == row.owed_by {
+        "payer"
+    } else {
+        "payee"
+    };
     Ok(jcs(&json!({
         "version": SETTLEMENT_VERSION,
         "leg": "terms",
@@ -233,7 +283,9 @@ pub fn terms_leg(offer: &Record) -> Result<Vec<u8>, Error> {
 }
 
 fn check_terms_member(member: Option<&Value>, r: &Record) -> Result<(), Error> {
-    let one_payment = r.propose().is_some_and(|of| payment_rows(&of.terms_rows).len() == 1);
+    let one_payment = r
+        .propose()
+        .is_some_and(|of| payment_rows(&of.terms_rows).len() == 1);
     if !one_payment {
         if member.is_some() {
             return Err(bad(format!(
@@ -245,7 +297,9 @@ fn check_terms_member(member: Option<&Value>, r: &Record) -> Result<(), Error> {
     }
     let want = terms_leg(r).map_err(|e| bad(format!("the terms leg: {e}")))?;
     let Some(member) = member else {
-        return Err(bad("an offer with one payment row carries its terms leg as the settlement member".into()));
+        return Err(bad(
+            "an offer with one payment row carries its terms leg as the settlement member".into(),
+        ));
     };
     if jcs(member).ok().as_deref() != Some(want.as_slice()) {
         return Err(bad(format!(

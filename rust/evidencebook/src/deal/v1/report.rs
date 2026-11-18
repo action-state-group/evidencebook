@@ -232,13 +232,19 @@ fn normalize_referee(v: &str) -> String {
 /// Computes one copy of the v1 report from `b` at `c.as_of` (Go
 /// `BuildReport`), with Go's refusals.
 pub fn build_report(b: &ReportBooks, c: &ReportCopy) -> Result<Report, Error> {
-    if ![AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_ADJUDICATOR].contains(&c.audience.as_str()) {
+    if ![AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_ADJUDICATOR].contains(&c.audience.as_str())
+    {
         return Err(report_err(format!(
             "audience {:?} is not a copy audience",
             c.audience
         )));
     }
-    if c.nonce.len() != 64 || !c.nonce.bytes().all(|x| matches!(x, b'0'..=b'9' | b'a'..=b'f')) {
+    if c.nonce.len() != 64
+        || !c
+            .nonce
+            .bytes()
+            .all(|x| matches!(x, b'0'..=b'9' | b'a'..=b'f'))
+    {
         return Err(report_err("the nonce must be 64 lowercase hex".into()));
     }
     let referee = normalize_referee(&c.referee);
@@ -249,7 +255,9 @@ pub fn build_report(b: &ReportBooks, c: &ReportCopy) -> Result<Report, Error> {
         ));
     }
     if !adj && !referee.is_empty() {
-        return Err(report_err("only an adjudicator's copy names a referee".into()));
+        return Err(report_err(
+            "only an adjudicator's copy names a referee".into(),
+        ));
     }
     if crate::row_status::parse_time(&c.as_of).is_err() {
         return Err(report_err(format!(
@@ -362,9 +370,12 @@ fn first_act(b: &RowBooks, layer: bool) -> Option<FirstAct> {
     if layer {
         return None;
     }
-    b.own.iter().find(|r| act_check(&r.record).is_some()).map(|r| FirstAct {
-        time: r.time.clone(),
-    })
+    b.own
+        .iter()
+        .find(|r| act_check(&r.record).is_some())
+        .map(|r| FirstAct {
+            time: r.time.clone(),
+        })
 }
 
 fn counterparty_proof(v: &StatusValue) -> &'static str {
@@ -377,21 +388,41 @@ fn counterparty_proof(v: &StatusValue) -> &'static str {
     }
 }
 
-fn report_row(b: &RowBooks, agreed: &Row, input: &Input, src: &RowSources) -> Result<ReportRow, Error> {
+fn report_row(
+    b: &RowBooks,
+    agreed: &Row,
+    input: &Input,
+    src: &RowSources,
+) -> Result<ReportRow, Error> {
     let res = row_status::compute(input).map_err(|e| Error::Invalid(e.to_string()))?;
     let late = row_status::compute_late(input).map_err(|e| Error::Invalid(e.to_string()))?;
-    let own_role = b.own[0].record.agree().map(|a| a.role.clone()).unwrap_or_default();
+    let own_role = b.own[0]
+        .record
+        .agree()
+        .map(|a| a.role.clone())
+        .unwrap_or_default();
     let rec = |rf: RecRef| -> (&TimedRecord, String) {
         match rf.book {
             BookKind::Own => (&b.own[rf.i], own_role.clone()),
             BookKind::Counterpart => (
                 &b.counterpart[rf.i],
-                if own_role == ROLE_BUYER { ROLE_SELLER } else { ROLE_BUYER }.into(),
+                if own_role == ROLE_BUYER {
+                    ROLE_SELLER
+                } else {
+                    ROLE_BUYER
+                }
+                .into(),
             ),
             BookKind::Case => (&b.case_book[rf.i], SIDE_ADJUDICATOR.into()),
         }
     };
-    let or_not_set = |s: &str| if s.is_empty() { NOT_SET.to_string() } else { s.to_string() };
+    let or_not_set = |s: &str| {
+        if s.is_empty() {
+            NOT_SET.to_string()
+        } else {
+            s.to_string()
+        }
+    };
     let mut row = ReportRow {
         id: agreed.id.clone(),
         owed_by: agreed.owed_by.clone(),
@@ -437,7 +468,11 @@ fn report_row(b: &RowBooks, agreed: &Row, input: &Input, src: &RowSources) -> Re
                     r#final: true,
                     remedy_due: ru.remedy_due.clone(),
                 });
-                if body.remedy.as_ref().is_some_and(|m| m.amount_minor.is_some()) {
+                if body
+                    .remedy
+                    .as_ref()
+                    .is_some_and(|m| m.amount_minor.is_some())
+                {
                     row.remedy = Some(REMEDY_NOT_COUNTED.into());
                 }
             }
@@ -452,10 +487,19 @@ fn report_row(b: &RowBooks, agreed: &Row, input: &Input, src: &RowSources) -> Re
     let mut remedy_ref = None;
     if let Some(i) = first_remedy(owing.iter().map(|r| &r.record), &agreed.id) {
         row.remedy_made = true;
-        remedy_ref = Some(RecRef { book: owing_book, i });
+        remedy_ref = Some(RecRef {
+            book: owing_book,
+            i,
+        });
     }
     let mut refs: Vec<RecRef> = src.named.values().copied().collect();
-    for list in [&src.statements, &src.disputes, &src.withdrawals, &src.rulings, &src.remedies] {
+    for list in [
+        &src.statements,
+        &src.disputes,
+        &src.withdrawals,
+        &src.rulings,
+        &src.remedies,
+    ] {
         refs.extend(list.iter().copied());
     }
     refs.extend(remedy_ref);

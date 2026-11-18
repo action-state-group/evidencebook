@@ -113,5 +113,5 @@ pub const REASON_OTHER: &str = "other";
 pub const CHOICE_CONFIRM: &str = "confirm_limits";
 
 // Forums (evidencebook#404; #482 Q4).
-pub const FORUM_AUTO_TWIN: &str = "auto:twin";
+pub const FORUM_AUTO_TWIN: &str = "auto:twin"; // vocabulary-gate: x-deal-v1 forum value
 pub const FORUM_AUTO_REF: &str = "auto:ref";

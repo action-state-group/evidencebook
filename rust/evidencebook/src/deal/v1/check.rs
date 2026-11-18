@@ -205,7 +205,10 @@ fn check_doc(doc: &Value) -> Result<(), Error> {
         .and_then(|r| r.get(PROFILE))
         .and_then(Value::as_object);
     let Some(blk) = blk else {
-        return Err(stage_err(STAGE_CANONICALIZATION, "no x-deal-v1 block".into()));
+        return Err(stage_err(
+            STAGE_CANONICALIZATION,
+            "no x-deal-v1 block".into(),
+        ));
     };
     let c = blk.get("canonicalization");
     if c.and_then(Value::as_str) != Some(CANONICALIZATION) {
@@ -376,8 +379,7 @@ fn check_record(r: &Record) -> Result<(), Error> {
             }
         }
         Placement::Journal => {
-            if b.seq != 0 || b.prev.is_some() || b.agreement_ref.is_some() || b.seen.is_present()
-            {
+            if b.seq != 0 || b.prev.is_some() || b.agreement_ref.is_some() || b.seen.is_present() {
                 return Err(bad("a journal record carries no seq, prev, agreement_ref or seen, so a record sent whole shows no place in the journal".into()));
             }
             if t == TYPE_PROPOSE && b.refs.is_some() {
@@ -454,9 +456,7 @@ fn check_body(r: &Record) -> Result<(), Error> {
         }
         Body::Check(body) => check_v0_body(&serde_json::to_value(&body.v0)?, "body_check"),
         Body::Verdict(body) => check_v0_body(&serde_json::to_value(&body.v0)?, "body_verdict"),
-        Body::Approval(body) => {
-            check_v0_body(&serde_json::to_value(&body.v0)?, "body_approval")
-        }
+        Body::Approval(body) => check_v0_body(&serde_json::to_value(&body.v0)?, "body_approval"),
         _ => Ok(()),
     }
 }
@@ -607,7 +607,13 @@ pub fn check_dispute(dispute: &Record, agreement: &Record) -> Result<(), Error> 
         return Err(bad_ag("the dispute is of another deal".into()));
     }
     let ad = record_digest(agreement)?;
-    if dispute.block.agreement_ref.as_ref().map(|r| r.digest.as_str()) != Some(ad.as_str()) {
+    if dispute
+        .block
+        .agreement_ref
+        .as_ref()
+        .map(|r| r.digest.as_str())
+        != Some(ad.as_str())
+    {
         return Err(bad_ag(
             "the dispute is bound to another agreement (agreement_ref)".into(),
         ));
@@ -693,7 +699,9 @@ pub fn check_agreement(
         return Err(bad_ag("rows_digest is not the offer's rows digest".into()));
     }
     if witness_keys(ag.witness_list()) != witness_keys(&of.witnesses) {
-        return Err(bad_ag("the agreement's witnesses are not the offer's".into()));
+        return Err(bad_ag(
+            "the agreement's witnesses are not the offer's".into(),
+        ));
     }
     if ag.adjudicator != of.adjudicator {
         return Err(bad_ag(
@@ -708,16 +716,19 @@ pub fn check_agreement(
             if ag.role != of.role {
                 return Err(bad_ag("the offerer's role is the offer's".into()));
             }
-            if ag.layer() && agreement.block.seen.value().map(String::as_str) != Some(held_acceptor_agreement) {
-                return Err(bad_ag("the offerer's agreement names the acceptor's agreement it holds in seen".into()));
-            }
-        }
-        SIDE_ACCEPTOR => {
-            if ag.role == of.role {
+            if ag.layer()
+                && agreement.block.seen.value().map(String::as_str) != Some(held_acceptor_agreement)
+            {
                 return Err(bad_ag(
-                    "the acceptor's role is the other side of the offer's".into(),
+                    "the offerer's agreement names the acceptor's agreement it holds in seen"
+                        .into(),
                 ));
             }
+        }
+        SIDE_ACCEPTOR if ag.role == of.role => {
+            return Err(bad_ag(
+                "the acceptor's role is the other side of the offer's".into(),
+            ));
         }
         _ => {}
     }
@@ -769,9 +780,11 @@ fn compile() -> Result<Compiled, String> {
 
 fn compiled() -> Result<&'static Compiled, Error> {
     static C: OnceLock<Result<Compiled, String>> = OnceLock::new();
-    C.get_or_init(compile)
-        .as_ref()
-        .map_err(|e| Error::Invalid(format!("the vendored x-deal-v1 schema does not compile: {e}")))
+    C.get_or_init(compile).as_ref().map_err(|e| {
+        Error::Invalid(format!(
+            "the vendored x-deal-v1 schema does not compile: {e}"
+        ))
+    })
 }
 
 fn leaves(v: &ValidationError, out: &mut Vec<String>) {
