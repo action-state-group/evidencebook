@@ -1459,6 +1459,37 @@ What exists: v0's report is a Capsule with `action_id` `capsulectl-deal-report`,
 deal's state from `lifecycle.state` alone (capsule-viewer `src/capsule_viewer/receipt/model.py:413-440`
 at `99d61f4`, `state` at line 425). v0's report stays unchanged.
 
+**Built in PR 5** (`xdealv1.BuildReport`, `xdealv1.StatusProvider.Report`, `xdealv1.ReportPayload`;
+PROFILE §10). It is as proposed below, with these additions and limits:
+
+- **Card members** (Sherlock2, #526 and #528 reviews; the coordinator made them PR 5's acceptance).
+  `rests_on.counterparty_kind` (the status value's, null: a page shows "not stated");
+  `rests_on.counterparty_proof`, one of `held`, `not_yet` and `no_layer`, reading the layer and the
+  held proof together (u611's no-layer marking); `disputes`, the status value's one entry per
+  dispute record; `rulings_unnamed` (#527), shown as "ruling held, unnamed" beside an `open`
+  outcome, absent at zero; and `status_fact`, null before the book's first status fact, else
+  `{"current": bool}`, whether that fact's status value is the one computed now (false after a
+  stamp left the book in `TickResult.Unstated`, or after a change no stamp has stated yet). An
+  adjudicator's copy carries neither `disputes` nor `rulings_unnamed`.
+- **`late`** is present: rowstatus's `ComputeLate` (Q9) landed in PR 1a (#484).
+- **Times.** A report reads each record's time as a stamp's status value does; a time only a
+  stamp of the holder's gives, with no witness receipt yet, is no time, so its rows are `local`.
+  `relied_on.witnessed` is true exactly when a time is given.
+- **The deal checkpoint** is `Book.Checkpoint` of the holder's book when the report is made.
+- **Limit: a payment remedy is not counted.** RowInputs counts no remedy that is a payment (6.1):
+  it needs its own terms leg, which the profile does not define. Appendix A's refund is one, so
+  the vectors at 26 Nov read the ruled row's remedy `due` and at 28 Nov `not_honoured`, though the
+  seller refunded. The design's "26 Nov, remedy made, settled" vector waits for that terms leg.
+- **Vectors built** (`testdata/deal-v1/report/`): Appendix A's buyer at each time above, the
+  books as held then; its counterparty and adjudicator copies; a not-started book (the seller
+  holding its own agreement only); an untimed own book; a counterparty without the layer; and a
+  ruling held unnamed with a status fact that is not current. `testdata/deal-v1/settled/` holds
+  the `settled` cases. Not built: the settled-without-ruling path (Appendix A lines s1 to s12 has
+  no fixture yet) and an empty witness list (the untimed own book stands in for its local rows).
+- **Not here:** the `x-deal-v1` bundle extension's `sealed_report` pointer and the sealing call
+  are the host's (evidencebook-deal#212); `report/` (`capsulectl book report`) refuses a bundle
+  carrying the `x-deal-v1` extension and points to this report (#485).
+
 **Proposed: the v1 report.**
 
 - **Type and Capsule.** The same Capsule form and names (`ReportActionID`, `ReportType`

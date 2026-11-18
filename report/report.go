@@ -294,6 +294,13 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if err != nil {
 		return nil, refusedBy{err}
 	}
+	// An x-deal-v1 deal seals no Result (evidencebook#485): its page reads
+	// the deal's v1 report, which a v1 bundle names under this extension.
+	if extensions, _ := value["extensions"].(map[string]interface{}); extensions != nil {
+		if _, v1 := extensions[dealV1Extension]; v1 {
+			return nil, refusef("the bundle is an %s deal's, which seals no Evidence Result: render its v1 deal report (%s sealed_report) instead", dealV1Extension, dealV1Extension)
+		}
+	}
 	// Verify first, then gate the root, then decorate, then render: nothing
 	// is rendered until everything before it has passed. A diagnostic page
 	// goes on past a verification failure, keeping what failed.
@@ -587,6 +594,11 @@ func resultCandidates(id string, members map[string]interface{}, inline bool) []
 // bundle -- the root's other member, or any other record -- carries one, so
 // what the report renders is never a matter of which Result was found
 // first. It names what it found when the root is not a Result.
+// dealV1Extension is the bundle extension an x-deal-v1 deal's bundle
+// carries (docs/design/461-deal-profile.md §2.3, §9): the record version's
+// name, xdealv1.Profile.
+const dealV1Extension = "x-deal-v1"
+
 func resultRootOf(value map[string]interface{}) (resultRoot, error) {
 	id, _ := value["root"].(string)
 	var rootRecord map[string]interface{}

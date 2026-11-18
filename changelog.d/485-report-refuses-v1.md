@@ -1,0 +1,1 @@
+- `report.Build` (`capsulectl book report`) refuses a bundle carrying the `x-deal-v1` extension. An x-deal-v1 deal seals no Evidence Result, and its page reads the v1 deal report instead (#485).
