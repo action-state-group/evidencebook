@@ -95,6 +95,10 @@ Needs a profile on x-deal-v1 (deal set-version x-deal-v1 --migrate).`,
 				if _, err := s.db.ExecContext(ctx, `INSERT INTO deal_versions (deal_id, version, own_log_id, counterparty_log_id, state) VALUES (?, ?, '', '', 'offered') ON CONFLICT(deal_id) DO NOTHING`, dealID, dealVersionV1); err != nil {
 					return err
 				}
+				if _, err := s.db.ExecContext(ctx, `INSERT INTO deal_v1 (deal_id, side, role, offer_digest, counterparty_key, counterparty_agreement, own_agreement_id, own_agreement_digest) VALUES (?, ?, ?, ?, '', '', '', '') ON CONFLICT(deal_id) DO NOTHING`,
+					dealID, xdealv1.SideOfferer, body.Role, digest); err != nil {
+					return err
+				}
 				pair, err := s.sendV1(ctx, request, dealID, xdealv1.TypePropose, payload, digest)
 				if err != nil {
 					return err

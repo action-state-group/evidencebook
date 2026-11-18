@@ -99,16 +99,6 @@ func putDealVersionSetting(p cli.Profile, v string) error {
 	return putSetting(filepath.Join(dir, dealVersionFile), []byte(v+"\n"))
 }
 
-// ensureV1Tables creates the v1 tables on a write session.
-func (s *dealSession) ensureV1Tables(ctx context.Context) error {
-	for _, stmt := range dealV1Schema {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // isV1Deal reports whether the local version table names the deal as an
 // x-deal-v1 deal. A store with no table, or a deal with no row, is v0: the
 // check is read before anything is loaded, and opens no book.
@@ -402,4 +392,34 @@ func (s *dealSession) writePair(ctx context.Context, c *cobra.Command, path, dig
 	}
 	_, err := s.db.ExecContext(ctx, `UPDATE deal_sent SET state=?, written=1 WHERE record_digest=? AND request_digest=?`, sentWritten, digest, requestDigest)
 	return err
+}
+
+// journalRecordType is the x-deal-v1 record type of the journal record whose
+// payload digest is digest, and whether the journal holds one.
+func (s *dealSession) journalRecordType(ctx context.Context, digest string) (typ string, held bool, err error) {
+	j, err := s.shelf.Journal(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
+	if err != nil {
+		return "", false, err
+	}
+	for _, r := range read.Records {
+		for _, c := range r.Header.PayloadCommitments {
+			if c != digest {
+				continue
+			}
+			payload, err := j.ResolvePayload(ctx, r.RecordID, digest)
+			if err != nil {
+				return "", false, err
+			}
+			rec, err := xdealv1.Decode(payload)
+			if err != nil {
+				return "", true, nil
+			}
+			return rec.Block.RecordType, true, nil
+		}
+	}
+	return "", false, nil
 }

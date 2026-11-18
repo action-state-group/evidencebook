@@ -306,3 +306,58 @@ have them (v0 deals). A v0 deal keeps both verbs unchanged.
 4. **One verb or two for the migration** (section 3a): settled. The twin preferred a separate
    store-migration verb; Sherlock2 chose `deal set-version x-deal-v1 --migrate` (one verb, the
    flag says what it costs). No Steven door (Sherlock2, ac973473).
+
+## 11. Slice 2 as built: `deal receive`, `deal agree`, the deal-book writer, the first-act gate
+
+**Decided** by the coordinator (2026-11-18): build `deal receive` (with the `ReceiveProfile`
+wiring), `deal agree` and the deal-book writer, and the first-act gate on evidencebook's `GateAct`
+(u610 and u611, evidencebook#518); leave `deal dispute` to deal-95 on this writer; no release.
+
+- **The wiring.** A verb that takes records from the other side asks, through its context
+  (`v1ReceiveContext`), for the shelf to be opened with the store of received records and
+  `xdealv1.ReceiveProfile` (its `Shelf` set after `OpenSQLiteShelf`). No other verb opens it, so
+  nothing changes for a v0 profile. The plugin's shelf already gives every book an empty list of
+  authenticated indexes (`deal_shelf.go`), which the other side's checkpoint recomputation needs
+  (eb-461).
+- **The writer, `sealBookV1`.** One function seals every v1 deal-book record. The caller gives the
+  body (and refs, marks); the writer sets `deal_id`, `at`, `seq`, `prev` (the record digest of the
+  record before), `agreement_ref` and `seen` (`CountedPrefix(counterparty_key, counterparty_log_id).Last`,
+  null when none), runs `Check` and the placement check before anything is stored, appends one
+  record with one `cites` link to the one before, and returns the `BookPair`. The book's log id is
+  random and stored before the book exists (`deal_versions.own_log_id`), so a run that stops after
+  the append finds the book and records the agreement (`repairOpening`), never makes a second one.
+  The book is read back for the gate from the book itself (`Query`, `ResolvePayload`). This is the
+  API deal-95's dispute record uses: `bookRecordIn{Body: DisputeBody{...}, Refs: ...}`.
+- **`deal receive FILE`.** FILE is one of: a sent record (an offer, a decline, a cancellation: the
+  standalone pair `deal offer` wrote), a deal-book record (a pair), or a push `{"record": pair,
+  "stamp_proof": proof}` (what the acceptor's `deal agree` writes); the proof may come alone. A
+  sent record is verified with `VerifySent` (a decline or a cancellation against the offer it
+  names when the holder has it), a book record with `VerifyBook`; then the store takes it
+  (`Shelf.Receive`) and the verb says in words what became of the record and of the proof. It keeps
+  the received offer's payload so the offer can be answered, the deal's row (side, role, the other
+  side's key), the other side's book log id (learned from its first record) and its agreement's
+  record id. An offer for a deal id the profile already holds is refused.
+- **`deal agree OFFER_DIGEST --admit DIGEST [--intent DIGEST] [--out FILE]`.** Builds the agreement
+  from the offer it answers (rows digest, witnesses, adjudicator, forums as they are), the holder's
+  side and role, its checkpoint key and shelf log (the cadence log), checks it with
+  `CheckAgreement`, and seals it as seq 1. `--admit` and `--intent` name records in the holder's own
+  journal and are refused unless the journal holds them. The offerer agrees only after it holds the
+  acceptor's agreement and names it in `seen`. The acceptor stamps right after and its file carries
+  the stamp proof (design §7.2); the offerer's file carries none (it stamps with its first act).
+  Running it again writes the same record again and seals nothing. How a journal `admit` record
+  is sealed is open (§10, question 2): this slice does not add a verb for it.
+- **The gate, `gateFirstAct`.** Wraps `ReceiveProfile.GateAct`: a first perform or payer settle is
+  refused until the counterparty's stamp proof covers its agreement, on both sides (u610, "gate a");
+  a counterparty with no layer is not refused and the answer says so (`Unguarded`), for the
+  receipt and the card to say that no stamp proof came, counted from the holder's own receipt only
+  (u611, "layer ii"); a payee leg, a statement and later acts are never gated. The counterparty's
+  evidence commitment shelf log is passed whenever the holder holds it. The verbs that seal acts
+  (`deal perform`, `deal settle`) are later slices; they call `gateFirstAct` before `sealBookV1`.
+- **What this slice does not do:** `deal offer decline`, `deal perform`, `deal settle`,
+  `deal statement`, `deal dispute`, a verb for the journal's `admit` and `intent`, the offerer's
+  stamp at `agree_by` minus the margin (§7.1), and the no-layer agreement (`counterparty_layer:
+  false`; `deal agree` writes `true`).
+- **Release condition** (Sherlock2, evidencebook-deal#221 wording check, buzz b61e90dd): `deal agree`
+  must not reach a release until a user can produce a v1 `admit` (its own verb or the admission
+  flow, question 2 of section 10), and its `--admit is required` refusal must then name the verb or
+  command that shows the digest. Nothing ships from this slice (no release).
