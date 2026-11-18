@@ -47,6 +47,12 @@ type ActAuthorization struct {
 	// person's signature over its digest, as ApprovalDigest does: otherwise
 	// the agent could widen its own limits.
 	LimitApprovals []string
+	// Intent is the record digest of the first intent a standing-intent
+	// approval rests on, the person's own words and limits: Steven ruled that
+	// such an act is refused until that intent carries the person's
+	// signature over its digest (evidencebook#500, option b), as
+	// ApprovalDigest does. "" for an approval that is not a standing intent.
+	Intent string
 }
 
 // CheckAuthorizations checks every act that cites a check. journal is the
@@ -125,6 +131,7 @@ func CheckAuthorizations(journal, acts []Record) ([]ActAuthorization, error) {
 			for _, j := range w.limitsAt[ai] {
 				a.LimitApprovals = append(a.LimitApprovals, w.digests[j])
 			}
+			a.Intent = w.digests[w.intentAt[ai]]
 		}
 		out = append(out, a)
 	}
@@ -196,11 +203,14 @@ type journalWalk struct {
 	// limitsAt is, for each standing-intent approval, the confirm_limits
 	// approvals whose proposals were in force at it.
 	limitsAt map[int][]int
+	// intentAt is, for each standing-intent approval, the first intent of
+	// the journal before it.
+	intentAt map[int]int
 }
 
 func walkJournal(journal []Record) (*journalWalk, error) {
 	w := &journalWalk{journal: journal, check: map[int]*CheckBody{}, verdict: map[int]*dealprofile.VerdictBody{},
-		approval: map[int]*dealprofile.ApprovalBody{}, verdictOf: map[int]int{}, firstAnswer: map[int]int{}, limitsAt: map[int][]int{}}
+		approval: map[int]*dealprofile.ApprovalBody{}, verdictOf: map[int]int{}, firstAnswer: map[int]int{}, limitsAt: map[int][]int{}, intentAt: map[int]int{}}
 	byDigest := map[string]int{}
 	for i, r := range journal {
 		d, err := Digest(r)
@@ -213,6 +223,7 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 	var lim limits
 	confirmed := map[int]bool{}
 	var confirmations []int
+	firstIntent := -1
 	var last time.Time
 	for i, r := range journal {
 		bad := func(format string, args ...any) error {
@@ -249,6 +260,9 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 		case TypeIntent:
 			b, _ := bodyOf[dealprofile.IntentBody](r.Body)
 			lim.narrow(b)
+			if firstIntent < 0 {
+				firstIntent = i
+			}
 		case TypeCheck:
 			b, _ := bodyOf[CheckBody](r.Body)
 			w.check[i] = b
@@ -303,7 +317,11 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 				if chk != nil && !lim.allows(chk.Action) {
 					return nil, bad("standing-intent approval for an action the limits in force do not allow")
 				}
+				if firstIntent < 0 {
+					return nil, bad("a standing-intent approval rests on an intent; the journal holds none before it")
+				}
 				w.limitsAt[i] = slices.Clone(confirmations)
+				w.intentAt[i] = firstIntent
 			case v.Result == "pause" || v.Result == "deny":
 				if !slices.Contains(v.Options, b.Choice) {
 					return nil, bad("the choice is not one of the verdict's options")

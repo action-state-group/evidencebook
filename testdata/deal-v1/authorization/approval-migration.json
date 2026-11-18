@@ -103,6 +103,9 @@
       ],
       "limit_approvals": [
         0
+      ],
+      "intent_signature": [
+        false
       ]
     },
     {
@@ -220,7 +223,107 @@
       ],
       "limit_approvals": [
         0
+      ],
+      "intent_signature": [
+        true
       ]
+    },
+    {
+      "name": "standing-intent-without-intent",
+      "why": "a standing-intent approval rests on an intent the person signs; with none before it, it authorizes nothing",
+      "journal": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "check",
+            "at": "2026-11-01T10:01:00Z"
+          },
+          "body": {
+            "action": "pay",
+            "payment_ref": "invoice-17"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "verdict",
+            "at": "2026-11-01T10:02:00Z",
+            "refs": [
+              {
+                "rel": "checks",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              }
+            ]
+          },
+          "body": {
+            "result": "pass",
+            "differences": [],
+            "options": [],
+            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "approval",
+            "at": "2026-11-01T10:03:00Z",
+            "refs": [
+              {
+                "rel": "approves",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+              }
+            ]
+          },
+          "body": {
+            "choice": "proceed",
+            "proceed": true,
+            "approver": "standing_intent"
+          }
+        }
+      ],
+      "acts": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "settle",
+            "at": "2026-11-01T10:04:00Z",
+            "seq": 2,
+            "prev": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "agreement_ref": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "seen": null
+          },
+          "body": {
+            "leg": "payer",
+            "statements": [],
+            "check": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+            }
+          }
+        }
+      ],
+      "valid": false
     },
     {
       "name": "pass-without-approval",
@@ -961,6 +1064,9 @@
       ],
       "limit_approvals": [
         1
+      ],
+      "intent_signature": [
+        true
       ]
     },
     {
@@ -1888,6 +1994,9 @@
       ],
       "limit_approvals": [
         0
+      ],
+      "intent_signature": [
+        false
       ]
     },
     {
@@ -2783,6 +2892,9 @@
       ],
       "limit_approvals": [
         1
+      ],
+      "intent_signature": [
+        true
       ]
     },
     {
@@ -2952,6 +3064,9 @@
       ],
       "limit_approvals": [
         1
+      ],
+      "intent_signature": [
+        true
       ]
     },
     {
@@ -3167,5 +3282,5 @@
       "valid": false
     }
   ],
-  "description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card) and limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on), and refuse the others at stage authorization. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1)."
+  "description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1)."
 }

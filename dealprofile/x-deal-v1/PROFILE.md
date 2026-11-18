@@ -255,6 +255,10 @@ and returns per act the record digests the person signs:
 - every `confirm_limits` approval whose confirmed proposal put in force the `allowed` a
   `standing_intent` approval relied on (`LimitApprovals`): the person's signature over each one's
   record digest. Without it the agent could widen its own limits and then approve its own act.
+- the first intent a `standing_intent` approval rests on (`Intent`): the person's signature over
+  its record digest (Steven, evidencebook#500, option b). Without it an agent could seal its own
+  intent's `allowed` and approve acts inside it with no person's signature anywhere. A
+  `standing_intent` approval with no intent before it in the journal is refused.
 
 An act MUST NOT be relied on until the person's signature over each listed digest, from the
 person's own key, is held. The signature travels beside the approval record, never inside it, so
@@ -300,5 +304,3 @@ When a deal has started (design note §5), the stamp proof order (§7), the stat
 and how a received record is read (§8), and the sealed deal report (§9) are later parts of
 evidencebook#461 step 5 (design note §11.1, PRs 3 to 5). The member that carries the person's
 signature beside an approval (section 8) is defined in action-state-group/agent-action-capsule#627.
-Whether an intent itself, which a `standing_intent` approval rests on, must also carry the
-person's signature is an open question; until it is answered, section 8 asks for none.
