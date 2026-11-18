@@ -424,12 +424,20 @@ func TestAStampCheckpointedButNotRecordedKeepsItsCheckpoint(t *testing.T) {
 // the first when told to.
 type beforeStampValues struct {
 	*statusValues
-	calls int
-	fail  bool
+	shelf    *Shelf
+	calls    int
+	fail     bool
+	unlocked bool
 }
 
 func (v *beforeStampValues) BeforeStamp(context.Context, time.Time) error {
 	v.calls++
+	// It runs holding the receive lock, so no Receive moves what it read
+	// (Codex, #528 round 3).
+	if v.shelf.receiveMu.TryLock() {
+		v.shelf.receiveMu.Unlock()
+		v.unlocked = true
+	}
 	if v.fail {
 		v.fail = false
 		return errors.New("naming failed")
@@ -443,7 +451,7 @@ func (v *beforeStampValues) BeforeStamp(context.Context, time.Time) error {
 func TestBeforeStampRunsBeforeEachStamp(t *testing.T) {
 	ctx := context.Background()
 	shelf := newShelfFixture(t).open(t)
-	values := &beforeStampValues{statusValues: &statusValues{status: map[string]json.RawMessage{}, link: map[string]LinkValue{}}}
+	values := &beforeStampValues{statusValues: &statusValues{status: map[string]json.RawMessage{}, link: map[string]LinkValue{}}, shelf: shelf}
 	c, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef",
 		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t), Status: values})
 	require.NoError(t, err)
@@ -469,4 +477,5 @@ func TestBeforeStampRunsBeforeEachStamp(t *testing.T) {
 	require.True(t, due.Ticked)
 	assert.Equal(t, 2, values.calls, "a due Tick's stamp runs it")
 	assert.Empty(t, due.BeforeStamp)
+	assert.False(t, values.unlocked, "always under the receive lock")
 }

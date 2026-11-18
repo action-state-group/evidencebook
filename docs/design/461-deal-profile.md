@@ -1308,7 +1308,9 @@ the witness receipts it is handed (A, above).
     - **The next stamp retries** (Sherlock2 and the coordinator, #528 round 2). A ruling is often
       a deal's last record, so nothing may arrive to retry a failed naming. The status provider
       is a `BeforeStampProvider`: `Stamp`, and `Tick` when a stamp is due, call its
-      `BeforeStamp` before taking the shelf's lock, and it runs `xdealv1.NameAllRulings` over
+      `BeforeStamp` before taking the shelf's lock, holding the receive lock so no `Receive`
+      moves the counterparty's counted prefix between its read and its append (Codex, #528
+      round 3), and it runs `xdealv1.NameAllRulings` over
       every v1 deal book. So the stamp whose values would read a ruling unnamed names it first,
       and the guarantee does not depend on the host. Its error does not stop the stamp
       (`TickResult.BeforeStamp`).

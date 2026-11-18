@@ -77,8 +77,11 @@ type StatusInput struct {
 // Receive left unnamed (evidencebook#527), so a naming that failed is
 // retried by the holder's next stamp whether or not anything more arrives.
 // Stamp, and Tick when a stamp is due, call BeforeStamp before they take the
-// shelf's lock, so it may call the shelf's methods, but not Stamp or Tick. at
-// is the time the stamp is taken at. Its error does not stop the stamp:
+// shelf's lock, holding the receive lock as AfterReceive does, so what it
+// reads of the received store stays as read until it appends (a naming's
+// seen is the counterparty's latest counted record when it is sealed): it
+// may call the shelf's methods but Receive, Forget, Stamp and Tick. at is
+// the time the stamp is taken at. Its error does not stop the stamp:
 // TickResult.BeforeStamp reports it, and the next stamp calls it again.
 type BeforeStampProvider interface {
 	StatusProvider
@@ -92,6 +95,8 @@ func (c *Cadence) beforeStamp(ctx context.Context, now time.Time) string {
 	if !ok {
 		return ""
 	}
+	c.shelf.receiveMu.Lock()
+	defer c.shelf.receiveMu.Unlock()
 	if err := p.BeforeStamp(ctx, now); err != nil {
 		return err.Error()
 	}
