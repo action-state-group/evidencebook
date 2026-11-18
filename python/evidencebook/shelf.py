@@ -1032,6 +1032,21 @@ class Shelf:
                 _claim_kind(db, JOURNAL_LOG_ID, _KIND_JOURNAL)
             return self._open_locked(JOURNAL_LOG_ID)
 
+    def seal_sent(self, entry: Entry, members: dict, action_id: str) -> Any:
+        """Append ``entry`` to the shelf's journal and seal its standalone
+        Capsule under ``action_id``, with ``members`` as further top-level
+        members of that Capsule only (Go ``SealSent``; the journal record's
+        Capsule carries none). ``entry`` carries exactly one payload, the
+        record's canonical JSON (JCS) bytes. Returns a
+        :class:`~evidencebook.shelf_sent.SealedSent`. An exception left no
+        journal record, and the call may be retried; a result whose ``error``
+        is set holds a record that was stored and whose log append is
+        pending: it is in the journal, so the caller sends its Capsule and
+        does not seal the record again."""
+        from . import shelf_sent
+
+        return shelf_sent.seal_sent(self, entry, members, action_id)
+
     def existing_journal(self):
         """The shelf's journal when the shelf has one, ``None`` otherwise
         (Go ``ExistingJournal``). Unlike :meth:`journal` it never creates
