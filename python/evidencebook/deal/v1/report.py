@@ -19,6 +19,7 @@ from ... import row_status
 from ..names import AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP, REPORT_TYPE
 from ..report import normalize_referee
 from .check import utc_second
+from . import golenient
 from .gotypes import NIL_RAW
 from .names import PROFILE, ROLE_BUYER, ROLE_SELLER, TYPE_PERFORM, TYPE_SETTLE, VALUE_NOT_MET
 from .start import STATE_STARTED, FirstAct, StartInput, start
@@ -62,27 +63,32 @@ def _bad(detail: str) -> StatusError:
 
 def _stamps(v: Any) -> dict[int, str]:
     """``Stamps`` as Go reads a ``map[uint64]string``: each key a decimal
-    uint64."""
-    if v is None:
-        return {}
-    if not isinstance(v, dict):
-        raise StatusError("xdealv1: report: stamps are an object")
-    out = {}
-    for k, t in v.items():
-        if not re.fullmatch(r"[0-9]+", k) or int(k) >= 1 << 64 or not isinstance(t, str):
-            raise StatusError("xdealv1: report: a stamp is a uint64 key and a time")
+    uint64, a null value the empty string."""
+    out: dict[int, str] = {}
+    for k, t in (v or {}).items():
+        if not re.fullmatch(r"[0-9]+", k) or int(k) >= 1 << 64:
+            raise StatusError(f"xdealv1: report: stamp key {_q(k)} is not a uint64")
         out[int(k)] = t
     return out
 
 
-def _member(b: dict, name: str) -> Any:
-    """A ``ReportBooks`` member, which Go's untagged field names match in
-    any case."""
-    out = None
-    for k, v in b.items():
-        if k.lower() == name.lower():
-            out = v
-    return out
+_LOG = golenient.struct(log_id="str", size="uint", last="str")
+_COUNTERPART_LOG = golenient.struct(log_id="str", counted="uint", last="str", fork_at="uint")
+_CHECKPOINT = golenient.struct(log_id="str", mmr_size="uint", root="str")
+_FACT = golenient.struct(current="bool")
+#: Go's ReportBooks: its fields carry no JSON tags, so each matches its Go
+#: name in any case.
+_REPORT_BOOKS = golenient.struct(
+    Books="raw", Stamps=("map", "str"), Own=_LOG, Counterpart=("ptr", _COUNTERPART_LOG), Checkpoint=_CHECKPOINT,
+    Fact=("ptr", _FACT))
+_COPY = golenient.struct(audience="str", nonce="str", referee="str", as_of="str",
+                         text=golenient.custom(lambda v: _text(v)))
+
+
+def _text(v: Any) -> Any:
+    if v is not None and not isinstance(v, dict):
+        raise StatusError("xdealv1: report: a copy's text is an object")
+    return v
 
 
 def build_report(books: dict, copy: dict) -> dict:
@@ -95,22 +101,26 @@ def build_report(books: dict, copy: dict) -> dict:
     referee on a copy that is not an adjudicator's or none on one that is,
     an as_of that is not RFC 3339 UTC to the second, and books holding a
     record timed after as_of."""
-    audience, nonce = copy.get("audience") or "", copy.get("nonce") or ""
-    as_of = copy.get("as_of") or ""
+    try:
+        rbooks = golenient.read(books, _REPORT_BOOKS)
+        c = golenient.read(copy, _COPY)
+    except golenient.GoDecodeError as exc:
+        raise StatusError(str(exc)) from None
+    audience, nonce, as_of = c["audience"], c["nonce"], c["as_of"]
     if audience not in (AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_ADJUDICATOR):
         raise _bad(f"audience {_q(audience)} is not a copy audience")
     if not _NONCE.match(nonce):
         raise _bad("the nonce must be 64 lowercase hex")
-    referee = normalize_referee(copy.get("referee") or "")
+    referee = normalize_referee(c["referee"])
     if audience == AUDIENCE_ADJUDICATOR and referee == "":
         raise _bad("an adjudicator's copy names the referee it is handed to")
     if audience != AUDIENCE_ADJUDICATOR and referee != "":
         raise _bad("only an adjudicator's copy names a referee")
     if utc_second(as_of) is None:
         raise _bad(f"as_of {_q(as_of)} is not RFC 3339 UTC to the second")
-    sb = _read_books(_member(books, "Books"))
+    sb = _read_books(rbooks["Books"])
     v = build_status(sb)
-    stamps = _stamps(_member(books, "Stamps"))
+    stamps = _stamps(rbooks["Stamps"])
     own = sb.own[0].record.body
 
     def resolve(rs: list[TimedRecord]) -> list[TimedRecord]:
@@ -135,15 +145,15 @@ def build_report(books: dict, copy: dict) -> dict:
             first_act=_first_act(rb, st["counterparty_layer"])))
     except ValueError as exc:
         raise StatusError(str(exc)) from None
-    text = copy.get("text")
+    text = c["text"]
     r: dict[str, Any] = {
         "type": REPORT_TYPE, "profile": PROFILE, "deal_id": sb.offer.block["deal_id"], "audience": audience,
-        "nonce": nonce, "as_of": as_of, "deal_checkpoint": _checkpoint(_member(books, "Checkpoint")),
+        "nonce": nonce, "as_of": as_of, "deal_checkpoint": rbooks["Checkpoint"],
         "pack_digest": sb.offer.body["pack_digest"], "start": started.value(), "settled": False, "rows_state": "",
         "rows": [],
-        "rests_on": {"own": _log(_member(books, "Own")), "counterparty_layer": v["counterparty_layer"],
+        "rests_on": {"own": rbooks["Own"], "counterparty_layer": v["counterparty_layer"],
                      "counterparty_kind": v["counterparty_kind"], "counterparty_proof": _counterparty_proof(v)},
-        "status_fact": _fact(_member(books, "Fact")), "report": text if text is not None else {},
+        "status_fact": rbooks["Fact"], "report": text if text is not None else {},
     }
     if referee:
         r["referee"] = referee
@@ -158,9 +168,8 @@ def build_report(books: dict, copy: dict) -> dict:
         r["rows_state"] = ROWS_LISTED
         r["rows"] = rows
     if audience != AUDIENCE_ADJUDICATOR:
-        cp = _member(books, "Counterpart")
-        if cp is not None:
-            r["rests_on"]["counterparty"] = _counterpart_log(cp)
+        if rbooks["Counterpart"] is not None:
+            r["rests_on"]["counterparty"] = rbooks["Counterpart"]
         ws = [{"key_id": w["key_id"], **({"url": w["url"]} if w["url"] else {})} for w in own["witnesses"] or ()]
         if ws:
             r["rests_on"]["witnesses"] = ws
@@ -180,68 +189,6 @@ def _q(s: str) -> str:
     from ..check import _go_quote
 
     return _go_quote(s)
-
-
-def _uint(v: Any, what: str) -> int:
-    if v is None:
-        return 0
-    if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v < 1 << 64:
-        raise StatusError(f"xdealv1: report: {what} is a uint64")
-    return v
-
-
-def _str(v: Any, what: str) -> str:
-    if v is None:
-        return ""
-    if not isinstance(v, str):
-        raise StatusError(f"xdealv1: report: {what} is a string")
-    return v
-
-
-def _obj(v: Any, what: str) -> dict:
-    if v is None:
-        return {}
-    if not isinstance(v, dict):
-        raise StatusError(f"xdealv1: report: {what} is an object")
-    return v
-
-
-def _get(d: dict, name: str) -> Any:
-    """A member as Go's typed decoding matches a tagged field: exact, else in
-    another case; the later spelling wins."""
-    out = None
-    for k, v in d.items():
-        if k.lower() == name:
-            out = v
-    return out
-
-
-def _log(v: Any) -> dict:
-    d = _obj(v, "own")
-    return {"log_id": _str(_get(d, "log_id"), "log_id"), "size": _uint(_get(d, "size"), "size"),
-            "last": _str(_get(d, "last"), "last")}
-
-
-def _counterpart_log(v: Any) -> dict:
-    d = _obj(v, "counterpart")
-    return {"log_id": _str(_get(d, "log_id"), "log_id"), "counted": _uint(_get(d, "counted"), "counted"),
-            "last": _str(_get(d, "last"), "last"), "fork_at": _uint(_get(d, "fork_at"), "fork_at")}
-
-
-def _checkpoint(v: Any) -> dict:
-    d = _obj(v, "checkpoint")
-    return {"log_id": _str(_get(d, "log_id"), "log_id"), "mmr_size": _uint(_get(d, "mmr_size"), "mmr_size"),
-            "root": _str(_get(d, "root"), "root")}
-
-
-def _fact(v: Any) -> dict | None:
-    if v is None:
-        return None
-    d = _obj(v, "fact")
-    current = _get(d, "current")
-    if current is not None and not isinstance(current, bool):
-        raise StatusError("xdealv1: report: fact.current is a boolean")
-    return {"current": bool(current)}
 
 
 def _first_act(b: _Books, layer: bool) -> FirstAct | None:

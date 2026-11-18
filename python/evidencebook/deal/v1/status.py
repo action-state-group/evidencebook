@@ -15,7 +15,8 @@ from typing import Any
 
 from .. import standard_history
 from ... import row_status
-from .check import Record, _record_of, decode
+from .check import Record, _record_of
+from . import golenient, gotypes
 from .gotypes import GoTypeError, NIL_RAW
 from .names import (
     KIND_AGREEMENT, KIND_DISPUTE, KIND_WITHDRAWAL, ROLE_BUYER, ROLE_SELLER, SIDE_OFFERER, TYPE_AGREE,
@@ -51,9 +52,18 @@ def status_time(v: Any) -> Any:
         return None
     if isinstance(v, str):
         return v
-    if isinstance(v, dict) and set(v) == {"stamp"} and isinstance(v["stamp"], int) \
-            and not isinstance(v["stamp"], bool) and 1 <= v["stamp"] < 1 << 64:
-        return {"stamp": v["stamp"]}
+    if isinstance(v, dict) and v and all(golenient._fold(k) == "stamp" for k in v):
+        # Go's strict decode of {"stamp": n}: the member in any case, the
+        # later spelling winning; a null leaves it unset.
+        n = None
+        for e in v.values():
+            if e is not None:
+                if isinstance(e, bool) or not isinstance(e, int) or not 0 <= e < 1 << 64:
+                    n = None
+                    break
+                n = e
+        if n:
+            return {"stamp": n}
     raise StatusError('xdealv1: a status time is a string, null or {"stamp": n} with n >= 1')
 
 
@@ -87,40 +97,56 @@ class TimedRecord:
 
 
 def _record(v: Any) -> Record:
+    """A record inside books, read as Go's ``Record.UnmarshalJSON`` reads
+    it: strictly, a null refused."""
     if isinstance(v, Record):
         return v
+    if v is None:
+        raise StatusError("xdealv1: a record has an x-deal-v1 block and a body")
     try:
-        return _record_of(v) if not isinstance(v, (bytes, str)) else decode(v)
+        return _record_of(v)
     except GoTypeError as exc:
         raise StatusError(str(exc)) from None
-    except ValueError as exc:  # a canonicalization refusal of text
-        raise StatusError(str(exc)) from None
 
 
-def _list(v: Any, what: str) -> list:
-    if v is None:
-        return []
-    if not isinstance(v, list):
-        raise StatusError(f"xdealv1: {what} is not a list")
+def _zero_record() -> Record:
+    """Go's zero ``Record``: a member left out. Its record type is none, so
+    no reader takes it for a record of a type."""
+    return Record(gotypes.zero(gotypes.block_type()), {})
+
+
+_RECORD = golenient.custom(_record)
+_STATUS_RECORD = golenient.struct(record=_RECORD, record_id="str", time=golenient.custom(lambda v: status_time(v)))
+_TIMED_RECORD = golenient.struct(record=_RECORD, record_id="str", time=("ptr", "str"))
+_PAYMENT = golenient.struct(check="str", reason="str", checked_over=("list", "str"), excluded=("list", "str"),
+                            settlement=golenient.custom(lambda v: _settlement(v)))
+_STATUS_BOOKS = golenient.struct(
+    offer=_RECORD, own=("list", _STATUS_RECORD), counterpart=("list", _STATUS_RECORD),
+    case_book=("list", _STATUS_RECORD), conflicting_final_rulings=("list", "str"), payments=("map", _PAYMENT),
+    proof_held="bool", rulings_unnamed="int")
+_ROW_BOOKS = golenient.struct(
+    offer=_RECORD, own=("list", _TIMED_RECORD), counterpart=("list", _TIMED_RECORD),
+    case_book=("list", _TIMED_RECORD), conflicting_final_rulings=("list", "str"), checks=("map", "str"))
+
+
+def _settlement(v: Any) -> Any:
+    # AAC's settlement.Settlement, a struct: an object or null. Its members
+    # are not read here (the status value reads none of them).
+    if v is not None and not isinstance(v, dict):
+        raise StatusError("xdealv1: a payment result's settlement is an object")
     return v
 
 
-def _timed(v: Any, what: str, timed: bool) -> list[TimedRecord]:
-    out = []
-    for r in _list(v, what):
-        if isinstance(r, TimedRecord):
-            out.append(r)
-            continue
-        if not isinstance(r, dict):
-            raise StatusError(f"xdealv1: a record of {what} is not an object")
-        rid = r.get("record_id")
-        if rid is None:
-            rid = ""
-        if not isinstance(rid, str):
-            raise StatusError(f"xdealv1: a record id of {what} is not a string")
-        t = status_time(r.get("time")) if timed else r.get("time")
-        out.append(TimedRecord(_record(r.get("record")), rid, t))
-    return out
+def _decode(v: Any, kind: Any) -> dict:
+    try:
+        return golenient.read(v, kind)
+    except golenient.GoDecodeError as exc:
+        raise StatusError(str(exc)) from None
+
+
+def _records(rs: Any) -> list[TimedRecord]:
+    return [TimedRecord(r["record"] if r["record"] is not None else _zero_record(), r["record_id"], r["time"])
+            for r in rs or ()]
 
 
 @dataclass
@@ -140,30 +166,14 @@ def _read_books(b: Any) -> _Books:
     """Status books as Go's ``json.Unmarshal`` into ``StatusBooks`` reads them."""
     if isinstance(b, _Books):
         return b
-    if not isinstance(b, dict):
-        raise StatusError("xdealv1: status books are an object")
-    if b.get("offer") is None:
-        raise StatusError("xdealv1: status: the books hold no offer")
-    conflicting = _list(b.get("conflicting_final_rulings"), "conflicting_final_rulings")
-    if not all(isinstance(x, str) for x in conflicting):
-        raise StatusError("xdealv1: conflicting_final_rulings are row ids")
-    payments = b.get("payments") or {}
-    if not isinstance(payments, dict) or not all(isinstance(p, dict) for p in payments.values()):
-        raise StatusError("xdealv1: payments are payment results by row id")
-    proof = b.get("proof_held")
-    if proof is not None and not isinstance(proof, bool):
-        raise StatusError("xdealv1: proof_held is a boolean")
-    unnamed = b.get("rulings_unnamed")
-    if unnamed is not None and (isinstance(unnamed, bool) or not isinstance(unnamed, int)):
-        raise StatusError("xdealv1: rulings_unnamed is a number")
+    d = _decode(b, _STATUS_BOOKS)
+    payments = d["payments"] or {}
     return _Books(
-        offer=_record(b["offer"]),
-        own=_timed(b.get("own"), "own", True),
-        counterpart=_timed(b.get("counterpart"), "counterpart", True),
-        case_book=_timed(b.get("case_book"), "case_book", True),
-        conflicting=conflicting, payments=payments,
-        checks={row: p.get("check") for row, p in payments.items() if p.get("check")},
-        proof_held=bool(proof), rulings_unnamed=unnamed or 0,
+        offer=d["offer"] if d["offer"] is not None else _zero_record(),
+        own=_records(d["own"]), counterpart=_records(d["counterpart"]), case_book=_records(d["case_book"]),
+        conflicting=d["conflicting_final_rulings"] or [], payments=payments,
+        checks={row: p["check"] for row, p in payments.items() if p["check"]},
+        proof_held=d["proof_held"], rulings_unnamed=d["rulings_unnamed"],
     )
 
 
@@ -224,19 +234,16 @@ def _row_value(row: dict) -> dict:
     return out
 
 
-def row_inputs(books: Any, at: str, checks: dict[str, str] | None = None) -> list[dict]:
+def row_inputs(books: Any, at: str) -> list[dict]:
     """One rowstatus input per agreed row, as of ``at`` (design §4.2, §4.4,
-    §6.1; Go ``RowInputs``). ``books`` holds ``offer``, ``own``,
-    ``counterpart``, ``case_book`` and ``conflicting_final_rulings``, each
-    record with its time (a known time or ``None``); ``checks`` are the
+    §6.1; Go ``RowInputs``). ``books`` is Go's ``RowBooks``: ``offer``,
+    ``own``, ``counterpart`` and ``case_book`` (each record with its time, a
+    known time or null), ``conflicting_final_rulings``, and ``checks``, the
     recomputed rows' check results by row id."""
-    if isinstance(books, dict):
-        b = _Books(_record(books.get("offer")), _timed(books.get("own"), "own", False),
-                   _timed(books.get("counterpart"), "counterpart", False),
-                   _timed(books.get("case_book"), "case_book", False),
-                   list(books.get("conflicting_final_rulings") or []), {}, dict(checks or {}))
-    else:
-        b = books
+    d = _decode(books, _ROW_BOOKS)
+    b = _Books(d["offer"] if d["offer"] is not None else _zero_record(), _records(d["own"]),
+               _records(d["counterpart"]), _records(d["case_book"]), d["conflicting_final_rulings"] or [], {},
+               d["checks"] or {})
     return _row_inputs(b, at)[0]
 
 
