@@ -497,6 +497,23 @@ jobs:
               echo "$plant planted by go, recovered by $recoverer: every dump is the vector's"
             done
           done
+      - name: A record with a field and no payload, every dump Go's
+        # evidencebook#538: Go plants a book whose one record commits a field
+        # and no payload (its field_commitments an object); each language's
+        # dump, its records' retention included, must be Go's. The field's
+        # nonce is fresh each run, so the dumps are compared, not a vector.
+        run: |
+          langs="go py rs"
+          dir=$(mktemp -d)/s
+          "$RUNNER_TEMP/shelf-go" write "$dir" < /dev/null
+          "$RUNNER_TEMP/shelf-go" continue "$dir" < /dev/null
+          "$RUNNER_TEMP/shelf-go" plant-fields "$dir" < /dev/null
+          for reader in $langs; do
+            "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir.$reader.json" < /dev/null
+            cmp "$dir.go.json" "$dir.$reader.json"
+          done
+          python -c 'import json, sys; r = [x for x in json.load(open(sys.argv[1]))["records"]["records"] if x["book_id"] == "fields/a"]; assert [x["retention"] for x in r] == ["AVAILABLE"], r' "$dir.go.json"
+          echo "a field-only record: every dump is Go's"
       - name: Two writers of one file exclude each other, in every pair of languages
         run: |
           langs="go py rs"

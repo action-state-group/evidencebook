@@ -154,8 +154,16 @@ fn non_empty_array(header: &Map<String, Value>, member: &str) -> bool {
         .is_some_and(|a| !a.is_empty())
 }
 
+/// Whether a record commits a payload or a field, so it has a retention
+/// state (Go `retentionOf`): `payload_commitments` is a list, and
+/// `field_commitments` an object of field names (Go's
+/// `map[string]string`).
 fn commits_originals(header: &Map<String, Value>) -> bool {
-    non_empty_array(header, "payload_commitments") || non_empty_array(header, "field_commitments")
+    non_empty_array(header, "payload_commitments")
+        || header
+            .get("field_commitments")
+            .and_then(Value::as_object)
+            .is_some_and(|m| !m.is_empty())
 }
 
 fn record_type(header: &Map<String, Value>) -> &str {
@@ -311,4 +319,33 @@ fn held_by<R: HeldRecordView>(records: &[&R], record: &R, now: Time) -> bool {
             _ => false,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::commits_originals;
+    use serde_json::{json, Map, Value};
+
+    fn header(v: Value) -> Map<String, Value> {
+        v.as_object().unwrap().clone()
+    }
+
+    // A record commits originals by a payload, or by a field: Go's
+    // field_commitments is an object (evidencebook#538).
+    #[test]
+    fn a_field_commitment_is_an_object() {
+        assert!(commits_originals(&header(
+            json!({"field_commitments": {"note": "ab"}})
+        )));
+        assert!(commits_originals(&header(
+            json!({"payload_commitments": ["ab"]})
+        )));
+        assert!(!commits_originals(&header(
+            json!({"field_commitments": {}})
+        )));
+        assert!(!commits_originals(&header(
+            json!({"field_commitments": ["ab"]})
+        )));
+        assert!(!commits_originals(&header(json!({}))));
+    }
 }

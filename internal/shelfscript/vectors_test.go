@@ -8,6 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	evidencebook "github.com/action-state-group/evidencebook"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
 )
@@ -130,4 +134,22 @@ func TestRunRefusesAStepOutOfPlace(t *testing.T) {
 	require.ErrorContains(t, Run(ctx, path, []Step{{Op: "open", Stream: "s"}}), "left the shelf open")
 	require.ErrorContains(t, Run(ctx, path, []Step{{Op: "open", Stream: "s"}, {Op: "nope"}}), "unknown step")
 	require.ErrorContains(t, Write(ctx, filepath.Dir(path)), "exists")
+}
+
+// PlantFields adds a record that commits a field and no payload, and Go's
+// Records gives it a retention state (evidencebook#538).
+func TestPlantFieldsHasARetentionState(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	require.NoError(t, Write(ctx, dir))
+	require.NoError(t, PlantFields(ctx, dir))
+	e, err := open(ctx, filepath.Join(dir, FileName), plantStream, Start.Add(plantAt*time.Second))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, e.release()) }()
+	recs, err := e.shelf.Records(ctx, FieldsBookID)
+	require.NoError(t, err)
+	require.Len(t, recs.Records, 1)
+	assert.Empty(t, recs.Records[0].Header.PayloadCommitments)
+	assert.Len(t, recs.Records[0].Header.FieldCommitments, 1)
+	assert.Equal(t, evidencebook.Available, recs.Records[0].Retention)
 }

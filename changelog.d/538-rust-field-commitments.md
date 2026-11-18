@@ -1,0 +1,2 @@
+<!-- changelog: rust/evidencebook/CHANGELOG.md -->
+- **Fixed (`shelf`):** `Shelf::records` now gives a retention state to a record that commits a field and no payload, as Go does (evidencebook#538). Go writes `field_commitments` as an object, and Rust read it as a list, so such a record listed no retention state. The shelf interlock now compares every language's dump of a Go-written shelf holding such a record.
