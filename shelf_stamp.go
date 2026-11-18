@@ -45,11 +45,37 @@ type StatusProvider interface {
 	Values(ctx context.Context, bookID, logID string) (profile string, link LinkValue, status json.RawMessage, ok bool, err error)
 }
 
+// BookStatusProvider is a StatusProvider handed what it reads by the shelf,
+// so it reads nothing through the shelf's own lock, which a stamp holds
+// while it asks for values: the stamp's tick and the book and journal
+// handles the shelf already has (docs/design/461-deal-profile.md §8.1). A
+// shelf calls BookValues in place of StampValues or Values when its provider
+// implements it. The provider may call the handles' readers (Query,
+// ResolvePayload, Sealed) and the shelf's lock-free readers (CountedPrefix,
+// ReceivedRecordOf, RecordTime, RecordStamp and the rest), never another
+// Shelf method.
+type BookStatusProvider interface {
+	StatusProvider
+	BookValues(ctx context.Context, in StatusInput) (profile string, link LinkValue, status json.RawMessage, ok bool, err error)
+}
+
+// StatusInput is what a BookStatusProvider is handed for one book's fact: the
+// stamp's tick n (from 1), the book's id and log id, the book itself, and the
+// shelf's journal, nil when the shelf has none (before Migrate).
+type StatusInput struct {
+	N       uint64
+	BookID  string
+	LogID   string
+	Book    *Book
+	Journal *Book
+}
+
 // StampStatusProvider is a StatusProvider that is also told the stamp it
 // gives values for: n, the tick the stamp will have (from 1), which a status
 // value may use to name a record its own stamp is the first to cover
 // (docs/design/461-deal-profile.md §8.1, "Times"). A shelf calls StampValues
-// in place of Values when its provider implements it.
+// in place of Values when its provider implements it. BookStatusProvider,
+// which is also handed the book, supersedes it.
 type StampStatusProvider interface {
 	StatusProvider
 	StampValues(ctx context.Context, n uint64, bookID, logID string) (profile string, link LinkValue, status json.RawMessage, ok bool, err error)
@@ -407,9 +433,18 @@ func (c *Cadence) factFor(ctx context.Context, n uint64, log CadenceLog, at time
 		var l LinkValue
 		var st json.RawMessage
 		var ok bool
-		if sp, stamped := c.cfg.Status.(StampStatusProvider); stamped {
+		switch sp := c.cfg.Status.(type) {
+		case BookStatusProvider:
+			in := StatusInput{N: n, BookID: bookID, LogID: log.LogID(), Book: log.(bookLog).book}
+			if j, jerr := s.journalLocked(ctx); jerr == nil {
+				in.Journal = j
+			} else if !errors.Is(jerr, ErrInvalid) {
+				return pendingFact{}, jerr
+			}
+			p, l, st, ok, err = sp.BookValues(ctx, in)
+		case StampStatusProvider:
 			p, l, st, ok, err = sp.StampValues(ctx, n, bookID, log.LogID())
-		} else {
+		default:
 			p, l, st, ok, err = c.cfg.Status.Values(ctx, bookID, log.LogID())
 		}
 		if err != nil {

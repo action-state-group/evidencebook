@@ -136,3 +136,68 @@ func TestAStampStatusProviderIsToldTheStamp(t *testing.T) {
 	require.NoError(t, shelf.db.QueryRow(`SELECT status_opening FROM shelf_entries WHERE log_id = 'deal/a' AND tick = ?`, s.Tick.N).Scan(&status))
 	assert.Contains(t, string(status), fmt.Sprintf(`"stamp":%d`, s.Tick.N))
 }
+
+// bookValues reads through the handles it is handed, as a status provider
+// must while a stamp holds the shelf's lock.
+type bookValues struct {
+	statusValues
+	mu    sync.Mutex
+	calls []string
+}
+
+func (v *bookValues) BookValues(ctx context.Context, in StatusInput) (string, LinkValue, json.RawMessage, bool, error) {
+	recs, err := in.Book.Query(ctx, Filter{FromSeq: 1, ToSeq: in.Book.Size()})
+	if err != nil {
+		return "", LinkValue{}, nil, false, err
+	}
+	journal := uint64(0)
+	if in.Journal != nil {
+		journal = in.Journal.Size()
+	}
+	v.mu.Lock()
+	v.calls = append(v.calls, fmt.Sprintf("%d %s %d %v", in.N, in.LogID, len(recs), in.Journal != nil))
+	v.mu.Unlock()
+	return "deal", LinkValue{CheckedOver: []string{}}, json.RawMessage(fmt.Sprintf(`{"records":%d,"journal":%d}`, len(recs), journal)), true, nil
+}
+
+// A BookStatusProvider is handed the stamp's tick, the book and the journal,
+// and reads them without the shelf's lock: the stamp does not deadlock, the
+// migration's stamp has no journal yet, and a later one has it.
+func TestABookStatusProviderReadsTheHandles(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	values := &bookValues{statusValues: statusValues{status: map[string]json.RawMessage{}, link: map[string]LinkValue{}}}
+	c, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef",
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t), Status: values})
+	require.NoError(t, err)
+	a := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, a, observation("a", "1"))
+	mustTick(t, c, tickTime)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	_, err = shelf.Journal(ctx)
+	require.NoError(t, err)
+	mustAppend(t, a, observation("a", "2"))
+	before := a.Size()
+	done := make(chan error, 1)
+	var s TickResult
+	go func() {
+		var err error
+		s, err = c.Stamp(ctx, tickTime.Add(2*time.Minute))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the stamp deadlocked on a provider reading its handles")
+	}
+	values.mu.Lock()
+	calls := append([]string{}, values.calls...)
+	values.mu.Unlock()
+	require.Len(t, calls, 2)
+	assert.Equal(t, fmt.Sprintf("%d deal/a %d false", s.Tick.N-1, before-1), calls[0], "the migration's stamp, a record ago: no journal yet")
+	assert.Equal(t, fmt.Sprintf("%d deal/a %d true", s.Tick.N, before), calls[1])
+	var status []byte
+	require.NoError(t, shelf.db.QueryRow(`SELECT status_opening FROM shelf_entries WHERE log_id = 'deal/a' AND tick = ?`, s.Tick.N).Scan(&status))
+	assert.Contains(t, string(status), fmt.Sprintf(`"records":%d`, before), "the fact commits what the provider read")
+}
