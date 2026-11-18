@@ -20,8 +20,7 @@ use super::record::{decode, Body, Record};
 use super::sent::verify_sent;
 use super::types::*;
 use crate::shelf::{
-    ReceiveProfile as ShelfReceiveProfile, ReceivedRecord, Shelf, ShelfBook, ShelfError,
-    WeakShelf,
+    ReceiveProfile as ShelfReceiveProfile, ReceivedRecord, Shelf, ShelfBook, ShelfError, WeakShelf,
 };
 
 /// Begins the one-record log a sent journal record is held in:
@@ -98,7 +97,7 @@ impl Ours {
 
 /// What a holder's book record carries.
 enum Payload {
-    V1(Record),
+    V1(Box<Record>),
     Other,
     /// Not readable now (withheld under retention, which may make it
     /// available again).
@@ -171,7 +170,7 @@ fn v1_payload(book: &ShelfBook, r: &crate::shelf::BookRecord) -> Result<Payload,
     if !is_v1(&raw) {
         return Ok(Payload::Other);
     }
-    Ok(decode(&raw).map_or(Payload::Other, Payload::V1))
+    Ok(decode(&raw).map_or(Payload::Other, |r| Payload::V1(Box::new(r))))
 }
 
 /// What the profile kept of the holder's records, so a call reads only what
@@ -295,7 +294,7 @@ impl ReceiveProfile {
                 continue;
             };
             match v1_payload(&journal, r)? {
-                Payload::V1(rec) => added.push((n, rec)),
+                Payload::V1(rec) => added.push((n, *rec)),
                 Payload::Unavailable => retry.push(n),
                 Payload::Other => {}
             }
@@ -323,7 +322,7 @@ impl ReceiveProfile {
                             Payload::V1(rec)
                                 if rec.agree().is_some_and(|a| a.kind == KIND_AGREEMENT) =>
                             {
-                                first = Some(rec)
+                                first = Some(*rec)
                             }
                             Payload::Unavailable => unavailable = true,
                             _ => {}
@@ -344,7 +343,11 @@ impl ReceiveProfile {
 
     /// The record held in the one-record log of the sent record whose
     /// record digest is `digest`, and its sender (Go `heldSent`).
-    fn held_sent(&self, shelf: &Shelf, digest: &str) -> Result<Option<(Record, String)>, ShelfError> {
+    fn held_sent(
+        &self,
+        shelf: &Shelf,
+        digest: &str,
+    ) -> Result<Option<(Record, String)>, ShelfError> {
         for h in shelf.held_first(&format!("{SENT_LOG_PREFIX}{digest}"))? {
             if let Ok(s) = verify_sent(&h.record, None) {
                 if s.digest == digest {
@@ -383,7 +386,11 @@ impl ReceiveProfile {
     /// The record `r` names: the one `read` read last, which the store does
     /// not hold yet when it asks `admit`, or the one it holds (Go
     /// `heldOrPending`).
-    fn held_or_pending(&self, shelf: &Shelf, r: &ReceivedRecord) -> Result<Option<Record>, ShelfError> {
+    fn held_or_pending(
+        &self,
+        shelf: &Shelf,
+        r: &ReceivedRecord,
+    ) -> Result<Option<Record>, ShelfError> {
         let last = self
             .state
             .lock()
@@ -417,10 +424,12 @@ impl ReceiveProfile {
                 return Ok(false);
             };
             if ag.kind == KIND_DECLINE {
-                return Ok(o.offer_by_digest(&ag.offer.digest).is_some_and(|(of, offer)| {
-                    offer.block.deal_id == rec.block.deal_id
-                        && of.to.value() == Some(&r.sender_key)
-                }));
+                return Ok(o
+                    .offer_by_digest(&ag.offer.digest)
+                    .is_some_and(|(of, offer)| {
+                        offer.block.deal_id == rec.block.deal_id
+                            && of.to.value() == Some(&r.sender_key)
+                    }));
             }
             if ag.kind == KIND_CANCELLATION {
                 return Ok(self.held_sent(&shelf, &ag.offer.digest)?.is_some_and(
@@ -476,8 +485,7 @@ impl ReceiveProfile {
             return Ok(false);
         };
         let o = self.ours()?;
-        if o
-            .agreements
+        if o.agreements
             .iter()
             .filter_map(Record::agree)
             .any(|a| a.offer.digest == s.digest)
@@ -486,10 +494,7 @@ impl ReceiveProfile {
         }
         Ok(o.journal.iter().any(|r| match &r.body {
             Body::Agree(a) => a.kind == KIND_DECLINE && a.offer.digest == s.digest,
-            Body::Propose(b) => b
-                .counter_to
-                .as_ref()
-                .is_some_and(|c| c.digest == s.digest),
+            Body::Propose(b) => b.counter_to.as_ref().is_some_and(|c| c.digest == s.digest),
             _ => false,
         }))
     }
