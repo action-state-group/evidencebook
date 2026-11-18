@@ -814,3 +814,78 @@ def test_the_cadence_history_card_is_bounded(fx):
             c.history_card(DEFAULT_MAX_ANSWER_ITEMS + 1)
         with pytest.raises(NotFoundError):  # at the cap the check passes; the ticks are not there
             c.history_card(DEFAULT_MAX_ANSWER_ITEMS)
+
+
+def test_append_at_is_the_next_record_only_and_counts_a_pending_one(fx):
+    # Go AppendAt (#528): only the book's next record, and a stored record
+    # awaiting its log append takes its place first.
+    from evidencebook.errors import BusyError
+
+    with fx.open() as shelf:
+        book = shelf.open("deal/a")
+        assert book.append_at(1, obs("one")).seq == 1
+        with pytest.raises(BusyError):
+            book.append_at(1, obs("x"))
+        with pytest.raises(BusyError):
+            book.append_at(3, obs("x"))
+        real = book._substrate.append
+        calls = {"n": 0}
+
+        def failing(record_id, at=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise sqlite3.OperationalError("disk I/O error")
+            return real(record_id, at)
+
+        book._substrate.append = failing
+        with pytest.raises(CorruptError):
+            book.append(obs("two"))
+        with pytest.raises(BusyError):
+            book.append_at(2, obs("late"))  # seq 2 is the pending record's
+        assert book.append_at(3, obs("three")).seq == 3
+        assert book.size() == 3
+
+
+def test_resolve_payload_follows_the_records_retention(fx):
+    # Go ResolvePayload: an available or held record's payload; a withheld or
+    # deleted one's is unavailable; one the record does not commit is not
+    # found; a readable record whose original is purged is corrupt.
+    from evidencebook.errors import UnavailableError
+    from evidencebook.record import CITES, Link
+
+    def digest(p: str) -> str:
+        return hashlib.sha256(p.encode()).hexdigest()
+
+    with fx.open() as shelf:
+        book = shelf.open("deal/a")
+        available = book.append(obs("one"))
+        assert book.resolve_payload(available.record_id, digest("one")) == b"one"
+        with pytest.raises(NotFoundError):
+            book.resolve_payload(available.record_id, digest("two"))
+        with pytest.raises(NotFoundError):
+            book.resolve_payload("0" * 64, digest("one"))
+
+        def mark(target: str, state) -> None:
+            book.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, target),),
+                              statement={"retention_state": state}))
+
+        withheld = book.append(obs("two"))
+        mark(withheld.record_id, "WITHHELD")
+        with pytest.raises(UnavailableError):
+            book.resolve_payload(withheld.record_id, digest("two"))
+        mark(withheld.record_id, "AVAILABLE")
+        assert book.resolve_payload(withheld.record_id, digest("two")) == b"two", "read again once available"
+        deleted = book.append(obs("three"))
+        mark(deleted.record_id, "DELETED")
+        with pytest.raises(UnavailableError):
+            book.resolve_payload(deleted.record_id, digest("three"))
+        # A lifecycle statement's state name in any case, as Go reads it.
+        upper = book.append(obs("four"))
+        book.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, upper.record_id),),
+                          statement={"RETENTION_STATE": "WITHHELD"}))
+        with pytest.raises(UnavailableError):
+            book.resolve_payload(upper.record_id, digest("four"))
+        purged = book.append(obs("five"))
+        fx.originals().purge(purged.record_id)
+        with pytest.raises(CorruptError, match="purged"):
+            book.resolve_payload(purged.record_id, digest("five"))

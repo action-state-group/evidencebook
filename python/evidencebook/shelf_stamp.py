@@ -172,7 +172,12 @@ def _store_migration_batch_locked(c: Any, now: datetime) -> None:
         sizes.append((log_id, size))
         if size == 0:
             continue
-        facts.append(_fact_for(c, log, at, None))
+        try:
+            facts.append(_fact_for(c, log, at, None, last_tick + 1))
+        except _StatusError as exc:
+            # The migration stops on the book status's own error, as Go's
+            # returns it.
+            raise exc.__cause__ from None
     try:
         marker = shelf_facts.format_switch(last_tick, sizes)
     except shelf_facts.Invalid as exc:
@@ -277,9 +282,33 @@ class _PendingFact:
 _EMPTY_LINK = {"last_received": None, "checked_over": []}
 
 
-def _fact_for(c: Any, log: Any, at: datetime, last: _LastFact | None) -> _PendingFact:
-    """What a log's fact would be now (§2.4); ``last`` is its previous fact,
-    or ``None`` for a genesis fact."""
+@dataclass(frozen=True)
+class StatusInput:
+    """What a book status's ``book_values`` is handed for one book's fact
+    (Go ``StatusInput``): the stamp's tick ``n`` (from 1), the book's id and
+    log id, the book itself, and the shelf's journal, ``None`` when the
+    shelf has none yet. A stamp never creates the journal. ``book_values``
+    runs under the shelf's lock: it may call the handles' readers and the
+    shelf's lock-free readers, never another shelf method."""
+
+    n: int
+    book_id: str
+    log_id: str
+    book: Any
+    journal: Any
+
+
+class _StatusError(Exception):
+    """A book status's error for one book: a stamp keeps that book's last
+    fact rather than fail (``TickResult.unstated``)."""
+
+
+def _fact_for(c: Any, log: Any, at: datetime, last: _LastFact | None, n: int) -> _PendingFact:
+    """What a log's fact would be now at the stamp ``n`` (§2.4); ``last`` is
+    its previous fact, or ``None`` for a genesis fact. A book status is
+    asked through ``book_values(StatusInput)`` when it has one (Go
+    ``BookStatusProvider``), else called with the book id and log id; what
+    it raises is :class:`_StatusError`."""
     shelf = c._shelf
     from .shelf import _KIND_JOURNAL, JOURNAL_LOG_ID, _BookLog, _kind_of
 
@@ -293,7 +322,16 @@ def _fact_for(c: Any, log: Any, at: datetime, last: _LastFact | None) -> _Pendin
     # profile "none" with the empty link value and {} (§2.4, §4), and so is
     # the journal's.
     if isinstance(log, _BookLog) and not journal and c._cfg.status is not None:
-        claimed = c._cfg.status(book_id, log.log_id)
+        book_status = c._cfg.status
+        book_values = getattr(book_status, "book_values", None)
+        # The journal is read before asking: a store error reading it is the
+        # stamp's, not this book's status error.
+        inp = None if book_values is None else StatusInput(n, book_id, log.log_id, log._book,
+                                                           shelf._existing_journal_locked())
+        try:
+            claimed = book_values(inp) if book_values is not None else book_status(book_id, log.log_id)
+        except Exception as exc:  # noqa: BLE001 - one book's error never stops a stamp
+            raise _StatusError(str(exc)) from exc
         if claimed is not None:
             profile, link, status = claimed
     size = log.mmr_size()
@@ -420,12 +458,19 @@ def stamp_locked(c: Any, now: datetime) -> Any:
     n = 1 if last is None else last.n + 1
     at = _minute(now)
     facts = []
+    unstated: dict[str, str] = {}
     for log_id in _cadence_log_ids(shelf):
         log = shelf._cadence_log_locked(log_id)
         if log.mmr_size() == 0:
             continue
         prev = _last_fact_of(shelf, log_id)
-        f = _fact_for(c, log, at, prev)
+        # A book whose status failed keeps its last fact; the other books'
+        # facts are written, so one book's values never stop the stamps.
+        try:
+            f = _fact_for(c, log, at, prev, n)
+        except _StatusError as exc:
+            unstated[log_id] = str(exc)
+            continue
         if _changed(f, prev):
             facts.append(f)
     tick = _build_stamp_locked(c, n, at, now, facts, [])
@@ -433,7 +478,7 @@ def stamp_locked(c: Any, now: datetime) -> Any:
     with shelf._tx() as db:
         db.execute(_INSERT_TICK, (tick.n, _cadence._rfc3339(tick.at), _cadence._rfc3339(tick.due_next),
                                   tick.leaves.encode()))
-    return finish_stamp_locked(c, tick)
+    return replace(finish_stamp_locked(c, tick), unstated=unstated)
 
 
 def finish_stamp_locked(c: Any, tick: Any) -> Any:

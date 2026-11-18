@@ -164,6 +164,15 @@ class ReceiveProfile(Protocol):
         sender key its records are held under, and say whether that sender
         may push a proof now: ``(sender_key, ok)``; ok false refuses it."""
 
+    # A profile may also define ``after_receive(result, at)`` (Go
+    # ``AfterReceiveProfile``): the store calls it on every receive call, a
+    # duplicate included, once the parts committed (on a proof part's error
+    # too, with the record part's result), holding only the receive lock. It
+    # may read the shelf and append to the holder's own books, and must not
+    # call ``receive``, ``forget``, a cadence's ``stamp`` or ``tick``. ``at``
+    # is the shelf's clock. What it raises is the call's
+    # (:func:`receive`), and the parts' result stays committed.
+
 
 @dataclass(frozen=True)
 class ReceiveBounds:
@@ -219,6 +228,9 @@ class RecordOutcome:
     :class:`OverLimitError` or :class:`BusyError`), nothing of it stored."""
 
     digest: str = ""
+    # The deal the profile read the record as belonging to
+    # (ReceivedRecord.deal_id), set once it read; "" for a record it could not.
+    deal_id: str = ""
     stored: bool = False
     duplicate: bool = False
     deleted: bool = False
@@ -705,11 +717,33 @@ def receive(shelf: Any, record: bytes | None, proof: StampProof | None) -> Recei
             try:
                 proof_out = _receive_proof(shelf, profile, proof, part)
             except Exception as exc:
-                # The record part, if any, is committed: report it beside the error.
-                exc.receive_result = ReceiveResult(record_out, None, changes.result())  # type: ignore[attr-defined]
+                # The record part, if any, is committed: report it beside the
+                # error, and act on it.
+                result = ReceiveResult(record_out, None, changes.result())
+                exc.receive_result = result  # type: ignore[attr-defined]
+                exc.after_receive_error = _after_receive(shelf, profile, result)  # type: ignore[attr-defined]
                 raise
             changes.merge(part)
-        return ReceiveResult(record_out, proof_out, changes.result())
+        result = ReceiveResult(record_out, proof_out, changes.result())
+        failed = _after_receive(shelf, profile, result)
+        if failed is not None:
+            failed.receive_result = result  # type: ignore[attr-defined]
+            raise failed
+        return result
+
+
+def _after_receive(shelf: Any, profile: Any, result: ReceiveResult) -> Exception | None:
+    """Run the profile's ``after_receive`` on ``result`` at the shelf's
+    clock (Go ``afterReceive``), returning what it raised."""
+    after = getattr(profile, "after_receive", None)
+    if after is None:
+        return None
+    at = shelf._now() if shelf._now else datetime.now(timezone.utc)
+    try:
+        after(result, at)
+    except Exception as exc:  # noqa: BLE001 - the call's error, raised by receive
+        return exc
+    return None
 
 
 def _receive_record(shelf: Any, profile: ReceiveProfile, record: bytes, changes: _ChangeSet) -> RecordOutcome:
@@ -733,6 +767,7 @@ def _receive_record(shelf: Any, profile: ReceiveProfile, record: bytes, changes:
     if problem:
         return refuse(InvalidError(f"a received record: {problem}"))
     out.digest = r.digest
+    out.deal_id = r.deal_id
     key = (r.sender_key, r.log_id)
     with shelf._read() as db:
         deleted = db.execute("SELECT COUNT(*) FROM shelf_received_tombstones WHERE digest = ?", (r.digest,)).fetchone()[0]

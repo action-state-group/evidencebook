@@ -359,6 +359,14 @@ class TickResult:
     ticked: bool
     due_next: datetime
     tick: CadenceTick | None = None
+    # The books (by log id) whose book status failed at this stamp, with its
+    # error: each keeps its last fact, and the other books' facts are
+    # written. This call's report only: a stamp resumed after a crash does
+    # not repeat it (Go TickResult.Unstated).
+    unstated: dict[str, str] = field(default_factory=dict)
+    # The book status's before_stamp error before this stamp, "" for none;
+    # the stamp was still taken (Go TickResult.BeforeStamp).
+    before_stamp: str = ""
 
 
 @dataclass(frozen=True)
@@ -605,7 +613,15 @@ class Cadence:
     def tick(self, now: datetime) -> TickResult:
         """Cut a tick when one is due at ``now`` (at or after the last tick's
         ``due_next``); otherwise say when one is. A stored, unfinished tick is
-        finished first, as the same tick."""
+        finished first, as the same tick. A stamp due now first runs the book
+        status's ``before_stamp``, as :meth:`stamp` does."""
+        before = self._before_stamp(now) if self._stamp_due(now) else ""
+        res = self._tick_now(now)
+        if res.ticked and res.tick is not None and res.tick.leaves.stamp is not None:
+            res = replace(res, before_stamp=before)
+        return res
+
+    def _tick_now(self, now: datetime) -> TickResult:
         shelf = self._shelf
         with shelf._mu:
             shelf._check_open()
@@ -724,10 +740,41 @@ class Cadence:
     def stamp(self, now: datetime) -> TickResult:
         """Take a stamp now, whatever the heartbeat's schedule (Go
         ``Cadence.Stamp``). A stamp stored but not finished is finished
-        first, as the same stamp. It needs a migrated shelf."""
+        first, as the same stamp. It needs a migrated shelf. The book
+        status's ``before_stamp``, when it has one, runs first, before the
+        shelf's lock is taken; its error is ``TickResult.before_stamp``."""
+        before = self._before_stamp(now)
         with self._shelf._mu:
             self._shelf._check_open()
-            return shelf_stamp.stamp_locked(self, now)
+            res = shelf_stamp.stamp_locked(self, now)
+        return replace(res, before_stamp=before)
+
+    def _before_stamp(self, now: datetime) -> str:
+        """Run the book status's ``before_stamp(at)``, if it has one, under
+        the receive lock, and give its error as text (Go ``beforeStamp``)."""
+        before = getattr(self._cfg.status, "before_stamp", None)
+        if before is None:
+            return ""
+        with self._shelf._receive_mu:
+            try:
+                before(now)
+            except Exception as exc:  # noqa: BLE001 - reported, the stamp goes on
+                return str(exc)
+        return ""
+
+    def _stamp_due(self, now: datetime) -> bool:
+        """Whether :meth:`tick` at ``now`` would cut a new stamp (Go
+        ``stampDue``): the book status writes before stamps, the shelf is
+        migrated, no tick is left unfinished, and the last one's ``due_next``
+        has come."""
+        if getattr(self._cfg.status, "before_stamp", None) is None:
+            return False
+        with self._shelf._mu:
+            self._shelf._check_open()
+            last = self._last_locked()
+            if last is not None and (last.checkpoint_size == 0 or utc(now) < last.due_next):
+                return False
+            return shelf_stamp.migration_state(self._shelf) == shelf_stamp.MIGRATION_DONE
 
     def handover(self, n: int = 0) -> Any:
         """Hand the shelf over up to tick ``n``'s checkpoint, the newest

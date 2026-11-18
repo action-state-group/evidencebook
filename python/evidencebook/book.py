@@ -743,6 +743,71 @@ class Book:
         with self._lock:
             return self._append(entry)
 
+    def _retention_locked(self, record: Record) -> str:
+        """The record's retention state now: Go's retention fold, whose port
+        shelf.py holds. The caller holds the book's lock."""
+        from .shelf import _retention
+
+        stated = [self._stated[i] for i in self._order]
+        return _retention([self._records[i].header for i in self._order], list(self._order), stated,
+                          record.seq - 1, nanos(utc(self._now())))
+
+    def append_at(self, seq: int, entry: Entry) -> Record:
+        """Append ``entry`` only as the book's record ``seq``, the next one
+        (Go ``AppendAt``): a profile whose record names its own place builds
+        it from the tail it read, and a write that landed in between refuses
+        it with :class:`BusyError` instead of sealing a record whose place is
+        wrong. A stored record awaiting its log append takes its place
+        first, so ``seq`` is checked against the tail it makes."""
+        from .errors import BusyError
+
+        with self._lock:
+            if self._released:
+                raise ReleasedError("the book is released")
+            self._flush_pending()
+            following = len(self._order) + 1
+            if seq != following:
+                raise BusyError(f"record {seq} is not the book's next, {following}")
+            return self._append(entry)
+
+    def resolve_payload(self, record_id: str, digest: str) -> bytes:
+        """One payload, by its SHA-256 ``digest``, of the record
+        ``record_id``, read from the artifact store when the record's
+        retention state allows it (Go ``ResolvePayload``):
+        :class:`NotFoundError` for a record the book does not hold or one
+        that commits no such payload, :class:`UnavailableError` for a record
+        whose state is WITHHELD or DELETED, and :class:`CorruptError` for a
+        readable record whose original the store does not hold, or holds
+        purged."""
+        from capsule_emit.artifact import NotFoundError as NoOriginals
+        from capsule_emit.artifact import PRESENT
+
+        with self._lock:
+            record = self._records.get(record_id)
+            if record is None or digest not in record.header.payload_commitments:
+                raise NotFoundError(f"record {record_id} does not commit payload {digest}")
+            state = self._retention_locked(record)
+            if state in ("WITHHELD", "DELETED"):
+                raise UnavailableError(f"payload {digest} of record {record_id} is {state}")
+            if self._originals is None:
+                raise CorruptError(f"record {record_id} commits payload {digest} but the book has no artifact store")
+            try:
+                held = self._originals.get(record_id)
+            except NoOriginals:
+                raise CorruptError(f"record {record_id} is {state} but the artifact store holds none of its "
+                                   "originals") from None
+            found = False
+            for original in held.artifacts:
+                if original.content_sha256 != digest:
+                    continue
+                content = original.content
+                if original.state == PRESENT and content is not None and \
+                        hashlib.sha256(bytes(content)).hexdigest() == digest:
+                    return bytes(content)
+                found = True
+            what = "holds it purged" if found else "does not hold it"
+            raise CorruptError(f"payload {digest} of {record_id} is {state} but the artifact store {what}")
+
     def append_capsule(self, entry: Entry, originals: Sequence[Any], seal: CapsuleSealer) -> Record:
         """Commit a Capsule the caller seals itself as the record (Go
         ``Book.AppendCapsule``): the Capsule is the record and its id the log
@@ -785,14 +850,8 @@ class Book:
             commitment = dict(record.header.field_commitments).get(name) if record is not None else None
             if commitment is None:
                 raise NotFoundError(f"record {record_id} commits no field {name!r}")
-            # Go's retention fold (shelf.py holds the port): a withheld or
-            # deleted record's openings are not given out.
-            from .shelf import _retention
-
-            stated = [self._stated[i] for i in self._order]
-            now = utc(self._now())
-            state = _retention([self._records[i].header for i in self._order], list(self._order), stated,
-                               record.seq - 1, nanos(now))
+            # A withheld or deleted record's openings are not given out.
+            state = self._retention_locked(record)
             if state in ("WITHHELD", "DELETED"):
                 raise UnavailableError(f"record {record_id} is {state}")
             if self._originals is None:

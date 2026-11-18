@@ -792,6 +792,43 @@ def _held_by(headers: list[Header], ids: list[str], record_id: str, header: Head
     return False
 
 
+def _go_name_matches(key: str, field: str) -> bool:
+    """Go's ``encoding/json`` match of a member name to a struct field's:
+    exact, or equal under Unicode simple case folding, which for these ASCII
+    names also takes U+017F for ``s`` and U+212A for ``k``."""
+
+    def fold(c: str) -> str:
+        return {"\u017f": "s", "\u212a": "k"}.get(c, c.lower() if c.isascii() else c)
+
+    return len(key) == len(field) and all(fold(a) == fold(b) for a, b in zip(key, field))
+
+
+def _lifecycle_state(statement: Any) -> str | None:
+    """A lifecycle statement as Go's ``json.Unmarshal`` into
+    ``LifecycleStatement`` reads it: its state, ``""`` for none; ``None``
+    when Go refuses it (corrupt). A null statement reads as none and one
+    that is not an object is refused; ``retention_state`` and ``reason``
+    match in any case, the later spelling winning, a null leaving the field
+    as it was, and a value of another type is refused; any other member is
+    ignored. (A statement member that is absent is the caller's to refuse.)"""
+    if statement is None:
+        return ""
+    if not isinstance(statement, dict):
+        return None
+    state = ""
+    for k, v in statement.items():
+        is_state = _go_name_matches(k, "retention_state")
+        if not is_state and not _go_name_matches(k, "reason"):
+            continue
+        if v is None:
+            continue
+        if not isinstance(v, str):
+            return None
+        if is_state:
+            state = v
+    return state
+
+
 def _retention(headers: list[Header], ids: list[str], stated: list[bool], i: int, now_ns: int) -> str:
     """Go's ``retentionOf``: the header's state folded through every later
     lifecycle record citing it; an AVAILABLE or PARTIAL record under a live
@@ -802,13 +839,10 @@ def _retention(headers: list[Header], ids: list[str], stated: list[bool], i: int
     for later in headers[header.seq:]:
         if later.record_type != _LIFECYCLE or record_id not in later.links_to(CITES):
             continue
-        # As Go reads it into a LifecycleStatement: a null statement or no
-        # retention_state is the empty state; no statement member at all, or
-        # another shape, is corrupt (json.Unmarshal of nothing fails).
-        statement = {} if later.statement is None else later.statement
-        if not stated[later.seq - 1] or not isinstance(statement, dict) or not isinstance(statement.get("retention_state", ""), (str, type(None))):
+        found = _lifecycle_state(later.statement) if stated[later.seq - 1] else None
+        if found is None:
             raise CorruptError(f"lifecycle record {ids[later.seq - 1]} holds no lifecycle statement")
-        state = statement.get("retention_state") or ""
+        state = found
     if state == _DELETED:
         return state
     held = state == _LEGAL_HOLD or _held_by(headers, ids, record_id, header, now_ns)
@@ -997,6 +1031,41 @@ class Shelf:
                 _allow_journal_kind(db)
                 _claim_kind(db, JOURNAL_LOG_ID, _KIND_JOURNAL)
             return self._open_locked(JOURNAL_LOG_ID)
+
+    def seal_sent(self, entry: Entry, members: dict, action_id: str) -> Any:
+        """Append ``entry`` to the shelf's journal and seal its standalone
+        Capsule under ``action_id``, with ``members`` as further top-level
+        members of that Capsule only (Go ``SealSent``; the journal record's
+        Capsule carries none). ``entry`` carries exactly one payload, the
+        record's canonical JSON (JCS) bytes. Returns a
+        :class:`~evidencebook.shelf_sent.SealedSent`. An exception left no
+        journal record, and the call may be retried; a result whose ``error``
+        is set holds a record that was stored and whose log append is
+        pending: it is in the journal, so the caller sends its Capsule and
+        does not seal the record again."""
+        from . import shelf_sent
+
+        return shelf_sent.seal_sent(self, entry, members, action_id)
+
+    def existing_journal(self):
+        """The shelf's journal when the shelf has one, ``None`` otherwise
+        (Go ``ExistingJournal``). Unlike :meth:`journal` it never creates
+        it, so a reader (a report) changes nothing."""
+        with self._mu:
+            self._check_open()
+            return self._existing_journal_locked()
+
+    def _existing_journal_locked(self):
+        """The shelf's journal if it has one, ``None`` otherwise: a stamp
+        hands it to a book status and must not create it."""
+        from . import shelf_stamp
+
+        if shelf_stamp.migration_state(self) != shelf_stamp.MIGRATION_DONE:
+            return None
+        with self._read() as db:
+            if _kind_of(db, JOURNAL_LOG_ID) != _KIND_JOURNAL:
+                return None
+        return self._open_locked(JOURNAL_LOG_ID)
 
     def _open_locked(self, log_id: str):
         from .book import Book
@@ -1220,7 +1289,11 @@ class Shelf:
         not raised. Any other exception is the store's or the profile's: one
         in the record part reports nothing, since nothing of it was
         committed; one in the proof part carries the record part's outcome
-        and changes as its ``receive_result`` attribute."""
+        and changes as its ``receive_result`` attribute. Once the parts
+        committed, a profile's ``after_receive(result, at)``, when it has
+        one, runs on the result (Go ``AfterReceive``); what it raises is
+        raised, carrying the committed result as ``receive_result``, and on a
+        proof part's error it is that error's ``after_receive_error``."""
         from . import shelf_receive
 
         return shelf_receive.receive(self, record, proof)
@@ -1260,6 +1333,30 @@ class Shelf:
 
         return shelf_receive.evidence(self)
 
+    def held_first(self, log_id: str) -> list:
+        """Every received record held at position 1 of ``log_id``, across
+        senders and forks, by sender key then digest (Go ``HeldFirst``). It
+        takes no lock of the shelf's."""
+        from . import shelf_held
+
+        return shelf_held.held_first(self, log_id)
+
+    def held_by_deal(self, deal_id: str) -> list:
+        """Every received record held for ``deal_id``, across senders, logs
+        and forks, by sender key, log id, position and digest (Go
+        ``HeldByDeal``). It takes no lock of the shelf's."""
+        from . import shelf_held
+
+        return shelf_held.held_by_deal(self, deal_id)
+
+    def held_proofs(self, sender_key: str, log_id: str) -> list:
+        """Every stamp proof held from ``sender_key`` for ``log_id``, each
+        set against the sender's counted prefix now (Go ``HeldProofs``). It
+        takes no lock of the shelf's."""
+        from . import shelf_held
+
+        return shelf_held.held_proofs(self, sender_key, log_id)
+
     # -- record time (evidencebook#461 §2.6) ----------------------------------------------
 
     def record_time(self, book_id: str, position: int, witnesses: Sequence[str]) -> datetime | None:
@@ -1282,6 +1379,52 @@ class Shelf:
         from . import shelf_record_time
 
         return shelf_record_time.record_time(self, book_id, position, witnesses)
+
+    def record_time_by_key(self, book_id: str, position: int, key_ids: Sequence[str]) -> int | None:
+        """:meth:`record_time` with the witnesses named by their verified key
+        ids (lowercase hex), as an x-deal-v1 agreement names them (Go
+        ``RecordTimeByKey``; a witness is its key, its URL only a hint)."""
+        from . import shelf_record_time
+
+        return shelf_record_time.record_time_by_key(self, book_id, position, key_ids)
+
+    def received_record_time(self, book_id: str, received_log_id: str, position: int,
+                             witnesses: Sequence[str]) -> int | None:
+        """The record time the holder's own stamps give a record it received
+        (design §4.3; Go ``ReceivedRecordTime``): the record at ``position``
+        (from 1) of the other side's log ``received_log_id``, as the
+        holder's book ``book_id`` names it, timed by the first fact of
+        ``book_id`` whose link value's ``last_received`` names that log at a
+        size reaching the position. An empty ``received_log_id`` is
+        :class:`InvalidError`. It takes no lock of the shelf's."""
+        from . import shelf_record_time
+
+        return shelf_record_time.received_record_time(self, book_id, received_log_id, position, witnesses)
+
+    def received_record_time_by_key(self, book_id: str, received_log_id: str, position: int,
+                                    key_ids: Sequence[str]) -> int | None:
+        """:meth:`received_record_time` with the witnesses named by their
+        verified key ids (Go ``ReceivedRecordTimeByKey``)."""
+        from . import shelf_record_time
+
+        return shelf_record_time.received_record_time_by_key(self, book_id, received_log_id, position, key_ids)
+
+    def record_stamp(self, book_id: str, position: int) -> int | None:
+        """The stamp (its tick, from 1) whose fact is the first to cover the
+        record at ``position`` of the book ``book_id``, as
+        :meth:`record_time` finds that fact; ``None`` when no fact covers it
+        yet (Go ``RecordStamp``). It takes no lock of the shelf's."""
+        from . import shelf_record_time
+
+        return shelf_record_time.record_stamp(self, book_id, position)
+
+    def received_record_stamp(self, book_id: str, received_log_id: str, position: int) -> int | None:
+        """:meth:`record_stamp` for a received record, as
+        :meth:`received_record_time` finds its fact (Go
+        ``ReceivedRecordStamp``)."""
+        from . import shelf_record_time
+
+        return shelf_record_time.received_record_stamp(self, book_id, received_log_id, position)
 
     def __enter__(self) -> Shelf:
         return self
