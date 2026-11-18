@@ -100,6 +100,10 @@ type StatusBooks struct {
 	ConflictingFinalRulings []string                 `json:"conflicting_final_rulings,omitempty"`
 	Payments                map[string]PaymentResult `json:"payments,omitempty"`
 	ProofHeld               bool                     `json:"proof_held"`
+	// RulingsUnnamed is how many counted rulings of the deal's adjudicator
+	// the holder holds that neither book names yet (#527): the receive call
+	// names each, so a nonzero count is a naming that failed or waits.
+	RulingsUnnamed int `json:"rulings_unnamed,omitempty"`
 }
 
 // StatusValue is the v1 deal book's status value (design §8.1).
@@ -117,6 +121,10 @@ type StatusValue struct {
 	Start                 StatusStart     `json:"start"`
 	Rows                  []StatusRow     `json:"rows"`
 	Disputes              []StatusDispute `json:"disputes"`
+	// RulingsUnnamed is StatusBooks.RulingsUnnamed, a count with no ids:
+	// a dispute whose outcome reads open may have a ruling held unnamed,
+	// so a reader shows it beside the outcome (design §8.1).
+	RulingsUnnamed int `json:"rulings_unnamed,omitempty"`
 }
 
 // ValueBand is the agreed price's currency and power of ten (AAC
@@ -293,7 +301,7 @@ func BuildStatus(b StatusBooks) (StatusValue, error) {
 	layer := own.CounterpartyLayer != nil && *own.CounterpartyLayer
 	v := StatusValue{V: 1, Role: own.Role, Side: own.Side, AgreedAt: agreedAt, CounterpartyLayer: layer,
 		ValueBand: valueBand(of.Terms), Witnesses: own.Witnesses, CounterpartyProofHeld: b.ProofHeld,
-		Rows: []StatusRow{}, Disputes: []StatusDispute{}}
+		Rows: []StatusRow{}, Disputes: []StatusDispute{}, RulingsUnnamed: b.RulingsUnnamed}
 	if v.Witnesses == nil {
 		v.Witnesses = []Witness{}
 	}

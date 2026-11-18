@@ -29,7 +29,23 @@ type StatusProvider struct {
 	OfferPair func(ctx context.Context, offerDigest string) ([]byte, error)
 }
 
-var _ evidencebook.BookStatusProvider = (*StatusProvider)(nil)
+var (
+	_ evidencebook.BookStatusProvider  = (*StatusProvider)(nil)
+	_ evidencebook.BeforeStampProvider = (*StatusProvider)(nil)
+)
+
+// BeforeStamp names, before each stamp, every counted ruling the holder
+// holds that its deal book does not name yet (NameAllRulings): a naming a
+// Receive failed, or left for a book not readable whole then, is sealed by
+// the next stamp, whose status value then reads it (PROFILE §5;
+// evidencebook#527).
+func (p *StatusProvider) BeforeStamp(ctx context.Context, at time.Time) error {
+	if p.Shelf == nil {
+		return fmt.Errorf("xdealv1: the status provider has no shelf")
+	}
+	_, err := NameAllRulings(ctx, p.Shelf, at)
+	return err
+}
 
 // Values claims no book: a shelf calls BookValues on a BookStatusProvider.
 func (p *StatusProvider) Values(context.Context, string, string) (string, evidencebook.LinkValue, json.RawMessage, bool, error) {
@@ -101,7 +117,7 @@ func (p *StatusProvider) BookValues(ctx context.Context, in evidencebook.StatusI
 		}
 	}
 	if a := ag.Adjudicator.V; a != nil {
-		if b.CaseBook, b.ConflictingFinalRulings, err = caseBook(ctx, p.Shelf, held, a.KeyID, b.Own, b.Counterpart); err != nil {
+		if b.CaseBook, b.ConflictingFinalRulings, b.RulingsUnnamed, err = caseBook(ctx, p.Shelf, held, a.KeyID, b.Own, b.Counterpart); err != nil {
 			return none(err)
 		}
 	}
@@ -303,32 +319,37 @@ func counted(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook
 // named arriving (a statement whose names.ruling cites one, in the holder's
 // book or the counterparty's counted prefix), each timed by the earliest
 // such naming, in case book order; and the rows whose case book forked with
-// different first final rulings. The side a ruling goes against cannot keep
-// it out by not naming it while the other side names it (Sherlock2's twin,
-// PR 4c-2b-2 review); a ruling neither side has named is not an input yet,
-// and the receive call is to name it (#527).
-func caseBook(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, adjudicator string, own, theirs []StatusRecord) ([]StatusRecord, []string, error) {
+// different first final rulings; and how many counted rulings neither book
+// names. The side a ruling goes against cannot keep it out by not naming it
+// while the other side names it (Sherlock2's twin, PR 4c-2b-2 review); a
+// ruling neither side has named is not an input yet, and the receive call is
+// to name it (#527). Until it does, the count says one is held, so an open
+// outcome is never shown as unresolved.
+func caseBook(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, adjudicator string, own, theirs []StatusRecord) ([]StatusRecord, []string, int, error) {
 	var rulings []StatusRecord
 	var conflicting []string
 	// One case book per case, so a deal may have several (design §3.2).
 	for _, logID := range logsOf(held, adjudicator, func(r Record) bool { return r.Block.RecordType == TypeRuling }) {
 		recs, err := counted(ctx, shelf, held, adjudicator, logID)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 		for _, r := range recs {
 			rulings = append(rulings, r.rec)
 		}
 		rows, err := forkedFinals(held, adjudicator, logID)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 		conflicting = append(conflicting, rows...)
 	}
 	slices.Sort(conflicting)
 	conflicting = slices.Compact(conflicting)
 	out, err := namedRulings(rulings, own, theirs)
-	return out, conflicting, err
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return out, conflicting, len(rulings) - len(out), nil
 }
 
 // namedRulings is the rulings either book names arriving, in case book

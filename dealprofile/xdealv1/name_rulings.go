@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/action-state-group/evidencebook"
@@ -14,7 +15,10 @@ import (
 // BookEntry is the entry that seals r in its deal book (design §3.1): its
 // JCS bytes as the one payload, whose digest is the record digest; its
 // record type; the deal id as the subject; and, past seq 1, a cites link to
-// prevRecordID, the record before it, which VerifyBook requires.
+// prevRecordID, the record before it, which VerifyBook requires. Append it
+// with Book.AppendAt at r's seq, and on ErrBusy read the book again and
+// rebuild r: Receive names rulings in the same books (NameRulings), so a
+// plain Append could seal r at a place other than the one it names.
 func BookEntry(r Record, prevRecordID string) (evidencebook.Entry, error) {
 	payload, _, err := Encode(r)
 	if err != nil {
@@ -34,11 +38,17 @@ func BookEntry(r Record, prevRecordID string) (evidencebook.Entry, error) {
 var _ evidencebook.AfterReceiveProfile = (*ReceiveProfile)(nil)
 
 // AfterReceive names, before Receive returns, each counted ruling of the
-// deals whose counted records grew (NameRulings): the receive call writes
-// the naming statement itself, so a holder ruled against cannot skip it
-// (PROFILE §5; evidencebook#527).
-func (p *ReceiveProfile) AfterReceive(ctx context.Context, changes evidencebook.ReceiveChanges, at time.Time) error {
-	_, err := NameRulings(ctx, p.Shelf, changes.Grew, at)
+// deals the call touched (NameRulings): those whose counted records grew,
+// and the received record's own deal, stored or held already, so a record
+// sent again retries a naming an earlier call failed. The receive call
+// writes the naming statement itself, so a holder ruled against cannot skip
+// it (PROFILE §5; evidencebook#527).
+func (p *ReceiveProfile) AfterReceive(ctx context.Context, result evidencebook.ReceiveResult, at time.Time) error {
+	deals := result.Changes.Grew
+	if r := result.Record; r != nil && r.Refused == nil && (r.Stored || r.Duplicate) && r.DealID != "" && !slices.Contains(deals, r.DealID) {
+		deals = append(slices.Clone(deals), r.DealID)
+	}
+	_, err := NameRulings(ctx, p.Shelf, deals, at)
 	return err
 }
 
@@ -46,22 +56,35 @@ func (p *ReceiveProfile) AfterReceive(ctx context.Context, changes evidencebook.
 // statement naming each counted ruling of that deal's adjudicator the book
 // does not name yet (PROFILE §5, "statement": a receiving library MUST;
 // evidencebook#527). The ReceiveProfile calls it from every Receive
-// (AfterReceive) with the deals whose counted records grew, so a holder's own
-// status reads a ruling whichever way it went. It returns the record ids it
-// sealed, in order. A deal the holder has no v1 deal book for, or whose
-// agreement names no adjudicator, is passed over. It takes the shelf's
-// locks, so never call it from a StatusProvider or ReceiveProfile.
+// (AfterReceive), so a holder's own status reads a ruling whichever way it
+// went. It returns the record ids it sealed, in order. A deal the holder has
+// no v1 deal book for, or whose agreement names no adjudicator, is passed
+// over. It takes the shelf's locks, so never call it from a StatusProvider's
+// values or from a ReceiveProfile's Read, Admit, Answered or ProofSender.
 func NameRulings(ctx context.Context, shelf *evidencebook.Shelf, dealIDs []string, at time.Time) ([]string, error) {
 	if len(dealIDs) == 0 {
 		return nil, nil
 	}
-	logs, err := shelf.Books(ctx)
-	if err != nil {
-		return nil, err
-	}
 	want := map[string]bool{}
 	for _, d := range dealIDs {
 		want[d] = true
+	}
+	return nameRulings(ctx, shelf, func(deal string) bool { return want[deal] }, at)
+}
+
+// NameAllRulings is NameRulings over every v1 deal book the shelf holds:
+// StatusProvider.BeforeStamp runs it before each stamp, since a ruling is
+// often a deal's last record and nothing may arrive to retry a naming that
+// failed. A status value counts each ruling still unnamed
+// (StatusValue.RulingsUnnamed).
+func NameAllRulings(ctx context.Context, shelf *evidencebook.Shelf, at time.Time) ([]string, error) {
+	return nameRulings(ctx, shelf, func(string) bool { return true }, at)
+}
+
+func nameRulings(ctx context.Context, shelf *evidencebook.Shelf, want func(deal string) bool, at time.Time) ([]string, error) {
+	logs, err := shelf.Books(ctx)
+	if err != nil {
+		return nil, err
 	}
 	var sealed []string
 	for _, logID := range logs {
@@ -82,7 +105,7 @@ func NameRulings(ctx context.Context, shelf *evidencebook.Shelf, dealIDs []strin
 			return sealed, err
 		}
 		ag, ok := asAgree(rec.Body)
-		if kind != payloadV1 || !ok || ag.Kind != KindAgreement || !want[rec.Block.DealID] || ag.Adjudicator.V == nil {
+		if kind != payloadV1 || !ok || ag.Kind != KindAgreement || !want(rec.Block.DealID) || ag.Adjudicator.V == nil {
 			continue
 		}
 		ids, err := nameRulingsIn(ctx, shelf, book, ag, rec.Block.DealID, at)
@@ -95,15 +118,16 @@ func NameRulings(ctx context.Context, shelf *evidencebook.Shelf, dealIDs []strin
 }
 
 // nameRulingsBeforeAppend, when set (tests), runs after a naming statement is
-// built and before it is appended.
-var nameRulingsBeforeAppend func()
+// built and before it is appended; an error it returns is the naming's.
+var nameRulingsBeforeAppend func() error
 
 // nameRulingsIn seals the statements one deal book needs, each from a fresh
 // read of the book and of the counterparty's counted prefix, appended at the
 // place it was built for (Book.AppendAt): a write in between makes it read
 // again, up to three times. A book with a record that is not readable now as
-// x-deal-v1 (a payload withheld, a lifecycle record) is left for a later
-// call, since its tail and its names cannot be read whole.
+// x-deal-v1 (a payload withheld, a lifecycle record) is never written to: no
+// statement can take its place at its seq, and the status value counts its
+// ruling unnamed.
 func nameRulingsIn(ctx context.Context, shelf *evidencebook.Shelf, book *evidencebook.Book, ag AgreeBody, deal string, at time.Time) ([]string, error) {
 	var out []string
 	for attempt := 0; ; attempt++ {
@@ -128,7 +152,9 @@ func nameRulingsIn(ctx context.Context, shelf *evidencebook.Shelf, book *evidenc
 			return out, err
 		}
 		if nameRulingsBeforeAppend != nil {
-			nameRulingsBeforeAppend()
+			if err := nameRulingsBeforeAppend(); err != nil {
+				return out, err
+			}
 		}
 		sealed, err := book.AppendAt(ctx, uint64(r.Block.Seq), e)
 		if sealed.RecordID != "" {

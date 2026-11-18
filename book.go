@@ -425,6 +425,11 @@ func (b *Book) Append(ctx context.Context, entry Entry) (Record, error) {
 func (b *Book) AppendAt(ctx context.Context, seq uint64, entry Entry) (Record, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// A stored record awaiting its substrate append takes its place first,
+	// so seq is checked against the tail it makes.
+	if err := b.flushPendingLocked(ctx); err != nil {
+		return Record{}, err
+	}
 	if next := uint64(len(b.log)) + 1; seq != next {
 		return Record{}, fmt.Errorf("%w: record %d is not the book's next, %d", ErrBusy, seq, next)
 	}

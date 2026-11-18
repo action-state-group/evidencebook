@@ -423,3 +423,30 @@ func TestProveKeyRangeIsBoundToACommittedRoot(t *testing.T) {
 		t.Fatalf("non-membership: %v %v", ids, err)
 	}
 }
+
+// AppendAt places a stored record awaiting its substrate append before it
+// checks seq (Codex, #528 round 2): the tail a caller read already counts
+// that record, so seq 3 is next, and seq 2 is taken.
+func TestAppendAtCountsAPendingRecord(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "book-a", 1)
+	cfg := f.config(t)
+	flaky := &flakySubstrate{Substrate: cfg.Substrate}
+	cfg.Substrate = flaky
+	book, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, book, observation("s", "one"))
+	flaky.failures = 1
+	if _, err := book.Append(ctx, observation("s", "two")); err == nil {
+		t.Fatal("the failing append reported success")
+	}
+	if _, err := book.AppendAt(ctx, 2, observation("s", "late")); !errors.Is(err, ErrBusy) {
+		t.Fatalf("seq 2 is the pending record's: got %v", err)
+	}
+	r, err := book.AppendAt(ctx, 3, observation("s", "three"))
+	if err != nil || r.Seq != 3 || book.Size() != 3 {
+		t.Fatalf("seq 3 follows the pending record: %v, seq %d, size %d", err, r.Seq, book.Size())
+	}
+}

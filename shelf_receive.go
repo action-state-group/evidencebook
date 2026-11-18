@@ -69,17 +69,20 @@ type ReceiveProfile interface {
 	ProofSender(ctx context.Context, checkpointKeyID, logID string) (senderKey string, ok bool, err error)
 }
 
-// AfterReceiveProfile is a ReceiveProfile that acts on what a Receive
-// changed before Receive returns: x-deal-v1 names a counted ruling's arrival
-// in the holder's deal book (evidencebook#527), so no host can leave it
-// unnamed by skipping a call. Receive calls AfterReceive once both parts'
-// transactions committed, holding only the receive lock: it may read the
-// shelf and append to the holder's own books, and must not call Receive or
-// Forget. at is the shelf's clock. An error is Receive's, with the parts'
-// result, which stays committed.
+// AfterReceiveProfile is a ReceiveProfile that acts on what a Receive took
+// before Receive returns: x-deal-v1 names a counted ruling's arrival in the
+// holder's deal book (evidencebook#527), so no host can leave it unnamed by
+// skipping a call. Receive calls AfterReceive on every call, a duplicate
+// included, so a record sent again retries what an earlier call failed to
+// do; it runs once the parts'
+// transactions committed (on a proof part's store error too, with the record
+// part's result), holding only the receive lock: it may read the shelf and
+// append to the holder's own books, and must not call Receive or Forget. at
+// is the shelf's clock. An error is Receive's, joined with the parts', whose
+// result stays committed.
 type AfterReceiveProfile interface {
 	ReceiveProfile
-	AfterReceive(ctx context.Context, changes ReceiveChanges, at time.Time) error
+	AfterReceive(ctx context.Context, result ReceiveResult, at time.Time) error
 }
 
 // ReceivedRecord is what the store needs of a received record.
@@ -200,6 +203,10 @@ type ReceiveResult struct {
 // RecordOutcome is what became of a received record.
 type RecordOutcome struct {
 	Digest string
+	// DealID is the deal the profile read the record as belonging to
+	// (ReceivedRecord.DealID), set once it read; "" for a record it could
+	// not read.
+	DealID string
 	// Stored is a record stored by this call.
 	Stored bool
 	// Duplicate is a record already held: acknowledged, not stored again.
@@ -322,25 +329,32 @@ func (s *Shelf) Receive(ctx context.Context, record []byte, proof *StampProof) (
 		part := newChangeSet()
 		out, err := s.receiveProof(ctx, profile, *proof, part)
 		if err != nil {
-			// The record part, if any, is committed: report it.
+			// The record part, if any, is committed: report it, and act on it.
 			result.Changes = changes.result()
-			return result, err
+			return result, errors.Join(err, s.afterReceive(ctx, profile, result))
 		}
 		changes.merge(part)
 		result.Proof = &out
 		refusals = append(refusals, out.Refused)
 	}
 	result.Changes = changes.result()
-	if after, ok := profile.(AfterReceiveProfile); ok && len(result.Changes.Grew) > 0 {
-		now := time.Now()
-		if s.cfg.Now != nil {
-			now = s.cfg.Now()
-		}
-		if err := after.AfterReceive(ctx, result.Changes, now); err != nil {
-			return result, errors.Join(append(refusals, fmt.Errorf("after receive: %w", err))...)
-		}
+	return result, errors.Join(append(refusals, s.afterReceive(ctx, profile, result))...)
+}
+
+// afterReceive runs an AfterReceiveProfile's AfterReceive on result.
+func (s *Shelf) afterReceive(ctx context.Context, profile ReceiveProfile, result ReceiveResult) error {
+	after, ok := profile.(AfterReceiveProfile)
+	if !ok {
+		return nil
 	}
-	return result, errors.Join(refusals...)
+	now := time.Now()
+	if s.cfg.Now != nil {
+		now = s.cfg.Now()
+	}
+	if err := after.AfterReceive(ctx, result, now); err != nil {
+		return fmt.Errorf("after receive: %w", err)
+	}
+	return nil
 }
 
 // receiveBeforeCommit, when set (tests), runs at the end of each part's
@@ -450,7 +464,7 @@ func (s *Shelf) receiveRecord(ctx context.Context, profile ReceiveProfile, recor
 	if err := r.validate(); err != nil {
 		return refuse(fmt.Errorf("%w: a received record: %v", ErrInvalid, err))
 	}
-	out.Digest = r.Digest
+	out.Digest, out.DealID = r.Digest, r.DealID
 	key := logKey{r.SenderKey, r.LogID}
 
 	if deleted, err := tombstoned(ctx, s.db, r.Digest); err != nil {

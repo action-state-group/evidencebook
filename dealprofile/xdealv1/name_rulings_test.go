@@ -5,6 +5,8 @@ package xdealv1
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/action-state-group/evidencebook"
@@ -179,9 +181,9 @@ func TestNameRulingsAfterAConcurrentWrite(t *testing.T) {
 	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
 	require.NoError(t, err)
 	once := false
-	nameRulingsBeforeAppend = func() {
+	nameRulingsBeforeAppend = func() error {
 		if once {
-			return
+			return nil
 		}
 		once = true
 		next := settleRecord(t, 2, h.agreement, h.agreement, h.agreementID)
@@ -189,6 +191,7 @@ func TestNameRulingsAfterAConcurrentWrite(t *testing.T) {
 		require.NoError(t, err)
 		_, err = book.Append(ctx, e)
 		require.NoError(t, err)
+		return nil
 	}
 	t.Cleanup(func() { nameRulingsBeforeAppend = nil })
 	_, pair := adjudicator.seal(caseLog, ruling)
@@ -232,4 +235,157 @@ func TestNameRulingsOnlyTheDealsRulings(t *testing.T) {
 	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), book.Size())
+}
+
+// unnamedCount is the seller's count of counted rulings neither book names,
+// as its status provider reads it.
+func unnamedCount(t *testing.T, h *handshake, adjudicator *party) int {
+	t.Helper()
+	ctx := context.Background()
+	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
+	require.NoError(t, err)
+	own, whole, err := readOwnBook(ctx, book)
+	require.NoError(t, err)
+	require.True(t, whole)
+	held, err := h.seller.shelf.HeldByDeal(ctx, fxDealID)
+	require.NoError(t, err)
+	_, _, n, err := caseBook(ctx, h.seller.shelf, held, adjudicator.key(), own, nil)
+	require.NoError(t, err)
+	return n
+}
+
+// A naming that fails is Receive's error, the ruling stays held, and the
+// status value counts it unnamed; the same ruling sent again (a duplicate,
+// so nothing grew) names it (Codex, the stand-in and Sherlock2, #528 round
+// 2), and the count is back to zero.
+func TestNameRulingsRetriedOnADuplicate(t *testing.T) {
+	ctx := context.Background()
+	h, adjudicator, ruling, caseLog := rulingCase(t)
+	nameRulingsBeforeAppend = func() error { return errors.New("the disk is full") }
+	t.Cleanup(func() { nameRulingsBeforeAppend = nil })
+	_, pair := adjudicator.seal(caseLog, ruling)
+	res, err := h.seller.shelf.Receive(ctx, pair, nil)
+	require.ErrorContains(t, err, "after receive")
+	require.NotNil(t, res.Record)
+	assert.True(t, res.Record.Stored, "the ruling stays committed")
+	assert.Equal(t, fxDealID, res.Record.DealID)
+	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), book.Size())
+	assert.Equal(t, 1, unnamedCount(t, h, adjudicator), "held, counted, named by neither book")
+
+	nameRulingsBeforeAppend = nil
+	again := h.seller.receive(pair, nil)
+	assert.True(t, again.Record.Duplicate)
+	assert.Empty(t, again.Changes.Grew, "nothing grew")
+	assert.Equal(t, uint64(2), book.Size(), "the duplicate retried the naming")
+	assert.Equal(t, 0, unnamedCount(t, h, adjudicator))
+}
+
+// NameAllRulings is the host's sweep: a naming that failed, with nothing
+// sent again, is sealed by it; a second sweep seals nothing.
+func TestNameAllRulings(t *testing.T) {
+	ctx := context.Background()
+	h, adjudicator, ruling, caseLog := rulingCase(t)
+	nameRulingsBeforeAppend = func() error { return errors.New("the disk is full") }
+	t.Cleanup(func() { nameRulingsBeforeAppend = nil })
+	_, pair := adjudicator.seal(caseLog, ruling)
+	_, err := h.seller.shelf.Receive(ctx, pair, nil)
+	require.Error(t, err)
+	nameRulingsBeforeAppend = nil
+	sealed, err := NameAllRulings(ctx, h.seller.shelf, h.seller.now)
+	require.NoError(t, err)
+	assert.Len(t, sealed, 1)
+	assert.Equal(t, 0, unnamedCount(t, h, adjudicator))
+	sealed, err = NameAllRulings(ctx, h.seller.shelf, h.seller.now)
+	require.NoError(t, err)
+	assert.Empty(t, sealed)
+}
+
+// The status value carries the count, with no ids, and leaves it out at
+// zero, so a value with every ruling named is unchanged.
+func TestStatusRulingsUnnamed(t *testing.T) {
+	_, base := appendixAStatus(t)
+	v, err := BuildStatus(base)
+	require.NoError(t, err)
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "rulings_unnamed")
+	base.RulingsUnnamed = 2
+	v, err = BuildStatus(base)
+	require.NoError(t, err)
+	assert.Equal(t, 2, v.RulingsUnnamed)
+	raw, err = json.Marshal(v)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"rulings_unnamed":2`)
+}
+
+// A naming that failed, with nothing received after it, is sealed by the
+// holder's next stamp (the coordinator and Sherlock2, #528 round 2): the
+// status provider's BeforeStamp runs before the stamp takes its values, so
+// that stamp's status value counts no ruling unnamed.
+func TestNameRulingsAtTheNextStamp(t *testing.T) {
+	ctx := context.Background()
+	h, adjudicator, ruling, caseLog := rulingCase(t)
+	h.seller.status = &StatusProvider{}
+	h.seller.reopen()
+	nameRulingsBeforeAppend = func() error { return errors.New("the disk is full") }
+	t.Cleanup(func() { nameRulingsBeforeAppend = nil })
+	_, pair := adjudicator.seal(caseLog, ruling)
+	_, err := h.seller.shelf.Receive(ctx, pair, nil)
+	require.ErrorContains(t, err, "after receive")
+	assert.Equal(t, 1, unnamedCount(t, h, adjudicator))
+
+	nameRulingsBeforeAppend = nil
+	h.seller.tick()
+	res, err := h.seller.cadence.Stamp(ctx, h.seller.now)
+	require.NoError(t, err)
+	assert.Empty(t, res.BeforeStamp)
+	assert.Equal(t, 0, unnamedCount(t, h, adjudicator), "the stamp named it, no Receive needed")
+	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), book.Size())
+	facts, err := h.seller.shelf.Openings(ctx, h.agreementID, evidencebook.AudienceCounterparty)
+	require.NoError(t, err)
+	require.NotEmpty(t, facts)
+	last := facts[len(facts)-1]
+	require.NotNil(t, last.StatusOpening)
+	assert.NotContains(t, string(last.StatusOpening.Value), "rulings_unnamed", "that stamp's value reads the ruling named")
+}
+
+// A book not readable whole (a retention change appended a lifecycle
+// record, which no x-deal-v1 record can follow at its seq) is never written
+// to, by Receive or by a stamp; the stamp's status value, read over the
+// book's v1 prefix, counts the ruling unnamed, so the card does not show
+// the dispute as unresolved.
+func TestNameRulingsUnreadableBookIsCounted(t *testing.T) {
+	ctx := context.Background()
+	h, adjudicator, ruling, caseLog := rulingCase(t)
+	h.seller.status = &StatusProvider{}
+	h.seller.reopen()
+	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
+	require.NoError(t, err)
+	next := settleRecord(t, 2, h.agreement, h.agreement, h.agreementID)
+	e, err := BookEntry(next, h.agreementID)
+	require.NoError(t, err)
+	r2, err := book.AppendAt(ctx, 2, e)
+	require.NoError(t, err)
+	_, err = book.SetRetention(ctx, r2.RecordID, evidencebook.Withheld, "test")
+	require.NoError(t, err)
+	size := book.Size()
+	_, pair := adjudicator.seal(caseLog, ruling)
+	h.seller.receive(pair, nil)
+	h.seller.tick()
+	res, err := h.seller.cadence.Stamp(ctx, h.seller.now)
+	require.NoError(t, err)
+	assert.Empty(t, res.BeforeStamp)
+	assert.Equal(t, size, book.Size(), "nothing sealed into a book not readable whole")
+	facts, err := h.seller.shelf.Openings(ctx, h.agreementID, evidencebook.AudienceCounterparty)
+	require.NoError(t, err)
+	require.NotEmpty(t, facts)
+	last := facts[len(facts)-1]
+	require.NotNil(t, last.StatusOpening)
+	var v StatusValue
+	require.NoError(t, json.Unmarshal(last.StatusOpening.Value, &v))
+	assert.Equal(t, 1, v.RulingsUnnamed, "flagged, not shown open silently")
 }
