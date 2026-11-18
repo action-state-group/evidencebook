@@ -440,7 +440,10 @@ card. Say it as "their own check (their rules)", never as the deal's result.
 Until the target design's computed row status (evidencebook#461) replaces it, the holder can note that a
 finished deal did not hold with `deal outcome-note seal --deal ID --reason dispute_lost|settled_against|not_delivered|other`
 (after the final close; a deal takes one; evidencebook#462). It is the holder's own sealed note, never a
-counterparty's record, and it is in no shared copy. Each reason is your own failure
+counterparty's record, and it is in no shared copy: while a deal holds one, no shared copy of that deal is
+made at all (`deal disclose --share`, `deal report --share` and a shared `deal history` pick refuse, citing u597, and
+`deal respond` to a request naming it answers `policy_declined`), until the computed row status replaces the note;
+your own copy is not affected, and the History card still counts it. Each reason is your own failure
 (`not_delivered` means you did not deliver): a buyer whose seller failed does not write it, because the card
 counts it on the writer's own card. The reason is your own statement, never checked against any ruling. The History card then counts the deal `did_not_hold`;
 a deal without a note counts as before (a failed reconcile stays `undecided`).

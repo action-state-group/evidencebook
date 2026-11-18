@@ -33,11 +33,14 @@ func TestAnOutcomeNoteMakesTheCardCountTheDealDidNotHold(t *testing.T) {
 	require.Len(t, deals, 1)
 	assert.Equal(t, "did_not_hold", deals[0].(map[string]any)["outcome"])
 
-	// A deal takes one note, and it is in no shared copy.
+	// A deal takes one note, and no shared copy is made of it.
 	_, err := invoke(t, "", "--profile", "deal", "deal", "outcome-note", "seal", "--deal", id, "--reason", "other")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already")
-	assert.NotContains(t, bundleText(t, id, "--share", "counterparty", "--to", "the other side"), "dispute_lost")
+	// No shared copy is made of a deal that holds it (u597, evidencebook-deal#218).
+	_, err = invoke(t, "", "--profile", "deal", "deal", "report", "--deal", id, "--html", filepath.Join(t.TempDir(), "c.html"), "--share", "counterparty", "--to", "the other side")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "u597")
 }
 
 func TestAnOutcomeNoteRefusesWhatTheProfileDoesNotAllow(t *testing.T) {

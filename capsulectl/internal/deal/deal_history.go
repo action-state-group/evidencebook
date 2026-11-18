@@ -290,6 +290,11 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 		return nil, 0, 0, cli.InputError("deal " + dealID + " has no step under its latest checkpoint")
 	}
 	if audience == cli.DealAudienceHistory {
+		// u597 (evidencebook-deal#218): no shared copy of a deal that holds the
+		// holder's own outcome note, however its payloads are withheld.
+		if holdsOutcomeNote(events) {
+			return nil, 0, 0, cli.InputError("deal " + dealID + " holds your outcome note, which is never in a shared copy (u597), so it cannot be picked for a shared history while the note exists; your own copy is not affected")
+		}
 		all, err := s.logEntries(ctx)
 		if err != nil {
 			return nil, 0, 0, err

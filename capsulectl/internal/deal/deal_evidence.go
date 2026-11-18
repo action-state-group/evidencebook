@@ -681,6 +681,22 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 			return refuse(evidencebook.ReasonRequestMalformed)
 		}
 	}
+	// u597 (evidencebook-deal#218): no copy is made of a deal that holds the
+	// holder's own outcome note, so the request is declined before anything
+	// about the log or the coverage is weighed: the reason word alone, the
+	// shape of any decline (Sherlock2, buzz dd3c5ae7). The citation is the
+	// holder's side only. A malformed request is still refused as malformed.
+	if e = s.useDeal(ctx, dealID, false); e != nil {
+		return e
+	}
+	noted, e := s.load(ctx, dealID)
+	if e != nil {
+		return e
+	}
+	if holdsOutcomeNote(noted) {
+		answered["declined_because"] = "this deal holds your outcome note, which is never in a shared copy (u597)"
+		return refuse(evidencebook.ReasonPolicyDeclined)
+	}
 	if req.Derivation != "" {
 		// "Ask me" (F4.10, Steven's 2026-11-01 ruling): a derivation the
 		// holder does not serve automatically is above the standard card.
@@ -695,13 +711,7 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 	if !notBefore.IsZero() && notBefore.After(cli.DealClock()) {
 		return refuse(evidencebook.ReasonCoverageUnsatisfiable)
 	}
-	if e = s.useDeal(ctx, dealID, false); e != nil {
-		return e
-	}
-	events, e := s.load(ctx, dealID)
-	if e != nil {
-		return e
-	}
+	events := noted
 	entries, e := s.logEntries(ctx)
 	if e != nil {
 		return e
