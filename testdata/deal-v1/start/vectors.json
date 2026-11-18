@@ -41,7 +41,7 @@
       "expect": {
         "state": "started",
         "local": true,
-        "by": "offerer_in_time"
+        "by": null
       }
     },
     {
@@ -63,7 +63,7 @@
       "expect": {
         "state": "started",
         "local": true,
-        "by": "offerer_in_time"
+        "by": null
       }
     },
     {
@@ -282,6 +282,116 @@
       },
       "expect": {
         "state": "awaiting_agreement",
+        "local": false,
+        "by": null
+      }
+    },
+    {
+      "name": "offerer-names-another-after",
+      "why": "the same after agree_by: not started",
+      "input": {
+        "at": "2026-11-05T12:00:00Z",
+        "side": "acceptor",
+        "counterparty_layer": true,
+        "agree_by": "2026-11-02T23:59:59Z",
+        "counterpart_agreement_held": true,
+        "same_offer_and_rows": true,
+        "offerer_names_acceptor": false,
+        "offerer_agreement_time": null,
+        "acceptor_names_offerer": false,
+        "cancellation_named_first": false,
+        "first_act": null
+      },
+      "expect": {
+        "state": "not_started",
+        "local": false,
+        "by": null
+      }
+    },
+    {
+      "name": "timed-at-agree-by",
+      "why": "the offerer's agreement timed at agree_by itself: started, not local",
+      "input": {
+        "at": "2026-11-05T12:00:00Z",
+        "side": "acceptor",
+        "counterparty_layer": true,
+        "agree_by": "2026-11-02T23:59:59Z",
+        "counterpart_agreement_held": true,
+        "same_offer_and_rows": true,
+        "offerer_names_acceptor": true,
+        "offerer_agreement_time": "2026-11-02T23:59:59Z",
+        "acceptor_names_offerer": false,
+        "cancellation_named_first": false,
+        "first_act": null
+      },
+      "expect": {
+        "state": "started",
+        "local": false,
+        "by": "offerer_in_time"
+      }
+    },
+    {
+      "name": "untimed-at-agree-by",
+      "why": "untimed, T at agree_by itself: started, local",
+      "input": {
+        "at": "2026-11-02T23:59:59Z",
+        "side": "acceptor",
+        "counterparty_layer": true,
+        "agree_by": "2026-11-02T23:59:59Z",
+        "counterpart_agreement_held": true,
+        "same_offer_and_rows": true,
+        "offerer_names_acceptor": true,
+        "offerer_agreement_time": null,
+        "acceptor_names_offerer": false,
+        "cancellation_named_first": false,
+        "first_act": null
+      },
+      "expect": {
+        "state": "started",
+        "local": true,
+        "by": null
+      }
+    },
+    {
+      "name": "acceptor-only-at-agree-by",
+      "why": "the acceptor holds only its own agreement, T at agree_by itself: awaiting agreement",
+      "input": {
+        "at": "2026-11-02T23:59:59Z",
+        "side": "acceptor",
+        "counterparty_layer": true,
+        "agree_by": "2026-11-02T23:59:59Z",
+        "counterpart_agreement_held": false,
+        "same_offer_and_rows": null,
+        "offerer_names_acceptor": null,
+        "offerer_agreement_time": null,
+        "acceptor_names_offerer": false,
+        "cancellation_named_first": false,
+        "first_act": null
+      },
+      "expect": {
+        "state": "awaiting_agreement",
+        "local": false,
+        "by": null
+      }
+    },
+    {
+      "name": "cancellation-first-then-named",
+      "why": "the acceptor named the cancellation first and names the offerer's agreement later: the cancellation settles it, not started",
+      "input": {
+        "at": "2026-11-05T12:00:00Z",
+        "side": "acceptor",
+        "counterparty_layer": true,
+        "agree_by": "2026-11-02T23:59:59Z",
+        "counterpart_agreement_held": true,
+        "same_offer_and_rows": true,
+        "offerer_names_acceptor": true,
+        "offerer_agreement_time": null,
+        "acceptor_names_offerer": true,
+        "cancellation_named_first": true,
+        "first_act": null
+      },
+      "expect": {
+        "state": "not_started",
         "local": false,
         "by": null
       }

@@ -52,14 +52,15 @@ func TestStartVectors(t *testing.T) {
 	in := func(f func(*StartInput), base StartInput) StartInput { f(&base); return base }
 	notStarted := StartResult{State: StateNotStarted}
 	awaiting := StartResult{State: StateAwaitingAgreement}
+	startedLocally := StartResult{State: StateStarted, Local: true}
 
 	add("timed-in-time", "both agree, the offerer's agreement timed before agree_by: started, not local",
 		in(func(s *StartInput) { s.OffererAgreementTime = strp("2026-11-01T10:00:00Z") }, stBoth(SideAcceptor, stAfter)),
 		started(false, ByOffererInTime))
 	add("untimed-before-agree-by", "both agree, the offerer's agreement untimed, T before agree_by: started, local",
-		stBoth(SideAcceptor, stBefore), started(true, ByOffererInTime))
+		stBoth(SideAcceptor, stBefore), startedLocally)
 	add("untimed-offerer-side", "the offerer computes the same from its own book and the acceptor's agreement",
-		stBoth(SideOfferer, stBefore), started(true, ByOffererInTime))
+		stBoth(SideOfferer, stBefore), startedLocally)
 	add("untimed-after-agree-by", "the same, T after agree_by, not named: not started",
 		stBoth(SideAcceptor, stAfter), notStarted)
 	acceptorOnly := StartInput{At: stBefore, Side: SideAcceptor, CounterpartyLayer: true, AgreeBy: stAgreeBy}
@@ -85,6 +86,20 @@ func TestStartVectors(t *testing.T) {
 		in(func(s *StartInput) { s.At = stAfter }, other), notStarted)
 	add("offerer-names-another", "the offerer's agreement names another record than the acceptor's agreement: it does not join; awaiting before agree_by",
 		in(func(s *StartInput) { s.OffererNamesAcceptor = boolp(false) }, stBoth(SideAcceptor, stBefore)), awaiting)
+	add("offerer-names-another-after", "the same after agree_by: not started",
+		in(func(s *StartInput) { s.OffererNamesAcceptor = boolp(false) }, stBoth(SideAcceptor, stAfter)), notStarted)
+	// agree_by is the last second in time: "not after" includes it.
+	add("timed-at-agree-by", "the offerer's agreement timed at agree_by itself: started, not local",
+		in(func(s *StartInput) { s.OffererAgreementTime = strp(stAgreeBy) }, stBoth(SideAcceptor, stAfter)), started(false, ByOffererInTime))
+	add("untimed-at-agree-by", "untimed, T at agree_by itself: started, local",
+		stBoth(SideAcceptor, stAgreeBy), startedLocally)
+	add("acceptor-only-at-agree-by", "the acceptor holds only its own agreement, T at agree_by itself: awaiting agreement",
+		in(func(s *StartInput) { s.At = stAgreeBy }, acceptorOnly), awaiting)
+	add("cancellation-first-then-named", "the acceptor named the cancellation first and names the offerer's agreement later: the cancellation settles it, not started",
+		in(func(s *StartInput) {
+			s.CancellationNamedFirst = true
+			s.AcceptorNamesOfferer = true
+		}, stBoth(SideAcceptor, stAfter)), notStarted)
 	noLayer := StartInput{At: stAfter, Side: SideAcceptor, AgreeBy: stAgreeBy}
 	add("no-layer-before-act", "a counterparty with no layer, before the holder's first act: not started", noLayer, notStarted)
 	add("no-layer-timed-act", "no layer, after a timed act: started, not local, by first act",
@@ -120,7 +135,23 @@ func TestStartRefuses(t *testing.T) {
 			s.OffererAgreementTime = strp("2026-11-31T00:00:00Z")
 			return s
 		}(),
-		"bad first act time": {At: stBefore, FirstAct: &FirstAct{Time: strp("noon")}},
+		"bad first act time":         {At: stBefore, Side: SideAcceptor, FirstAct: &FirstAct{Time: strp("noon")}},
+		"bad side without the layer": {At: stBefore, Side: "buyer"},
+		"held, match unknown": func() StartInput {
+			s := stBoth(SideAcceptor, stBefore)
+			s.SameOfferAndRows, s.AcceptorNamesOfferer = nil, true
+			return s
+		}(),
+		"held, naming unknown": func() StartInput {
+			s := stBoth(SideAcceptor, stBefore)
+			s.OffererNamesAcceptor, s.AcceptorNamesOfferer = nil, true
+			return s
+		}(),
+		"offerer holding an acceptor's agreement on other rows": func() StartInput {
+			s := stBoth(SideOfferer, stBefore)
+			s.SameOfferAndRows = boolp(false)
+			return s
+		}(),
 	} {
 		_, err := Start(in)
 		assert.Error(t, err, name)

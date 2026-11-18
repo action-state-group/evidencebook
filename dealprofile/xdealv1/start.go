@@ -75,7 +75,10 @@ type StartInput struct {
 
 // StartResult is whether the deal has started (design §5.2). Local says the
 // result rests on what the holder holds and no witnessed time: another
-// reader may compute otherwise until a time or a naming fixes it.
+// reader may compute otherwise until a time or a naming fixes it. By names
+// what started it, and is null when nothing has yet: a deal started locally
+// on an offerer's agreement with no time yet may still end named by the
+// acceptor or not started.
 type StartResult struct {
 	State string  `json:"state"`
 	Local bool    `json:"local"`
@@ -87,13 +90,21 @@ func started(local bool, by string) StartResult {
 }
 
 // Start computes whether a deal has started from the values in, in design
-// §5.2's order. It refuses an input with a time that is not RFC 3339 UTC to
-// the second, an unknown side, and an offerer that holds no acceptor's
-// agreement (an offerer writes its agreement after the acceptor's).
+// §5.2's order. It refuses a time that is not RFC 3339 UTC to the second and
+// an unknown side. With a counterparty that runs the layer it also refuses:
+// agree_by that is not such a time (without the layer agree_by plays no
+// part); a held counterpart agreement whose same_offer_and_rows or
+// offerer_names_acceptor is null, which would skip a condition of §5.1; and
+// an offerer that holds no acceptor's agreement, or one citing another offer
+// or rows, since an offerer writes its agreement after the acceptor's it
+// holds, so its own records are inconsistent.
 func Start(in StartInput) (StartResult, error) {
 	at, err := startTime("at", in.At)
 	if err != nil {
 		return StartResult{}, err
+	}
+	if in.Side != SideOfferer && in.Side != SideAcceptor {
+		return StartResult{}, fmt.Errorf("xdealv1: start: side %q is neither offerer nor acceptor", in.Side)
 	}
 	notStarted := StartResult{State: StateNotStarted}
 	// 1. A counterparty with no layer: the holder's first act starts it.
@@ -107,9 +118,6 @@ func Start(in StartInput) (StartResult, error) {
 			}
 		}
 		return started(in.FirstAct.Time == nil, ByFirstAct), nil
-	}
-	if in.Side != SideOfferer && in.Side != SideAcceptor {
-		return StartResult{}, fmt.Errorf("xdealv1: start: side %q is neither offerer nor acceptor", in.Side)
 	}
 	agreeBy, err := startTime("agree_by", in.AgreeBy)
 	if err != nil {
@@ -126,6 +134,9 @@ func Start(in StartInput) (StartResult, error) {
 	if in.CancellationNamedFirst {
 		return notStarted, nil
 	}
+	if in.CounterpartAgreementHeld && (in.SameOfferAndRows == nil || in.OffererNamesAcceptor == nil) {
+		return StartResult{}, fmt.Errorf("xdealv1: start: a held counterpart agreement gives same_offer_and_rows and offerer_names_acceptor")
+	}
 	// 3. No counterpart agreement, or one about another deal.
 	if !in.CounterpartAgreementHeld || in.SameOfferAndRows != nil && !*in.SameOfferAndRows {
 		if in.Side == SideOfferer {
@@ -134,7 +145,7 @@ func Start(in StartInput) (StartResult, error) {
 		return awaiting(), nil
 	}
 	// 4. The offerer's agreement does not join the acceptor's.
-	if in.OffererNamesAcceptor != nil && !*in.OffererNamesAcceptor {
+	if !*in.OffererNamesAcceptor {
 		return awaiting(), nil
 	}
 	// 5. The acceptor's book names the offerer's agreement.
@@ -152,9 +163,9 @@ func Start(in StartInput) (StartResult, error) {
 		}
 		return notStarted, nil
 	}
-	// 7. No time yet, and still in time: started, locally.
+	// 7. No time yet, and still in time: started, locally, by nothing yet.
 	if !late {
-		return started(true, ByOffererInTime), nil
+		return StartResult{State: StateStarted, Local: true}, nil
 	}
 	// 8. No time by agree_by, and never named.
 	return notStarted, nil
