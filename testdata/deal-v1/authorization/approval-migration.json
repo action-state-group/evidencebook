@@ -332,7 +332,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: a standing-intent approval rests on an intent; the journal holds none before it"
     },
     {
       "name": "pass-without-approval",
@@ -409,7 +410,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] act 1: its verdict has no sealed approval"
     },
     {
       "name": "first-approval-refuses",
@@ -544,7 +546,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] act 1: its verdict's first approval does not proceed"
     },
     {
       "name": "approval-reused",
@@ -676,7 +679,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] act 2: its approval already authorized act 1"
     },
     {
       "name": "standing-intent-outside-allowed",
@@ -790,7 +794,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 4: standing-intent approval for an action the limits in force do not allow"
     },
     {
       "name": "wider-intent-is-a-proposal",
@@ -920,7 +925,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 5: standing-intent approval for an action the limits in force do not allow"
     },
     {
       "name": "confirmed-proposal",
@@ -1169,7 +1175,8 @@
         }
       ],
       "acts": null,
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: limits.previous is not the limits in force"
     },
     {
       "name": "intent-replaces-with-other-action",
@@ -1297,7 +1304,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 5: standing-intent approval for an action the limits in force do not allow"
     },
     {
       "name": "allowed-revoked-before-approval",
@@ -1423,7 +1431,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 5: standing-intent approval for an action the limits in force do not allow"
     },
     {
       "name": "approval-after-act",
@@ -1525,7 +1534,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] act 1: its approval was sealed after it"
     },
     {
       "name": "action-mismatch",
@@ -1627,7 +1637,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] act 1: the act differs from the one checked: a payer settle rests on a \"pay\" check, not \"commit\""
     },
     {
       "name": "choice-not-offered",
@@ -1737,7 +1748,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: the choice is not one of the verdict's options"
     },
     {
       "name": "card-not-the-checked-card",
@@ -1839,7 +1851,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: the card shown is not the card checked: the approval's card_commitment differs from the verdict's"
     },
     {
       "name": "person-approval-without-card",
@@ -1940,7 +1953,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: the person's approval commits to the card it answered (card_commitment)"
     },
     {
       "name": "agent-card-needs-person",
@@ -2168,7 +2182,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] act 1: journal record 4 (evidence) changed the details after its check: a new check is needed"
     },
     {
       "name": "standing-intent-on-a-pause",
@@ -2276,7 +2291,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: a standing-intent approval needs a passing verdict; a pause needs the person's answer"
     },
     {
       "name": "deny",
@@ -2388,7 +2404,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: the choice is not one of the verdict's options"
     },
     {
       "name": "identifier-changed-after-check",
@@ -2509,7 +2526,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] act 1: journal record 4 (detail_change) changed the details after its check: a new check is needed"
     },
     {
       "name": "two-verdicts",
@@ -2635,7 +2653,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: a check has one verdict"
     },
     {
       "name": "verdict-checks-two",
@@ -2701,7 +2720,8 @@
         }
       ],
       "acts": null,
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: a verdict carries exactly one checks ref"
     },
     {
       "name": "approval-of-another-deal",
@@ -2803,7 +2823,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: an approval answers a verdict of its own deal"
     },
     {
       "name": "floor-confirmed",
@@ -3226,7 +3247,8 @@
         }
       ],
       "acts": null,
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: limits.new is not what the intent proposed"
     },
     {
       "name": "at-goes-back",
@@ -3328,7 +3350,8 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] journal record 3: its at is earlier than the record before it: at never decreases"
     },
     {
       "name": "check-not-held",
@@ -3366,8 +3389,9 @@
           }
         }
       ],
-      "valid": false
+      "valid": false,
+      "error": "[authorization] act 1: it cites no check the journal holds"
     }
   ],
-  "description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1)."
+  "description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization with the error text given. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1)."
 }
