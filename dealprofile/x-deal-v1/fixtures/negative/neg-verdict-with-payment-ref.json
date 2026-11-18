@@ -1,0 +1,34 @@
+{
+  "fixture": "neg-verdict-with-payment-ref",
+  "expect": "invalid",
+  "description": "payment_ref is a check's member, not a verdict's",
+  "base": "appendix-a/buyer-journal/07-verdict-pass.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "card_commitment": "7b9f6fe06aa834704172546896e1750d2bd7f9525ac52d2c7dbac0b75f3c7263",
+      "differences": [],
+      "nonce": "3d71e7a94efde455dec1c49ff84556237e52277549167d0d178b04683ca1b2b0",
+      "options": [],
+      "payment_ref": "unexpected",
+      "result": "pass"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T10:11:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "verdict",
+      "refs": [
+        {
+          "digest": "c92275672ad7d9779c5d0ad2d5702da4f6f235ca73c3a5c5e0a39d736005013b",
+          "digest_alg": "SHA-256",
+          "rel": "checks",
+          "type": "deal-record"
+        }
+      ]
+    }
+  }
+}

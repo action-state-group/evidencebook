@@ -1,0 +1,33 @@
+{
+  "fixture": "neg-approval-with-payment-ref",
+  "expect": "invalid",
+  "description": "payment_ref is a check's member, not an approval's",
+  "base": "appendix-a/buyer-journal/08-approval-proceed.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "approver": "standing_intent",
+      "choice": "proceed",
+      "nonce": "aae67dbf0565b4eebfde4447d40dffaba706bf3dbdb28579ffa247a9ac6b5c90",
+      "payment_ref": "unexpected",
+      "proceed": true
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T10:12:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "approval",
+      "refs": [
+        {
+          "digest": "35544ac049d9274577d609ed1acdb4fe73ae2cf07239585202ee93da48d118ca",
+          "digest_alg": "SHA-256",
+          "rel": "approves",
+          "type": "deal-record"
+        }
+      ]
+    }
+  }
+}

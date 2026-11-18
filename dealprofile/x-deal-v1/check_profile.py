@@ -276,10 +276,12 @@ def check_body(rec):
                 raise bad("record", "the acceptor's agreement comes first: its seen is null")
     elif t in ("check", "verdict", "approval"):
         # v0's overlay bodies are closed, so the body without v1's own members
-        # (payment_ref, nonce) is checked against v0's, as Go's checkV0Body.
+        # (a check's payment_ref and nonce, a verdict's or approval's nonce) is
+        # checked against v0's, as Go's checkV0Body.
         v = _validators().get("body_" + t)
         if v is not None:
-            errs = list(v.iter_errors({k: x for k, x in body.items() if k not in ("payment_ref", "nonce")}))
+            own = ("payment_ref", "nonce") if t == "check" else ("nonce",)
+            errs = list(v.iter_errors({k: x for k, x in body.items() if k not in own}))
             if errs:
                 raise bad("schema", f"the {t} body is not v0's body_{t}: {errs[0].message}")
 
