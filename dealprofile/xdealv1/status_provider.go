@@ -375,7 +375,8 @@ func earlier(a, b StatusTime) bool {
 // forkedFinals is the rows whose first final ruling differs between two
 // branches of the adjudicator's case book the holder holds (design §8, "A
 // forked case book"): each branch, from position 1 to a record no other
-// held record follows, applies its own first final ruling per row, as
+// held record follows, unbroken (a run after a gap is no branch), applies
+// its own first final ruling per row, as
 // rowstatus does, and two branches conflict on a row when both have one and
 // their decisions (value, against, remedy) differ.
 func forkedFinals(held []evidencebook.HeldRecord, adjudicator, logID string) ([]string, error) {
@@ -411,13 +412,25 @@ func forkedFinals(held []evidencebook.HeldRecord, adjudicator, logID string) ([]
 			continue
 		}
 		var chain []node
-		for d := leaf; d != ""; {
+		whole := false
+		for d := leaf; ; {
 			n, ok := nodes[d]
 			if !ok {
-				break
+				break // a gap: this chain does not reach position 1
 			}
 			chain = append(chain, n)
+			if n.prev == "" {
+				whole = true
+				break
+			}
 			d = n.prev
+		}
+		// Only a branch from position 1 applies its own first final: a run
+		// after a gap (records received out of order, or forgotten) is the
+		// tail of a branch whose first final it may not hold (Codex and the
+		// Claude stand-in, PR 4c-2b-2 review round 2).
+		if !whole {
+			continue
 		}
 		seen := map[string]bool{}
 		for k := len(chain) - 1; k >= 0; k-- {

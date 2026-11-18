@@ -288,6 +288,22 @@ func ruling(row string, against string, value string, final bool, remedy *Ruling
 func TestForkedFinals(t *testing.T) {
 	refund := &RulingRemedy{Kind: "refund", Due: "2026-11-20T23:59:59Z"}
 	replace := &RulingRemedy{Kind: "replace", Due: "2026-11-20T23:59:59Z"}
+	// A gap in one straight case book: the first final at position 1, a
+	// later different final at position 3, position 2 not held. No fork.
+	held, key, log := forkedCaseBook(t, []*RulingBody{
+		ruling("as_described", RoleSeller, ValueNotMet, true, nil),
+		ruling("delivered", "", ValueMet, false, nil),
+		ruling("as_described", RoleBuyer, ValueMet, true, nil)}, nil, nil)
+	var gapped []evidencebook.HeldRecord
+	for _, h := range held {
+		if h.Position != 2 {
+			gapped = append(gapped, h)
+		}
+	}
+	got, err := forkedFinals(gapped, key, log)
+	require.NoError(t, err)
+	assert.Empty(t, got, "a run after a gap is not a branch")
+
 	for name, c := range map[string]struct {
 		common, left, right []*RulingBody
 		want                []string

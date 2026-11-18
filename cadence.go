@@ -211,7 +211,10 @@ type TickResult struct {
 	// Unstated are the books (by log id) whose status provider failed at
 	// this stamp, with its error: each keeps its last fact, and the other
 	// books' facts are written, so one book's values never stop the shelf's
-	// stamps. The next stamp asks again.
+	// stamps. The next stamp asks again. It is this call's report only: a
+	// stamp resumed after a crash does not repeat it. A reader learns that a
+	// book's fact is older than a stamp from the fact itself (its entry's
+	// tick), which is what a card shows.
 	Unstated map[string]string
 }
 
