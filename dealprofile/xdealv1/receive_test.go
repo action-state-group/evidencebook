@@ -667,3 +667,44 @@ func TestProofTheRecordsDoNotRecompute(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, ok)
 }
+
+// CanAct runs beside calls that make an earlier withheld journal record
+// readable again, which inserts into the cache. Each caller reads its own
+// copy of the holder's records, so none sees the insert; this smoke-checks
+// that under go test -race (the interleaving is not forced).
+func TestCanActConcurrentWithACacheUpdate(t *testing.T) {
+	ctx := context.Background()
+	h := newHandshake(t, nil)
+	h.buyer.receive(h.agreementPair, &h.proof)
+	journal, err := h.buyer.shelf.Journal(ctx)
+	require.NoError(t, err)
+	offers, err := journal.Query(ctx, evidencebook.Filter{})
+	require.NoError(t, err)
+	_, err = journal.SetRetention(ctx, offers[0].RecordID, evidencebook.Withheld, "test")
+	require.NoError(t, err)
+	// Seed the cache with the offer withheld, and a later journal record.
+	_, _ = h.buyer.profile.ours(ctx)
+	ob := fxOffer()
+	ob.To = Some(h.seller.key())
+	later := Record{Block: journalBlock(TypePropose, "2026-11-01T09:31:00Z", true), Body: ob}
+	later.Block.DealID = "deal-4444444444444444"
+	h.buyer.sendOffer(later)
+	_, err = journal.SetRetention(ctx, offers[0].RecordID, evidencebook.Available, "test")
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 20; i++ {
+			_, _ = h.buyer.profile.CanAct(ctx, CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+		}
+	}()
+	for i := 0; i < 20; i++ {
+		_, err := h.buyer.profile.ours(ctx)
+		require.NoError(t, err)
+	}
+	<-done
+	ok, err := h.buyer.profile.CanAct(ctx, CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	require.NoError(t, err)
+	assert.True(t, ok)
+}

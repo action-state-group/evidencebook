@@ -428,7 +428,9 @@ func (p *ReceiveProfile) ours(ctx context.Context) (ours, error) {
 	if err != nil {
 		return ours{}, err
 	}
-	o := ours{journal: c.journal}
+	// The caller reads its own copy after the lock is released; a later call
+	// may insert into the cache's slice in place.
+	o := ours{journal: slices.Clone(c.journal)}
 	for _, logID := range logs {
 		first, read := c.firsts[logID]
 		if !read {
