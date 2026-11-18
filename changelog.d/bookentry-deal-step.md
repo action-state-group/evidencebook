@@ -1,3 +1,0 @@
-### Fixed: `xdealv1.BookEntry` seals header `record_type` `deal_step`
-
-- Since v0.18.0, `BookEntry` (and so `Receive`'s ruling naming) sealed a deal-book record's header with the payload's own x-deal-v1 type (`statement`, `settle` and so on). Design §3.1 and v0 say `deal_step`, with `epistemic_type` `producer_claim`; the payload's `record_type` says which x-deal-v1 type it is. x-deal-v1's checks, `VerifyBook`, the shelf and the status provider do not read the header's record type, so books already sealed stay readable. A host that queries a deal book by header record type (`Filter.RecordType`) finds `deal_step` from v0.18.1 and the payload's type on records v0.18.0 sealed; read the payload's `record_type` for the x-deal-v1 type.
