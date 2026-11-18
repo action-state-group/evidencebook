@@ -46,6 +46,7 @@ mod schema;
 mod standard_history;
 mod step;
 mod types;
+pub mod v1;
 
 pub use capsule::{
     Capsule, Chain, Disposition, Effect, Extension, ACTION_TYPE_DECIDE, ACTION_TYPE_FYI,

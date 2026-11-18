@@ -585,7 +585,7 @@ impl<'a> Calc<'a> {
 
 /// Seconds since the Unix epoch of `YYYY-MM-DDTHH:MM:SSZ`, the one form the
 /// three implementations read.
-fn parse_time(s: &str) -> Result<i64, Invalid> {
+pub(crate) fn parse_time(s: &str) -> Result<i64, Invalid> {
     let bad = || invalid(format!("time {s:?} is not YYYY-MM-DDTHH:MM:SSZ"));
     let b = s.as_bytes();
     if b.len() != 20
