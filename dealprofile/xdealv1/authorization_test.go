@@ -60,7 +60,8 @@ func (f *authFlow) intent(allowed ...string) Ref {
 }
 
 func (f *authFlow) check(action string) Ref {
-	return f.seal(TypeCheck, true, &CheckBody{CheckBody: dealprofile.CheckBody{Action: action}, PaymentRef: "invoice-17", Nonce: hx('7')})
+	// A nonce per check, as NewNonce draws one, but fixed for the vectors.
+	return f.seal(TypeCheck, true, &CheckBody{CheckBody: dealprofile.CheckBody{Action: action}, PaymentRef: "invoice-17", Nonce: label("check nonce " + f.at())})
 }
 
 func (f *authFlow) verdict(check Ref, result string) Ref {
@@ -469,4 +470,37 @@ func (r Record) digestRef(t *testing.T) Ref {
 	d, err := Digest(r)
 	require.NoError(t, err)
 	return RefTo(d)
+}
+
+// NewNonce draws 64 lowercase hex, a different value each time.
+func TestNewNonce(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 64; i++ {
+		n, err := NewNonce()
+		require.NoError(t, err)
+		require.Regexp(t, `^[0-9a-f]{64}$`, n)
+		require.False(t, seen[n])
+		seen[n] = true
+	}
+}
+
+// Two journal records sharing a nonce are refused: it was not drawn fresh
+// (PROFILE §5).
+func TestCheckAuthorizationsRefusesASharedNonce(t *testing.T) {
+	f := &authFlow{t: t}
+	f.intent("pay")
+	c := f.check("pay")
+	v := f.verdict(c, "pass")
+	f.approve(v, "user", true)
+	f.pay(c)
+	_, err := CheckAuthorizations(f.journal, f.acts)
+	require.NoError(t, err)
+
+	again := f.journal[1]
+	body := *again.Body.(*CheckBody)
+	again.Body = &body
+	again.Block.At = f.at()
+	f.journal = append(f.journal, again)
+	_, err = CheckAuthorizations(f.journal, f.acts)
+	assert.ErrorContains(t, err, "a nonce is drawn fresh")
 }

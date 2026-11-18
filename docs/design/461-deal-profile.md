@@ -470,10 +470,18 @@ it applies u528, so it needs no ruling from Steven).
   so the counterparty could try each outcome until one matches. That breaks u528: the admission
   decision stays in the person's own book. An act's `check` has the same shape, with its action,
   amount and currency guessable from the terms.
-- **The rule.** Any journal record that a sent or deal-book record can cite MUST carry its own
-  nonce or a required salted member.
+- **The rule** (worded wider in the PR 4 nonce review round 1, Sherlock2). Any journal record
+  whose digest leaves the holder MUST carry its own nonce or a required salted member, or cite a
+  record that does. That covers a digest cited by a sent or deal-book record, one signed beside a
+  record (§8's person's signatures, AAC#627), and one disclosed.
+  - A verdict and an approval are covered through what they cite.
+  - A record sent whole (an offer, a decline, a cancellation) is exempt, since its content leaves
+    with it (Codex, same round).
 - **What carries it.**
   - `admit` and `check` carry `nonce`: 256 bits, 64 lowercase hex, fresh per record.
+    `xdealv1.NewNonce` draws one from `crypto/rand`. `CheckAuthorizations` refuses a journal in
+    which two records share a nonce, a cheap backstop against a host that does not draw fresh
+    ones.
   - An `intent` already carries the required `verbatim_commitment` (`sha256-jcs-nonce256`, as
     v0 defines it). That covers `max_total_minor` and the other members it holds in clear.
 - **What stays as it is.** The citation stays a plain digest ref, the journal lookup in

@@ -225,9 +225,19 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 	var confirmations []int
 	firstIntent := -1
 	var last time.Time
+	nonces := map[string]int{}
 	for i, r := range journal {
 		bad := func(format string, args ...any) error {
 			return stageErr(StageAuthorization, "journal record %d: %s", i+1, fmt.Sprintf(format, args...))
+		}
+		// A nonce is drawn fresh for each record (PROFILE §5): two records
+		// sharing one show it was not, and the citing records' digests
+		// may again test guesses.
+		if n := nonceOf(r); n != "" {
+			if j, seen := nonces[n]; seen {
+				return nil, bad("its nonce is journal record %d's: a nonce is drawn fresh for each record", j+1)
+			}
+			nonces[n] = i
 		}
 		// at never decreases (v0 rule 3), so a record the act relies on is
 		// never sealed after a later record that predates the act.
@@ -543,4 +553,15 @@ func subset(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// nonceOf is a journal record's nonce, "" for a type that carries none.
+func nonceOf(r Record) string {
+	if b, ok := bodyOf[AdmitBody](r.Body); ok {
+		return b.Nonce
+	}
+	if b, ok := bodyOf[CheckBody](r.Body); ok {
+		return b.Nonce
+	}
+	return ""
 }

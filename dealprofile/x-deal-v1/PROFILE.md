@@ -212,18 +212,24 @@ That the agreement's adjudicator signed it is the reader's, from the ruling's Ca
 **`check`.** v0's `body_check`, plus `payment_ref` and `nonce`. Without `payment_ref` and `nonce`
 the body MUST be valid under v0's closed `body_check`.
 
-**A cited journal record carries its own secret** (u528: the admission decision, and what the
-person checked, stay in the person's own book). A journal record that a sent or deal-book record
-can cite by digest MUST carry a member a reader of the citing record cannot guess. Otherwise that
-reader could try each likely content against the digest. An agreement cites its `admit` and its
-`intent`, and an act cites its `check`.
+**A journal record whose digest leaves the holder carries its own secret** (u528: the admission
+decision, and what the person checked, stay in the person's own book). A journal record whose
+digest leaves the holder MUST carry a member nobody else can guess, or cite one that does. This
+covers a digest that is cited by a sent or deal-book record, signed beside a record (section 8's
+person's signatures), or disclosed. Otherwise whoever holds the digest could try each likely
+content against it.
 - `admit` and `check` carry `nonce`: a fresh random 256-bit value, 64 lowercase hex, drawn for
-  each record and never reused.
-- An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment,
-  which serves the same purpose.
+  each record with `xdealv1.NewNonce` (`crypto/rand`) and never reused.
+  `xdealv1.CheckAuthorizations` refuses a journal in which two records share one.
+- An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment.
+- A `verdict` cites its `check`, and an `approval` its `verdict` or `intent`, so each is covered
+  by what it cites.
+- A record sent whole (an offer, a decline, a cancellation; section 7) is exempt. Its content
+  leaves with it, so its digest tells nobody anything the record does not.
 - The citation stays a plain digest ref, and the lookup in the holder's journal is unchanged, as
   with `reason_commitment`.
-- A journal record type that a later version lets another record cite MUST meet this rule too.
+- A journal record type whose digest a later version lets leave the holder MUST meet this rule
+  too.
 
 ## 6. `seen`
 
