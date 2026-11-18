@@ -1,0 +1,48 @@
+{
+  "fixture": "appendix-a/buyer-book/05-dispute.json",
+  "expect": "valid",
+  "appendix_a_line": "51",
+  "story": "The dispute on row 3: the two statements on it, the adjudicator and the forum the agreement names.",
+  "placement": "deal_book",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "dispute",
+      "at": "2026-11-12T09:00:00Z",
+      "seq": 5,
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74"
+      },
+      "agreement_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da"
+      },
+      "seen": "aa3ed5d65bb0e3564216df7b3c275333a5b8eeaa4da188438803ee58051db5d2"
+    },
+    "body": {
+      "kind": "dispute",
+      "row": "as_described",
+      "statements": [
+        {
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74"
+        },
+        {
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "e4fe7027d0f5cc905d0c969fd40dcc9c5a6e5d435ab2e1c03b808560fa1f6d05"
+        }
+      ],
+      "adjudicator": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+      "forum": "auto:ref"
+    }
+  },
+  "expected_digest": "039b481e74cc572a62f2aaeaa9185db9ee161795a380bb4815c028eec262ed66",
+  "record_id": "9ed8ca8b7a0c2ccf4456e3ae1eb4f3875f76e71c3ac6205d35c7bac4800460f2"
+}

@@ -1,0 +1,42 @@
+{
+  "fixture": "neg-ruling-forum",
+  "expect": "invalid",
+  "description": "the ruling rules in a forum the agreement accepts",
+  "base": "appendix-a/case-book/01-ruling.json",
+  "check": "ruling",
+  "with": "appendix-a/buyer-book/01-agreement.json",
+  "expected_stage": "agreement",
+  "expected_error_contains": "not one the agreement accepts",
+  "record": {
+    "body": {
+      "against": "seller",
+      "final": false,
+      "forum": "external:court",
+      "keys": {
+        "buyer": "232935bcfec4f81878f57637a9c5db1b71b180b9c11ec4e87365db9723f3ba52",
+        "seller": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353"
+      },
+      "read": {
+        "buyer": "9ed8ca8b7a0c2ccf4456e3ae1eb4f3875f76e71c3ac6205d35c7bac4800460f2",
+        "seller": "aa3ed5d65bb0e3564216df7b3c275333a5b8eeaa4da188438803ee58051db5d2"
+      },
+      "remedy": {
+        "amount_minor": 6000,
+        "currency": "USD",
+        "due": "2026-11-27T23:59:59Z",
+        "kind": "refund"
+      },
+      "row": "as_described",
+      "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+      "value": "not_met"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-13T10:00:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "ruling",
+      "seq": 1
+    }
+  }
+}

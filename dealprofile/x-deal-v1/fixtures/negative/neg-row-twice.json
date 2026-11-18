@@ -1,0 +1,124 @@
+{
+  "fixture": "neg-row-twice",
+  "expect": "invalid",
+  "description": "a row id given twice",
+  "base": "appendix-a/buyer-journal/05-offer.json",
+  "check": "record",
+  "expected_stage": "record",
+  "expected_error_contains": "is given twice",
+  "record": {
+    "body": {
+      "adjudicator": {
+        "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+        "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+        "rules_url": "https://adjudicator.example/rules"
+      },
+      "agree_by": "2026-11-02T23:59:59Z",
+      "ask": {
+        "digest": "d4339113bf6f0f1f20ed660db9e22e8e46f37581b495a1c382c0d51a9bf3b159",
+        "url": "https://buyer.example/ask"
+      },
+      "forums": [
+        "auto:ref"
+      ],
+      "pack_digest": "c94cdaacd19bd6eb4085dbc01023d62fa4b0d3b910737c74daa505558e60f4e3",
+      "role": "buyer",
+      "stated_at": "2026-11-01T09:30:00Z",
+      "terms": {
+        "currency": "USD",
+        "item": "ceramic lamp",
+        "price_minor": 6000,
+        "quantity": 1
+      },
+      "terms_rows": {
+        "named": {
+          "paid": {
+            "latest": "2026-11-04T23:59:59Z",
+            "side": "buyer"
+          },
+          "received": {
+            "latest": "2026-12-01T23:59:59Z",
+            "side": "buyer"
+          }
+        },
+        "rows": [
+          {
+            "due": {
+              "at": "2026-11-01T23:59:59Z"
+            },
+            "id": "paid_as_agreed",
+            "owed": {
+              "amount_minor": 6000,
+              "currency": "USD"
+            },
+            "owed_by": "buyer",
+            "recomputed": true,
+            "window_end": {
+              "at": "2026-11-04T23:59:59Z"
+            }
+          },
+          {
+            "due": {
+              "after": "paid",
+              "seconds": 345600
+            },
+            "id": "delivered",
+            "owed": {
+              "item": "ceramic lamp",
+              "quantity": 1
+            },
+            "owed_by": "seller",
+            "window_end": {
+              "after": "paid",
+              "seconds": 604800
+            }
+          },
+          {
+            "due": {
+              "after": "received",
+              "seconds": 0
+            },
+            "id": "as_described",
+            "owed": {
+              "listing": "as published"
+            },
+            "owed_by": "seller",
+            "window_end": {
+              "after": "received",
+              "seconds": 1209600
+            }
+          },
+          {
+            "due": {
+              "at": "2026-11-01T23:59:59Z"
+            },
+            "id": "paid_as_agreed",
+            "owed": {
+              "amount_minor": 6000,
+              "currency": "USD"
+            },
+            "owed_by": "buyer",
+            "recomputed": true,
+            "window_end": {
+              "at": "2026-11-04T23:59:59Z"
+            }
+          }
+        ]
+      },
+      "to": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+      "witnesses": [
+        {
+          "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+          "url": "https://witness.example"
+        }
+      ]
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T09:30:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "propose"
+    }
+  }
+}

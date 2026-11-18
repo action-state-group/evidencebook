@@ -1,0 +1,48 @@
+{
+  "fixture": "neg-unknown-block-member",
+  "expect": "invalid",
+  "description": "a block member the profile does not name",
+  "base": "appendix-a/buyer-book/02-payment.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "check": {
+        "digest": "fd70943ccc9f6407cbe9d3f87b284743ef9209864b8a34c9140b6a01fc240cec",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "leg": "payer",
+      "statements": [
+        {
+          "row": "paid_as_agreed",
+          "value": "met"
+        }
+      ]
+    },
+    "x-deal-v1": {
+      "agreement_ref": {
+        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "amount": 6000,
+      "at": "2026-11-01T10:15:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "marks": [
+        "paid"
+      ],
+      "prev": {
+        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "profile": "x-deal-v1",
+      "record_type": "settle",
+      "seen": "65c144472537ff0a16ef07e67b939ac25899c2a245b6a93133d06938f5dcef74",
+      "seq": 2
+    }
+  }
+}

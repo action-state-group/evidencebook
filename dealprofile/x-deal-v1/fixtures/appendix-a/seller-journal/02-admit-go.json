@@ -1,0 +1,25 @@
+{
+  "fixture": "appendix-a/seller-journal/02-admit-go.json",
+  "expect": "valid",
+  "appendix_a_line": "14",
+  "story": "The seller's admission decision: GO; the buyer pays first.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "record_type": "admit",
+      "at": "2026-11-01T09:40:00Z"
+    },
+    "body": {
+      "outcome": "GO",
+      "tier": "buyer_pays_first",
+      "rows": [],
+      "asks": [],
+      "pack_digest": "c3e517696310ef348d437923ac232de72c54bbc0fd3de357cdf847cf1874c891",
+      "card_digest": "4291a3565d06ea99832b74905bbf42fc4ae82aeb7d9751ff11369a383c0ca1cf",
+      "answers": []
+    }
+  },
+  "expected_digest": "d7e0919bd0cecafe95c3b1fec7a40b14ec1dbd7f95735782df52464a037ebc70"
+}

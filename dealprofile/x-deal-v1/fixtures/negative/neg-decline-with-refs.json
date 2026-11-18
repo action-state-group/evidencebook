@@ -1,0 +1,30 @@
+{
+  "fixture": "neg-decline-with-refs",
+  "expect": "invalid",
+  "description": "a decline names nothing beyond the offer it answers",
+  "base": "not-started/seller-journal/01-decline.json",
+  "check": "record",
+  "expected_stage": "record",
+  "expected_error_contains": "carries no refs, marks or counterparty",
+  "record": {
+    "body": {
+      "kind": "decline",
+      "offer": {
+        "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "reason": "other"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T09:40:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "marks": [
+        "declined"
+      ],
+      "profile": "x-deal-v1",
+      "record_type": "agree"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "fixture": "neg-agreement-not-first",
+  "expect": "invalid",
+  "description": "an agreement opens its deal book",
+  "base": "appendix-a/seller-book/01-agreement.json",
+  "check": "record",
+  "expected_stage": "record",
+  "expected_error_contains": "an agreement opens its deal book",
+  "record": {
+    "body": {
+      "adjudicator": {
+        "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+        "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+        "rules_url": "https://adjudicator.example/rules"
+      },
+      "admit": {
+        "digest": "d7e0919bd0cecafe95c3b1fec7a40b14ec1dbd7f95735782df52464a037ebc70",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "checkpoint_key": "940fab80bbce844c05e9a1b7c130f5d7af3e647bd7ced8a2f2b9a2b12c0cdd48",
+      "counterparty_key": "232935bcfec4f81878f57637a9c5db1b71b180b9c11ec4e87365db9723f3ba52",
+      "counterparty_layer": true,
+      "forums": [
+        "auto:ref"
+      ],
+      "kind": "agreement",
+      "offer": {
+        "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "role": "seller",
+      "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+      "shelf_log_id": "339454e2bf986b16cdb650079dfc333a386a09d6b47d701804dd96b234cb63e5",
+      "side": "acceptor",
+      "witnesses": [
+        {
+          "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+          "url": "https://witness.example"
+        }
+      ]
+    },
+    "x-deal-v1": {
+      "agreement_ref": {
+        "digest": "429aa20acc06236999d3c3e15fc7c010c847b165dba963f851f0a3ff6b65f4f7",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "at": "2026-11-01T09:45:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "prev": {
+        "digest": "429aa20acc06236999d3c3e15fc7c010c847b165dba963f851f0a3ff6b65f4f7",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "profile": "x-deal-v1",
+      "record_type": "agree",
+      "seen": null,
+      "seq": 2
+    }
+  }
+}

@@ -473,10 +473,6 @@ func checkBody(r Record) error {
 		if err := s.Validate(doc); err != nil {
 			return stageErr(StageSchema, "the check body is not v0's body_check: %v", err)
 		}
-	case *StatementBody:
-		if body.Names != nil && (body.Names.Cancellation == nil) == (body.Names.Ruling == nil) {
-			return bad("a statement names one arrived record: a cancellation or a ruling")
-		}
 	}
 	return nil
 }

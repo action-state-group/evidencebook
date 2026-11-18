@@ -1,0 +1,25 @@
+{
+  "fixture": "not-started/buyer-journal/01-cancellation.json",
+  "expect": "valid",
+  "appendix_a_line": "last paragraph",
+  "story": "The seller agreed and the buyer changed its mind: it cancels its own offer.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "agree",
+      "at": "2026-11-01T09:50:00Z"
+    },
+    "body": {
+      "kind": "cancellation",
+      "offer": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737"
+      }
+    }
+  },
+  "expected_digest": "0806248b4bd341563497ff3cb63d751226e47ffd8a653c1bc79957b4b0b3e326"
+}

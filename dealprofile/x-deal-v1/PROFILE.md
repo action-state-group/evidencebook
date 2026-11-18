@@ -1,0 +1,295 @@
+# x-deal-v1: the deal record profile
+
+**Status: draft, v1. Not registered.** This profile ships with EvidenceBook beside x-deal-v0
+(`dealprofile/x-deal-v0/`), which stays the default and stays readable. It is the record format
+of the evidence layer's deal (evidencebook#461 step 5). The design note
+[docs/design/461-deal-profile.md](../../docs/design/461-deal-profile.md) holds the reasons and the
+sources for each rule below; this document states the rules a record must meet. Sections of that
+note are cited as "design note §N".
+
+Files in this directory:
+
+| File | What it is |
+|---|---|
+| `PROFILE.md` | This document. |
+| `x-deal-v1.schema.json` | JSON Schema (Draft 2020-12) for one record: the block and each v1 body. The journal and journey overlays keep v0's bodies, which `x-deal-v0/x-deal-v0.schema.json` defines. |
+| `fixtures/` | The deal of the integrated design's Appendix A, record by record, and one negative for each record check (section 9). Its README says how they are built. |
+
+The Go package is `dealprofile/xdealv1`. The key words MUST, MUST NOT, SHOULD and MAY are used as
+in BCP 14 (RFC 2119, RFC 8174).
+
+## 1. What a deal record is
+
+A record is a JSON object with exactly two members: the profile block, named `x-deal-v1`, and
+`body`.
+
+```json
+{"x-deal-v1": {"profile": "x-deal-v1", "canonicalization": "jcs", "deal_id": "deal-…",
+               "record_type": "settle", "at": "2026-11-01T10:15:00Z", "seq": 2, …},
+ "body": {"leg": "payer", "statements": [{"row": "paid_as_agreed", "value": "met"}], …}}
+```
+
+Records are closed: a member the schema does not name fails the schema. Numbers are integers;
+a number written with a fraction or an exponent is refused before the schema. Text is read as
+written: invalid UTF-8, an escaped surrogate outside a pair and an object member given twice are
+refused, since a decoder would read them otherwise than the digest covers.
+
+**Versions** (design note §2.3). A record carries exactly one top-level member whose name matches
+`^x-deal-v[0-9]+$`, and its block's `profile` equals that name. A typed v0 record (one whose
+top-level `type` is a typed record or contract type of x-deal-v0 §9) carries no block and is v0.
+`dealprofile.Version` returns the version of a record and refuses one with two blocks, with a
+block and a typed `type`, or with neither. A reader that does not know a version refuses the
+record as unknown, never as invalid, and never reads it as another version.
+
+A book has the version of its first record, and a record of another version in it is invalid. A
+deal has one version on both sides: the offer's. A v0 half and a v1 half are never one deal.
+
+**Keys and fingerprints.** v1 uses v0's key derivations, fingerprints and commitments
+(`dealprofile.DealKey`, `ProfileKey`, `Fingerprint`, `CommitText`) unchanged. Their labels
+(`x-deal-v0/deal-key`, `x-deal-v0/profile-key`, `x-deal-v0/fp`) are frozen domain-separation
+labels, not the version of the record that uses them, so every fingerprint keeps its value.
+
+## 2. The block
+
+| Member | Req | Meaning |
+|---|---|---|
+| `profile` | REQUIRED | `"x-deal-v1"` |
+| `canonicalization` | REQUIRED | `"jcs"`. Any other value fails closed. |
+| `deal_id` | section 3 | `^deal-[0-9a-f]{16,64}$`, random and opaque, made by the offerer. |
+| `record_type` | REQUIRED | one of the types of section 4. |
+| `at` | REQUIRED | the author's own seal time, RFC 3339 UTC to the second with `Z`. It is the author's word, never a record time. |
+| `seq` | REQUIRED in a book | the record's position in its book, from 1, with no gaps. |
+| `prev` | REQUIRED iff `seq` > 1 | digest ref of the book's record at `seq - 1`. |
+| `agreement_ref` | REQUIRED iff in a deal book and `seq` > 1 | digest ref of the book's agreement. |
+| `seen` | REQUIRED in a deal book | the record id of the last record its author held from the other side, or `null` (section 6). |
+| `refs` | per type | typed citations of earlier records, as v0's rel refs. |
+| `marks` | OPTIONAL | the named records (the `named` of the rows) this record is, such as `["paid"]`. |
+| `counterparty` | OPTIONAL | v0's fingerprint block. |
+| `producer`, `commit_alg` | OPTIONAL | as v0. |
+
+Every time a record carries, in its block or its body, MUST name an instant that exists: a time
+the pattern admits but the calendar does not (`2026-11-31T15:00:00Z`) is refused.
+
+**Digest.** The record digest is `lowercase_hex(SHA-256(JCS(record)))` over the whole record,
+with no normalization. A digest ref is `{"type": "deal-record", "digest_alg": "SHA-256",
+"digest": "<64 hex>"}`. `prev`, `agreement_ref`, `refs` and an agreement's `offer` cite record
+digests.
+
+**Record id.** The record id is the Capsule id of the sealed book record. It names a record in
+`seen` and in a ruling's `read`. It is not the record digest.
+
+## 3. Where `deal_id` is present
+
+- REQUIRED on every deal-book record, on `ruling`, and on the journal records that serve one deal:
+  `propose`, `agree` of every kind, the journal overlay's `check` and `verdict`, an `approval`
+  that answers a verdict, an `ask` or `answer` between the two parties of a deal, and a journey
+  record sealed after its offer exists.
+- ABSENT on the journal records that predate or span deals: an `approval` whose choice is
+  `confirm_limits`, `intent`, `admit`, an `ask` or `answer` of an admission, `sale`, `thread`,
+  `thread_opened`, `sale_unpost`, `counterparty_profile`, `disclosure`, and a journey record
+  sealed before any offer.
+
+A journey record (`message`, `claim`, `evidence`, `detail_change`, `agent_move`) and a journal
+`ask` or `answer` cannot show on their own which case they are: the sealer knows whether the
+offer exists and whether the ask is of an admission. `xdealv1.CheckSealed` takes that context
+(`SealContext`) and applies the rule; `xdealv1.Check` admits either.
+
+## 4. The record types, and where each is sealed
+
+| Type | What it records | Where sealed |
+|---|---|---|
+| `propose` | an offer or a counter-offer | the offerer's journal; sent whole (section 7) |
+| `agree` | `kind` `agreement`; `decline`; `cancellation` | an agreement opens a deal book at `seq` 1; a decline or cancellation is in the journal and sent whole |
+| `perform` | a delivery or other act; a remedy that is not a payment | deal book |
+| `settle` | a payment leg: payment, payment received, refund or another remedy that is a payment | deal book |
+| `statement` | statements with no act; the record that names an arrived cancellation or ruling | deal book |
+| `dispute` | `kind` `dispute`, `withdrawal` or `challenge` | deal book |
+| `ruling` | the adjudicator's ruling | the adjudicator's case book (no `seen`, no `agreement_ref`) |
+| `ask`, `answer` | an evidence request and its outcome, wrapping the library's documents | the journal, or the deal book when between the two parties (it then has a `seq`) |
+| `admit` | an admission decision | journal |
+
+**The journal overlay**, sealed in the journal only and never sent, with v0's bodies: `intent`,
+`check` (v0's body plus `payment_ref`, the reference a payment will be made under), `verdict`
+(the answer to one check, with exactly one `checks` ref) and `approval` (its `approves` ref names
+the verdict, or on `confirm_limits` the intent).
+
+**The deal-book overlay**: `rules_verdict`, with v0's body, sealed in the party's own deal book
+once the holder computes the deal settled, at most one per deal.
+
+**The journey overlay**, with v0's bodies, sealed in the journal only: `message`, `claim`,
+`evidence`, `detail_change`, `agent_move`, `disclosure`, `sale`, `thread`, `thread_opened`,
+`sale_unpost`, `counterparty_profile`. A reader that does not know an overlay type keeps the
+record and ignores it. Overlay records are no input to the deal's start, its statements, its row
+status or a card.
+
+v0's `baseline`, `action`, `close`, `outcome`, `outcome_note`, `sale_cut` and `sale_close` have no
+v1 counterpart: a v1 book opens with its agreement, an act is a `perform` or `settle`, and a deal
+is settled by computation, with no close.
+
+**Placement rules.** A record in a deal book or a case book carries `seq`, and `prev` exactly when
+`seq` > 1. A deal-book record carries `seen`, and `agreement_ref` exactly when `seq` > 1. A deal
+book opens with its agreement, and an agreement is only ever at `seq` 1. A journal record carries
+no `seq`, `prev`, `agreement_ref` or `seen`, so a record sent whole shows no place in the journal.
+A decline or cancellation also carries no `refs`, `marks` or `counterparty`.
+
+## 5. The bodies
+
+The schema gives every member. The rules the schema cannot express are these.
+
+A **statement item** is `{"row", "value", "remedy"?}`; `value` is `met`, `not_met` or
+`cannot_tell`; `remedy` is set only on a statement that chooses a remedy.
+
+**`propose`.** `role` (the offerer's), `to` (the key the offer is addressed to, or `null` for a
+counterparty with no layer), `counter_to`, `terms`, `pack_digest`, `pack_url`, `stated_at`,
+`agree_by`, `terms_rows`, `adjudicator` (or `null`), `forums`, `witnesses`, `ask`, `profiles`,
+`listing_digest`.
+
+- `terms_rows` holds `rows` and `named`. A row id is given once. A date is an instant (`at`) or
+  hangs on a named record (`after`, with `seconds`), and a named record a row hangs on MUST be in
+  `named`.
+- `forums` is the recourse clause: the forums the offerer accepts for a dispute. It is empty
+  exactly when `adjudicator` is `null`, and such an offer allows no dispute.
+- `witnesses` names each witness by its key id, with its URL as a hint. A key id is named at most
+  once, whatever its URLs.
+
+**`agree`, kind `agreement`.** `offer`, `rows_digest`, `side` (`offerer` or `acceptor`), `role`,
+`admit`, `intent` (present when the holder sealed an intent for the task), `witnesses`,
+`adjudicator`, `forums`, `counterparty_layer`, `counterparty_key`, `checkpoint_key`,
+`shelf_log_id`.
+
+- With `counterparty_layer` `false`, `seen` and `counterparty_key` are `null`; with `true`,
+  `counterparty_key` names the counterparty's record key.
+- The acceptor's agreement comes first: its `seen` is `null`.
+- Read against the offer it cites (`xdealv1.CheckAgreement`): `offer` is that offer's record
+  digest and the deal ids match; `rows_digest` is the rows digest of the offer's `terms_rows`
+  (`xdealv1.RowsDigest`); `witnesses` name the offer's key ids, `adjudicator` is the offer's and
+  `forums` are the offer's as a set; the offerer's `role` is the offer's and the acceptor's is the
+  other; and an offerer's agreement with a layered counterparty names, in `seen`, the record id of
+  the acceptor's agreement it holds.
+
+**`agree`, kinds `decline` and `cancellation`.** `offer`, the digest ref of the offer it answers
+or withdraws; on a decline only, `reason` (`not_selected` or `other`); `reason_commitment`, a
+free-text reason committed with `sha256-jcs-nonce256`. `reason` and `reason_commitment` are
+OPTIONAL. No other member. A decline is signed by the
+key the offer was sent `to`; a cancellation by the offer's signer (section 7).
+
+**`perform`.** `act`, `observed`, `detail_commitment`, `statements`, `check` (the passing journal
+check it rests on), `remedy_for`.
+
+**`settle`.** `leg` (`payer` or `payee`), `statements`, `check` (REQUIRED on a payer leg),
+`supersedes`, `reverses` (the leg a refund reverses), `remedy_for` (`{"row", "ruling"?}`; a
+remedy counts by what it gives, so the ruling is never required). The leg itself travels as the
+Capsule's `settlement` member, as v0 carries it.
+
+**`statement`.** `statements` and `names`, which names one arrived record: a `cancellation` or a
+`ruling`, never both. A statement with empty `statements` and no `names` is invalid.
+
+**`dispute`.** Kind `dispute`: `row`, `statements` (the record digests of the statements on that
+row when it is sealed), `adjudicator` and `forum`. Read against its book's agreement
+(`xdealv1.CheckDispute`): its `agreement_ref` cites that agreement, the agreement names an
+adjudicator, `adjudicator` is that adjudicator's key id, and `forum` is one of the agreement's
+`forums`. Kind `withdrawal`: `row`. Kind `challenge`: `ruling` and `grounds_commitment`.
+
+**`ruling`.** `row`, `keys` (`buyer`, `seller`), `against` (`buyer`, `seller` or `null`), `value`
+(`met` or `not_met`), `remedy` (`kind`, `amount_minor` and `currency` together, `due`), `read` (per
+side, the last record id of that side's deal book the adjudicator read, or `null` for a book it did
+not read), `forum`, `rules_digest`, `final`. Read
+against the deal's agreement (`xdealv1.CheckRuling`): `forum` is one of the agreement's `forums`.
+That the agreement's adjudicator signed it is the reader's, from the ruling's Capsule.
+
+**`ask`, `answer`.** `ask` holds `request` (the digest ref of the library's request document) and
+`to` (`counterparty` or `adjudicator`); `answer` holds `request`, `outcome` (`evidence`,
+`refusal` or `absence`) and `answer` (the digest ref of the library's answer document).
+
+**`admit`.** `outcome` (`GO`, `ASK`, `LIMIT` or `NO`), `tier`, `rows`, `asks`, `pack_digest`,
+`card_digest`, `answers`.
+
+**`check`.** v0's `body_check`, plus `payment_ref`. Without `payment_ref` the body MUST be valid
+under v0's closed `body_check`.
+
+## 6. `seen`
+
+Every deal-book record carries `seen`. It is `null` only when its author holds nothing counted
+from the other side's deal book; otherwise it is the record id of the last record of that book
+the author holds (the library's counted prefix), read when the record is sealed. So the
+acceptor's agreement has `seen: null` and the offerer's names the acceptor's agreement. A deal
+book of a counterparty with no layer has `seen: null` throughout. Journal records, the overlays
+in the journal and `ruling` carry no `seen`.
+
+## 7. Records sent whole
+
+An offer, a decline and a cancellation leave the shelf whole. Each is sealed twice: as a journal
+book record whose payload commitment is the record digest, and as a standalone Capsule appended to
+no log, with `action_id` `"<deal_id>/sent"`, `action_type` `fyi`, no chain, no `references`,
+no `evidence_record_header`, and the record as its payload, so its `agent_input_digest` is the
+record digest. It travels as `{"record": <the Capsule>, "agent_input": <the record>}`.
+
+`xdealv1.VerifySent` reads such a pair on its own: the Capsule's signature, that the payload is
+the record whose digest is `agent_input_digest`, that the record passes sections 1 to 5, and,
+given the offer, that `offer` cites it and the signer is the one section 5 names. The pair does
+not show the record's place in the sender's journal, nor when it was written: `at` is the
+sender's word.
+
+## 8. Authorization of acts
+
+An act is a deal-book `perform` or `settle` that cites, in `check`, the check in its author's
+journal that it rests on. A payer leg always cites one. x-deal-v0's authorization conditions
+(x-deal-v0 §6, rules 5 and 6) hold unchanged, with that citation in place of v0's
+`authorized_by`: the check is of the act's action (`pay` for a payment leg, `cancel` for a leg
+that `reverses`, `commit` for a `perform`) and serves the act's deal; its verdict does not deny;
+the verdict's first approval proceeds, is not a `confirm_limits` and was sealed no later than the
+act; one approval authorizes one act; no journal record between the check and the act changes the
+details; and the limits in force are those the journal's intents and confirmed proposals set, in
+journal order. The journal is read in order and its `at` never decreases: a journal record whose
+`at` is earlier than the record before it is refused.
+
+`xdealv1.CheckAuthorizations(journal, acts)` checks them, refusing at the `authorization` stage,
+and returns per act the record digests the person signs:
+
+- the approval, when it is the person's own (approver `user` or `agent_card`): the person's
+  signature over the approval's record digest. The record's Capsule is signed by the holder's
+  record key, the agent's, which never stands for the person's.
+- every `confirm_limits` approval whose confirmed proposal put in force the `allowed` a
+  `standing_intent` approval relied on (`LimitApprovals`): the person's signature over each one's
+  record digest. Without it the agent could widen its own limits and then approve its own act.
+
+An act MUST NOT be relied on until the person's signature over each listed digest, from the
+person's own key, is held. The signature travels beside the approval record, never inside it, so
+it changes no record format; the member that carries it is defined in
+action-state-group/agent-action-capsule#627, not here (section 10). The person's signature
+certifies what the approval already says, no more: on a `user` approval, the person's own answer;
+on an `agent_card` approval, that the person answered the card the agent composed, which, as in
+x-deal-v0 §6 rule 6, is not consent in the person's own words.
+
+## 9. Checks, stages and fixtures
+
+A refusal names one stage:
+
+| Stage | What it checks | Go |
+|---|---|---|
+| `canonicalization` | the text, the integers, the block's `canonicalization` | `Check` |
+| `schema` | `x-deal-v1.schema.json`, and v0's `body_check` for a check | `Check` |
+| `record` | sections 2 to 6 on one record | `Check`, `CheckSealed` |
+| `agreement` | an agreement against its offer, a dispute or ruling against its agreement | `CheckAgreement`, `CheckDispute`, `CheckRuling` |
+| `authorization` | section 8 | `CheckAuthorizations` |
+| `sent` | a pair sent whole | `VerifySent` |
+
+`fixtures/` holds the deal of Appendix A as positive fixtures, each with its expected record
+digest (also in `fixtures/expected-digests.txt`), and `fixtures/negative/`, one record per check
+above that the schema or the record checks can reach, each with the stage and the call that
+refuses it. Every implementation of this profile MUST give each positive fixture its expected
+digest and refuse each negative at its stage. The vectors in `testdata/deal-v1/` cover the
+`deal_id` presence (`records/`), the decline and cancellation pairs (`decline/`) and the
+authorization of acts (`authorization/`).
+
+A reference checker for v1 in Python (`check_profile.py`, as v0 has), which design note §11.1
+item 2 lists with this profile, is not yet here; it follows in a later pull request of this step.
+
+## 10. Not defined here yet
+
+When a deal has started (design note §5), the stamp proof order (§7), the status and link values
+and how a received record is read (§8), and the sealed deal report (§9) are later parts of
+evidencebook#461 step 5 (design note §11.1, PRs 3 to 5). The member that carries the person's
+signature beside an approval (section 8) is defined in action-state-group/agent-action-capsule#627.
+Whether an intent itself, which a `standing_intent` approval rests on, must also carry the
+person's signature is an open question; until it is answered, section 8 asks for none.

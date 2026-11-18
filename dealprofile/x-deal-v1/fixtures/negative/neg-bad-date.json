@@ -1,0 +1,41 @@
+{
+  "fixture": "neg-bad-date",
+  "expect": "invalid",
+  "description": "a time that names no instant",
+  "base": "appendix-a/buyer-book/03-receipt.json",
+  "check": "record",
+  "expected_stage": "record",
+  "expected_error_contains": "is not a UTC time",
+  "record": {
+    "body": {
+      "statements": [
+        {
+          "row": "delivered",
+          "value": "met"
+        }
+      ]
+    },
+    "x-deal-v1": {
+      "agreement_ref": {
+        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "at": "2026-11-31T15:00:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "marks": [
+        "received"
+      ],
+      "prev": {
+        "digest": "aa095eb54c7d4e519704a6fe250d88e481930103b1626cb91290bea3dadde34e",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "profile": "x-deal-v1",
+      "record_type": "statement",
+      "seen": "788cd522efb043b7448a388cf7ae55aea4827aa9185636a453267e0eb724e9aa",
+      "seq": 3
+    }
+  }
+}

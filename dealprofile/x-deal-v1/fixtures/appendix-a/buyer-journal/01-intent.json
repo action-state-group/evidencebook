@@ -1,0 +1,24 @@
+{
+  "fixture": "appendix-a/buyer-journal/01-intent.json",
+  "expect": "valid",
+  "appendix_a_line": "6",
+  "story": "The owner's words, committed; the limit of 60 dollars; the one allowed act, pay.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "record_type": "intent",
+      "at": "2026-11-01T09:00:00Z"
+    },
+    "body": {
+      "verbatim_commitment": "dc9e42c89b2b53de42954f5126f5204c79d3bb4a2d225dfeb27271eb1d956cd6",
+      "party_role": "buyer",
+      "max_total_minor": 6000,
+      "allowed": [
+        "pay"
+      ]
+    }
+  },
+  "expected_digest": "b77b53a74c6910c1e3193b2f6746e849bac40abab0367d234acf5dcb0358f454"
+}
