@@ -1,12 +1,13 @@
 # The Python stack for scripts/interop-resolved.sh, as evidencebook's CI pins it.
 # Locked with hashes, transitively, in interop-requirements.txt:
-#   uv pip compile scripts/interop-requirements.in --generate-hashes --no-emit-package checkpointed-local-log \
+#   uv pip compile scripts/interop-requirements.in --generate-hashes \
 #     --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o scripts/interop-requirements.txt
-# checkpointed-local-log itself is installed FIRST from its pinned commit with --no-deps (a
-# git checkout cannot be hash-pinned); its runtime dependencies are listed here so
-# the lock covers them: cbor2, scitt-cose, agent-action-capsule, cryptography.
+# checkpointed-local-log is the PyPI release evidencebook's CI pins, locked with the rest
+# (it carries the CLL -02 bare `sub` the Go side now writes); its runtime dependencies are
+# cbor2, scitt-cose, agent-action-capsule and cryptography.
 agent-action-capsule==0.16.0
-capsule-emit==0.15.0
+capsule-emit==0.17.0
+checkpointed-local-log==0.9.0
 cbor2>=5.5
 scitt-cose>=0.2.0
 cryptography>=42.0
