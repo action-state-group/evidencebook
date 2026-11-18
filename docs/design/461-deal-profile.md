@@ -1053,20 +1053,28 @@ such record, a record whose time is not yet known, and a known time.
     record, or a counterparty record its link value's `last_received` first reached). A reader
     resolves `{"stamp": n}` to the earliest receipt, from a witness the agreement names, of stamp
     `n`'s shelf checkpoint or of a later one (the library's `RecordTime` and
-    `ReceivedRecordTime` do the same for the holder), and leaves it untimed until one exists. A
-    fact never states a time for a record its own stamp is the first to cover: such a record is
-    `{"stamp": <this stamp>}`.
+    `ReceivedRecordTime` do the same for the holder), and, for a counterparty record, to the
+    earlier of that and the earliest named receipt of a counterparty stamp proof it holds that
+    covers the record (design §4.3: the first stamp on either shelf). That second source needs
+    receipts to travel with stamp proofs, which no form carries yet (section 9, Q8); until then a
+    counterparty record resolves from the holder's stamps only, which can be later than its §4.3
+    time. It stays untimed until a receipt exists. A fact never states a time for a record its
+    own stamp is the first to cover: such a record is `{"stamp": <this stamp>}`. `n` is a local
+    stamp index, not a digest, so it pairs with nothing on the other shelf.
   - *Statements carried.* Per row and side, in book order: every statement whose time is not
-    known; for each of those, the latest earlier statement of that side with a known time (the
-    lower bound rowstatus reads, `rowstatus.go:275-300`); the latest statement with a known time
+    known; for each of those, the earlier statement of that side with the greatest known time
+    (the lower bound rowstatus reads, `rowstatus.go:275-300`; a book's record times never
+    decrease, since a stamp covering a record covers those before it, so it is also the latest);
+    the latest statement with a known time
     not after the window end; and every statement with a known time after the window end that
     gives its author the other side's in-time value (a possible concession). While the window end
     is not known (its named record has no time), every statement is carried. Anything else is
     dropped, since rowstatus can never read it.
   - *Check.* A randomized differential test holds the selection to the invariant: for generated
-    rows, statements and times, `Compute` over the carried statements, with every `{"stamp": n}`
-    resolved to any time not before the fact, equals `Compute` over all statements, at every T at
-    or after the fact.
+    rows, statements and times, `Compute` over the carried statements equals `Compute` over all
+    statements at every T at or after the fact, with every `{"stamp": n}` resolved to a time not
+    before the fact for the holder's records, and to any time not before the record before it in
+    its book for the counterparty's (Sherlock2, on this proposal: P1 and P2).
 - **Vectors** (`testdata/deal-v1/status/`): **`times-three-cases`** (a named record not yet written,
   so its row's dates stay unset; a record first covered by this fact's stamp, resolved to a time and
   passed to rowstatus as that time; a record with a time already known); **`unwitnessed-then-witnessed`**
