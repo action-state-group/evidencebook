@@ -428,17 +428,16 @@ func reportRow(b RowBooks, agreed Row, in rowstatus.Input, src rowSources) (Repo
 			break
 		}
 	}
-	owing := b.Counterpart
+	// A remedy held for the row, ruled or not (Q5), is one of the records
+	// the row relied on.
+	var remedyRef *recRef
+	owing, owingBook := b.Counterpart, bookCounterpart
 	if own, _ := asAgree(b.Own[0].Record.Body); own.Role == agreed.OwedBy {
-		owing = b.Own
+		owing, owingBook = b.Own, bookOwn
 	}
-	for _, r := range owing {
-		if p, ok := bodyOf[PerformBody](r.Record.Body); ok && p.RemedyFor != nil && p.RemedyFor.Row == agreed.ID {
-			row.RemedyMade = true
-		}
-		if st, ok := bodyOf[SettleBody](r.Record.Body); ok && st.RemedyFor != nil && st.RemedyFor.Row == agreed.ID {
-			row.RemedyMade = true
-		}
+	if i := firstRemedy(len(owing), func(i int) Record { return owing[i].Record }, agreed.ID); i >= 0 {
+		row.RemedyMade = true
+		remedyRef = &recRef{owingBook, i}
 	}
 	var refs []recRef
 	for _, n := range slices.Sorted(mapKeys(src.named)) {
@@ -446,6 +445,9 @@ func reportRow(b RowBooks, agreed Row, in rowstatus.Input, src rowSources) (Repo
 	}
 	for _, list := range [][]recRef{src.statements, src.disputes, src.withdrawals, src.rulings, src.remedies} {
 		refs = append(refs, list...)
+	}
+	if remedyRef != nil {
+		refs = append(refs, *remedyRef)
 	}
 	seen := map[recRef]bool{}
 	for _, ref := range refs {
@@ -483,15 +485,23 @@ func reportCheck(agreed Row, check string) string {
 }
 
 // settled is design §9's: the deal has started, and every row that is not
-// not_reached is agreed, uncontested, or ruled with remedy none or made. A
-// remedy not counted keeps the deal unsettled.
+// not_reached is agreed (met, or not met with a remedy made), uncontested, or
+// ruled with remedy none or made. A remedy not counted keeps the deal
+// unsettled.
 func settled(start StartResult, rows []ReportRow) bool {
 	if start.State != StateStarted {
 		return false
 	}
 	for _, r := range rows {
 		switch r.Status {
-		case rowstatus.NotReached, rowstatus.Agreed, rowstatus.Uncontested:
+		case rowstatus.NotReached, rowstatus.Uncontested:
+		case rowstatus.Agreed:
+			// A row both sides agree was not met is remedied only by a
+			// remedy made (Steven's SH-16 ruling, design Q5; Sherlock2, #530
+			// review): the concession alone does not settle it.
+			if r.Value != nil && *r.Value == ValueNotMet && !r.RemedyMade {
+				return false
+			}
 		case rowstatus.Ruled:
 			if r.Remedy == nil || (*r.Remedy != rowstatus.RemedyNone && *r.Remedy != rowstatus.RemedyMade) {
 				return false
@@ -510,8 +520,9 @@ func settled(start StartResult, rows []ReportRow) bool {
 // book (a stamp checkpoints it; Report writes nothing), and whether the
 // book's last status fact is the status computed now. The host seals
 // ReportPayload with dealprofile.ReportCapsule as a standalone Capsule. It
-// refuses a book that is not a v1 deal book, and a book that grew past its
-// checkpoint or kept changing while it was read. Each shelf call takes the
+// refuses a book that is not a v1 deal book or holds a record that is not
+// readable as one, a shelf with no journal (it never creates one), and a book
+// that grew past its checkpoint or kept changing while it was read. Each shelf call takes the
 // shelf's lock, so it is never called from a stamp or a Receive.
 func (p *StatusProvider) Report(ctx context.Context, logID string, c ReportCopy) (Report, error) {
 	if p.Shelf == nil {
@@ -529,16 +540,17 @@ func (p *StatusProvider) Report(ctx context.Context, logID string, c ReportCopy)
 	if len(first) != 1 {
 		return Report{}, notV1
 	}
-	// Checked before the journal is opened, so a refused report leaves the
-	// shelf as it was.
 	if rec, kind, err := v1Payload(ctx, book, first[0]); err != nil {
 		return Report{}, err
 	} else if a, ok := asAgree(rec.Body); kind != payloadV1 || !ok || a.Kind != KindAgreement {
 		return Report{}, notV1
 	}
-	journal, err := p.Shelf.Journal(ctx)
+	journal, err := p.Shelf.ExistingJournal(ctx)
 	if err != nil {
 		return Report{}, err
+	}
+	if journal == nil {
+		return Report{}, fmt.Errorf("xdealv1: report: the shelf has no journal, which holds the deal's offer")
 	}
 	bookID := first[0].RecordID
 	for attempt := 0; attempt < 3; attempt++ {
@@ -573,8 +585,11 @@ func (p *StatusProvider) reportBooks(ctx context.Context, logID, bookID string, 
 	if !ok {
 		return ReportBooks{}, false, fmt.Errorf("xdealv1: report: book %s is not an x-deal-v1 deal book", logID)
 	}
-	if uint64(len(b.Own)) != size || book.Size() != size {
+	if book.Size() != size {
 		return ReportBooks{}, false, nil
+	}
+	if uint64(len(b.Own)) != size {
+		return ReportBooks{}, false, fmt.Errorf("xdealv1: report: book %s holds a record past seq %d that is not a readable x-deal-v1 record", logID, len(b.Own))
 	}
 	rb := ReportBooks{Books: b, Counterpart: counterpart,
 		Own:        ReportLog{LogID: logID, Size: size, Last: b.Own[len(b.Own)-1].RecordID},

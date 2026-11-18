@@ -386,7 +386,11 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
     remedy is counted until the profile defines its terms leg, so the report never says such a
     remedy is due or not honoured. A page shows "remedy is a payment, not checked". The deal is not
     settled while one is. `remedy_made` says the owing side's book holds a remedy for the row,
-    ruled or not.
+    ruled or not, and that record is in the row's `relied_on`.
+  - A refund after a concession settles: an `agreed` row whose value is `not_met` counts toward
+    `settled` only with `remedy_made` (Steven's SH-16 ruling). A ruled refund does not settle yet,
+    because the ruling sets an amount and a date the report cannot check until the remedy's terms
+    leg is defined.
   - `disputes` lists one entry per `dispute` record, with its outcome. `rulings_unnamed` (absent
     at zero) counts the adjudicator's counted rulings the holder holds that neither book names; a
     page shows "ruling held, unnamed" beside an `open` outcome.
@@ -394,7 +398,7 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
     status computed now. A page never presents a fact that is not current as the deal's status.
 - **What it rests on.** A report is computed from what the holder held at `as_of`: no record it
   rests on is timed after `as_of`. From a shelf, it rests on the holder's book at its latest
-  checkpoint, which covers the whole book; making a report writes nothing.
+  checkpoint, which covers the whole book; making a report writes nothing, the journal included.
 - **Audiences.** `keep` and `counterparty` copies list the rows. An `adjudicator` copy names its
   `referee`, has `rows_state` `withheld` and no rows, and carries neither the counterparty's
   prefix, the witnesses, the disputes nor `rulings_unnamed`.

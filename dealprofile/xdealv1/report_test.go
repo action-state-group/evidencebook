@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/action-state-group/evidencebook/rowstatus"
 	"github.com/stretchr/testify/assert"
@@ -117,6 +118,8 @@ func TestBuildReportAppendixA(t *testing.T) {
 		row := rowByID(t, at(as), "as_described")
 		assert.Equal(t, strp(RemedyNotCounted), row.Remedy, as)
 		assert.True(t, row.RemedyMade, "%s: the refund is held", as)
+		refund := b.Counterpart[len(b.Counterpart)-1]
+		assert.Contains(t, row.ReliedOn, ReportSource{Record: refund.RecordID, Side: RoleSeller, Time: refund.Time.known(), Witnessed: true}, as)
 	}
 	r = at("2026-11-28T12:00:00Z")
 	assert.False(t, r.Settled)
@@ -303,6 +306,19 @@ func TestBuildReportSettledWithoutRuling(t *testing.T) {
 	assert.True(t, row.RemedyMade, "the refund outside a ruling (Q5)")
 	assert.Nil(t, row.Ruling)
 	assert.True(t, r.Settled)
+	b := settledWithoutRuling(t)
+	refund := b.Counterpart[len(b.Counterpart)-1]
+	assert.Contains(t, row.ReliedOn, ReportSource{Record: refund.RecordID, Side: RoleSeller, Time: refund.Time.known(), Witnessed: true}, "the remedy made is a record the row relied on")
+
+	// The concession alone does not settle (Sherlock2, #530 review).
+	conceded := settledWithoutRuling(t)
+	conceded.Counterpart = conceded.Counterpart[:len(conceded.Counterpart)-1]
+	r, err = BuildReport(reportBooks(t, conceded), keepCopy("2026-12-01T12:00:00Z"))
+	require.NoError(t, err)
+	row = rowByID(t, r, "as_described")
+	assert.Equal(t, rowstatus.Agreed, row.Status)
+	assert.False(t, row.RemedyMade)
+	assert.False(t, r.Settled)
 }
 
 func TestBuildReportNoWitnesses(t *testing.T) {
@@ -343,10 +359,18 @@ func TestBuildReportRefuses(t *testing.T) {
 // settled (design §9, the settled vectors).
 func TestSettled(t *testing.T) {
 	started := StartResult{State: StateStarted}
-	row := func(status, remedy string) ReportRow {
-		r := ReportRow{Status: status}
-		if remedy != "" {
-			r.Remedy = &remedy
+	// A row is status, then ":" and its remedy (ruled) or value (agreed),
+	// then "+made" for a remedy held.
+	row := func(s string) ReportRow {
+		s, made := strings.CutSuffix(s, "+made")
+		status, extra, _ := strings.Cut(s, ":")
+		r := ReportRow{Status: status, RemedyMade: made}
+		switch {
+		case extra == "":
+		case status == rowstatus.Ruled:
+			r.Remedy = &extra
+		default:
+			r.Value = &extra
 		}
 		return r
 	}
@@ -365,12 +389,14 @@ func TestSettled(t *testing.T) {
 		{"ruled-remedy-not-honoured", true, []string{"agreed", "ruled:not_honoured"}, false},
 		{"every-row-not-reached", true, []string{"not_reached", "not_reached"}, true},
 		{"in-dispute", true, []string{"agreed", "in_dispute"}, false},
+		{"ruled-remedy-not-counted", true, []string{"agreed", "ruled:not_counted+made"}, false},
+		{"conceded-not-met-without-remedy", true, []string{"agreed:met", "agreed:not_met"}, false},
+		{"conceded-not-met-remedy-made", true, []string{"agreed:met", "agreed:not_met+made"}, true},
 	}
 	for _, c := range cases {
 		var rows []ReportRow
 		for _, s := range c.Rows {
-			status, remedy, _ := strings.Cut(s, ":")
-			rows = append(rows, row(status, remedy))
+			rows = append(rows, row(s))
 		}
 		st := StartResult{State: StateNotStarted}
 		if c.Started {
@@ -379,7 +405,7 @@ func TestSettled(t *testing.T) {
 		assert.Equal(t, c.Settled, settled(st, rows), c.Name)
 	}
 	writeOrCompare(t, filepath.Join("../../testdata/deal-v1/settled", "vectors.json"), map[string]any{
-		"description": "x-deal-v1 settled (docs/design/461-deal-profile.md §9): a deal is settled when it has started and every row that is not not_reached is agreed, uncontested, or ruled with remedy none or made. Each row is \"status\" or \"ruled:remedy\". Written by dealprofile/xdealv1's TestSettled (EB_WRITE_DEAL_V1_VECTORS=1).",
+		"description": "x-deal-v1 settled (docs/design/461-deal-profile.md §9): a deal is settled when it has started and every row that is not not_reached is agreed (met, or not met with a remedy made), uncontested, or ruled with remedy none or made. Each row is \"status\", \"ruled:remedy\" or \"agreed:value\", with \"+made\" for a remedy held. Written by dealprofile/xdealv1's TestSettled (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
 	})
 }
@@ -437,6 +463,9 @@ func TestReportVectors(t *testing.T) {
 	add("counterparty-without-layer", reportBooks(t, noLayer), keepCopy("2026-11-09T12:00:00Z"))
 
 	add("settled-without-ruling", reportBooks(t, settledWithoutRuling(t)), keepCopy("2026-12-01T12:00:00Z"))
+	conceded := settledWithoutRuling(t)
+	conceded.Counterpart = conceded.Counterpart[:len(conceded.Counterpart)-1]
+	add("conceded-without-refund", reportBooks(t, conceded), keepCopy("2026-12-01T12:00:00Z"))
 	add("no-witnesses", reportBooks(t, noWitnesses(t, "2026-11-09T12:00:00Z")), keepCopy("2026-11-09T12:00:00Z"))
 
 	unnamed := heldAt(b, "2026-11-21T12:00:00Z")
@@ -557,4 +586,17 @@ func TestStatusProviderReport(t *testing.T) {
 
 	_, err = d.buyer.status.Report(ctx, "deal/ffffffffffffffffffffffffffffffff", keepCopy(at))
 	assert.Error(t, err, "no such book")
+
+	// A record not readable as x-deal-v1 (a retention change's lifecycle
+	// record) is a permanent refusal, not ErrBusy (the stand-in, #530 review).
+	recs, err := book.Query(ctx, evidencebook.Filter{FromSeq: 2, ToSeq: 2})
+	require.NoError(t, err)
+	_, err = book.SetRetention(ctx, recs[0].RecordID, evidencebook.Withheld, "test")
+	require.NoError(t, err)
+	d.buyer.tick()
+	_, err = d.buyer.cadence.Stamp(ctx, d.buyer.now)
+	require.NoError(t, err)
+	_, err = d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
+	require.ErrorContains(t, err, "not a readable x-deal-v1 record")
+	assert.NotErrorIs(t, err, evidencebook.ErrBusy)
 }

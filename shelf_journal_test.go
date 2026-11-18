@@ -210,3 +210,28 @@ func TestTheJournalRefusesTheCadenceLogsID(t *testing.T) {
 		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t)})
 	assert.NoError(t, err, "the cadence still opens")
 }
+
+// ExistingJournal never creates the journal: nil on a shelf without one,
+// which a later Journal still creates; the journal once it exists.
+func TestExistingJournalNeverCreatesIt(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newStampCadence(t, shelf)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("a", "1"))
+	mustTick(t, c, tickTime)
+	none, err := shelf.ExistingJournal(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, none, "before Migrate")
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	none, err = shelf.ExistingJournal(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, none, "migrated, no journal yet")
+	kind, err := shelf.logKind(ctx, JournalLogID)
+	require.NoError(t, err)
+	assert.NotEqual(t, logKindJournal, kind, "nothing registered")
+	journal, err := shelf.Journal(ctx)
+	require.NoError(t, err)
+	got, err := shelf.ExistingJournal(ctx)
+	require.NoError(t, err)
+	assert.Same(t, journal, got)
+}

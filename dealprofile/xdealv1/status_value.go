@@ -464,15 +464,26 @@ func effectiveRuling(b StatusBooks, row string, conflicting bool) *RulingBody {
 // remedyMade is the time of the owing side's first settle or perform whose
 // remedy_for is the row, ruled or not (design §8.1, Q5); None for none.
 func remedyMade(book []StatusRecord, row string) StatusTime {
-	for _, r := range book {
-		if p, ok := bodyOf[PerformBody](r.Record.Body); ok && p.RemedyFor != nil && p.RemedyFor.Row == row {
-			return r.Time
-		}
-		if s, ok := bodyOf[SettleBody](r.Record.Body); ok && s.RemedyFor != nil && s.RemedyFor.Row == row {
-			return r.Time
-		}
+	if i := firstRemedy(len(book), func(i int) Record { return book[i].Record }, row); i >= 0 {
+		return book[i].Time
 	}
 	return NoTime
+}
+
+// firstRemedy is the index of the first of n records (record(i)) that is a
+// settle or perform whose remedy_for is the row, -1 for none: the one rule
+// the status value and the report both read a remedy made by.
+func firstRemedy(n int, record func(i int) Record, row string) int {
+	for i := 0; i < n; i++ {
+		r := record(i)
+		if p, ok := bodyOf[PerformBody](r.Body); ok && p.RemedyFor != nil && p.RemedyFor.Row == row {
+			return i
+		}
+		if s, ok := bodyOf[SettleBody](r.Body); ok && s.RemedyFor != nil && s.RemedyFor.Row == row {
+			return i
+		}
+	}
+	return -1
 }
 
 // disputesOf is each dispute record of kind dispute on the row, of either

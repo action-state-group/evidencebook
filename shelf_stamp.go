@@ -839,6 +839,18 @@ func (s *Shelf) Openings(ctx context.Context, bookID string, audience Audience) 
 	return out, rows.Err()
 }
 
+// ExistingJournal is the shelf's journal when the shelf has one, nil
+// otherwise. Unlike Journal it never creates it, so a reader (a report)
+// changes nothing.
+func (s *Shelf) ExistingJournal(ctx context.Context) (*Book, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.released {
+		return nil, ErrReleased
+	}
+	return s.existingJournalLocked(ctx)
+}
+
 // existingJournalLocked is the shelf's journal if the shelf has one, nil
 // otherwise: a stamp hands it to a BookStatusProvider and must not create it.
 func (s *Shelf) existingJournalLocked(ctx context.Context) (*Book, error) {
