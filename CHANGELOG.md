@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v0.17.0 (2026-11-17)
+## v0.17.0 (2026-11-18)
 
 ### Changed: x-deal-v1 `admit`, `check`, `verdict` and `approval` carry a nonce (u528)
 
