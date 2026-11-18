@@ -22,15 +22,23 @@ fn invalid(m: impl Into<String>) -> Invalid {
 
 /// A row date: a fixed time, or a number of seconds after a named record's
 /// time.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Date {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub after: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub seconds: i64,
+}
+
+fn is_zero(v: &i64) -> bool {
+    *v == 0
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 /// A record a date hangs on: its time once it has one, and the latest time
@@ -45,7 +53,7 @@ pub struct Named {
 }
 
 /// One term row.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Row {
     #[serde(default)]
@@ -56,7 +64,7 @@ pub struct Row {
     pub due: Date,
     #[serde(default)]
     pub window_end: Date,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub recomputed: bool,
 }
 

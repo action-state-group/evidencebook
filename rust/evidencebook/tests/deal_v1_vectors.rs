@@ -42,3 +42,27 @@ fn start_book_vectors() {
         assert_eq!(serde_json::to_value(&got).unwrap(), c["expect"], "{name}: result");
     }
 }
+
+/// status/vectors.json: BuildStatus over each case's books gives its status
+/// value, and rowstatus over each row resolved at `at` with `stamps` gives
+/// its row result.
+#[test]
+fn status_vectors() {
+    use std::collections::BTreeMap;
+    for c in vectors("status/vectors.json") {
+        let name = c["name"].as_str().unwrap();
+        let books: v1::StatusBooks = serde_json::from_value(c["books"].clone()).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let got = v1::build_status(&books).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(serde_json::to_value(&got).unwrap(), c["status"], "{name}: status value");
+        let at = c["at"].as_str().unwrap();
+        let stamps: BTreeMap<u64, String> = match c.get("stamps") {
+            Some(s) => serde_json::from_value(s.clone()).unwrap(),
+            None => BTreeMap::new(),
+        };
+        for row in &got.rows {
+            let input = v1::resolve_row(row, at, &stamps).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let res = evidencebook::row_status::compute(&input).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(Some(res.status.as_str()), c["rows"][&row.id].as_str(), "{name}, row {}", row.id);
+        }
+    }
+}

@@ -16,6 +16,8 @@ mod check;
 mod names;
 mod record;
 mod start;
+mod status_rows;
+mod status_value;
 mod types;
 
 pub use check::{
@@ -29,5 +31,13 @@ pub use start::{
     start, start_from_books, BookRecord, FirstAct, StartBooks, StartInput, StartResult,
     BY_ACCEPTOR_NAMED, BY_FIRST_ACT, BY_OFFERER_IN_TIME, STATE_AWAITING_AGREEMENT,
     STATE_NOT_STARTED, STATE_STARTED,
+};
+pub use status_rows::{row_inputs, RowBooks, TimedRecord};
+pub use status_value::{
+    build_status, resolve_row, PaymentResult, StatusAdjud, StatusBooks, StatusDispute,
+    StatusNamed, StatusRecord, StatusRow, StatusRowDispute, StatusRowInput, StatusRuling,
+    StatusSideTime, StatusStart, StatusStatement, StatusTime, StatusTimeOnly, StatusValue,
+    ValueBand, OUTCOME_AGAINST_CLAIMANT, OUTCOME_FOR_CLAIMANT, OUTCOME_NO_FINDING, OUTCOME_OPEN,
+    OUTCOME_WITHDRAWN,
 };
 pub use types::*;

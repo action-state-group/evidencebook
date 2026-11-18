@@ -555,7 +555,7 @@ const HISTORY_ASSET_SCALES: &[(&str, u8)] = &[("BTC", 11)];
 
 /// The `assetScale` of a deal's `amount_minor` in `currency`: the explicit
 /// table above, else the ISO 4217 minor units.
-fn history_asset_scale(currency: &str) -> Option<u8> {
+pub(crate) fn history_asset_scale(currency: &str) -> Option<u8> {
     HISTORY_ASSET_SCALES
         .iter()
         .find(|(c, _)| *c == currency)
