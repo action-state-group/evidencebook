@@ -975,8 +975,14 @@ def forget(shelf: Any, deal_id: str, now: datetime, settled: Callable[[str], boo
 
 
 def counted_prefix(shelf: Any, sender_key: str, log_id: str) -> CountedPrefix:
+    # One read transaction: the records and the recorded forks are of one
+    # store state, as Go reads them (evidencebook#543).
     with _reader(shelf) as db:
-        p = _prefix(db, sender_key, log_id)
+        db.execute("BEGIN")
+        try:
+            p = _prefix(db, sender_key, log_id)
+        finally:
+            db.execute("ROLLBACK")
     return CountedPrefix(len(p.counted), p.counted[-1][0] if p.counted else "", p.fork_at)
 
 

@@ -1031,3 +1031,32 @@ def test_held_proofs_read_one_snapshot(make, holder, monkeypatch):
     monkeypatch.setattr(shelf_held, "_prefix", real)
     after = s.held_proofs("alice", "deal/a")[0]
     assert after.recomputed and after.covers == len(records)
+
+
+def test_counted_prefix_reads_one_snapshot(make, monkeypatch):
+    # evidencebook#543: receives that commit between the read of the records
+    # and the read of the recorded forks (the prefix grows to a2, then two
+    # records at 5 fork it) are seen whole or not at all; two snapshots would
+    # give the old size with the new fork, a state the store never held.
+    from evidencebook import shelf_receive
+
+    fx, s = make()
+    ok(s, chain("alice", "deal/a", "deal-1", 1, "a1"))
+    real = shelf_receive._row
+    landed = []
+
+    def row_then_write(values):
+        if not landed:
+            landed.append(True)
+            ok(s, chain("alice", "deal/a", "deal-1", 2, "a2", "a1"))
+            ok(s, chain("alice", "deal/a", "deal-1", 5, "a5", "a4"))
+            ok(s, chain("alice", "deal/a", "deal-1", 5, "a5-other", "a4"))
+        return real(values)
+
+    monkeypatch.setattr(shelf_receive, "_row", row_then_write)
+    got = s.counted_prefix("alice", "deal/a")
+    monkeypatch.setattr(shelf_receive, "_row", real)
+    assert landed
+    assert (got.size, got.last, got.fork_at) == (1, dg("a1"), 0), "the state before the receives"
+    after = s.counted_prefix("alice", "deal/a")
+    assert (after.size, after.last, after.fork_at) == (2, dg("a2"), 5), "and after them"

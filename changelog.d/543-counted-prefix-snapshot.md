@@ -1,0 +1,1 @@
+- **Fixed (shelf):** `Shelf.CountedPrefix`, and the duplicate path of a receive, now read a sender's records and recorded forks in one read-only transaction (evidencebook#543). A receive that committed between the two reads could give a size and a fork position from different store states, and the x-deal-v1 receive gate reads that prefix.
