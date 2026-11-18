@@ -1046,6 +1046,27 @@ such record, a record whose time is not yet known, and a known time.
   (4.3), at every T at or after that fact's stamp, and for every later fact of the book.
 - **Owner:** PR 4 (the status value). Its encoding of times and its statement selection are that
   PR's to define against this invariant; this note fixes neither.
+- **Proposed by PR 4c** (for review):
+  - *Times.* A time in a fact is one of three values: a string, the record's known time; `null`,
+    no such record (a named record not yet written); or `{"stamp": n}`, a record whose time is not
+    known when the fact is written, where `n` is the holder's first stamp that covers it (its own
+    record, or a counterparty record its link value's `last_received` first reached). A reader
+    resolves `{"stamp": n}` to the earliest receipt, from a witness the agreement names, of stamp
+    `n`'s shelf checkpoint or of a later one (the library's `RecordTime` and
+    `ReceivedRecordTime` do the same for the holder), and leaves it untimed until one exists. A
+    fact never states a time for a record its own stamp is the first to cover: such a record is
+    `{"stamp": <this stamp>}`.
+  - *Statements carried.* Per row and side, in book order: every statement whose time is not
+    known; for each of those, the latest earlier statement of that side with a known time (the
+    lower bound rowstatus reads, `rowstatus.go:275-300`); the latest statement with a known time
+    not after the window end; and every statement with a known time after the window end that
+    gives its author the other side's in-time value (a possible concession). While the window end
+    is not known (its named record has no time), every statement is carried. Anything else is
+    dropped, since rowstatus can never read it.
+  - *Check.* A randomized differential test holds the selection to the invariant: for generated
+    rows, statements and times, `Compute` over the carried statements, with every `{"stamp": n}`
+    resolved to any time not before the fact, equals `Compute` over all statements, at every T at
+    or after the fact.
 - **Vectors** (`testdata/deal-v1/status/`): **`times-three-cases`** (a named record not yet written,
   so its row's dates stay unset; a record first covered by this fact's stamp, resolved to a time and
   passed to rowstatus as that time; a record with a time already known); **`unwitnessed-then-witnessed`**
