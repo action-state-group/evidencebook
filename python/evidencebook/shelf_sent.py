@@ -64,6 +64,10 @@ def seal_sent(shelf: Any, entry: Any, members: dict, action_id: str) -> SealedSe
     with journal._lock:
         if journal._released:
             raise ReleasedError("the book is released")
+        # An earlier record left pending is committed first, apart from this
+        # one: its failure is raised, and what follows classifies this
+        # record's append alone.
+        journal._flush_pending()
         at = journal._now().astimezone(timezone.utc).replace(microsecond=0)
         try:
             capsule_id, capsule, envelope = seal_payload(

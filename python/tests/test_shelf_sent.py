@@ -153,6 +153,40 @@ def test_seal_sent_returns_a_committed_record_whose_indexing_failed(tmp_path):
     shelf.release()
 
 
+def test_seal_sent_raises_when_an_earlier_pending_record_fails_to_index(tmp_path):
+    # An earlier record left pending commits first; when its indexing fails,
+    # this sent record was never written, so seal_sent raises rather than
+    # return the earlier record with this Capsule.
+    shelf = migrated(tmp_path)
+    journal = shelf.journal()
+    real_append = journal._substrate.append
+    calls = {"n": 0}
+
+    def failing(record_id, at=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise sqlite3.OperationalError("disk I/O error")
+        return real_append(record_id, at)
+
+    journal._substrate.append = failing
+    with pytest.raises(CorruptError):
+        journal.append(Entry("observation", OBSERVED_EVENT, payloads=(b"earlier",)))
+    size = journal.size()
+    real_admit = journal._admit
+
+    def refusing(*args, **kwargs):
+        real_admit(*args, **kwargs)
+        raise RuntimeError("an index refused the record")
+
+    journal._admit = refusing
+    with pytest.raises(RuntimeError):
+        shelf.seal_sent(sent_entry(), {}, "deal-0123456789abcdef/sent")
+    journal._admit = real_admit
+    assert journal.size() == size + 1, "only the earlier record committed"
+    assert all(SENT not in journal._payloads(r.record_id) for r in journal.records()), "the sent record was not written"
+    shelf.release()
+
+
 def test_a_pending_sent_record_is_the_callers_own_copy(tmp_path):
     shelf = migrated(tmp_path)
     journal = shelf.journal()
