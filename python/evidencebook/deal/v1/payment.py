@@ -19,7 +19,7 @@ from typing import Any
 from agent_action_capsule.settlement import verify_settlements
 
 from ..check import StageError, _go_quote
-from . import golenient
+from . import golenient, goscan, rawjson
 from .check import ref_to
 from .names import ROLE_BUYER, ROLE_SELLER, TYPE_PROPOSE, TYPE_SETTLE
 from .sent import (
@@ -110,28 +110,27 @@ _MEMBER = {"leg": "", "sealer_role": "", "terms_ref": ""}
 
 def _settlement_member(raw: str | None) -> dict | None:
     """A leg's settlement member as Go's ``json.Unmarshal`` reads it into
-    ``{leg, sealer_role, terms_ref}``; ``None`` where Go errs (no member, or
-    a member of another type)."""
+    ``{leg, sealer_role, terms_ref}``; ``None`` where Go errs (no member,
+    text that is not one value, or a member of another type). Read by Go's
+    scanner (:mod:`.rawjson`), so any nesting reads as Go reads it."""
     if raw is None:
         return None
-    try:
-        v = json.loads(raw)
-    except ValueError:
+    b = raw.encode("utf-8", "surrogateescape")
+    if not rawjson.valid(b):
         return None
+    v = b.strip(b" \t\r\n")
     out = dict(_MEMBER)
-    if v is None:
+    if v == b"null":
         return out
-    if not isinstance(v, dict):
+    if not v.startswith(b"{"):
         return None
-    for k, e in v.items():
+    for k, e in rawjson.members(v):
         name = k if k in out else next((n for n in out if golenient.fold(n) == golenient.fold(k)), None)
-        if name is None:
+        if name is None or e == "null":
             continue
-        if e is None:
-            continue
-        if not isinstance(e, str):
+        if not e.startswith('"'):
             return None
-        out[name] = e
+        out[name] = goscan.go_unquote(e.encode("utf-8", "surrogateescape"))
     return out
 
 

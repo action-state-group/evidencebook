@@ -25,7 +25,7 @@ from agent_action_capsule.canonical import jcs
 from capsule_emit.produce import verify_capsule, verify_envelope
 
 from ..check import StageError, _go_quote
-from . import golenient, gotypes, rawjson
+from . import golenient, goscan, gotypes, rawjson
 from .check import Record, _read_text, check, decode, digest, ref_to
 from .check import PLACEMENT_JOURNAL, placement_of
 from .names import KIND_CANCELLATION, KIND_DECLINE, TYPE_AGREE, TYPE_PROPOSE
@@ -103,25 +103,26 @@ def _marshal_members(members: dict[str, str]) -> bytes:
     """``json.Marshal(map[string]json.RawMessage)``: keys in byte order."""
     parts = [f"{_compact(json.dumps(k, ensure_ascii=False))}:{_compact(members[k])}"
              for k in sorted(members, key=lambda k: k.encode("utf-8"))]
-    return ("{" + ",".join(parts) + "}").encode("utf-8")
+    return ("{" + ",".join(parts) + "}").encode("utf-8", "surrogateescape")
 
 
 def _text(v: Any) -> str:
-    return v.decode("utf-8") if isinstance(v, (bytes, bytearray)) else v
+    return rawjson.raw_text(bytes(v)) if isinstance(v, (bytes, bytearray)) else v
 
 
 def _string(raw: str | None) -> str | None:
     """``json.Unmarshal(raw, &s)`` into a string: ``None`` where Go errs
-    (no member, or not a string); a null leaves it empty."""
+    (no member, text that is not one value, or not a string); a null leaves
+    it empty. Read by Go's scanner, so any nesting reads as Go reads it."""
     if raw is None:
         return None
-    try:
-        v = json.loads(raw)
-    except ValueError:
+    b = raw.encode("utf-8", "surrogateescape")
+    if not goscan.valid(b):
         return None
-    if v is None:
+    v = b.strip(b" \t\r\n")
+    if v == b"null":
         return ""
-    return v if isinstance(v, str) else None
+    return goscan.go_unquote(v) if v.startswith(b'"') else None
 
 
 # -- signing ---------------------------------------------------------------------------
