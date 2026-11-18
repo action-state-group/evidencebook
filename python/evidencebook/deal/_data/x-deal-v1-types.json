@@ -82,6 +82,9 @@
    "struct": "dealprofile/xdealv1.VerdictBody"
   }
  },
+ "header": {
+  "struct": "github.com/action-state-group/evidencebook.Header"
+ },
  "report_books": {
   "struct": "dealprofile/xdealv1.ReportBooks"
  },
@@ -2607,6 +2610,140 @@
    },
    {
     "name": "delivery_state",
+    "type": "string"
+   }
+  ],
+  "github.com/action-state-group/evidencebook.Correlation": [
+   {
+    "name": "exchange_id",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "request_digest",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "twin_bracket_id",
+    "type": "string",
+    "omitempty": true
+   }
+  ],
+  "github.com/action-state-group/evidencebook.Header": [
+   {
+    "name": "v",
+    "type": "int64"
+   },
+   {
+    "name": "book_id",
+    "type": "string"
+   },
+   {
+    "name": "seq",
+    "type": "uint64"
+   },
+   {
+    "name": "record_type",
+    "type": "string"
+   },
+   {
+    "name": "epistemic_type",
+    "type": "string"
+   },
+   {
+    "name": "committed_at",
+    "type": "string"
+   },
+   {
+    "name": "event_time_claim",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "payload_commitments",
+    "type": {
+     "slice": "string"
+    },
+    "omitempty": true
+   },
+   {
+    "name": "field_commitments",
+    "type": {
+     "map": "string"
+    },
+    "omitempty": true
+   },
+   {
+    "name": "commit_alg",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "retention_state",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "links",
+    "type": {
+     "slice": {
+      "struct": "github.com/action-state-group/evidencebook.Link"
+     }
+    }
+   },
+   {
+    "name": "subject_ref",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "principal_ref",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "counterparty_ref",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "correlation",
+    "type": {
+     "ptr": {
+      "struct": "github.com/action-state-group/evidencebook.Correlation"
+     }
+    },
+    "omitempty": true
+   },
+   {
+    "name": "reproduction",
+    "type": {
+     "ptr": {
+      "struct": "github.com/action-state-group/evidencebook.Reproduction"
+     }
+    },
+    "omitempty": true
+   },
+   {
+    "name": "statement",
+    "type": "raw",
+    "omitempty": true
+   }
+  ],
+  "github.com/action-state-group/evidencebook.Link": [
+   {
+    "name": "type",
+    "type": "string"
+   },
+   {
+    "name": "target",
+    "type": "string"
+   }
+  ],
+  "github.com/action-state-group/evidencebook.Reproduction": [
+   {
+    "name": "clock",
     "type": "string"
    }
   ]
