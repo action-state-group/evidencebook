@@ -348,7 +348,8 @@ def ard_show_receipt() -> None:
     if not ids:
         print(f"{label}: no deal yet, so no receipt")
         return
-    print(parties.receipt_view(node, label, ids[-1], seller=ROLE in SELLERS))
+    print(parties.receipt_view(node, label, ids[-1], seller=ROLE in SELLERS,
+                               real=os.environ.get("ARD_RAIL", "fake") in ("lightning", "local")))
 
 
 def main() -> None:

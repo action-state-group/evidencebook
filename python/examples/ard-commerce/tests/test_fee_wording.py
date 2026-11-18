@@ -30,14 +30,11 @@ LINE = ("Agreed price 289 msat. What this seller's wallet was credited is not in
         "its wallet provider may deduct a receiving fee.")
 
 
-def test_a_sellers_receipt_on_a_real_rail_says_the_credited_amount_is_not_in_its_records(monkeypatch):
-    for rail in ("lightning", "local"):
-        monkeypatch.setenv("ARD_RAIL", rail)
-        assert LINE in parties.receipt_view(_node(289), "Alder Print Co.", "deal-x", seller=True)
+def test_a_sellers_receipt_on_a_real_rail_says_the_credited_amount_is_not_in_its_records():
+    assert LINE in parties.receipt_view(_node(289), "Alder Print Co.", "deal-x", seller=True, real=True)
 
 
-def test_the_buyers_receipt_and_the_simulated_rail_carry_no_credit_line(monkeypatch):
-    monkeypatch.setenv("ARD_RAIL", "local")
-    assert "credited" not in parties.receipt_view(_node(289), "Maya", "deal-x")
-    monkeypatch.setenv("ARD_RAIL", "fake")
-    assert "credited" not in parties.receipt_view(_node(289), "Alder Print Co.", "deal-x", seller=True)
+def test_the_buyers_receipt_and_the_simulated_rail_carry_no_credit_line():
+    assert "credited" not in parties.receipt_view(_node(289), "Maya", "deal-x", real=True)
+    out = parties.receipt_view(_node(289), "Alder Print Co.", "deal-x", seller=True, real=False)
+    assert "credited" not in out and "simulated rail" not in out  # no payment step in this stub
