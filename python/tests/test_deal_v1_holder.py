@@ -531,3 +531,115 @@ def test_forked_finals_vector(case):
                                                      position=h["position"], prev=h["prev"]),
                             record=bytes.fromhex(h["pair"])) for h in case["held"]]
     assert _forked_finals(held, case["key"], case["log"]) == case["want"]
+
+
+@pytest.mark.parametrize("unix, want", [
+    # Go's time.Unix(t, 0).UTC().Format(time.RFC3339) for each, from a probe.
+    (0, "1970-01-01T00:00:00Z"), (1795049519, "2026-11-19T00:51:59Z"),
+    (253402300799, "9999-12-31T23:59:59Z"), (253402300800, "10000-01-01T00:00:00Z"),
+    (9007199254740991, "285428751-11-12T07:36:31Z"), (-62135596800, "0001-01-01T00:00:00Z"),
+    (-62135596801, "0000-12-31T23:59:59Z"), (-62167219200, "0000-01-01T00:00:00Z"),
+    (-62198755201, "-0002-12-31T23:59:59Z"), (-100000000000, "-1199-02-15T14:13:20Z"),
+])
+def test_a_witness_time_formats_as_go_does(unix, want):
+    from evidencebook.deal.v1.status_provider import _known
+
+    assert _known(unix) == want
+
+
+def test_times_take_a_witness_first_then_a_stamp(monkeypatch):
+    # Go's ownTime and receivedTime: a named witness's time, else the first
+    # stamp covering the record, else this stamp (null for none).
+    from types import SimpleNamespace
+
+    from evidencebook.deal.v1.status_provider import StatusProvider
+
+    class Shelf:
+        def __init__(self, t, n):
+            self.t, self.n = t, n
+
+        def record_time_by_key(self, *a):
+            return self.t
+
+        def received_record_time_by_key(self, *a):
+            return self.t
+
+        def record_stamp(self, *a):
+            return self.n
+
+        def received_record_stamp(self, *a):
+            return self.n
+
+    inp = SimpleNamespace(book_id="b", n=7)
+    for t, n, want in ((1795049519, 3, "2026-11-19T00:51:59Z"), (None, 3, {"stamp": 3}), (None, None, {"stamp": 7})):
+        sp = StatusProvider(Shelf(t, n))
+        assert sp._own_time(inp, 1, ["k"]) == want
+        assert sp._received_time(inp, "deal/x", 1, ["k"]) == want
+    assert StatusProvider(Shelf(None, None))._own_time(SimpleNamespace(book_id="b", n=0), 1, []) is None
+
+
+def test_entry_members_are_copied_when_sealed(tmp_path):
+    # Go copies a member's bytes: changing the caller's value after append
+    # leaves the sealed Capsule as signed.
+    p = Party("buyer", tmp_path)
+    book = p.shelf.open("deal/" + "cd" * 16)
+    leg = {"leg": "payer_observed", "amount": {"value": "1"}}
+    rec = book.append(Entry("deal_step", "producer_claim", payloads=(b"{}",), members={"settlement": leg}))
+    leg["amount"]["value"] = "999"
+    assert book._stored[rec.record_id].capsule["settlement"]["amount"]["value"] == "1"
+
+
+def _report_scenario(tmp_path):
+    """The report scenario up to its first report after the stamp: the
+    buyer, its book's log, and the copy."""
+    c = case("status-provider-report")
+    at = [i for i, s in enumerate(c["steps"]) if s["op"] == "report"][1]
+    parties = replay(c, tmp_path, at)
+    return parties["buyer"], c["steps"][at]["log"], dict(c["steps"][at]["in"])
+
+
+def test_report_reads_again_when_the_book_moves(tmp_path, monkeypatch):
+    # Go's Report: a book that grows during the read is read again; grown
+    # past its checkpoint, the next read refuses it rather than report a
+    # stale snapshot.
+    buyer, log, cp = _report_scenario(tmp_path)
+    sp = buyer.status
+    real = sp._status_books
+    calls = []
+
+    def moving(inp):
+        out = real(inp)
+        if not calls:
+            buyer.shelf.open(log).append(Entry("note", "producer_claim", payloads=(b"{}",)))
+        calls.append(1)
+        return out
+
+    monkeypatch.setattr(sp, "_status_books", moving)
+    with pytest.raises(ValueError, match="no checkpoint at its size"):
+        sp.report(log, cp)
+    assert len(calls) == 1, "the moved snapshot is not reported"
+
+
+def test_report_gives_up_on_a_book_that_keeps_moving(tmp_path, monkeypatch):
+    # Three reads, each seeing the book move, end in BusyError.
+    from evidencebook.errors import BusyError
+
+    buyer, log, cp = _report_scenario(tmp_path)
+    sp = buyer.status
+    book = buyer.shelf.open(log)
+    real_open, real_size = buyer.shelf.open, book.size
+    sizes = []
+
+    class Moving:
+        def __getattr__(self, name):
+            return getattr(book, name)
+
+        def size(self):
+            sizes.append(1)
+            # Before the read: the checkpointed size; after it: one more.
+            return real_size() + (len(sizes) % 2 == 0)
+
+    monkeypatch.setattr(buyer.shelf, "open", lambda log_id: Moving() if log_id == log else real_open(log_id))
+    with pytest.raises(BusyError):
+        sp.report(log, cp)
+    assert len(sizes) >= 6, "three reads, each sized before and after"

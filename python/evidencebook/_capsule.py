@@ -13,6 +13,7 @@ commits. capsule-emit's Python ``build_capsule`` is not used: it attaches
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 
 from agent_action_capsule.canonical import LOCAL_ONLY_FIELDS, compute_capsule_id, jcs
@@ -98,10 +99,12 @@ def _add_extensions(capsule: dict, extensions: dict) -> None:
         if value is None:
             raise ValueError(f"extension {name!r} must not be null")
         try:
-            jcs(value)
+            canonical = jcs(value)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"extension {name!r}: {exc}") from None
-        capsule[name] = value
+        # A copy, as Go copies the bytes: a caller changing its value after
+        # sealing must not change the sealed Capsule.
+        capsule[name] = json.loads(canonical)
 
 
 def seal_payload(action_id: str, payload: bytes, extensions: dict, *, operator: str, developer: str,

@@ -12,7 +12,7 @@ copy of the v1 report of a deal book from what the shelf holds now.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Callable
 
 from agent_action_capsule.canonical import jcs
@@ -303,7 +303,25 @@ def _stamp(n: int) -> Any:
 
 
 def _known(unix_seconds: int) -> str:
-    return datetime.fromtimestamp(unix_seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """Go's ``time.Unix(t, 0).UTC().Format(time.RFC3339)`` for any integer,
+    a year past 9999 or before 1 included (Go's ``2006`` layout: at least
+    four digits, a minus sign before a negative year)."""
+    days, rem = divmod(unix_seconds, 86400)
+    # Howard Hinnant's civil_from_days, on the proleptic Gregorian calendar.
+    z = days + 719468
+    era = z // 146097
+    doe = z - era * 146097
+    yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+    y = yoe + era * 400
+    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    mp = (5 * doy + 2) // 153
+    d = doy - (153 * mp + 2) // 5 + 1
+    m = mp + 3 if mp < 10 else mp - 9
+    y += m <= 2
+    year = f"-{-y:04d}" if y < 0 else f"{y:04d}"
+    hh, rem = divmod(rem, 3600)
+    mm, ss = divmod(rem, 60)
+    return f"{year}-{m:02d}-{d:02d}T{hh:02d}:{mm:02d}:{ss:02d}Z"
 
 
 def _value(r: Record) -> Any:
