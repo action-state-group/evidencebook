@@ -799,7 +799,9 @@ when all three hold:
 1. the two agreements cite the same offer record and the same rows digest;
 2. the offerer's agreement names the acceptor's agreement in `seen`, and the acceptor's book names
    no cancellation of that offer, unless it named the offerer's agreement first;
-3. the offerer's agreement has a record time not after `agree_by`, or the acceptor's book names it.
+3. the offerer's agreement has a record time not after `agree_by`, or the acceptor's book names it,
+   or the offerer's agreement has no record time at all (#511: then the deal is started locally,
+   also after `agree_by`, and counts; a time after `agree_by` makes it not started).
 
 A record of the acceptor's book names the offerer's agreement when its `seen` is that agreement's
 record id or a later record id of the offerer's book. Until the offerer's agreement has a time or
@@ -847,17 +849,13 @@ Evaluation, in order:
 4. `offerer_names_acceptor` false: `not_started` while `at` is after `agree_by`, else
    `awaiting_agreement` (the offerer's record does not join the acceptor's).
 5. `acceptor_names_offerer`: `started`, `local` false, `by: acceptor_named`.
-6. `offerer_agreement_time` set and not after `agree_by`: `started`, `local` false,
-   `by: offerer_in_time`.
-7. `offerer_agreement_time` null and `at` not after `agree_by`: `started`, `local` true (Appendix
-   A lines 21 and 22: "a local result until ...").
-8. Otherwise: `not_started` (a time after `agree_by`, and never named).
-
-Step 7 holds without the `agree_by` condition: an offerer's agreement with no time, never named, is
-`started`, `local` true, also after `agree_by` (#511; Steven's "count it", ops u608: a counterparty
-that agrees and then goes silent is counted, so the silent side's failure shows). `local` already says
-the result may differ for a reader who holds a witnessed time; one after `agree_by` gives step 8's
-`not_started`, a naming gives step 5.
+6. `offerer_agreement_time` set: `started`, `local` false, `by: offerer_in_time` when it is not after
+   `agree_by`, else `not_started` (a late agreement, never named).
+7. `offerer_agreement_time` null: `started`, `local` true, at any `at`, before or after `agree_by`
+   (Appendix A lines 21 and 22: "a local result until ..."; after `agree_by`, #511: Steven's "count
+   it", ops u608, a counterparty that agrees and then goes silent is counted, so the silent side's
+   failure shows). `local` says the result may differ for a reader who holds a witnessed time: one
+   after `agree_by` gives step 6's `not_started`, a naming gives step 5.
 
 `offerer_agreement_time` comes from the witnesses the agreement names (4.3). A receipt from
 another witness gives no time (`shelf_record_time.go:110-115`).
