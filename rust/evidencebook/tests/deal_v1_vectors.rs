@@ -258,6 +258,9 @@ fn approval_migration_vectors() {
                 Some(v1::STAGE_AUTHORIZATION),
                 "{name}: {err}"
             );
+            if let Some(want) = c["error"].as_str() {
+                assert_eq!(err.to_string(), want, "{name}: Go's text");
+            }
         }
     }
 }
@@ -526,4 +529,65 @@ fn pair_names_vectors() {
             );
         }
     }
+}
+
+/// check_authorizations reads each at as Go's time.Parse(time.RFC3339, at)
+/// does (evidencebook#551): a one-digit hour, a comma fraction and an
+/// offset are taken on records that were never checked, and a refusal is
+/// Go's text.
+#[test]
+fn authorization_reads_at_as_go() {
+    let c = vectors("authorization/approval-migration.json")
+        .into_iter()
+        .find(|c| c["valid"].as_bool() == Some(true))
+        .unwrap();
+    let read = |k: &str, at: &dyn Fn(usize, &str) -> String| -> Vec<v1::Record> {
+        c[k].as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let mut r = r.clone();
+                let was = r["x-deal-v1"]["at"].as_str().unwrap().to_string();
+                r["x-deal-v1"]["at"] = Value::String(at(i, &was));
+                v1::decode(&serde_json::to_vec(&r).unwrap()).unwrap()
+            })
+            .collect()
+    };
+    let journal = read("journal", &|_, was| was.to_string());
+    // The acts, which no record cites, in Go's lenient forms.
+    for at in [
+        "2026-12-01T1:00:00Z",
+        "2026-12-01T10:00:00,5Z",
+        "2026-12-01T10:00:00.5+01:00",
+    ] {
+        let acts = read("acts", &|_, _| at.to_string());
+        v1::check_authorizations(&journal, &acts).unwrap_or_else(|e| panic!("Go takes {at}: {e}"));
+    }
+    let acts = read("acts", &|_, was| was.to_string());
+    let bad = read("journal", &|i, was| {
+        if i == 0 {
+            "bad".into()
+        } else {
+            was.to_string()
+        }
+    });
+    // Before Go's zero Time: at never decreases from it.
+    let year0 = read("journal", &|i, was| {
+        if i == 0 {
+            "0000-12-31T23:59:59Z".into()
+        } else {
+            was.to_string()
+        }
+    });
+    let err = v1::check_authorizations(&year0, &acts).expect_err("Go refuses a year-0 at");
+    assert_eq!(
+        err.to_string(),
+        "[authorization] journal record 1: its at is earlier than the record before it: at never decreases"
+    );
+    let err = v1::check_authorizations(&bad, &acts).expect_err("Go refuses it");
+    assert_eq!(
+        err.to_string(),
+        "[authorization] journal record 1: its at \"bad\": parsing time \"bad\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"bad\" as \"2006\""
+    );
 }

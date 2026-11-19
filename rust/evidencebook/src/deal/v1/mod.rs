@@ -30,9 +30,6 @@
 //!   does); a required list written `null`, a member the types do not name
 //!   or a member name in another case is refused there, where Go's reader
 //!   takes it;
-//! - [`check_authorizations`] reads each `at` as the record checks admit it
-//!   (RFC 3339 UTC to the second); Go's also takes an offset on records
-//!   that were never checked;
 //! - [`verify_book`] reads a header's `correlation` as an object of strings
 //!   whose names it does not check, past one name given in two spellings
 //!   (the crate names no correlation keys); Go refuses one with a member
@@ -47,6 +44,7 @@ mod authorization;
 mod book;
 mod check;
 mod exact;
+mod gotime;
 #[cfg(feature = "shelf")]
 mod holder;
 mod names;
