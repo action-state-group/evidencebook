@@ -118,6 +118,19 @@ func pairNameCases(t *testing.T) []pairNameCase {
 	add("book-header-correlation-listed-and-unlisted", "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
 		hd["correlation"] = map[string]any{"exchange_id": "ex-1", "unlisted_key": "v-1"}
 	}), false)
+	// A correlation of another type is a type error; a null is none.
+	for _, v := range []struct {
+		name  string
+		value any
+		valid bool
+	}{
+		{"array", []any{}, false}, {"number-member", map[string]any{"exchange_id": 42}, false},
+		{"null", nil, true}, {"null-member", map[string]any{"exchange_id": nil}, true},
+	} {
+		add("book-header-correlation-"+v.name, "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
+			hd["correlation"] = v.value
+		}), v.valid)
+	}
 	// Inside the signed header: payload_commitmentſ beside
 	// payload_commitments is not a member the header has, so the pair is
 	// refused whichever payload it carries.
