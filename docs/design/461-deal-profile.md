@@ -34,8 +34,10 @@ These are not reopened here.
    `375`, `383`), so no existing fingerprint changes. Section 2.4 says how.
 4. **Acceptance 9.** A deal book opens at agreement. There is no close and no results log. Term
    rows have due dates and contest windows. Each side makes statements. Both agreement records
-   name the same witnesses, and a deal whose records have no time from those witnesses is
-   tallied as not counted. The stamp proof follows the order of design §4.3 (section 7). The
+   name the same witnesses. A deal whose agreement names a witness and whose records have no time
+   from any is left out of the tally and shown as not counted; a deal whose agreement names none is
+   counted, its rows local (AAC `/3` SH-12; ops u608 and #570 for a deal that agrees and then goes
+   silent, which starts and is counted, local). The stamp proof follows the order of design §4.3 (section 7). The
    rules verdict word stays a record in its own deal book, bound to the deal id and the pack
    digest, carried in the counterparty cut under u195's conditions, and never in the journal
    (today's `rules_verdict`, `names.go:49`).
@@ -662,7 +664,9 @@ The table in 3.3 lists the members.
 
 **Witnesses.** An empty list is allowed (u186, as the How ack records it; design §4.3: "a deal with
 no witness that both accept has no record times"). Then no record of the deal has a time, every
-status is local, and a card tallies the deal as not counted (acceptance 9). A witness is named by
+status is local, and a card counts the deal, its rows local (AAC `/3` SH-12; u608, #570). A
+card leaves a deal out only when its agreement names a witness and none of its records has a
+time from one (acceptance 9). A witness is named by
 its verified key id, with its URL only as a hint where to find it (Q1, answered).
 
 **The adjudicator** is `{"key_id", "rules_digest", "rules_url"}` or `null`. An agreement with no
@@ -1702,7 +1706,8 @@ not-started book (empty `rows`); and the counterparty-without-layer book.
   - `counterparty_layer` and `counterparty_proof_held`, for how it happened (stamped by both, our
     receipt only, no record);
   - `witnesses`, and each record's time from those witnesses only, so a deal whose records have no
-    such time is tallied as not counted (acceptance 9);
+    such time is left out as not counted when its agreement names a witness, and counted, local, when
+    it names none (AAC `/3` SH-12; acceptance 9; u608, #570);
   - `role`, `value_band`, `counterparty_kind`;
   - `agreed_at`, and the first witnessed time of the book's first fact, since design §4.1,
     "Counting only a window", proposes the latter as the window key in place of the time of
