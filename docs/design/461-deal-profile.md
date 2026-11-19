@@ -34,7 +34,7 @@ These are not reopened here.
    `375`, `383`), so no existing fingerprint changes. Section 2.4 says how.
 4. **Acceptance 9.** A deal book opens at agreement. There is no close and no results log. Term
    rows have due dates and contest windows. Each side makes statements. Both agreement records
-   name the same witnesses. A deal whose records have no time from any witness is counted, its rows local,
+   name the same witnesses. A started deal whose records have no time from any witness is counted, its rows local,
    whether or not its agreement names a witness (Steven, ops u616, 2026-11-19: "count it"; ops u608
    and #570 for a deal that agrees and then goes silent, which starts and is counted, local). AAC
    `/3` SH-12 still leaves such a deal out when its agreement names a witness; AAC#634 changes it. The stamp proof follows the order of design §4.3 (section 7). The
@@ -666,7 +666,7 @@ The table in 3.3 lists the members.
 no witness that both accept has no record times"). Then no record of the deal has a time, every
 status is local, and a card counts the deal, its rows local (u608, #570). So does a deal whose
 agreement names a witness but none of whose records has a time from one (u616; acceptance 9). A card
-leaves no deal out for want of a witnessed time. A witness is named by
+leaves no started deal out for want of a witnessed time. A witness is named by
 its verified key id, with its URL only as a hint where to find it (Q1, answered).
 
 **The adjudicator** is `{"key_id", "rules_digest", "rules_url"}` or `null`. An agreement with no
@@ -1705,7 +1705,7 @@ not-started book (empty `rows`); and the counterparty-without-layer book.
   - the start state inputs, so a not-started book is in no window and no tally (acceptance 5);
   - `counterparty_layer` and `counterparty_proof_held`, for how it happened (stamped by both, our
     receipt only, no record);
-  - `witnesses`, and each record's time from those witnesses only, so a deal whose records have no
+  - `witnesses`, and each record's time from those witnesses only, so a started deal whose records have no
     such time is counted, local, whether or not its agreement names a witness (u616, u608, #570;
     AAC `/3` SH-12 says otherwise for a named witness until AAC#634 lands);
   - `role`, `value_band`, `counterparty_kind`;
