@@ -539,6 +539,9 @@ func verifyCheckpointChain(e Envelope, checkpointKey string) ([]byte, error) {
 		previous = cp
 		last = raw
 	}
+	if err := checkFreshnessCommitted(e, previous.Checkpoint); err != nil {
+		return nil, err
+	}
 	return last, nil
 }
 

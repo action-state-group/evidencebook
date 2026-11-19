@@ -2102,4 +2102,5 @@ def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> bytes:
         if i == len(pairs) - 1 and _digest(raw) != e.anchor_digest:
             raise InvalidError("anchor_inclusion: the last checkpoint is not the anchor")
         previous = cp
+    _check_freshness_committed(e, previous)
     return raw

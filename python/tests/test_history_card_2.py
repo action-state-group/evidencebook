@@ -230,3 +230,18 @@ def test_freshness_and_unread_receipts_are_refused() -> None:
     body["history"][1]["receipts"] = [{"checkpoint": "00", "witness": "w", "sig": "00"}]
     with pytest.raises(eb.InvalidError, match="receipts"):
         _verify_checkpoint_range(req, replace(e, artifact=json.dumps(body, separators=(",", ":")).encode()), key)
+
+
+@pytest.mark.parametrize("derivation", [eb.DERIVATION_HISTORY_CARD, None])
+def test_a_card_one_or_checkpoints_answer_cannot_misstate_freshness(derivation) -> None:
+    from dataclasses import replace
+    from evidencebook.book import _verify_anchor_inclusion
+    b = many(20)
+    key = b.checkpoints()[0].key_id
+    e = ask(b, derivation).envelope
+    req = eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(expected_pin=e.anchor_digest), derivation=derivation)
+    _verify_anchor_inclusion(req, e, key)
+    with pytest.raises(eb.InvalidError, match="freshness"):
+        _verify_anchor_inclusion(req, replace(e, freshness=1 << 40), key)
+    with pytest.raises(eb.InvalidError, match="freshness"):
+        _verify_anchor_inclusion(req, replace(e, freshness="2099-01-01T00:00:00Z"), key)
