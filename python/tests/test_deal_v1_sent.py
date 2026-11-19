@@ -121,7 +121,10 @@ def test_a_settle_member_read_as_go_reads_it():
     assert _settlement_member("5") is None
     assert _settlement_member('{"leg": 5}') is None
     assert _settlement_member("null") == {"leg": "", "sealer_role": "", "terms_ref": ""}
-    assert _settlement_member('{"LEG": "payer_observed", "x": 1}')["leg"] == "payer_observed"
+    # Each member by its exact name: another spelling is not the member
+    # (evidencebook#559).
+    assert _settlement_member('{"LEG": "payer_observed", "x": 1}')["leg"] == ""
+    assert _settlement_member('{"leg": "payer_observed", "\u017fealer_role": "payer"}')["sealer_role"] == ""
 
 
 # -- pairs read and written as Go reads and writes them (#552 review r1) ---------------

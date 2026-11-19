@@ -275,6 +275,15 @@ func TestPaymentVectors(t *testing.T) {
 		own := d.payerMember("settled", "6000")
 		own["terms_ref"] = hex.EncodeToString(make([]byte, 32))
 		add("refund-under-its-own-terms", d, payer, payee, d.leg(t, false, refund, own))
+		// A member spelled otherwise is not terms_ref: this refund cites no
+		// terms leg, takes no part, and the check passes (evidencebook#559).
+		alias := d.payerMember("settled", "6000")
+		alias["Terms_Ref"] = alias["terms_ref"]
+		delete(alias, "terms_ref")
+		add("refund-terms-ref-in-another-case", d, payer, payee, d.leg(t, false, refund, alias))
+		longS := d.payerMember("settled", "6000")
+		longS["sealer_role"], longS["ſealer_role"] = "payee", "payer"
+		add("payer-leg-sealer-role-long-s", d, payer, payee, d.leg(t, true, payerBody(), longS))
 
 		d2 := newPaymentDeal(t, nil, true)
 		p2 := d2.leg(t, true, payerBody(), d2.payerMember("settled", "6000"))

@@ -26,4 +26,3 @@ def test_pair_names_vector(case):
     with pytest.raises(StageError) as exc:
         read(pair)
     assert exc.value.stage == case["stage"]
-    assert "its members are not exactly" in str(exc.value)

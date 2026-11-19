@@ -128,17 +128,8 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if hex.EncodeToString(verified.PublicKey) != keyID {
 		return bad("the Capsule is signed by another key than its key_id")
 	}
-	var c struct {
-		ActionID   string `json:"action_id"`
-		ActionType string `json:"action_type"`
-		References []any  `json:"references"`
-		Model      struct {
-			Compute struct {
-				AgentInputDigest string `json:"agent_input_digest"`
-			} `json:"compute_attestation"`
-		} `json:"model_attestation"`
-	}
-	if err := json.Unmarshal(capsule, &c); err != nil {
+	c, err := readCapsule(capsule)
+	if err != nil {
 		return Sent{}, err
 	}
 	_, header := p.Record["evidence_record_header"]
@@ -151,7 +142,7 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if err != nil {
 		return bad("agent_input: %v", err)
 	}
-	if c.Model.Compute.AgentInputDigest != digest {
+	if c.AgentInputDigest != digest {
 		return bad("agent_input is not the record the Capsule commits (agent_input_digest)")
 	}
 	if err := Check([]byte(p.AgentInput)); err != nil {

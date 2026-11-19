@@ -66,16 +66,8 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 	if err != nil {
 		return ReportRead{}, err
 	}
-	var c struct {
-		ActionID   string `json:"action_id"`
-		ActionType string `json:"action_type"`
-		Model      struct {
-			Compute struct {
-				AgentInputDigest string `json:"agent_input_digest"`
-			} `json:"compute_attestation"`
-		} `json:"model_attestation"`
-	}
-	if err := json.Unmarshal(capsule, &c); err != nil {
+	c, err := readCapsule(capsule)
+	if err != nil {
 		return ReportRead{}, err
 	}
 	if c.ActionID != dealprofile.ReportActionID || c.ActionType != string(emit.ActionTypeFYI) {
@@ -89,7 +81,7 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 	if err != nil {
 		return bad("the payload: %v", err)
 	}
-	if sum := sha256.Sum256(payload); c.Model.Compute.AgentInputDigest != hex.EncodeToString(sum[:]) {
+	if sum := sha256.Sum256(payload); c.AgentInputDigest != hex.EncodeToString(sum[:]) {
 		return bad("the payload is not the one the Capsule commits (agent_input_digest)")
 	}
 	var r Report

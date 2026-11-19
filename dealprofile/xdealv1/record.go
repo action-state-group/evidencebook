@@ -206,6 +206,69 @@ func exactMembers(pair []byte, names ...string) error {
 	return nil
 }
 
+// exactRaw is the member at path in the JSON object doc, each name matched
+// exactly; nil when a member on the way is absent or null. A signed
+// Capsule and a settlement member are read this way, not with
+// json.Unmarshal into a struct, which matches a name in another case
+// (including U+017F for s and U+212A for k): a Capsule could otherwise
+// carry a second spelling of a member that Go reads in place of the one
+// other readers verify (evidencebook#559).
+func exactRaw(doc []byte, path ...string) (json.RawMessage, error) {
+	cur := json.RawMessage(doc)
+	for _, name := range path {
+		if cur == nil || string(cur) == "null" {
+			return nil, nil
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(cur, &m); err != nil {
+			return nil, err
+		}
+		cur = m[name]
+	}
+	if string(cur) == "null" {
+		return nil, nil
+	}
+	return cur, nil
+}
+
+// exactString is the string at path (exactRaw), "" when absent or null; a
+// value of another type is an error.
+func exactString(doc []byte, path ...string) (string, error) {
+	raw, err := exactRaw(doc, path...)
+	if err != nil || raw == nil {
+		return "", err
+	}
+	var s string
+	err = json.Unmarshal(raw, &s)
+	return s, err
+}
+
+// capsuleRead is what the profile reads of a verified Capsule, each member
+// by its exact name (exactRaw).
+type capsuleRead struct {
+	ActionID, ActionType, AgentInputDigest string
+	References                             []any
+}
+
+func readCapsule(capsule []byte) (capsuleRead, error) {
+	var c capsuleRead
+	var err error
+	if c.ActionID, err = exactString(capsule, "action_id"); err != nil {
+		return c, err
+	}
+	if c.ActionType, err = exactString(capsule, "action_type"); err != nil {
+		return c, err
+	}
+	if c.AgentInputDigest, err = exactString(capsule, "model_attestation", "compute_attestation", "agent_input_digest"); err != nil {
+		return c, err
+	}
+	refs, err := exactRaw(capsule, "references")
+	if err == nil && refs != nil {
+		err = json.Unmarshal(refs, &c.References)
+	}
+	return c, err
+}
+
 func strictUnmarshal(data []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()

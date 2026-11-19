@@ -155,14 +155,8 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if err != nil {
 		return BookRead{}, err
 	}
-	var c struct {
-		Model struct {
-			Compute struct {
-				AgentInputDigest string `json:"agent_input_digest"`
-			} `json:"compute_attestation"`
-		} `json:"model_attestation"`
-	}
-	if err := json.Unmarshal(capsule, &c); err != nil {
+	c, err := readCapsule(capsule)
+	if err != nil {
 		return BookRead{}, err
 	}
 	hdoc, err := decodeJSON(p.Header)
@@ -173,7 +167,7 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if err != nil {
 		return bad("the header: %v", err)
 	}
-	if sum := sha256.Sum256(hjcs); c.Model.Compute.AgentInputDigest != hex.EncodeToString(sum[:]) {
+	if sum := sha256.Sum256(hjcs); c.AgentInputDigest != hex.EncodeToString(sum[:]) {
 		return bad("the Capsule does not commit this header")
 	}
 	var h evidencebook.Header

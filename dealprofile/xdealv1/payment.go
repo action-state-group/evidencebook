@@ -5,6 +5,7 @@ package xdealv1
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -321,13 +322,16 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		// a leg that is not a leg of this payment takes no part, as AAC's
 		// verifier treats a leg that fails its checks, and the check reads
 		// the others (§6.3: every other case has not run).
-		var member struct {
-			Leg        string `json:"leg"`
-			SealerRole string `json:"sealer_role"`
-			TermsRef   string `json:"terms_ref"`
-		}
+		// Each member by its exact name (exactRaw, evidencebook#559).
+		var member struct{ Leg, SealerRole, TermsRef string }
 		m := pair.Record[SettlementMember]
-		if m == nil || json.Unmarshal(m, &member) != nil {
+		var errs [3]error
+		if m != nil {
+			member.Leg, errs[0] = exactString(m, "leg")
+			member.SealerRole, errs[1] = exactString(m, "sealer_role")
+			member.TermsRef, errs[2] = exactString(m, "terms_ref")
+		}
+		if m == nil || errors.Join(errs[:]...) != nil {
 			out.Excluded = append(out.Excluded, read.Digest)
 			continue
 		}

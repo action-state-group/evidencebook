@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/action-state-group/agent-action-capsule/go/canonical"
+	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,12 +73,64 @@ func pairNameCases(t *testing.T) []pairNameCase {
 	add("sent-agent-input-in-another-case", "sent", respell(t, h.offerPair, map[string]string{"agent_input": "AGENT_INPUT"}, nil), false)
 	add("sent-agent-input-twice", "sent", respell(t, h.offerPair, nil, map[string]json.RawMessage{"Agent_Input": otherSent}), false)
 	add("sent-record-twice", "sent", respell(t, h.offerPair, nil, map[string]json.RawMessage{"Record": bookIn["record"]}), false)
+	// Inside the signed Capsule: a member spelled otherwise (U+017F for s,
+	// or another case) is not the member; each reader reads the one spelled
+	// exactly, so all read the same digest and the same references.
+	other := mustDigest(t, fxOfferRecord(t, h))
+	beside := func(name string, v any) func(c map[string]any) {
+		return func(c map[string]any) {
+			c["model_attestation"].(map[string]any)["compute_attestation"].(map[string]any)[name] = v
+		}
+	}
+	add("sent-resigned", "sent", resignSent(t, h.buyer, h.offerPair, sentIn["agent_input"], func(map[string]any) {}), true)
+	for _, v := range []struct{ name, member string }{{"long-s", "agent_input_digeſt"}, {"upper", "Agent_Input_Digest"}} {
+		add("sent-capsule-"+v.name+"-digest-beside", "sent",
+			resignSent(t, h.buyer, h.offerPair, sentIn["agent_input"], beside(v.member, other)), true)
+		add("sent-capsule-"+v.name+"-digest-read", "sent",
+			resignSent(t, h.buyer, h.offerPair, otherSent, beside(v.member, other)), false)
+	}
+	for _, v := range []struct{ name, member string }{{"long-s", "referenceſ"}, {"upper", "References"}} {
+		add("sent-capsule-"+v.name+"-references", "sent", resignSent(t, h.buyer, h.offerPair, sentIn["agent_input"],
+			func(c map[string]any) { c[v.member] = []any{"x"} }), true)
+	}
 	add("book-as-sent", "book", h.agreementPair, true)
 	add("book-payload-in-another-case", "book", respell(t, h.agreementPair, map[string]string{"payload": "Payload"}, nil), false)
 	add("book-header-in-another-case", "book", respell(t, h.agreementPair, map[string]string{"header": "HEADER"}, nil), false)
 	add("book-payload-twice", "book", respell(t, h.agreementPair, nil, map[string]json.RawMessage{"Payload": sentIn["agent_input"]}), false)
 	add("book-header-twice", "book", respell(t, h.agreementPair, nil, map[string]json.RawMessage{"Header": bookIn["header"]}), false)
 	return cases
+}
+
+// resignSent is the sent pair with its Capsule changed by edit, its id
+// computed again and signed again under the party's record key, and
+// agentInput as its agent_input.
+func resignSent(t *testing.T, p *party, pair []byte, agentInput json.RawMessage, edit func(c map[string]any)) []byte {
+	t.Helper()
+	var m map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(pair, &m))
+	var rec map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(m["record"], &rec))
+	delete(rec, "signature")
+	delete(rec, "key_id")
+	delete(rec, "capsule_id")
+	raw, err := json.Marshal(rec)
+	require.NoError(t, err)
+	doc, err := decodeJSON(raw)
+	require.NoError(t, err)
+	c := doc.(map[string]any)
+	edit(c)
+	id, err := canonical.ComputeCapsuleID(c)
+	require.NoError(t, err)
+	c["capsule_id"] = id
+	capsule, err := canonical.JCS(c)
+	require.NoError(t, err)
+	identity, err := emit.NewEd25519SigningIdentity(seed(p.name + " record key"))
+	require.NoError(t, err)
+	envelope, err := emit.Sign(emit.BuiltPayload{CapsuleID: id, JSON: capsule}, identity)
+	require.NoError(t, err)
+	out, err := Pair(capsule, envelope, agentInput)
+	require.NoError(t, err)
+	return out
 }
 
 // fxOfferRecord is another offer of the handshake's deal, to put beside the
@@ -105,7 +159,6 @@ func TestPairNames(t *testing.T) {
 		var se *StageError
 		require.ErrorAs(t, err, &se, c.Name)
 		assert.Equal(t, c.Stage, se.Stage, c.Name)
-		assert.Contains(t, err.Error(), "its members are not exactly", c.Name)
 	}
 }
 
@@ -113,7 +166,7 @@ func TestPairNames(t *testing.T) {
 // (EB_WRITE_DEAL_V1_VECTORS=1), which the Rust and Python ports replay.
 func TestPairNamesVectors(t *testing.T) {
 	out := map[string]any{
-		"description": "VerifySent and VerifyBook on a pair whose members are not exactly its own (evidencebook#559): each case a sent or book pair, as hex, valid or refused at the stage given. Written by dealprofile/xdealv1 TestPairNamesVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
+		"description": "VerifySent and VerifyBook on a pair whose members, or whose signed Capsule's members, are spelled otherwise than the members read (evidencebook#559): each case a sent or book pair, as hex, valid or refused at the stage given. Written by dealprofile/xdealv1 TestPairNamesVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       pairNameCases(t),
 	}
 	b, err := json.MarshalIndent(out, "", "  ")

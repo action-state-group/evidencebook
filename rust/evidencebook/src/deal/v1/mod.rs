@@ -33,12 +33,6 @@
 //! - [`check_authorizations`] reads each `at` as the record checks admit it
 //!   (RFC 3339 UTC to the second); Go's also takes an offset on records
 //!   that were never checked;
-//! - [`payment_check`] matches a settlement member's `leg`, `sealer_role`
-//!   and `terms_ref` by their exact names; Go's reader also takes them in
-//!   another case. (A pair's own members are matched exactly on both sides,
-//!   evidencebook#559.) A leg so spelled answers no terms leg here, and in Go
-//!   AAC's verifier refuses it, so the payment check's outcome is the same
-//!   and only its `excluded` list differs;
 //! - [`verify_book`] decodes the header as Go's typed `Header` does (each
 //!   member's Go type, null as the zero value, names in any case), except
 //!   that a header's `correlation` must hold only strings: Go ignores a
