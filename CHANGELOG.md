@@ -2,6 +2,61 @@
 
 ## Unreleased
 
+## v0.19.0 (2026-11-19)
+
+### Added: the x-deal-v1 sealed deal report (#461 step 5, PR 5)
+
+- **`xdealv1.BuildReport(books, copy)`** computes one copy of the v1 report at `as_of` (design §9, PROFILE §10). The copy holds:
+  - `start`, `settled`, `rows_state`;
+  - each agreed row's rowstatus result, `check`, `late` statements and disputes, effective ruling and `relied_on` records;
+  - `rests_on`.
+- **`xdealv1.StatusProvider.Report(ctx, logID, copy)`** computes the same from a shelf, at the book's checkpoint. `xdealv1.ReportPayload` is its JCS payload, which a host seals with `dealprofile.ReportCapsule`.
+- **The card members a page must not misread:**
+  - `counterparty_kind` is null ("not stated").
+  - `counterparty_proof` is `held`, `not_yet` or `no_layer` (u611).
+  - `disputes` has one entry per dispute record.
+  - `rulings_unnamed` is shown beside an `open` outcome.
+  - `status_fact` says whether the book's last status fact is current.
+- **The adjudicator's copy** withholds the rows, the counterparty's prefix, the witnesses, the disputes and the unnamed count.
+- **Vectors:** `testdata/deal-v1/report/` and `testdata/deal-v1/settled/`.
+- **A payment remedy is not counted yet,** because it needs its own terms leg. A ruled row whose ruling orders a payment reads remedy `not_counted`, never `due` or `not_honoured`, and the deal stays unsettled. `remedy_made` says whether a remedy for the row is held.
+- **Snapshot rules:** a report refuses books holding a record timed after `as_of`. From a shelf, it rests on the book's latest checkpoint covering the whole book, and writes nothing.
+- **`settled`:** an `agreed` row whose value is `not_met` counts toward it only with a remedy made (Steven's SH-16 ruling).
+- **`Shelf.ExistingJournal(ctx)`** is the shelf's journal, or nil when the shelf has none. Unlike `Shelf.Journal`, it never creates one.
+
+- **Added (`dealprofile/xdealv1`):** `VerifyReport` and `ReportPair`. A reader checks a sealed v1 deal report against its deal's first record (design note §9, "Verifying a report"): the report must be signed by the key that signed the agreement at seq 1 of the holder's deal book, of the deal and log the report rests on, and each row's `ruling.against` must be `buyer`, `seller` or `null` (evidencebook#461). The vectors are in `testdata/deal-v1/report-verify/`.
+
+- `report.Build` (`capsulectl book report`) refuses a bundle carrying the `x-deal-v1` extension. An x-deal-v1 deal seals no Evidence Result, and its page reads the v1 deal report instead (#485).
+
+### Changed: x-deal-v1 counts a deal whose counterparty agreed and then went silent (#511)
+
+- **Start rule, design §5.2 step 7.** After `agree_by`, with both agreements joined, an offerer's agreement that has no record time and that the acceptor's book never names is now `started`, `local: true`, `by: null`, where it was `not_started` (Steven, u608: "count it"). The silent side's failure then shows in the status and on the card. A later witnessed time after `agree_by` still gives `not_started`, a naming gives `started` for good, and a timed late agreement that is not named stays `not_started`.
+- **Go, Rust and Python** change together: `xdealv1.Start`, `deal::v1::start` and `evidencebook.deal.v1.start`, with the shared `testdata/deal-v1/start` and `report` vectors (a new `agree-then-silent` report case pins that its rows are listed).
+
+- **Fixed (shelf):** `Shelf.CountedPrefix`, and the duplicate path of a receive, now read a sender's records and recorded forks in one read-only transaction (evidencebook#543). A receive that committed between the two reads could give a size and a fork position from different store states, and the x-deal-v1 receive gate reads that prefix.
+
+- **Fixed (`dealprofile/x-deal-v0`):** the reference checker `check_profile.py` reads each schema pattern as Go's validator reads it, RE2 (evidencebook#548). A `$` no longer matches before a final newline, and `\s` takes only RE2's white space. On these inputs its verdicts now match Go's, the Python package's and the Rust crate's. A self-test holds it to the schema-pattern cases of `dealprofile/testdata/parity-vectors.json`.
+
+- **Fixed (`dealprofile/xdealv1`):** `VerifyReport` refuses a report whose `rows`, `report` text, or a row's `relied_on` or late list is null, whose row `owed` is not an object, whose `rulings_unnamed` is negative, or whose `relied_on` record is `witnessed` without a `time` (or has a `time` and is not `witnessed`). Go's round trip had kept these, so a report with null `rows` passed although `BuildReport` never writes one (evidencebook#554).
+
+- **Fixed (`dealprofile/xdealv1`):** `VerifyReport` refuses a report pair whose members are not exactly `record` and `agent_input`. Go's reader also took a member in another case, so a second `agent_input` spelled `Agent_Input` was read in place of the one beside it (evidencebook#554).
+
+- **Fixed (`dealprofile/xdealv1`):** a pair and what it signs are read by their exact member names (evidencebook#559). Go's reader also took a member in another case, including U+017F for `s` and U+212A for `k`, with a later spelling replacing an earlier one. So a pair, its signed Capsule or its signed header could carry a second, unverified spelling that Go read in place of the one an exact or schema-checking reader takes.
+  - `VerifySent`, `VerifyBook` and `VerifyReport` refuse a pair whose members are not exactly its own.
+  - They read a Capsule's `action_id`, `action_type`, `references` and `agent_input_digest` by exact name.
+  - `VerifyBook` refuses a header (or a link, correlation or reproduction in it) carrying a member its type does not have exactly, as `schemas/record-header.schema.json` does.
+  - `PaymentCheck` reads a settlement member's `leg`, `sealer_role` and `terms_ref` by exact name.
+
+  The vectors are in `testdata/deal-v1/pair-names/` and `testdata/deal-v1/payment/`.
+
+- **Added (shelf):** `Shelf.StampTime` and `Shelf.StampTimeByKey` give the witnessed time of a stamp of the shelf's own, an x-deal-v1 status time `{"stamp": n}`: the earliest registration time, from the witnesses named, of the shelf checkpoint of tick `n` or a later one. The holder fills `xdealv1.ResolveRow`'s stamps with it for its own books' facts (evidencebook#572).
+
+### Changed: an external-check finding's `limit` and `value` are money-cap amounts (#456)
+
+- The x-deal-v0 external-check result schema and PROFILE now state that a checker MUST send a finding's `limit` and `value` only on a failing money cap (a per-action or rolling spend cap), both integers in minor units of the deal's currency with `value` greater than `limit`, and MUST NOT send them on a pass or on a count or floor rule. The deal card already read them this way; the schema's shape is unchanged, so no record changes schema validity, but a checker that sent them otherwise is now out of profile.
+
+- A history_card/1 or unranged checkpoints answer whose stated `anchor.freshness` is not what the anchor checkpoint commits is now refused, as for the other answer forms, including a stapled history_card/1 (#521).
+
 ## v0.18.1 (2026-11-18)
 
 ### Fixed: `xdealv1.BookEntry` seals header `record_type` `deal_step`

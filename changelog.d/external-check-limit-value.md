@@ -1,3 +1,0 @@
-### Changed: an external-check finding's `limit` and `value` are money-cap amounts (#456)
-
-- The x-deal-v0 external-check result schema and PROFILE now state that a checker MUST send a finding's `limit` and `value` only on a failing money cap (a per-action or rolling spend cap), both integers in minor units of the deal's currency with `value` greater than `limit`, and MUST NOT send them on a pass or on a count or floor rule. The deal card already read them this way; the schema's shape is unchanged, so no record changes schema validity, but a checker that sent them otherwise is now out of profile.

@@ -2,6 +2,133 @@
 
 ## Unreleased
 
+## 0.0.22 (2026-11-19)
+
+Every pull request merged since 0.0.21 (the Rust changes are described below the list):
+
+- [#574](https://github.com/action-state-group/evidencebook/pull/574): fix(rust): verify_book refuses a header correlation name the schema does not list (#563)
+- [#570](https://github.com/action-state-group/evidencebook/pull/570): feat(dealprofile): x-deal-v1 counts a deal whose counterparty agreed and then went silent (#511)
+- [#573](https://github.com/action-state-group/evidencebook/pull/573): feat(shelf): Shelf.StampTime, the witnessed time of an x-deal-v1 stamp (#572)
+- [#566](https://github.com/action-state-group/evidencebook/pull/566): fix(rust): deal::v1 check_authorizations reads at as Go's time.Parse does (#551)
+- [#567](https://github.com/action-state-group/evidencebook/pull/567): docs(dealprofile): a finding's limit and value are a money cap's amounts in minor units (#456)
+- [#571](https://github.com/action-state-group/evidencebook/pull/571): docs(deal): list not_counted in the §9 report row remedy
+- [#568](https://github.com/action-state-group/evidencebook/pull/568): fix: bind stated freshness to the signed checkpoint for history_card/1 and checkpoints answers
+- [#565](https://github.com/action-state-group/evidencebook/pull/565): fix(dealprofile): the x-deal-v0 reference checker reads schema patterns as RE2 (#548)
+- [#564](https://github.com/action-state-group/evidencebook/pull/564): feat(python): x-deal-v1 StatusProvider and the report from a shelf, as Go's (#461 PR 6d-3c)
+- [#562](https://github.com/action-state-group/evidencebook/pull/562): fix(dealprofile): a sent or book pair's members are its own exactly (#559)
+- [#561](https://github.com/action-state-group/evidencebook/pull/561): feat(python): x-deal-v1 naming of rulings, as Go's NameRulings (#461 PR 6d-3b)
+- [#560](https://github.com/action-state-group/evidencebook/pull/560): feat(python): evidencebook.deal.v1 verify_report, Go's VerifyReport (#554)
+- [#558](https://github.com/action-state-group/evidencebook/pull/558): feat(rust): deal::v1 verify_report, Go's VerifyReport (#554)
+- [#556](https://github.com/action-state-group/evidencebook/pull/556): fix(dealprofile): VerifyReport refuses null lists and a negative count (#554)
+- [#555](https://github.com/action-state-group/evidencebook/pull/555): feat(dealprofile): verify a sealed v1 deal report against its deal's first record (#554)
+- [#553](https://github.com/action-state-group/evidencebook/pull/553): feat(python): x-deal-v1 receive profile and act gate, as Go's (#461 PR 6d-3a)
+- [#552](https://github.com/action-state-group/evidencebook/pull/552): feat(python): x-deal-v1 sent records, book pairs and the payment check (#461 PR 6d-2b-2)
+- [#550](https://github.com/action-state-group/evidencebook/pull/550): feat(python): x-deal-v1 authorization of acts, as Go's CheckAuthorizations (#461 PR 6d-2b-1)
+- [#549](https://github.com/action-state-group/evidencebook/pull/549): feat(python): x-deal-v1 status value and report from books, byte for byte with Go (#461 PR 6d-2a)
+- [#547](https://github.com/action-state-group/evidencebook/pull/547): fix(deal): read schema patterns as Go's RE2 in Python and Rust (#546)
+- [#545](https://github.com/action-state-group/evidencebook/pull/545): feat(python): x-deal-v1 records, checks and start, byte for byte with Go (#461 PR 6d-1)
+- [#544](https://github.com/action-state-group/evidencebook/pull/544): fix(shelf): read the counted prefix in one snapshot in Go and Python (#543)
+- [#542](https://github.com/action-state-group/evidencebook/pull/542): feat(python): shelf hooks for x-deal-v1 (held readers, record times, append_at, resolve_payload, seal_sent, book status, after_receive) (#461 PR 6c-1)
+- [#541](https://github.com/action-state-group/evidencebook/pull/541): feat(rust): deal::v1 book_entry, ruling naming, DealStatus and the report from a shelf (#461 PR 6b-2c)
+- [#540](https://github.com/action-state-group/evidencebook/pull/540): fix(rust): Shelf::records reads field_commitments as Go's object (#538)
+- [#539](https://github.com/action-state-group/evidencebook/pull/539): feat(rust): deal::v1 ReceiveProfile, can_act and gate_act on a shelf; ShelfBook::resolve_payload (#461 PR 6b-2b)
+- [#537](https://github.com/action-state-group/evidencebook/pull/537): feat(rust): deal::v1 book pairs and the payment check (#461 PR 6b-2a)
+- [#536](https://github.com/action-state-group/evidencebook/pull/536): feat(rust): shelf hooks for x-deal-v1 (seal_sent, record times by key and received, BookStatus, after_receive) (#461 PR 6b-1)
+- [#535](https://github.com/action-state-group/evidencebook/pull/535): fix(rust): deal refuses the members serde_json reads as something else (#534)
+- [#533](https://github.com/action-state-group/evidencebook/pull/533): feat(rust): deal::v1, the x-deal-v1 profile in Rust, with a Go/Rust differential check (#461 step 5, PR 6a)
+- [#530](https://github.com/action-state-group/evidencebook/pull/530): feat(dealprofile): x-deal-v1 sealed deal report (#461 step 5, PR 5)
+- [#532](https://github.com/action-state-group/evidencebook/pull/532): chore(release): evidencebook v0.18.1
+- [#531](https://github.com/action-state-group/evidencebook/pull/531): fix(dealprofile): xdealv1.BookEntry seals header record_type deal_step
+- [#529](https://github.com/action-state-group/evidencebook/pull/529): chore(release): evidencebook v0.18.0
+- [#528](https://github.com/action-state-group/evidencebook/pull/528): feat(dealprofile): x-deal-v1 Receive and each stamp name a counted ruling's arrival (#527)
+- [#526](https://github.com/action-state-group/evidencebook/pull/526): feat(dealprofile): x-deal-v1 status value and StatusProvider (#461 step 5, PR 4c-2b-2)
+- [#525](https://github.com/action-state-group/evidencebook/pull/525): feat(shelf): a status provider is handed the book and journal (#461 step 5, PR 4c-2b-1)
+- [#520](https://github.com/action-state-group/evidencebook/pull/520): docs(dealprofile): x-deal-v1 carries no demo member
+- [#524](https://github.com/action-state-group/evidencebook/pull/524): chore(release): evidencebook v0.17.0
+- [#506](https://github.com/action-state-group/evidencebook/pull/506): chore(ard-commerce): the ARD demo moved to evidencebook-skills demo/ard
+- [#519](https://github.com/action-state-group/evidencebook/pull/519): fix(dealprofile): x-deal-v1 admit and check carry a nonce (u528)
+
+### Added: `deal::v1`, the x-deal-v1 deal record profile (evidencebook#461 step 5, PR 6a)
+
+- **What it is.** The Rust counterpart of Go's `dealprofile/xdealv1`, behind the `deal` feature. It gives the same bytes and refusals as Go.
+- **What it covers:**
+  - names and record types;
+  - `decode`, `encode`, `digest` and `check`, plus `check_sealed`, `check_agreement`, `check_dispute` and `check_ruling`;
+  - `start` and `start_from_books`;
+  - `row_inputs`, `build_status` and `resolve_row`;
+  - `build_report`, `report_payload` and `settled`;
+  - `verify_sent`, `pair` and `terms_leg`;
+  - `check_authorizations`, including the check that journal records do not share a nonce, and `new_nonce`.
+- **Tests.** Each of these reads the shared vectors: every fixture under `dealprofile/x-deal-v1/fixtures`, and the records, start, status, report, settled, decline and authorization vectors under `testdata/deal-v1`.
+- **Schema.** The x-deal-v1 schema is vendored byte for byte, and a test holds the vendored copy equal to the source.
+- **`row_status::compute_late`** returns the late statements and late disputes, as Go's `ComputeLate` does, and passes `testdata/row-status/late.json`. `row_status::Date` and `Row` now serialize as Go writes them.
+- **Not yet ported:** the shelf-coupled parts. These are the receive profile, the status provider, ruling naming and the payment check, and they come in PR 6b.
+
+### Added: the shelf hooks a deal profile runs on (`shelf` feature; evidencebook#461 step 5, PR 6b-1)
+
+The Go shelf's hooks from #484, #490, #517, #525, #526, #528 and #530, which x-deal-v1's shelf parts (PR 6b-2) need:
+
+- **`ShelfBook::append_at(seq, entry)`** appends only as the book's next record, counting a record stored and awaiting its log append; any other position is `ShelfError::Busy`.
+- **Held readers.** `Shelf::held_first`, `Shelf::held_by_deal` and `Shelf::held_proofs` (`HeldProof`) read received records and stamp proofs without the shelf lock.
+- **`Shelf::seal_sent(entry, members, action_id)`** appends a journal record and seals its standalone `fyi` Capsule over the same canonical JSON bytes under the caller's `action_id`, with `members` carried in that Capsule only. A record stored whose log append failed comes back in `SealedSent` with its Capsule and the error. `seal::seal_payload` seals such a Capsule.
+- **Record times by key and for received records.** `Shelf::record_time_by_key`, `received_record_time` and `received_record_time_by_key`, and the stamps that give a record its time, `Shelf::record_stamp` and `received_record_stamp`.
+- **`BookStatus` is a trait** in place of the closure type (Go's four status interfaces in one): `values` is handed a `StatusInput` (the stamp's tick, the book's ids, the book and the journal if the shelf has one), and `before_stamp` runs before each stamp under the receive lock. A cadence with a book status therefore takes the receive lock at each stamp, so a `ReceiveProfile` callback must not call `Cadence::stamp` or `tick`. A closure of a book id and log id still is one. `Shelf::existing_journal` returns the journal without creating it.
+- **One book's status error no longer fails the stamp.** That book keeps its last fact and is listed in `TickResult::unstated`; `TickResult::before_stamp` reports a `before_stamp` error.
+- **`ReceiveProfile::after_receive`** runs on every `Shelf::receive` call once its parts committed; its error is `ReceiveError::after`. `RecordOutcome::deal_id` is the deal the profile read the record as.
+
+Breaking for a caller that builds these structs literally: `TickResult` gains `unstated` and `before_stamp`, `ReceiveError` gains `after`, and `RecordOutcome` gains `deal_id`. `CadenceConfig::status` is `Option<Arc<dyn BookStatus>>`; a closure passed there needs its parameter types written (`|book_id: &str, log_id: &str|`).
+
+### Added: `deal::v1` book pairs and the payment check (evidencebook#461 step 5, PR 6b-2a)
+
+- **`deal::v1::book_pair` and `verify_book`** (`BookRead`, `STAGE_BOOK`), as Go's `BookPair` and `VerifyBook`. A deal-book or case-book record travels as its signed Capsule, the header the Capsule commits and the x-deal-v1 record the header commits as its one payload.
+- **`deal::v1::payment_check`** (`PaymentInput`, `STAGE_PAYMENT`, the pass/fail values and the not-run and failure reasons), as Go's `PaymentCheck`. It checks a payment row over the settlement legs both deal books hold, using AAC's settlement verifier, and returns the `PaymentResult` a status value carries.
+- **Tests.** All of these read the new `testdata/deal-v1/payment/vectors.json`, which Go's `TestPaymentVectors` writes from the Go payment and book pair tests, case for case. It also holds the refusals of resealed headers and the expected `BookPair` bytes.
+- **`deal::v1::pair` now writes Go's exact bytes.** It escapes `<`, `>`, `&`, U+2028 and U+2029 as Go's `json.Marshal` does. Before, it wrote those characters unescaped. `book_pair` writes Go's bytes too.
+- **`verify_book` reads the header as Go's typed `Header` does.** Each member is checked against its Go type, null reads as the zero value, and member names match in any case.
+- **Dependency.** The `deal` feature now turns on agent-action-capsule's `settlement` feature.
+
+### Added: the x-deal-v1 holder on a shelf (`deal` and `shelf` features; evidencebook#461 step 5, PR 6b-2b)
+
+- **`deal::v1::ReceiveProfile`** is x-deal-v1's `shelf::ReceiveProfile`, as Go's `xdealv1.ReceiveProfile` is:
+  - **`read`** takes a book pair or a sent pair. A sent record is held in `x-deal-v1/sent/<record digest>` (`SENT_LOG_PREFIX`).
+  - **`admit`** applies EBL's push rule: offers from any key; a decline from the key the offer was sent to; a cancellation from the offer's signer; a ruling from our adjudicator; and a deal-book record from the deal's counterparty, on a log whose first record is its agreement of this deal.
+  - **`answered`** says whether our side answered a held offer.
+  - **`proof_sender`** relates a stamp proof to its sender, refusing a fork at the genesis or two candidates.
+
+  Give the profile its shelf with `set_shelf` once the shelf is open. The profile holds a `WeakShelf`, so the two do not keep each other alive.
+- **`ReceiveProfile::can_act`** (`CanActInput`) is the first-act coverage gate: a held stamp proof must cover the counterparty's agreement. **`gate_act`** (`ActGateInput`, `ActGate`, `GATE_NO_PROOF`, `GATE_NO_LAYER`) holds a first perform or payer settle until that is so, and lets it through unguarded when the counterparty runs no layer.
+- **`ShelfBook::resolve_payload`** reads one payload of a record as the record's retention state allows. A `WITHHELD` or `DELETED` record's payload is the new `ShelfError::Unavailable`.
+- **`Shelf::records` and `resolve_payload` read a lifecycle record's statement as Go does.** `retention_state` and `reason` match in any case, and a state that is not a string makes the book's listing `Corrupt`. Before, Rust read only the lowercase name and took any other value as no state.
+- **`ShelfBook::record_by_seq`** returns one committed record.
+- **`Shelf::downgrade`** and **`WeakShelf`** give a handle on a shelf that does not keep it alive.
+
+Breaking for code that matches on every `ShelfError` variant: `ShelfError` gains `Unavailable`.
+
+### Added: a v1 deal book's status, ruling naming and report on a shelf (`deal` and `shelf` features; evidencebook#461 step 5, PR 6b-2c)
+
+- **`deal::v1::book_entry`** gives the entry that seals a record in its deal book: one payload, header record_type `deal_step`, the deal id as the subject, and a cites link to the record before it.
+- **`deal::v1::name_rulings` and `name_all_rulings`** seal, in the holder's deal book, a statement naming each counted ruling of the deal's adjudicator that the book does not name yet (PROFILE §5; evidencebook#527).
+  - The x-deal-v1 `ReceiveProfile` now names rulings on every receive (`after_receive`).
+  - A book that is not readable whole is never written to.
+  - A failure returns, beside its error, the record ids sealed before it (`NamingError`).
+- **`deal::v1::DealStatus`** is Go's `xdealv1.StatusProvider` as a `shelf::BookStatus`. It gives a v1 deal book's profile, link value and status value at each stamp, and names rulings before each stamp.
+  - `DealStatus::report` is the report of a deal book from the shelf, resting on its latest checkpoint.
+  - An optional `OfferPair` lets a payment row's check run.
+
+- **Fixed (`deal`, x-deal-v0):** a record that names a member `"$serde_json::private::Number"` or `"$serde_json::private::RawValue"` is now refused at the canonicalization stage and by `deal::decode`, whether or not the name is escaped (evidencebook#534). serde_json reads an object whose first member has one of these names as a number or as embedded JSON (`arbitrary_precision`, `raw_value`), so the record was not read as written and two texts could share one digest. Go reads such a member as written, so this is a stricter refusal than Go's, named in the module docs. `deal::v1` already refused it; both now use one check.
+
+- **Fixed (`shelf`):** `Shelf::records` now gives a retention state to a record that commits a field and no payload, as Go does (evidencebook#538). Go writes `field_commitments` as an object, and Rust read it as a list, so such a record listed no retention state. The shelf interlock now compares every language's dump of a Go-written shelf holding such a record.
+
+- **Fixed (`deal`):** the x-deal-v0 and x-deal-v1 schema stages read a schema pattern's `\s` as Go's validator (RE2) does: the tab, newline, form feed, carriage return and space only (evidencebook#546). A platform written with a no-break space or a vertical tab was refused here and passed in Go. The parity vectors carry the cases.
+
+- **Fixed (`deal::v1`, feature `deal`):** `check_authorizations` reads each `at` as Go's `time.Parse(time.RFC3339, at)` does (evidencebook#551). On a record that was never checked it takes a one-digit hour, a `.` or `,` fraction of any length and a zone offset; a refusal is Go's text; and a journal's `at` never decreases from Go's zero Time. The crate replays Go's `testdata/deal-v1/time` vectors and the error texts of `testdata/deal-v1/authorization/approval-migration.json`.
+
+- **Added (`deal::v1`, feature `deal`):** `verify_report` and `report_pair`, Go's `VerifyReport` and `ReportPair`. They check a sealed v1 deal report against its deal's first record: the holder's key, the deal and log the report rests on, the closed `ruling.against`, and the values `build_report` never writes (evidencebook#554). The crate replays Go's `testdata/deal-v1/report-verify` vectors, and the `x-deal-v1` differential compares it with Go on mutated reports.
+
+- **Fixed (`deal::v1`, feature `deal`):** one exact-name rule (`exact.rs`, Go's `exactObject`) now covers a pair, the signed Capsule's members the profile reads, a settlement member, and a record header with its links (evidencebook#559). A member spelled otherwise than one read is refused, and a header carrying a `correlation` is refused. The crate replays Go's `testdata/deal-v1/pair-names` vectors.
+
+- **Fixed (`deal::v1`, feature `deal`):** `verify_book` refuses a header `correlation` member that `record-header.schema.json` does not list, as Go's `VerifyBook` and Python's `verify_book` do (evidencebook#563). The crate holds the schema's three names as SHA-256 digests, so it still spells no deployment vocabulary; a test holds the digests to the schema, and `testdata/deal-v1/pair-names` gains Go-written cases for a listed and an unlisted name.
+
 ## 0.0.21 (2026-11-18)
 
 - `history_card/2` (Evidence Request -03 §8.1.2, evidencebook#507), as Go's: positions from evidence-request's `history_card::positions`

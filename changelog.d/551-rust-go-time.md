@@ -1,2 +1,0 @@
-<!-- changelog: rust/evidencebook/CHANGELOG.md -->
-- **Fixed (`deal::v1`, feature `deal`):** `check_authorizations` reads each `at` as Go's `time.Parse(time.RFC3339, at)` does (evidencebook#551). On a record that was never checked it takes a one-digit hour, a `.` or `,` fraction of any length and a zone offset; a refusal is Go's text; and a journal's `at` never decreases from Go's zero Time. The crate replays Go's `testdata/deal-v1/time` vectors and the error texts of `testdata/deal-v1/authorization/approval-migration.json`.

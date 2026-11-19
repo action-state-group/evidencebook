@@ -1,2 +1,0 @@
-<!-- changelog: python/CHANGELOG.md -->
-- **Added (`evidencebook.deal.v1`):** `verify_report` and `report_pair`, Go's `VerifyReport` and `ReportPair` (evidencebook#554). They check a sealed v1 deal report against its deal's first record, and read the payload against Go's `Report` type from the types table, which now holds it. The package replays Go's `testdata/deal-v1/report-verify` vectors, and the `x-deal-v1` differential compares it with Go.
