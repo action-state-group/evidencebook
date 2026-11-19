@@ -329,11 +329,9 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
 
 /// A settlement member's `leg`, `sealer_role` and `terms_ref`, as Go reads
 /// them into strings: a null member, or an absent or null one of these, is
-/// `""`; `None` when the member is not an object or one of these is not a
-/// string (Go's unmarshal fails). Go also matches these names without
-/// regard to case; a member that spells one otherwise answers no terms leg
-/// here, and AAC's verifier refuses it in Go, so the two differ only in
-/// whether the leg is listed in `excluded`.
+/// `""`; `None` when the member is not an object, spells one of these
+/// otherwise (Go's `exactObject`, evidencebook#559), or holds one that is
+/// not a string (Go's unmarshal fails).
 struct Member {
     leg: String,
     sealer_role: String,
@@ -349,6 +347,7 @@ fn member_of(v: &Value) -> Option<Member> {
         });
     }
     let o = v.as_object()?;
+    super::exact::exact_object(v, &super::exact::SETTLEMENT, true, "the settlement member").ok()?;
     let text = |k: &str| match o.get(k) {
         None | Some(Value::Null) => Some(String::new()),
         Some(Value::String(s)) => Some(s.clone()),

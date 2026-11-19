@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	emit "github.com/action-state-group/capsule-emit/go"
@@ -93,6 +94,9 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if err := strictUnmarshal(pair, &p); err != nil || p.Record == nil || p.AgentInput == nil {
 		return bad("not a pair {record, agent_input}: %v", err)
 	}
+	if err := exactObject(pair, reflect.TypeOf(p), false, "the pair"); err != nil {
+		return bad("not a pair {record, agent_input}: %v", err)
+	}
 	var sigHex, keyID string
 	if err := errors.Join(json.Unmarshal(p.Record["signature"], &sigHex), json.Unmarshal(p.Record["key_id"], &keyID)); err != nil || sigHex == "" || keyID == "" {
 		return bad("the Capsule carries no signature and key_id")
@@ -125,18 +129,9 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if hex.EncodeToString(verified.PublicKey) != keyID {
 		return bad("the Capsule is signed by another key than its key_id")
 	}
-	var c struct {
-		ActionID   string `json:"action_id"`
-		ActionType string `json:"action_type"`
-		References []any  `json:"references"`
-		Model      struct {
-			Compute struct {
-				AgentInputDigest string `json:"agent_input_digest"`
-			} `json:"compute_attestation"`
-		} `json:"model_attestation"`
-	}
-	if err := json.Unmarshal(capsule, &c); err != nil {
-		return Sent{}, err
+	c, err := readCapsule(capsule)
+	if err != nil {
+		return bad("%v", err)
 	}
 	_, header := p.Record["evidence_record_header"]
 	chain, chained := p.Record["chain"]
@@ -148,7 +143,7 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if err != nil {
 		return bad("agent_input: %v", err)
 	}
-	if c.Model.Compute.AgentInputDigest != digest {
+	if c.AgentInputDigest != digest {
 		return bad("agent_input is not the record the Capsule commits (agent_input_digest)")
 	}
 	if err := Check([]byte(p.AgentInput)); err != nil {

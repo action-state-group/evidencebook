@@ -114,11 +114,10 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
     super::check::check_text(pair)?;
     let p: Value = serde_json::from_slice(pair)
         .map_err(|e| bad(format!("not a pair {{record, agent_input}}: {e}")))?;
-    let obj = p.as_object();
-    let ok_shape = obj.is_some_and(|o| {
-        o.len() == 2
-            && o.get("record").is_some_and(Value::is_object)
-            && o.contains_key("agent_input")
+    super::exact::exact_object(&p, &super::exact::SENT_PAIR, false, "the pair")
+        .map_err(|e| bad(format!("not a pair {{record, agent_input}}: {e}")))?;
+    let ok_shape = p.as_object().is_some_and(|o| {
+        o.get("record").is_some_and(Value::is_object) && o.contains_key("agent_input")
     });
     if !ok_shape {
         return Err(bad("not a pair {record, agent_input}".into()));
@@ -244,6 +243,9 @@ pub(crate) fn verify_capsule(
     if hex::encode(&verified.public_key) != key_id {
         return Err(bad("the Capsule is signed by another key than its key_id"));
     }
+    // What the profile reads of it, by exact names (Go readCapsule).
+    super::exact::exact_object(&capsule, &super::exact::CAPSULE, true, "the Capsule")
+        .map_err(|e| stage_err(stage, e))?;
     Ok((capsule, capsule_bytes, capsule_id, key_id))
 }
 

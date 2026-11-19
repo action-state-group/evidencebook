@@ -121,7 +121,11 @@ def test_a_settle_member_read_as_go_reads_it():
     assert _settlement_member("5") is None
     assert _settlement_member('{"leg": 5}') is None
     assert _settlement_member("null") == {"leg": "", "sealer_role": "", "terms_ref": ""}
-    assert _settlement_member('{"LEG": "payer_observed", "x": 1}')["leg"] == "payer_observed"
+    # A member spelled otherwise than one the check reads refuses the member,
+    # as Go's exactObject does; another member is read past (evidencebook#559).
+    assert _settlement_member('{"LEG": "payer_observed", "x": 1}') is None
+    assert _settlement_member('{"leg": "payer_observed", "\u017fealer_role": "payer"}') is None
+    assert _settlement_member('{"leg": "payer_observed", "x": 1}')["leg"] == "payer_observed"
 
 
 # -- pairs read and written as Go reads and writes them (#552 review r1) ---------------
@@ -135,7 +139,9 @@ BOOK = json.dumps(next(c for c in PAYMENT["book"] if c["valid"])["pair"])
 
 
 @pytest.mark.parametrize("raw, stage", [
-    ('{"record":' + REC + ',"Record":{},"agent_input":' + AI + '}', None),  # the map merges
+    # Go's reader merges the two spellings, but a pair's members are its own
+    # exactly (evidencebook#559).
+    ('{"record":' + REC + ',"Record":{},"agent_input":' + AI + '}', "sent"),
     ('{"record":{"x-extra":1},"Record":' + REC + ',"agent_input":' + AI + '}', "sent"),
     ('{"record":5,"Record":' + REC + ',"agent_input":' + AI + '}', "sent"),
     (OFFER + " {}", "sent"),  # trailing data is the pair's refusal, not the text's
@@ -166,13 +172,16 @@ def test_a_book_pair_with_trailing_data_is_refused_at_book():
     assert exc.value.stage == "book"
 
 
-def test_payment_check_takes_a_record_member_in_another_case():
+def test_payment_check_refuses_an_offer_pair_member_in_another_case():
+    # Go's PaymentCheck reads the offer with VerifySent, which takes a
+    # pair's members by their exact names (evidencebook#559).
     from evidencebook.deal.v1 import payment
 
     inp = payment.PaymentInput(OFFER.replace('"record"', '"Record"', 1).encode(), BASE["offer_digest"],
                                BASE["acceptor_key"], BASE["row"],
-                               [json.dumps(leg).replace('"record"', '"Record"', 1).encode() for leg in BASE["legs"]])
-    assert payment.payment_check(inp).check == "pass"
+                               [json.dumps(leg).encode() for leg in BASE["legs"]])
+    with pytest.raises(StageError, match="'Record' is 'record' spelled otherwise"):
+        payment.payment_check(inp)
 
 
 def test_book_pair_takes_and_refuses_what_go_s_marshal_does():

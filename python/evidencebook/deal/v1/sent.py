@@ -25,7 +25,7 @@ from agent_action_capsule.canonical import jcs
 from capsule_emit.produce import verify_capsule, verify_envelope
 
 from ..check import StageError, _go_quote
-from . import golenient, goscan, gotypes, rawjson
+from . import exact, golenient, goscan, gotypes, rawjson
 from .check import Record, _read_text, check, decode, digest, ref_to
 from .check import PLACEMENT_JOURNAL, placement_of
 from .names import KIND_CANCELLATION, KIND_DECLINE, TYPE_AGREE, TYPE_PROPOSE
@@ -208,6 +208,10 @@ def _verify_capsule(stage: str, members: dict[str, str]) -> tuple[bytes, str, st
         raise _err(stage, f"the signature does not verify: {exc}") from None
     if bytes(verified.public_key).hex() != key_id:
         raise _err(stage, "the Capsule is signed by another key than its key_id")
+    # What the profile reads of it, by exact names (Go readCapsule).
+    why = exact.exact_object(json.loads(capsule), exact.CAPSULE, True, "the Capsule")
+    if why:
+        raise _err(stage, why)
     return capsule, result.capsule_id, key_id
 
 
@@ -228,6 +232,15 @@ def _pair_members(raw: bytes, stage: str, names: tuple[str, ...], what: str) -> 
         raise _err(stage, f"not a {what}: {exc}") from None
     if any(out[n] is None for n in names):
         raise _err(stage, f"not a {what}: <nil>")
+    # Go's exactObject (evidencebook#559): the reader above also takes a
+    # member in another case, a later spelling replacing an earlier one.
+    try:
+        top = rawjson.unmarshal_map(text) or {}
+    except rawjson.GoJSONError as exc:
+        raise _err(stage, f"not a {what}: {exc}") from None
+    why = exact.exact_object(top, {n: None for n in names}, False, "the pair")
+    if why:
+        raise _err(stage, f"not a {what}: {why}")
     return out
 
 
@@ -418,7 +431,11 @@ def verify_book(raw: bytes) -> BookRead:
     if _agent_input_digest(capsule) != hashlib.sha256(hjcs).hexdigest():
         raise _err(STAGE_BOOK, "the Capsule does not commit this header")
     try:
-        h = golenient.read(json.loads(hjcs), gotypes.table()["header"], {})
+        hdoc = json.loads(hjcs)
+        why = exact.exact_object(hdoc, exact.table_spec(gotypes.table()["header"]), False, "the header")
+        if why:
+            raise _err(STAGE_BOOK, why)
+        h = golenient.read(hdoc, gotypes.table()["header"], {})
     except golenient.GoDecodeError as exc:
         raise _err(STAGE_BOOK, f"the header: {exc}") from None
     payload = p["payload"].encode("utf-8")

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -145,6 +146,9 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if err := strictUnmarshal(pair, &p); err != nil || p.Record == nil || p.Header == nil || p.Payload == nil {
 		return bad("not a book pair {record, header, payload}: %v", err)
 	}
+	if err := exactObject(pair, reflect.TypeOf(p), false, "the pair"); err != nil {
+		return bad("not a book pair {record, header, payload}: %v", err)
+	}
 	if _, inline := p.Record[evidencebook.RecordHeaderMember]; inline {
 		return bad("the Capsule carries its header inline; a book record commits it")
 	}
@@ -152,15 +156,9 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if err != nil {
 		return BookRead{}, err
 	}
-	var c struct {
-		Model struct {
-			Compute struct {
-				AgentInputDigest string `json:"agent_input_digest"`
-			} `json:"compute_attestation"`
-		} `json:"model_attestation"`
-	}
-	if err := json.Unmarshal(capsule, &c); err != nil {
-		return BookRead{}, err
+	c, err := readCapsule(capsule)
+	if err != nil {
+		return bad("%v", err)
 	}
 	hdoc, err := decodeJSON(p.Header)
 	if err != nil {
@@ -170,8 +168,11 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if err != nil {
 		return bad("the header: %v", err)
 	}
-	if sum := sha256.Sum256(hjcs); c.Model.Compute.AgentInputDigest != hex.EncodeToString(sum[:]) {
+	if sum := sha256.Sum256(hjcs); c.AgentInputDigest != hex.EncodeToString(sum[:]) {
 		return bad("the Capsule does not commit this header")
+	}
+	if err := exactObject(hjcs, reflect.TypeFor[evidencebook.Header](), false, "the header"); err != nil {
+		return bad("%v", err)
 	}
 	var h evidencebook.Header
 	if err := json.Unmarshal(hjcs, &h); err != nil {

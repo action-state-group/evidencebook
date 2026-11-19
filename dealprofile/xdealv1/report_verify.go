@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	emit "github.com/action-state-group/capsule-emit/go"
@@ -59,28 +60,16 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 	if err := strictUnmarshal(report, &p); err != nil || p.Record == nil || p.AgentInput == nil {
 		return bad("not a report pair {record, agent_input}: %v", err)
 	}
-	// Exactly these two names: Go's reader would also take a member in
-	// another case, so a second agent_input so spelled would be read in
-	// place of the one beside it.
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(report, &top); err != nil || len(top) != 2 || top["record"] == nil || top["agent_input"] == nil {
-		return bad("not a report pair {record, agent_input}: its members are not exactly record and agent_input")
+	if err := exactObject(report, reflect.TypeOf(p), false, "the pair"); err != nil {
+		return bad("not a report pair {record, agent_input}: %v", err)
 	}
 	capsule, id, keyID, err := verifyCapsule(StageReport, p.Record)
 	if err != nil {
 		return ReportRead{}, err
 	}
-	var c struct {
-		ActionID   string `json:"action_id"`
-		ActionType string `json:"action_type"`
-		Model      struct {
-			Compute struct {
-				AgentInputDigest string `json:"agent_input_digest"`
-			} `json:"compute_attestation"`
-		} `json:"model_attestation"`
-	}
-	if err := json.Unmarshal(capsule, &c); err != nil {
-		return ReportRead{}, err
+	c, err := readCapsule(capsule)
+	if err != nil {
+		return bad("%v", err)
 	}
 	if c.ActionID != dealprofile.ReportActionID || c.ActionType != string(emit.ActionTypeFYI) {
 		return bad("not a report Capsule: action_id %q, action_type %q", c.ActionID, c.ActionType)
@@ -93,7 +82,7 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 	if err != nil {
 		return bad("the payload: %v", err)
 	}
-	if sum := sha256.Sum256(payload); c.Model.Compute.AgentInputDigest != hex.EncodeToString(sum[:]) {
+	if sum := sha256.Sum256(payload); c.AgentInputDigest != hex.EncodeToString(sum[:]) {
 		return bad("the payload is not the one the Capsule commits (agent_input_digest)")
 	}
 	var r Report

@@ -502,3 +502,28 @@ fn report_verify_vectors() {
         );
     }
 }
+
+/// pair-names/vectors.json: a sent or book pair whose members are not
+/// exactly its own is refused at Go's stage (evidencebook#559).
+#[test]
+fn pair_names_vectors() {
+    for c in vectors("pair-names/vectors.json") {
+        let name = c["name"].as_str().unwrap();
+        let pair = hex::decode(c["pair"].as_str().unwrap()).unwrap();
+        let got = if c["kind"] == "sent" {
+            v1::verify_sent(&pair, None).map(|_| ())
+        } else {
+            v1::verify_book(&pair).map(|_| ())
+        };
+        if c["valid"].as_bool().unwrap() {
+            got.unwrap_or_else(|e| panic!("{name}: {e}"));
+        } else {
+            let err = got.expect_err(name);
+            assert_eq!(
+                err.stage().map(|s| s.stage),
+                c["stage"].as_str(),
+                "{name}: {err}"
+            );
+        }
+    }
+}

@@ -6,6 +6,7 @@
 //! agent_input_digest, and the x-deal-v1 record the header commits as its
 //! one payload.
 
+use super::exact::{exact_object, go_name_matches, BOOK_PAIR, HEADER};
 use serde_json::{json, Map, Value};
 use sha2::{Digest as _, Sha256};
 
@@ -94,10 +95,10 @@ pub fn verify_book(pair: &[u8]) -> Result<BookRead, Error> {
     check_text(pair)?;
     let p: Value = serde_json::from_slice(pair)
         .map_err(|e| bad(format!("not a book pair {{record, header, payload}}: {e}")))?;
+    exact_object(&p, &BOOK_PAIR, false, "the pair")
+        .map_err(|e| bad(format!("not a book pair {{record, header, payload}}: {e}")))?;
     let shape = p.as_object().filter(|o| {
-        o.keys()
-            .all(|k| matches!(k.as_str(), "record" | "header" | "payload"))
-            && o.get("record").is_some_and(Value::is_object)
+        o.get("record").is_some_and(Value::is_object)
             && o.contains_key("header")
             && o.contains_key("payload")
     });
@@ -123,6 +124,7 @@ pub fn verify_book(pair: &[u8]) -> Result<BookRead, Error> {
     // way here, from the same bytes, so a member the types refuse refuses
     // the pair and a member Go reads in another case is read.
     let header: Value = serde_json::from_slice(&header_bytes)?;
+    exact_object(&header, &HEADER, false, "the header").map_err(bad)?;
     let h = go_header(&header).map_err(|e| bad(format!("the header: {e}")))?;
     let payload_text = serde_json::to_vec(&o["payload"])?;
     let d = digest(&payload_text)?;
@@ -179,22 +181,6 @@ struct GoHeader {
     payload_commitments: Vec<String>,
     /// Each link's type and target.
     links: Vec<(String, String)>,
-}
-
-/// Go's `encoding/json` field match: the exact name, or one equal to it
-/// under Unicode simple case folding (`bytes.EqualFold`), which for these
-/// ASCII names also takes U+017F for `s` and U+212A for `k`.
-fn go_name_matches(key: &str, field: &str) -> bool {
-    let fold = |c: char| match c {
-        '\u{017F}' => 's',
-        '\u{212A}' => 'k',
-        c => c.to_ascii_lowercase(),
-    };
-    key.chars().count() == field.chars().count()
-        && key
-            .chars()
-            .zip(field.chars())
-            .all(|(a, b)| fold(a) == fold(b))
 }
 
 /// `v` decoded into Go's type, as `json.Unmarshal` does: `null` leaves the

@@ -50,10 +50,10 @@ pub fn verify_report(report: &[u8], first: &[u8]) -> Result<ReportRead, Error> {
     check_text(report)?;
     let p: Value = serde_json::from_slice(report)
         .map_err(|e| bad(format!("not a report pair {{record, agent_input}}: {e}")))?;
+    super::exact::exact_object(&p, &super::exact::SENT_PAIR, false, "the pair")
+        .map_err(|e| bad(format!("not a report pair {{record, agent_input}}: {e}")))?;
     let ok_shape = p.as_object().is_some_and(|o| {
-        o.len() == 2
-            && o.get("record").is_some_and(Value::is_object)
-            && o.contains_key("agent_input")
+        o.get("record").is_some_and(Value::is_object) && o.contains_key("agent_input")
     });
     if !ok_shape {
         return Err(bad("not a report pair {record, agent_input}".into()));

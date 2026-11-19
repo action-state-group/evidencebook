@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -183,6 +184,115 @@ func sameRecord(data []byte, v any) error {
 		return fmt.Errorf("xdealv1: the record's text does not read as its type: it would encode to other bytes")
 	}
 	return nil
+}
+
+// exactObject is the one rule for every object a verify path decodes into a
+// Go type (evidencebook#559): a pair, a signed Capsule, a settlement
+// member, a record header and the links in it. json.Unmarshal matches a
+// member name in another case (U+017F for s and U+212A for k included), and
+// a later spelling replaces an earlier one, so without this a signed object
+// could carry a second spelling of a member that Go reads in place of the
+// one an exact or schema-checking reader takes. Each object in raw, down
+// t's struct, list and map types, must name its members exactly as t's
+// fields do: a name that differs from a field's only by case folding is
+// refused, and so is any other name unless open, for an object that carries
+// members the profile does not read (a Capsule, a settlement member). A
+// member given twice is the text check's (checkText) to refuse, over the
+// pair that holds the object.
+func exactObject(raw []byte, t reflect.Type, open bool, at string) error {
+	doc, err := decodeJSON(raw)
+	if err != nil {
+		return err
+	}
+	return exactValue(doc, t, open, at)
+}
+
+func exactValue(v any, t reflect.Type, open bool, at string) error {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == reflect.TypeFor[json.RawMessage]() {
+		return nil
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil // a type error, which json.Unmarshal reports
+		}
+		fields := map[string]reflect.Type{}
+		for i := range t.NumField() {
+			f := t.Field(i)
+			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if f.IsExported() && name != "-" && name != "" {
+				fields[name] = f.Type
+			}
+		}
+		for k, e := range m {
+			if ft, ok := fields[k]; ok {
+				if err := exactValue(e, ft, open, at+"."+k); err != nil {
+					return err
+				}
+				continue
+			}
+			for name := range fields {
+				if strings.EqualFold(k, name) {
+					return fmt.Errorf("%s member %q is %q spelled otherwise", at, k, name)
+				}
+			}
+			if !open {
+				return fmt.Errorf("%s member %q is not one it has", at, k)
+			}
+		}
+	case reflect.Slice:
+		if l, ok := v.([]any); ok {
+			for i, e := range l {
+				if err := exactValue(e, t.Elem(), open, fmt.Sprintf("%s[%d]", at, i)); err != nil {
+					return err
+				}
+			}
+		}
+	case reflect.Map:
+		if m, ok := v.(map[string]any); ok {
+			for k, e := range m {
+				if err := exactValue(e, t.Elem(), open, at+"."+k); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// capsuleWire is what the profile reads of a verified Capsule, which
+// carries other members too (exactObject, open).
+type capsuleWire struct {
+	ActionID   string `json:"action_id"`
+	ActionType string `json:"action_type"`
+	References []any  `json:"references"`
+	Model      struct {
+		Compute struct {
+			AgentInputDigest string `json:"agent_input_digest"`
+		} `json:"compute_attestation"`
+	} `json:"model_attestation"`
+}
+
+// capsuleRead is capsuleWire's members.
+type capsuleRead struct {
+	ActionID, ActionType, AgentInputDigest string
+	References                             []any
+}
+
+func readCapsule(capsule []byte) (capsuleRead, error) {
+	var w capsuleWire
+	if err := exactObject(capsule, reflect.TypeFor[capsuleWire](), true, "the Capsule"); err != nil {
+		return capsuleRead{}, err
+	}
+	if err := json.Unmarshal(capsule, &w); err != nil {
+		return capsuleRead{}, err
+	}
+	return capsuleRead{ActionID: w.ActionID, ActionType: w.ActionType, AgentInputDigest: w.Model.Compute.AgentInputDigest,
+		References: w.References}, nil
 }
 
 func strictUnmarshal(data []byte, v any) error {
