@@ -153,6 +153,29 @@ func verifyCases(t *testing.T) []verifyCase {
 		delete(ru, "against")
 		add("against-misnamed", seal(payloadOf(t, r)), h.agreementPair, StageReport, "does not read as a report")
 	}
+	{
+		// What the round trip keeps but BuildReport never writes.
+		for _, c := range []struct {
+			name string
+			mut  func(r map[string]any)
+		}{
+			{"rows-null", func(r map[string]any) { r["rows"] = nil }},
+			{"report-text-null", func(r map[string]any) { r["report"] = nil }},
+			{"relied-on-null", func(r map[string]any) { r["rows"].([]any)[0].(map[string]any)["relied_on"] = nil }},
+			{"late-statements-null", func(r map[string]any) {
+				r["rows"].([]any)[0].(map[string]any)["late"].(map[string]any)["statements"] = nil
+			}},
+			{"late-disputes-null", func(r map[string]any) {
+				r["rows"].([]any)[0].(map[string]any)["late"].(map[string]any)["disputes"] = nil
+			}},
+			{"owed-null", func(r map[string]any) { r["rows"].([]any)[0].(map[string]any)["owed"] = nil }},
+			{"rulings-unnamed-negative", func(r map[string]any) { r["rulings_unnamed"] = -1 }},
+		} {
+			r := sampleReport(t, h, "appendix-a-21-nov")
+			c.mut(r)
+			add(c.name, seal(payloadOf(t, r)), h.agreementPair, StageReport, "does not read as a report")
+		}
+	}
 	add("signed-by-the-counterparty", sealReport(t, "buyer", withRuling(RoleSeller), ""), h.agreementPair, StageReport,
 		"signed by another key than its deal's first record")
 	{

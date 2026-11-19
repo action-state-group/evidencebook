@@ -1,0 +1,1 @@
+- **Fixed (`dealprofile/xdealv1`):** `VerifyReport` refuses a report whose `rows`, `report` text, or a row's `owed`, `relied_on` or late list is null, or whose `rulings_unnamed` is negative. Go's round trip had kept these, so a report with null `rows` passed although `BuildReport` never writes one (evidencebook#554).
