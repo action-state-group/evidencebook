@@ -263,7 +263,50 @@ func (s *Shelf) recordStamp(ctx context.Context, position uint64, first func(*sq
 func earliestNamedTime(ctx context.Context, tx *sql.Tx, seq uint64, witnesses []string, by string) (t time.Time, ok bool, err error) {
 	// A shelf checkpoint covers the fact's entry when its tree holds that
 	// entry: its MMR size is at least the size of seq leaves.
-	cps, err := tx.QueryContext(ctx, `SELECT checkpoint FROM cadence_ticks WHERE checkpoint_size >= ? ORDER BY tick`, mmrSize(seq))
+	return earliestNamedTimeOf(ctx, tx, `SELECT checkpoint FROM cadence_ticks WHERE checkpoint_size >= ? ORDER BY tick`, mmrSize(seq), witnesses, by)
+}
+
+// StampTime is the witnessed time of the stamp n (its tick, from 1), which
+// an x-deal-v1 status time {"stamp": n} names (docs/design/461-deal-profile.md
+// §8.1, "Times"): the earliest registration time, among the receipts held
+// from the witnesses named (their URLs), of the shelf checkpoint of tick n or
+// of a later one. It is the time RecordTime gives a record that stamp is the
+// first to cover. ok is false when no such receipt is held yet (the time is
+// not known), and when n is a tick with no checkpoint and none later has
+// one. It takes no lock and reads in one transaction, as RecordTime.
+func (s *Shelf) StampTime(ctx context.Context, n uint64, witnesses []string) (t time.Time, ok bool, err error) {
+	return s.stampTime(ctx, n, witnesses, byURL)
+}
+
+// StampTimeByKey is StampTime with the witnesses named by their verified key
+// ids, as RecordTimeByKey.
+func (s *Shelf) StampTimeByKey(ctx context.Context, n uint64, keyIDs []string) (t time.Time, ok bool, err error) {
+	return s.stampTime(ctx, n, keyIDs, byKey)
+}
+
+func (s *Shelf) stampTime(ctx context.Context, n uint64, witnesses []string, by string) (t time.Time, ok bool, err error) {
+	if err := s.live(); err != nil {
+		return time.Time{}, false, err
+	}
+	if n == 0 {
+		return time.Time{}, false, fmt.Errorf("%w: a stamp counts from 1", ErrInvalid)
+	}
+	if len(witnesses) == 0 {
+		return time.Time{}, false, nil
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// A tick not yet cut (checkpoint_size 0) has no checkpoint to witness.
+	return earliestNamedTimeOf(ctx, tx, `SELECT checkpoint FROM cadence_ticks WHERE tick >= ? AND checkpoint_size > 0 ORDER BY tick`, n, witnesses, by)
+}
+
+// earliestNamedTimeOf is earliestNamedTime over the checkpoints coverQuery
+// selects with arg.
+func earliestNamedTimeOf(ctx context.Context, tx *sql.Tx, coverQuery string, arg uint64, witnesses []string, by string) (t time.Time, ok bool, err error) {
+	cps, err := tx.QueryContext(ctx, coverQuery, arg)
 	if err != nil {
 		return time.Time{}, false, err
 	}

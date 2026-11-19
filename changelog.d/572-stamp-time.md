@@ -1,0 +1,1 @@
+- **Added (shelf):** `Shelf.StampTime` and `Shelf.StampTimeByKey` give the witnessed time of a stamp, an x-deal-v1 status time `{"stamp": n}`: the earliest registration time, from the witnesses named, of the shelf checkpoint of tick `n` or a later one. A reader fills `xdealv1.ResolveRow`'s stamps with it (evidencebook#572).

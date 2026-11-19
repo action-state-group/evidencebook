@@ -400,3 +400,78 @@ func TestAReceivedRecordTimeByKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, ok, "a URL is not a key id")
 }
+
+// A stamp's time is the earliest named receipt of its checkpoint or a later
+// one, and a record's time is the time of the stamp that first covers it
+// (§8.1, "Times").
+func TestAStampTimeIsTheEarliestNamedReceiptFromThatStampOn(t *testing.T) {
+	ctx := context.Background()
+	_, shelf, c, bookID, first, second := recordTimeShelf(t)
+	key, _ := testWitness()
+	keyID := hex.EncodeToString(key.Public().(ed25519.PublicKey))
+	t1, t2 := tickTime.Add(10*time.Minute), tickTime.Add(20*time.Minute)
+	stampTime := func(n uint64, witnesses ...string) (time.Time, bool) {
+		t.Helper()
+		at, ok, err := shelf.StampTime(ctx, n, witnesses)
+		require.NoError(t, err)
+		return at, ok
+	}
+
+	_, ok := stampTime(first.N, testWitnessURL)
+	assert.False(t, ok, "no receipt yet")
+
+	// Only the second stamp is witnessed: the first stamp's time is that
+	// later checkpoint's, as RecordTime gives its record.
+	witnessAt(t, c, second, testWitnessURL, t2)
+	at, ok := stampTime(first.N, testWitnessURL)
+	require.True(t, ok)
+	assert.Equal(t, t2, at)
+	at, ok = stampTime(second.N, testWitnessURL)
+	require.True(t, ok)
+	assert.Equal(t, t2, at)
+	_, ok = stampTime(second.N+1, testWitnessURL)
+	assert.False(t, ok, "no checkpoint from that stamp on")
+
+	// The first stamp's own, earlier receipt wins for it, and not for the second.
+	witnessAt(t, c, first, otherWitnessURL, t1)
+	at, ok = stampTime(first.N, testWitnessURL, otherWitnessURL)
+	require.True(t, ok)
+	assert.Equal(t, t1, at)
+	at, _ = stampTime(first.N, testWitnessURL)
+	assert.Equal(t, t2, at, "a witness not named gives nothing")
+	at, ok = stampTime(second.N, testWitnessURL, otherWitnessURL)
+	require.True(t, ok)
+	assert.Equal(t, t2, at, "the first stamp's receipt does not count for a later stamp")
+	_, ok = stampTime(first.N)
+	assert.False(t, ok, "no witness named")
+	_, ok = stampTime(first.N, "https://unnamed.test")
+	assert.False(t, ok)
+
+	// It agrees with RecordTime and RecordStamp for every record.
+	for p := uint64(1); p <= leavesOf(t, shelf, "deal/a"); p++ {
+		n, found, err := shelf.RecordStamp(ctx, bookID, p)
+		require.NoError(t, err)
+		require.True(t, found)
+		want, wantOK := recordTime(t, shelf, bookID, p, testWitnessURL, otherWitnessURL)
+		got, gotOK := stampTime(n, testWitnessURL, otherWitnessURL)
+		assert.Equal(t, wantOK, gotOK, p)
+		assert.Equal(t, want, got, p)
+	}
+
+	// By key id, as RecordTimeByKey.
+	byKey, ok, err := shelf.StampTimeByKey(ctx, first.N, []string{keyID})
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, t2, byKey)
+	_, ok, err = shelf.StampTimeByKey(ctx, first.N, []string{testWitnessURL})
+	require.NoError(t, err)
+	assert.False(t, ok, "a URL is not a key id")
+
+	_, _, err = shelf.StampTime(ctx, 0, []string{testWitnessURL})
+	assert.ErrorIs(t, err, ErrInvalid)
+	_, _, err = shelf.StampTimeByKey(ctx, 0, []string{keyID})
+	assert.ErrorIs(t, err, ErrInvalid)
+	require.NoError(t, shelf.Release())
+	_, _, err = shelf.StampTime(ctx, first.N, []string{testWitnessURL})
+	assert.ErrorIs(t, err, ErrReleased)
+}
