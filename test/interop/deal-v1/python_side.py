@@ -2,19 +2,29 @@
 """The Python side of the x-deal-v1 differential check (diff.py): one JSON
 request per line on stdin, and one answer line for each, as the Go side
 (main.go) answers. It answers the kinds the Python package implements
-(check, sealed, against, status, report) and "skip" for any other.
+(check, sealed, against, status, report, verify_report) and "skip" for any
+other.
 
     python3 test/interop/deal-v1/python_side.py < requests
 """
 
+import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 
 from agent_action_capsule.canonical import jcs
 
 import evidencebook.deal.v1 as v1
 from evidencebook.deal.v1 import report as v1_report
 from evidencebook.deal.v1 import status as v1_status
+from evidencebook._capsule import seal_payload
+from evidencebook.deal.names import REPORT_ACTION_ID
+from evidencebook.signer import Ed25519Signer
+
+# The record key of the seller in dealprofile/xdealv1's receive tests, which
+# signed the first record of testdata/deal-v1/report-verify.
+SELLER = Ed25519Signer(hashlib.sha256(b"xdealv1 receive tests\x00seller record key").digest())
 
 COMPARED = {v1.STAGE_RECORD, v1.STAGE_AGREEMENT}
 
@@ -69,7 +79,25 @@ def answer(req):
             return jcs(v1_report.build_report(req["books"], req["copy"])).decode()
         except ValueError:
             return '{"error":true}'
+    if kind == "verify_report":
+        return verify_report(req["payload"], req["first"])
     return '"skip"'
+
+
+def verify_report(payload, first):
+    """Seals payload as a report Capsule under the seller's key, as main.go
+    does, and reads it against first."""
+    try:
+        payload = jcs(payload)
+    except Exception:  # noqa: BLE001 - JCS refuses it, before sealing
+        return '{"error":true}'
+    _, capsule, envelope = seal_payload(REPORT_ACTION_ID, payload, {}, operator="seller", developer="xdealv1-test",
+                                        at=datetime(2026, 11, 21, 12, 0, 0, tzinfo=timezone.utc), signer=SELLER)
+    try:
+        r = v1.verify_report(v1.report_pair(capsule, envelope, payload), bytes.fromhex(first))
+    except v1.StageError as e:
+        return jcs({"stage": e.stage}).decode()
+    return jcs({"key_id": r.key_id, "report": r.report}).decode()
 
 
 def main():
