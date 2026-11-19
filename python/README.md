@@ -151,6 +151,9 @@ producer seals them with its own key.
 against another), its payload and digest (`encode`, `digest`, `rows_digest`), where it is sealed
 (`placement_of`), when a deal has started (`start`, `start_from_books`), the deal book's status
 value (`build_status`, `resolve_row`) and a copy of the report built from books (`build_report`).
+The holder's `ReceiveProfile` is the shelf's receive profile for x-deal-v1 records
+(`ReceiveConfig(profile=...)`): it reads and admits records and proofs, answers whether a
+counterparty's record is answered, and gates the holder's own acts (`can_act`, `gate_act`).
 
 ```python
 from evidencebook.deal import v1

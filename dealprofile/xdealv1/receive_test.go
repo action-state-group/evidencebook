@@ -14,6 +14,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	evidencebook "github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/internal/detrand"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,6 +23,7 @@ import (
 // buyer and the seller of the tests below, as Appendix A runs them.
 type party struct {
 	t       *testing.T
+	name    string
 	dir     string
 	cfg     evidencebook.ShelfConfig
 	shelf   *evidencebook.Shelf
@@ -54,9 +56,13 @@ func newParty(t *testing.T, name string) *party {
 	require.NoError(t, err)
 	originals, err := evidencebook.OpenOriginalsFile(context.Background(), filepath.Join(dir, "originals.jsonl"), "x-deal-v1", signer.PublicKey())
 	require.NoError(t, err)
-	p := &party{t: t, dir: dir, profile: &ReceiveProfile{}, now: time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)}
+	p := &party{t: t, name: name, dir: dir, profile: &ReceiveProfile{}, now: time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)}
+	recordStep(txOp{Op: "party", Party: name})
 	p.cfg = evidencebook.ShelfConfig{Path: filepath.Join(dir, "shelf.db"), Operator: name, Signer: signer,
 		CheckpointKey: seed(name + " checkpoint key"), Originals: originals, Now: func() time.Time { return p.now },
+		// A fixed random stream: the transcripts (holder_vectors_test.go)
+		// are the same on every run, and Python replays them.
+		Random:  detrand.New("xdealv1 receive tests\x00" + name + " random"),
 		Receive: evidencebook.ReceiveConfig{Profile: p.profile},
 		// A deal book's log holds its own records only, so the counterparty
 		// can recompute its checkpoints from the records it receives.
@@ -91,6 +97,7 @@ func (p *party) open() {
 
 func (p *party) reopen() {
 	p.t.Helper()
+	recordStep(txOp{Op: "reopen", Party: p.name})
 	require.NoError(p.t, p.shelf.Release())
 	p.open()
 }
@@ -133,6 +140,7 @@ func (p *party) sendOfferWith(r Record, members map[string]json.RawMessage) []by
 	require.NoError(p.t, err)
 	pair, err := Pair(sent.Capsule, sent.Envelope, sent.Payload)
 	require.NoError(p.t, err)
+	recordStep(txOp{Op: "send_offer", Party: p.name, Record: rawOf(p.t, r), Members: members, Out: hex.EncodeToString(pair)})
 	return pair
 }
 
@@ -161,6 +169,8 @@ func (p *party) sealWith(logID string, r Record, members map[string]json.RawMess
 	require.NoError(p.t, err)
 	pair, err := BookPair(sealed, jcsOf(p.t, r))
 	require.NoError(p.t, err)
+	recordStep(txOp{Op: "seal", Party: p.name, Log: logID, Record: rawOf(p.t, r), Members: members,
+		Out: map[string]string{"record_id": rec.RecordID, "pair": hex.EncodeToString(pair)}})
 	return rec.RecordID, pair
 }
 
@@ -174,12 +184,13 @@ func (p *party) stamp(firstRecord string) evidencebook.StampProof {
 	require.NoError(p.t, err)
 	proof, err := p.cadence.StampProof(ctx, firstRecord, 0, evidencebook.AudienceCounterparty)
 	require.NoError(p.t, err)
+	recordStep(txOp{Op: "stamp", Party: p.name, First: firstRecord, Out: proof})
 	return proof
 }
 
 func (p *party) receive(record []byte, proof *evidencebook.StampProof) evidencebook.ReceiveResult {
 	p.t.Helper()
-	res, err := p.shelf.Receive(context.Background(), record, proof)
+	res, err := p.receiveRaw(record, proof)
 	require.NoError(p.t, err)
 	return res
 }
@@ -267,7 +278,7 @@ func TestBookPairVerifies(t *testing.T) {
 // admitted, and the gate opens.
 func TestHandshakeFromOffer(t *testing.T) {
 	h := newHandshake(t, nil)
-	ok, err := h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err := h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.False(t, ok, "nothing held yet")
 
@@ -275,21 +286,25 @@ func TestHandshakeFromOffer(t *testing.T) {
 	assert.True(t, res.Record.Stored)
 	require.NotNil(t, res.Proof)
 	assert.True(t, res.Proof.Accepted)
-	ok, err = h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err = h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.True(t, ok)
 
 	// The gate is of one deal: the same agreement and proof do not open it
 	// for another deal, and a commitment naming another shelf log closes it.
-	for name, in := range map[string]CanActInput{
-		"another deal":                 {DealID: "deal-9999999999999999", CounterpartAgreement: h.agreementID},
-		"another commitment shelf log": {DealID: fxDealID, CounterpartAgreement: h.agreementID, CommitmentShelfLog: "deal-cadence/ffffffffffffffff"},
+	// A slice, not a map: each call is a transcript step, in order.
+	for _, c := range []struct {
+		name string
+		in   CanActInput
+	}{
+		{"another deal", CanActInput{DealID: "deal-9999999999999999", CounterpartAgreement: h.agreementID}},
+		{"another commitment shelf log", CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID, CommitmentShelfLog: "deal-cadence/ffffffffffffffff"}},
 	} {
-		ok, err = h.buyer.profile.CanAct(context.Background(), in)
+		ok, err = h.buyer.recCanAct(c.in)
 		require.NoError(t, err)
-		assert.False(t, ok, name)
+		assert.False(t, ok, c.name)
 	}
-	ok, err = h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID, CommitmentShelfLog: testCadenceLog})
+	ok, err = h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID, CommitmentShelfLog: testCadenceLog})
 	require.NoError(t, err)
 	assert.True(t, ok, "the commitment names the agreement's shelf log")
 
@@ -298,7 +313,7 @@ func TestHandshakeFromOffer(t *testing.T) {
 	res = h.buyer.receive(nil, &h.proof)
 	assert.True(t, res.Proof.Duplicate)
 	h.buyer.reopen()
-	ok, err = h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err = h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.True(t, ok, "after a restart")
 }
@@ -307,7 +322,7 @@ func TestHandshakeFromOffer(t *testing.T) {
 func TestNoProofNoAct(t *testing.T) {
 	h := newHandshake(t, nil)
 	h.buyer.receive(h.agreementPair, nil)
-	ok, err := h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err := h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.False(t, ok)
 }
@@ -321,11 +336,11 @@ func TestProofUnderAnotherShelfLog(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, proofs, 1)
 	require.Equal(t, uint64(1), proofs[0].Covers, "the proof is held and covers the agreement; only its shelf log differs")
-	ok, err := h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err := h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.False(t, ok)
 	h.buyer.reopen()
-	ok, err = h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err = h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.False(t, ok, "after a restart")
 }
@@ -334,10 +349,10 @@ func TestProofUnderAnotherShelfLog(t *testing.T) {
 // sender: it is refused.
 func TestProofByAnotherCheckpointKey(t *testing.T) {
 	h := newHandshake(t, func(a *AgreeBody) { a.CheckpointKey = hex.EncodeToString(make([]byte, 32)) })
-	res, _ := h.buyer.shelf.Receive(context.Background(), h.agreementPair, &h.proof)
+	res, _ := h.buyer.receiveRaw(h.agreementPair, &h.proof)
 	require.NotNil(t, res.Proof)
 	assert.ErrorIs(t, res.Proof.Refused, evidencebook.ErrRefused)
-	ok, err := h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err := h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.False(t, ok)
 }
@@ -361,14 +376,14 @@ func TestGenesisForkAfterProof(t *testing.T) {
 	_, forkPair := h.seller.sealOnNewShelf(h.sellerLog, other)
 	res := h.buyer.receive(forkPair, nil)
 	assert.True(t, res.Record.Stored, "kept as a fork")
-	ok, err := h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err := h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.False(t, ok)
 	h.buyer.reopen()
-	ok, err = h.buyer.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
+	ok, err = h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	assert.False(t, ok, "after a restart")
-	sender, found, err := h.buyer.profile.ProofSender(context.Background(), h.seller.checkpointKey(), h.sellerLog)
+	sender, found, err := h.buyer.recProofSender(h.seller.checkpointKey(), h.sellerLog)
 	require.NoError(t, err)
 	assert.False(t, found, "a sender with two records at position 1 is refused: %s", sender)
 }
@@ -378,6 +393,7 @@ func TestGenesisForkAfterProof(t *testing.T) {
 func (p *party) sealOnNewShelf(logID string, r Record) (string, []byte) {
 	p.t.Helper()
 	q := newParty(p.t, "fork")
+	recordStep(txOp{Op: "reopen_as", Party: "fork", In: p.name})
 	q.cfg.Signer = p.cfg.Signer
 	originals, err := evidencebook.OpenOriginalsFile(context.Background(), filepath.Join(q.dir, "originals2.jsonl"), "x-deal-v1", p.cfg.Signer.PublicKey())
 	require.NoError(p.t, err)
@@ -393,7 +409,7 @@ func (p *party) sealOnNewShelf(logID string, r Record) (string, []byte) {
 func TestProofSenderBothSides(t *testing.T) {
 	h := newHandshake(t, nil)
 	h.buyer.receive(h.agreementPair, &h.proof)
-	sender, ok, err := h.buyer.profile.ProofSender(context.Background(), h.seller.checkpointKey(), h.sellerLog)
+	sender, ok, err := h.buyer.recProofSender(h.seller.checkpointKey(), h.sellerLog)
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, h.seller.key(), sender)
@@ -414,11 +430,11 @@ func TestProofSenderBothSides(t *testing.T) {
 	assert.True(t, res.Record.Stored)
 	require.NotNil(t, res.Proof)
 	assert.True(t, res.Proof.Accepted)
-	sender, ok, err = h.seller.profile.ProofSender(context.Background(), h.buyer.checkpointKey(), buyerLog)
+	sender, ok, err = h.seller.recProofSender(h.buyer.checkpointKey(), buyerLog)
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, h.buyer.key(), sender)
-	ok, err = h.seller.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: buyerID})
+	ok, err = h.seller.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: buyerID})
 	require.NoError(t, err)
 	assert.True(t, ok)
 }
@@ -430,7 +446,7 @@ func TestAnswered(t *testing.T) {
 	held, err := h.seller.shelf.HeldFirst(context.Background(), SentLogPrefix+mustDigest(t, h.offer))
 	require.NoError(t, err)
 	require.Len(t, held, 1)
-	ok, err := h.seller.profile.Answered(context.Background(), held[0].ReceivedRecord)
+	ok, err := h.seller.recAnswered(held[0].ReceivedRecord)
 	require.NoError(t, err)
 	assert.True(t, ok, "the seller's agreement cites it")
 
@@ -442,7 +458,7 @@ func TestAnswered(t *testing.T) {
 	held, err = h.seller.shelf.HeldFirst(context.Background(), SentLogPrefix+mustDigest(t, other))
 	require.NoError(t, err)
 	require.Len(t, held, 1)
-	ok, err = h.seller.profile.Answered(context.Background(), held[0].ReceivedRecord)
+	ok, err = h.seller.recAnswered(held[0].ReceivedRecord)
 	require.NoError(t, err)
 	assert.False(t, ok)
 }
@@ -453,12 +469,12 @@ func TestAdmitRefusesStrangers(t *testing.T) {
 	h := newHandshake(t, nil)
 	stranger := newParty(t, "stranger")
 	_, pair := stranger.seal("deal/"+hex.EncodeToString(seed("stranger log")[:16]), h.agreement)
-	_, err := h.buyer.shelf.Receive(context.Background(), pair, nil)
+	_, err := h.buyer.receiveRaw(pair, nil)
 	assert.ErrorIs(t, err, evidencebook.ErrRefused)
 
 	od := mustDigest(t, h.offer)
 	decline := Record{Block: journalBlock(TypeAgree, "2026-11-01T09:40:00Z", true), Body: &AgreeBody{Kind: KindDecline, Offer: RefTo(od), Reason: ReasonOther}}
-	_, err = h.buyer.shelf.Receive(context.Background(), stranger.sendOffer(decline), nil)
+	_, err = h.buyer.receiveRaw(stranger.sendOffer(decline), nil)
 	assert.ErrorIs(t, err, evidencebook.ErrRefused, "a decline from a key the offer was not sent to")
 
 	res := h.buyer.receive(h.seller.sendOffer(decline), nil)
@@ -503,7 +519,7 @@ func TestLaterRecords(t *testing.T) {
 	otherID, _ := h.seller.seal(otherLog, h.agreement)
 	_ = otherID
 	_, orphan := h.seller.seal(otherLog, settleRecord(t, 2, h.agreement, h.agreement, h.agreementID))
-	_, err = h.buyer.shelf.Receive(context.Background(), orphan, nil)
+	_, err = h.buyer.receiveRaw(orphan, nil)
 	assert.ErrorIs(t, err, evidencebook.ErrRefused, "no admitted first record on that log")
 }
 
@@ -546,7 +562,7 @@ func TestCancellation(t *testing.T) {
 	other.Block.DealID = "deal-2222222222222222"
 	h.seller.receive(h.buyer.sendOffer(other), nil)
 	wrong := Record{Block: journalBlock(TypeAgree, "2026-11-01T09:51:00Z", true), Body: &AgreeBody{Kind: KindCancellation, Offer: RefTo(mustDigest(t, other))}}
-	_, err := h.seller.shelf.Receive(context.Background(), h.buyer.sendOffer(wrong), nil)
+	_, err := h.seller.receiveRaw(h.buyer.sendOffer(wrong), nil)
 	assert.ErrorIs(t, err, evidencebook.ErrRefused, "a cancellation of another deal's offer")
 }
 
@@ -571,7 +587,7 @@ func TestRulingFromTheAdjudicator(t *testing.T) {
 
 	stranger := newParty(t, "stranger")
 	_, forged := stranger.seal(caseLog, ruling)
-	_, err := h.seller.shelf.Receive(context.Background(), forged, nil)
+	_, err := h.seller.receiveRaw(forged, nil)
 	assert.ErrorIs(t, err, evidencebook.ErrRefused)
 }
 
@@ -617,7 +633,7 @@ func TestSharedLogID(t *testing.T) {
 		_, pair := seller2.seal(h.sellerLog, Record{Block: b, Body: ab})
 		res := h.buyer.receive(pair, nil)
 		require.True(t, res.Record.Stored, "the second seller's agreement, on the same log id")
-		sender, ok, err := h.buyer.profile.ProofSender(context.Background(), h.seller.checkpointKey(), h.sellerLog)
+		sender, ok, err := h.buyer.recProofSender(h.seller.checkpointKey(), h.sellerLog)
 		require.NoError(t, err)
 		if both {
 			assert.False(t, ok, "two candidates name the key: refused rather than pick one")
@@ -639,18 +655,16 @@ func TestWithheldOfferReadAgain(t *testing.T) {
 	offers, err := journal.Query(ctx, evidencebook.Filter{})
 	require.NoError(t, err)
 	require.NotEmpty(t, offers)
-	offerID := offers[len(offers)-1].RecordID
-	_, err = journal.SetRetention(ctx, offerID, evidencebook.Withheld, "test")
-	require.NoError(t, err)
+	offerSeq := offers[len(offers)-1].Header.Seq
+	h.buyer.recRetention(offerSeq, evidencebook.Withheld)
 
 	decline := Record{Block: journalBlock(TypeAgree, "2026-11-01T09:40:00Z", true),
 		Body: &AgreeBody{Kind: KindDecline, Offer: RefTo(mustDigest(t, h.offer)), Reason: ReasonOther}}
 	pair := h.seller.sendOffer(decline)
-	_, err = h.buyer.shelf.Receive(ctx, pair, nil)
+	_, err = h.buyer.receiveRaw(pair, nil)
 	assert.ErrorIs(t, err, evidencebook.ErrRefused, "the offer cannot be read while withheld")
 
-	_, err = journal.SetRetention(ctx, offerID, evidencebook.Available, "test")
-	require.NoError(t, err)
+	h.buyer.recRetention(offerSeq, evidencebook.Available)
 	res := h.buyer.receive(pair, nil)
 	assert.True(t, res.Record.Stored, "read again once available")
 }
@@ -670,7 +684,7 @@ func TestProofTheRecordsDoNotRecompute(t *testing.T) {
 	require.NotEqual(t, h.agreementID, otherID)
 	res := h.buyer.receive(otherPair, nil)
 	require.True(t, res.Record.Stored)
-	res, _ = h.buyer.shelf.Receive(ctx, nil, &h.proof)
+	res, _ = h.buyer.receiveRaw(nil, &h.proof)
 	require.NotNil(t, res.Proof)
 	assert.ErrorIs(t, res.Proof.Refused, evidencebook.ErrInvalid, "the held records do not recompute the proof's root")
 	evidence, err := h.buyer.shelf.Evidence(ctx)
@@ -680,7 +694,7 @@ func TestProofTheRecordsDoNotRecompute(t *testing.T) {
 		kinds[e.Kind] = true
 	}
 	assert.True(t, kinds[evidencebook.EvidenceCheckpointRecords], "the checkpoint is kept as evidence: %v", kinds)
-	ok, err := h.buyer.profile.CanAct(ctx, CanActInput{DealID: fxDealID, CounterpartAgreement: otherID})
+	ok, err := h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: otherID})
 	require.NoError(t, err)
 	assert.False(t, ok)
 }
@@ -729,7 +743,7 @@ func TestOursResultIsACopy(t *testing.T) {
 // CanAct is false, and the gate does not apply to it (design §4.7).
 func TestCanActWithoutALayerIsFalse(t *testing.T) {
 	h := newHandshake(t, nil)
-	ok, err := h.seller.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: ""})
+	ok, err := h.seller.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: ""})
 	require.NoError(t, err)
 	assert.False(t, ok)
 }

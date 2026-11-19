@@ -168,3 +168,16 @@ def string_member(text: Any, name: str) -> str:
 
 
 
+
+
+def string_value(text: Any) -> str:
+    """``json.Unmarshal(text, &s)`` into a string: a null leaves it empty;
+    a value of another type is refused."""
+    b = _b(text)
+    start, end = _whole(b)
+    v = b[start:end]
+    if v == b"null":
+        return ""
+    if not v.startswith(b'"'):
+        raise GoJSONError("json: cannot unmarshal into a Go value of type string")
+    return goscan.go_unquote(v)
