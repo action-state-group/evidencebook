@@ -118,7 +118,7 @@ func TestHolderAskedListsTheAnsweredRecordsAndNamesNobody(t *testing.T) {
 	holderGolden(t, "asked", page)
 	assert.Contains(t, page, `<span class="pill">2</span>`)
 	assert.Contains(t, page, "<b>proof only</b>")
-	assert.Contains(t, page, "Reason: your settings do not allow it")
+	assert.Contains(t, page, "Reason: policy_declined")
 	// Sentences that promised what nothing produces are not on the page.
 	for _, promised := range []string{"small deals only", "shows you here", "witness"} {
 		assert.NotContains(t, page, promised)

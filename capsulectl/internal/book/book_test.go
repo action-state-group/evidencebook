@@ -763,10 +763,10 @@ func TestRequestRespondRoundTrip(t *testing.T) {
 	sent = ask("missing", `{"subject":{"record":"`+hex.EncodeToString(make([]byte, 32))+`"},"coverage":{"min_freshness":1}}`)
 	answered = respond("missing")
 	assert.Equal(t, evidencebook.OutcomeRefusal, answered.Outcome)
-	assert.Equal(t, evidencebook.ReasonNotAuthorized, answered.Reason)
+	assert.Equal(t, evidencebook.ReasonPolicyDeclined, answered.Reason)
 	got := record(sent, "missing")
 	assert.Equal(t, evidencebook.OutcomeRefusal, got.Outcome)
-	assert.Equal(t, evidencebook.ReasonNotAuthorized, got.Reason)
+	assert.Equal(t, evidencebook.ReasonPolicyDeclined, got.Reason)
 
 	sent = ask("unanswered", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	set(day1.Add(time.Hour))
