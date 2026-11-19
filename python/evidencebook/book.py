@@ -2065,7 +2065,8 @@ def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> bytes:
     growing, each consistency proof a history card carries reaching the next
     commitment and each history entry's signed prev_size and prev_root naming
     the entry before, and the last checkpoint the envelope's anchor, whose
-    statement it returns."""
+    statement it returns. The freshness the envelope states must be what that
+    anchor commits (#521)."""
     fields = _json_object(e.artifact)
     card = isinstance(fields.get("history"), list)
     if card:
@@ -2102,4 +2103,5 @@ def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> bytes:
         if i == len(pairs) - 1 and _digest(raw) != e.anchor_digest:
             raise InvalidError("anchor_inclusion: the last checkpoint is not the anchor")
         previous = cp
+    _check_freshness_committed(e, previous)
     return raw

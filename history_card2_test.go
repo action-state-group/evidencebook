@@ -526,3 +526,32 @@ func TestAHistoryCard2OrRangeAnswerCannotMisstateFreshnessOrCarryUnreadReceipts(
 		t.Error("a range answer with a receipt this requester cannot read passed")
 	}
 }
+
+// The history_card/1 and unranged checkpoints answers bind a stated freshness
+// to the anchor's signed checkpoint too (#521): a size or a time the checkpoint
+// does not commit is refused, so a stale chain cannot meet a min_freshness floor.
+func TestACardOneOrCheckpointsAnswerCannotMisstateFreshness(t *testing.T) {
+	book := cardBook(t, 3, 20)
+	pin := anchorPin(t, book)
+	key := responderKeys(book, 9).Checkpoint
+	for name, req := range map[string]EvidenceRequest{
+		"history_card/1": {Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: Coverage{ExpectedPin: pin}},
+		"checkpoints":    {Subject: Subject{Kind: SubjectCheckpoints}, Coverage: Coverage{ExpectedPin: pin}},
+	} {
+		e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, req), ""))
+		if _, _, err := verifyAnchorInclusion(req, e, key); err != nil {
+			t.Fatalf("%s, honest: %v", name, err)
+		}
+		size := uint64(1 << 40)
+		bigger := e
+		bigger.Anchor.FreshnessSize = &size
+		if _, _, err := verifyAnchorInclusion(req, bigger, key); err == nil || !strings.Contains(err.Error(), "anchor.freshness") {
+			t.Errorf("%s: an answer stating a size its anchor does not commit passed", name)
+		}
+		later := e
+		later.Anchor.FreshnessSize, later.Anchor.FreshnessTime = nil, "2099-01-01T00:00:00Z"
+		if _, _, err := verifyAnchorInclusion(req, later, key); err == nil || !strings.Contains(err.Error(), "anchor.freshness") {
+			t.Errorf("%s: an answer stating a time its anchor does not commit passed", name)
+		}
+	}
+}

@@ -1555,7 +1555,7 @@ PROFILE §10). It is as proposed below, with these additions and limits:
  "due": "2026-11-04T09:12:00Z" | "not_set",
  "window_end": "2026-11-18T09:12:00Z" | "not_set",
  "status": "<rowstatus status word>", "value": "met" | "not_met" | null,
- "remedy": "none" | "due" | "made" | "not_honoured" | null,
+ "remedy": "none" | "due" | "made" | "not_honoured" | "not_counted" | null,
  "local": false,
  "check": "passed" | "failed" | "not_run" | "not_recomputed",
  "late": {"statements": [{"side": "seller", "value": "met", "record": "<record id>"}],
@@ -1568,7 +1568,9 @@ PROFILE §10). It is as proposed below, with these additions and limits:
 
   - `status`, `value`, `remedy`, `local`, `due` and `window_end` are `rowstatus.Result` as
     `Compute` returns it at `as_of` (`rowstatus.go:178-192`), with an empty date written
-    `"not_set"`.
+    `"not_set"`; the one exception is `remedy` on a ruled row whose ruling orders a payment,
+    which `BuildReport` overwrites with `not_counted` (`report.go:424-427`), a word rowstatus
+    never returns.
   - `check` is 6.3's result: `not_recomputed` for a row the terms do not mark recomputed.
   - `late`: rowstatus does not report late statements or late disputes (its `Result` has six
     members, `rowstatus.go:180-192`). **Decided (coordinator, Q9):** an additive rowstatus output, `late_statements`
