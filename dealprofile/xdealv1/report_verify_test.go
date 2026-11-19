@@ -195,6 +195,9 @@ func verifyCases(t *testing.T) []verifyCase {
 			// A member the report leaves out when empty, written out empty.
 			{"rulings-unnamed-zero", func(r map[string]any) { r["rulings_unnamed"] = 0 }},
 			{"disputes-empty", func(r map[string]any) { r["disputes"] = []any{} }},
+			// A member left out when empty, given a value of another kind.
+			{"disputes-a-number", func(r map[string]any) { r["disputes"] = 1 }},
+			{"witnesses-false", func(r map[string]any) { r["rests_on"].(map[string]any)["witnesses"] = false }},
 		} {
 			r := sampleReport(t, h, "appendix-a-21-nov")
 			c.mut(r)

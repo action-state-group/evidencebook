@@ -192,9 +192,10 @@ def _exact(v: Any, t: Any, at: str) -> None:
             if not (f.get("omitempty") or f.get("omitzero")):
                 raise _NotAReport(f"{path} is missing")
             continue
+        # Its kind first: the empty and zero tests read a value of it.
+        _exact(v[name], f["type"], path)
         if f.get("omitempty") and _empty(v[name], f["type"]) or f.get("omitzero") and _zero(v[name], f["type"]):
             raise _NotAReport(f"{path} is given empty, which the report leaves out")
-        _exact(v[name], f["type"], path)
 
 
 def _nulls(doc: dict) -> None:
