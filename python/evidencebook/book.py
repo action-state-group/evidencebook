@@ -884,6 +884,10 @@ class Book:
         for original in originals or ():
             if original.name.startswith(OPENING_PREFIX):
                 raise InvalidError(f"original {original.name!r} uses the name of a field opening")
+        if RECORD_HEADER_MEMBER in entry.members:
+            raise InvalidError(f"{RECORD_HEADER_MEMBER} is the record header's member, not a Capsule member an entry adds")
+        if caller_seal is not None and entry.members:
+            raise InvalidError("a caller-sealed record's Capsule members are the caller's to seal")
         if caller_seal is None:
             originals = [Artifact(name=f"payload-{i}", state=PRESENT, content=bytes(p))
                          for i, p in enumerate(entry.payloads, start=1)]
@@ -919,8 +923,12 @@ class Book:
         except (TypeError, ValueError) as exc:
             raise InvalidError(f"header: {exc}") from None
         if caller_seal is None:
-            record_id, capsule, envelope = seal_record(header, header_bytes, operator=self._operator,
-                                                       developer=self._developer, at=committed_at, signer=self._signer)
+            try:
+                record_id, capsule, envelope = seal_record(header, header_bytes, operator=self._operator,
+                                                           developer=self._developer, at=committed_at,
+                                                           signer=self._signer, members=entry.members)
+            except ValueError as exc:
+                raise InvalidError(f"seal record: {exc}") from None
             capsule_bytes = jcs(capsule)
         else:
             record_id, capsule, capsule_bytes, envelope = self._check_caller_sealed(caller_seal, header, header_bytes)

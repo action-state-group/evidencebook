@@ -135,6 +135,13 @@ class Entry:
     #: ``field_commitments`` and its opening an original of the record, so
     #: the text leaves only when disclosed.
     fields: dict[str, str] = field(default_factory=dict)
+    #: Further top-level members of the record's Capsule, by name, each a
+    #: JSON value (Go ``Entry.Members``): a profile's own member, such as the
+    #: settlement leg draft-mih-agent-settlement-records puts there. The
+    #: Capsule's id and signature cover them; the header does not, and a
+    #: base-profile name is refused. Only a Capsule the book seals carries
+    #: them: a caller-sealed record refuses them.
+    members: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

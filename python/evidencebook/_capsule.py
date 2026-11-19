@@ -13,6 +13,7 @@ commits. capsule-emit's Python ``build_capsule`` is not used: it attaches
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 
 from agent_action_capsule.canonical import LOCAL_ONLY_FIELDS, compute_capsule_id, jcs
@@ -28,9 +29,11 @@ _COSE_ALG_EDDSA = -8
 
 
 def seal_record(header: Header, header_bytes: bytes, *, operator: str, developer: str, at: datetime,
-                signer: Signer) -> tuple[str, dict, bytes]:
+                signer: Signer, members: dict | None = None) -> tuple[str, dict, bytes]:
     """The record capsule for ``header`` (whose JCS is ``header_bytes``), its
-    id, and its Producer Envelope: ``(capsule_id, capsule, envelope)``."""
+    id, and its Producer Envelope: ``(capsule_id, capsule, envelope)``.
+    ``members`` are further top-level members of the Capsule (Go
+    ``Entry.Members``), which its id and signature cover."""
     capsule: dict = {
         "spec_version": DEFAULT_SPEC_VERSION,
         "format_version": DEFAULT_FORMAT_VERSION,
@@ -47,6 +50,7 @@ def seal_record(header: Header, header_bytes: bytes, *, operator: str, developer
         capsule["references"] = [
             {"type": "agent-action-capsule", "digest_alg": "SHA-256", "digest": link.target} for link in header.links
         ]
+    _add_extensions(capsule, members or {})
     capsule_id = compute_capsule_id(capsule)
     capsule["capsule_id"] = capsule_id
     # The Producer Envelope signs the raw 32-byte id; its protected header is
@@ -79,6 +83,28 @@ _BASE_MEMBERS = frozenset({
 def _extension_name(name: str) -> bool:
     # capsule-emit's ^[a-z][a-z0-9_]*$
     return bool(name) and "a" <= name[0] <= "z" and all("a" <= c <= "z" or "0" <= c <= "9" or c == "_" for c in name)
+
+
+def _add_extensions(capsule: dict, extensions: dict) -> None:
+    """Add ``extensions`` to ``capsule`` as further top-level members, as
+    capsule-emit's ``Extensions`` does: each named ``[a-z][a-z0-9_]*``, not
+    a base member, not null, and with no float or unsafe integer."""
+    for name in sorted(extensions):
+        value = extensions[name]
+        if not _extension_name(name):
+            raise ValueError(f"extension name {name!r} must be lowercase letters, digits and underscores, "
+                             "starting with a letter")
+        if name in _BASE_MEMBERS:
+            raise ValueError(f"extension {name!r} is a base-profile member")
+        if value is None:
+            raise ValueError(f"extension {name!r} must not be null")
+        try:
+            canonical = jcs(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"extension {name!r}: {exc}") from None
+        # A copy, as Go copies the bytes: a caller changing its value after
+        # sealing must not change the sealed Capsule.
+        capsule[name] = json.loads(canonical)
 
 
 def seal_payload(action_id: str, payload: bytes, extensions: dict, *, operator: str, developer: str,
@@ -114,20 +140,7 @@ def seal_payload(action_id: str, payload: bytes, extensions: dict, *, operator: 
         "assurance": {"attestation_mode": "self_attested", "effect_mode": "not_applicable", "ledger_mode": "standalone"},
         "model_attestation": {"compute_attestation": {"agent_input_digest": hashlib.sha256(payload).hexdigest()}},
     }
-    for name in sorted(extensions):
-        value = extensions[name]
-        if not _extension_name(name):
-            raise ValueError(f"extension name {name!r} must be lowercase letters, digits and underscores, "
-                             "starting with a letter")
-        if name in _BASE_MEMBERS:
-            raise ValueError(f"extension {name!r} is a base-profile member")
-        if value is None:
-            raise ValueError(f"extension {name!r} must not be null")
-        try:
-            jcs(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"extension {name!r}: {exc}") from None
-        capsule[name] = value
+    _add_extensions(capsule, extensions)
     capsule_id = compute_capsule_id(capsule)
     capsule["capsule_id"] = capsule_id
     envelope = sign1(signer, {3: CAPSULE_ID_MEDIA_TYPE, 4: signer.public_key(), 1: _COSE_ALG_EDDSA},

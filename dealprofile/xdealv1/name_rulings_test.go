@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/action-state-group/evidencebook"
@@ -331,26 +330,23 @@ func TestStatusRulingsUnnamed(t *testing.T) {
 func TestNameRulingsAtTheNextStamp(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
-	h.seller.status = &StatusProvider{}
-	h.seller.reopen()
-	nameRulingsBeforeAppend = func() error { return errors.New("the disk is full") }
-	t.Cleanup(func() { nameRulingsBeforeAppend = nil })
+	h.seller.recUseStatus(nil)
+	recNamingFails(t, true)
 	_, pair := adjudicator.seal(caseLog, ruling)
-	_, err := h.seller.shelf.Receive(ctx, pair, nil)
+	_, err := h.seller.receiveRaw(pair, nil)
 	require.ErrorContains(t, err, "after receive")
 	assert.Equal(t, 1, unnamedCount(t, h, adjudicator))
 
-	nameRulingsBeforeAppend = nil
-	h.seller.tick()
-	res, err := h.seller.cadence.Stamp(ctx, h.seller.now)
+	recNamingFails(t, false)
+	res, err := h.seller.recStampTick()
 	require.NoError(t, err)
 	assert.Empty(t, res.BeforeStamp)
 	assert.Equal(t, 0, unnamedCount(t, h, adjudicator), "the stamp named it, no Receive needed")
 	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2), book.Size())
-	facts, err := h.seller.shelf.Openings(ctx, h.agreementID, evidencebook.AudienceCounterparty)
-	require.NoError(t, err)
+	h.seller.recBook(h.sellerLog)
+	facts := h.seller.recOpenings(h.agreementID, evidencebook.AudienceCounterparty)
 	require.NotEmpty(t, facts)
 	last := facts[len(facts)-1]
 	require.NotNil(t, last.StatusOpening)
@@ -365,27 +361,19 @@ func TestNameRulingsAtTheNextStamp(t *testing.T) {
 func TestNameRulingsUnreadableBookIsCounted(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
-	h.seller.status = &StatusProvider{}
-	h.seller.reopen()
+	h.seller.recUseStatus(nil)
 	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
 	require.NoError(t, err)
-	next := settleRecord(t, 2, h.agreement, h.agreement, h.agreementID)
-	e, err := BookEntry(next, h.agreementID)
-	require.NoError(t, err)
-	r2, err := book.AppendAt(ctx, 2, e)
-	require.NoError(t, err)
-	_, err = book.SetRetention(ctx, r2.RecordID, evidencebook.Withheld, "test")
-	require.NoError(t, err)
+	h.seller.seal(h.sellerLog, settleRecord(t, 2, h.agreement, h.agreement, h.agreementID))
+	h.seller.recRetentionIn(h.sellerLog, 2, evidencebook.Withheld)
 	size := book.Size()
 	_, pair := adjudicator.seal(caseLog, ruling)
 	h.seller.receive(pair, nil)
-	h.seller.tick()
-	res, err := h.seller.cadence.Stamp(ctx, h.seller.now)
+	res, err := h.seller.recStampTick()
 	require.NoError(t, err)
 	assert.Empty(t, res.BeforeStamp)
 	assert.Equal(t, size, book.Size(), "nothing sealed into a book not readable whole")
-	facts, err := h.seller.shelf.Openings(ctx, h.agreementID, evidencebook.AudienceCounterparty)
-	require.NoError(t, err)
+	facts := h.seller.recOpenings(h.agreementID, evidencebook.AudienceCounterparty)
 	require.NotEmpty(t, facts)
 	last := facts[len(facts)-1]
 	require.NotNil(t, last.StatusOpening)

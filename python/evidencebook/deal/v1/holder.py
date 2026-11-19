@@ -387,12 +387,7 @@ class ReceiveProfile:
             return False
         if self.shelf.counted_prefix(sender, h.received.log_id).size < 1:
             return False
-        for hp in self.shelf.held_proofs(sender, h.received.log_id):
-            v = hp.verified
-            if v.fact.get("book_id") == inp.counterpart_agreement and v.key_id == ag["checkpoint_key"] \
-                    and v.shelf_checkpoint.log_id == ag["shelf_log_id"] and hp.covers >= 1:
-                return True
-        return False
+        return proof_covers(self.shelf, sender, h.received.log_id, inp.counterpart_agreement, ag)
 
     def gate_act(self, inp: ActGateInput) -> ActGate:
         """Whether the holder may seal ``inp.act`` (Go ``GateAct``): an act
@@ -518,6 +513,20 @@ class ReceiveProfile:
             return _read_pair(h.record).record
         except (ValueError, StageError):
             return None
+
+
+def proof_covers(shelf: Any, sender: str, log_id: str, agreement_id: str, ag: dict) -> bool:
+    """Whether a stamp proof held from ``sender`` for ``log_id`` covers the
+    counterparty's agreement ``agreement_id`` (Go ``proofCovers``): its
+    fact's book id is the agreement's record id, its checkpoints are signed
+    by the agreement's checkpoint_key, its shelf log is the agreement's
+    shelf_log_id, and it covers the agreement in the counted prefix now."""
+    for hp in shelf.held_proofs(sender, log_id):
+        v = hp.verified
+        if v.fact.get("book_id") == agreement_id and v.key_id == ag["checkpoint_key"] \
+                and v.shelf_checkpoint.log_id == ag["shelf_log_id"] and hp.covers >= 1:
+            return True
+    return False
 
 
 def _gated_act(r: Record) -> bool:
