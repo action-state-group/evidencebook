@@ -1054,7 +1054,7 @@ At every check, after the `check` record is sealed:
   verdict: pass|fail|not_applicable|not_evaluable, disposition, reason, limit, value}`, passes
   included; `disposition`, optional, is what a failing rule does on its own: `ask` or `deny`;
   `limit` and `value` are each a number, or a string of at most 64 characters with no line
-  break; the next paragraph but one says what they mean).
+  break; the paragraph on `limit` and `value` below says what they mean).
   `notice`, optional, `{line}`: one line of text (at most 500 characters; no line break or other
   control character) for the person about what the checker made of `received_cards`; a checker
   prints it only when the input carried cards. The deal check shows it beside the check, outside
