@@ -20,6 +20,7 @@ from evidencebook.cadence import CadenceConfig
 from evidencebook.deal.v1 import holder, naming as v1_name_rulings, sent
 from evidencebook.deal import v1
 from evidencebook.deal.v1.check import decode
+from evidencebook.deal.v1.status_provider import StatusProvider
 from evidencebook.record import CITES, OBSERVED_EVENT, Entry, Link
 from evidencebook.shelf import Shelf
 from evidencebook.shelf_receive import ReceiveConfig
@@ -53,6 +54,7 @@ class Party:
         self.path = self.dir / "shelf.db"
         self.now = START
         self.profile = holder.ReceiveProfile()
+        self.status = None  # a StatusProvider once use_status gives one
         self.shelf = None
         self.open()
 
@@ -68,7 +70,9 @@ class Party:
                                        now=lambda: self.now, authenticated_indexes=lambda _: [],
                                        receive=ReceiveConfig(profile=self.profile), lock_timeout=5)
         self.profile.shelf = self.shelf
-        self.cadence = self.shelf.cadence(CadenceConfig(log_id=CADENCE_LOG, ended=lambda _: False))
+        if self.status is not None:
+            self.status.shelf = self.shelf
+        self.cadence = self.shelf.cadence(CadenceConfig(log_id=CADENCE_LOG, ended=lambda _: False, status=self.status))
         if not self.cadence.migrated():
             self.cadence.tick(self.now)
             self.tick()
@@ -180,10 +184,9 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
             p.tick()
             book = p.shelf.open(step["log"])
             e = entry_of(step["record"])
-            if book.size() > 0:
-                last = book.records()[-1]
-                e = Entry(e.record_type, e.epistemic_type, payloads=e.payloads, subject_ref=e.subject_ref,
-                          links=(Link("cites", last.record_id),))
+            links = (Link("cites", book.records()[-1].record_id),) if book.size() > 0 else ()
+            e = Entry(e.record_type, e.epistemic_type, payloads=e.payloads, subject_ref=e.subject_ref, links=links,
+                      members=dict(step.get("members") or {}))
             rec = book.append(e)
             stored = book._stored[rec.record_id]
             pair = sent.book_pair(jcs(stored.capsule), stored.envelope, stored.header, jcs(step["record"]))
@@ -202,6 +205,32 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
                                        statement={"retention_state": step["in"]["state"],
                                                   "reason": step["in"]["reason"]}))
             assert rec.record_id == step["out"], where
+        elif op == "use_status":
+            pairs = {d: bytes.fromhex(h) for d, h in (step.get("in") or {}).items()}
+            p.status = StatusProvider(offer_pair=pairs.get)
+        elif op == "stamp_tick":
+            p.tick()
+            try:
+                res = p.cadence.stamp(p.now)
+                got = {"n": res.tick.n, "before_stamp": res.before_stamp, "unstated": dict(res.unstated), "error": None}
+            except Exception:  # noqa: BLE001 - the stamp's error
+                got = {"n": 0, "before_stamp": "", "unstated": {}, "error": True}
+            assert got == step["out"], where
+        elif op == "openings":
+            book_id, audience = step["in"]
+            got = [{"entry_seq": f.entry_seq, "fact": f.fact,
+                    "link": f.link_opening.to_json() if f.link_opening is not None else None,
+                    "status": f.status_opening.to_json() if f.status_opening is not None else None}
+                   for f in p.shelf.openings(book_id, audience)]
+            assert jcs(got) == jcs(step["out"]), where
+        elif op == "report":
+            try:
+                r, err = p.status.report(step["log"], dict(step["in"])), None
+            except Exception:  # noqa: BLE001 - the report's refusal
+                r, err = None, True
+            assert {"report": jcs(r) if r is not None else None, "error": err} == \
+                {"report": jcs(step["out"]["report"]) if step["out"]["report"] is not None else None,
+                 "error": step["out"]["error"]}, where
         elif op == "book":
             assert book_dump(p.shelf.open(step["log"])) == step["out"], where
         elif op == "name_rulings":
@@ -460,3 +489,45 @@ def test_naming_keeps_what_it_sealed_before_an_error(monkeypatch):
     with pytest.raises(OSError) as exc:
         v1_name_rulings.name_all_rulings(FailingOpen(), START)
     assert exc.value.sealed == ["b" * 64]
+
+
+def test_earlier_naming():
+    # Go's TestRulingNamedByTheCounterparty, its earlier table: a known time
+    # before a stamp, else the earlier known time or the lower stamp.
+    from evidencebook.deal.v1.status_provider import _earlier
+
+    assert _earlier("2026-11-20T00:00:00Z", {"stamp": 1})
+    assert _earlier("2026-11-19T00:00:00Z", "2026-11-20T00:00:00Z")
+    assert _earlier({"stamp": 2}, {"stamp": 3})
+    assert not _earlier({"stamp": 3}, "2026-11-20T00:00:00Z")
+
+
+def test_entry_members_seal_into_the_capsule(tmp_path):
+    # Go's Entry.Members: further top-level members of the record's Capsule,
+    # covered by its id and signature; the header's own member name and a
+    # base-profile name are refused.
+    from evidencebook.errors import InvalidError
+
+    p = Party("buyer", tmp_path)
+    book = p.shelf.open("deal/" + "ab" * 16)
+    rec = book.append(Entry("deal_step", "producer_claim", payloads=(b"{}",), members={"settlement": {"leg": "x"}}))
+    assert book._stored[rec.record_id].capsule["settlement"] == {"leg": "x"}
+    for bad in ({"evidence_record_header": {}}, {"action_id": "x"}, {"Settlement": 1}):
+        with pytest.raises(InvalidError):
+            book.append(Entry("deal_step", "producer_claim", payloads=(b"{}",), members=bad))
+
+
+FORKED = json.loads((TRANSCRIPTS.parents[1] / "forked-finals" / "vectors.json").read_text())["cases"]
+
+
+@pytest.mark.parametrize("case", FORKED, ids=[c["name"] for c in FORKED])
+def test_forked_finals_vector(case):
+    # Go's TestForkedFinals, through testdata/deal-v1/forked-finals.
+    from types import SimpleNamespace
+
+    from evidencebook.deal.v1.status_provider import _forked_finals
+
+    held = [SimpleNamespace(received=SimpleNamespace(digest=h["digest"], sender_key=h["sender"], log_id=h["log_id"],
+                                                     position=h["position"], prev=h["prev"]),
+                            record=bytes.fromhex(h["pair"])) for h in case["held"]]
+    assert _forked_finals(held, case["key"], case["log"]) == case["want"]

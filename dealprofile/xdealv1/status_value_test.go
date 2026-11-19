@@ -180,27 +180,18 @@ func TestBuildStatusRefuses(t *testing.T) {
 // payment check, and a link value naming the seller's last record; no
 // witness is named, so every time is a stamp.
 func TestStatusProviderAtAStamp(t *testing.T) {
-	ctx := context.Background()
 	d := newPaymentDeal(t, func(o *ProposeBody) { o.Witnesses = []Witness{} }, true)
 	d.leg(t, true, payerBody(), d.payerMember("settled", "6000"))
 	payee := d.leg(t, false, payeeBody(), d.payeeMember("settled", "6000"))
-	d.buyer.status = &StatusProvider{OfferPair: func(_ context.Context, digest string) ([]byte, error) {
-		if digest == d.offerDigest {
-			return d.offerPair, nil
-		}
-		return nil, nil
-	}}
-	d.buyer.reopen()
+	d.buyer.recUseStatus(map[string][]byte{d.offerDigest: d.offerPair})
 	proof := d.seller.stamp(d.sellerAgID)
 	d.buyer.receive(d.sellerAgPair, &proof)
 	res := d.buyer.receive(payee, nil)
 	require.True(t, res.Record.Stored)
 
-	d.buyer.tick()
-	tick, err := d.buyer.cadence.Stamp(ctx, d.buyer.now)
+	tick, err := d.buyer.recStampTick()
 	require.NoError(t, err)
-	facts, err := d.buyer.shelf.Openings(ctx, d.buyerAgID, evidencebook.AudienceCounterparty)
-	require.NoError(t, err)
+	facts := d.buyer.recOpenings(d.buyerAgID, evidencebook.AudienceCounterparty)
 	require.NotEmpty(t, facts)
 	last := facts[len(facts)-1]
 	require.NotNil(t, last.StatusOpening)

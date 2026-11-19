@@ -539,13 +539,7 @@ func TestStatusProviderReport(t *testing.T) {
 	d := newPaymentDeal(t, func(o *ProposeBody) { o.Witnesses = []Witness{} }, true)
 	d.leg(t, true, payerBody(), d.payerMember("settled", "6000"))
 	payee := d.leg(t, false, payeeBody(), d.payeeMember("settled", "6000"))
-	d.buyer.status = &StatusProvider{OfferPair: func(_ context.Context, digest string) ([]byte, error) {
-		if digest == d.offerDigest {
-			return d.offerPair, nil
-		}
-		return nil, nil
-	}}
-	d.buyer.reopen()
+	d.buyer.recUseStatus(map[string][]byte{d.offerDigest: d.offerPair})
 	proof := d.seller.stamp(d.sellerAgID)
 	d.buyer.receive(d.sellerAgPair, &proof)
 	at := d.buyer.now.UTC().Truncate(time.Second).Format(time.RFC3339)
@@ -553,14 +547,13 @@ func TestStatusProviderReport(t *testing.T) {
 	require.NoError(t, err)
 	size := book.Size()
 
-	_, err = d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
+	_, err = d.buyer.recReport(d.buyerLog, keepCopy(at))
 	require.ErrorContains(t, err, "no checkpoint at its size", "before a stamp checkpoints the book")
 	assert.Equal(t, size, book.Size(), "a report writes nothing")
 
-	d.buyer.tick()
-	_, err = d.buyer.cadence.Stamp(ctx, d.buyer.now)
+	_, err = d.buyer.recStampTick()
 	require.NoError(t, err)
-	r, err := d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
+	r, err := d.buyer.recReport(d.buyerLog, keepCopy(at))
 	require.NoError(t, err)
 	assert.Equal(t, size, book.Size(), "a report writes nothing")
 	cps, err := book.Checkpoints(ctx)
@@ -577,26 +570,22 @@ func TestStatusProviderReport(t *testing.T) {
 	assert.Equal(t, ProofNotYet, r.RestsOn.CounterpartyProof, "the seller's proof covers two records and one is held")
 
 	d.buyer.receive(payee, nil)
-	r, err = d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
+	r, err = d.buyer.recReport(d.buyerLog, keepCopy(at))
 	require.NoError(t, err)
 	require.NotNil(t, r.StatusFact)
 	assert.False(t, r.StatusFact.Current, "a received record no stamp has stated yet: the fact is not current")
 	assert.Equal(t, uint64(2), r.RestsOn.Counterparty.Counted)
 	assert.Equal(t, ProofHeld, r.RestsOn.CounterpartyProof, "the proof covers once both records are held")
 
-	_, err = d.buyer.status.Report(ctx, "deal/ffffffffffffffffffffffffffffffff", keepCopy(at))
+	_, err = d.buyer.recReport("deal/ffffffffffffffffffffffffffffffff", keepCopy(at))
 	assert.Error(t, err, "no such book")
 
 	// A record not readable as x-deal-v1 (a retention change's lifecycle
 	// record) is a permanent refusal, not ErrBusy (the stand-in, #530 review).
-	recs, err := book.Query(ctx, evidencebook.Filter{FromSeq: 2, ToSeq: 2})
+	d.buyer.recRetentionIn(d.buyerLog, 2, evidencebook.Withheld)
+	_, err = d.buyer.recStampTick()
 	require.NoError(t, err)
-	_, err = book.SetRetention(ctx, recs[0].RecordID, evidencebook.Withheld, "test")
-	require.NoError(t, err)
-	d.buyer.tick()
-	_, err = d.buyer.cadence.Stamp(ctx, d.buyer.now)
-	require.NoError(t, err)
-	_, err = d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
+	_, err = d.buyer.recReport(d.buyerLog, keepCopy(at))
 	require.ErrorContains(t, err, "not a readable x-deal-v1 record")
 	assert.NotErrorIs(t, err, evidencebook.ErrBusy)
 }

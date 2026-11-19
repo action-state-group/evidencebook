@@ -147,6 +147,60 @@ func (p *party) recNameRulings(deals []string) ([]string, error) {
 	return ids, err
 }
 
+// recUseStatus gives the party a StatusProvider, whose OfferPair answers
+// from pairs (by offer digest), and reopens its shelf on it.
+func (p *party) recUseStatus(pairs map[string][]byte) {
+	in := map[string]string{}
+	for d, pair := range pairs {
+		in[d] = hex.EncodeToString(pair)
+	}
+	recordStep(txOp{Op: "use_status", Party: p.name, In: in})
+	p.status = &StatusProvider{OfferPair: func(_ context.Context, digest string) ([]byte, error) {
+		return pairs[digest], nil
+	}}
+	p.reopen()
+}
+
+// recStampTick takes a stamp at the party's next minute, recorded with its
+// tick and what its status provider reported.
+func (p *party) recStampTick() (evidencebook.TickResult, error) {
+	p.tick()
+	res, err := p.cadence.Stamp(context.Background(), p.now)
+	unstated := res.Unstated
+	if unstated == nil {
+		unstated = map[string]string{}
+	}
+	recordStep(txOp{Op: "stamp_tick", Party: p.name, Out: map[string]any{"n": res.Tick.N, "before_stamp": res.BeforeStamp,
+		"unstated": unstated, "error": errText(err)}})
+	return res, err
+}
+
+// recOpenings records every fact of the book bookID with the openings the
+// audience may have.
+func (p *party) recOpenings(bookID string, audience evidencebook.Audience) []evidencebook.AudienceFact {
+	facts, err := p.shelf.Openings(context.Background(), bookID, audience)
+	require.NoError(p.t, err)
+	out := []map[string]any{}
+	for _, f := range facts {
+		out = append(out, map[string]any{"entry_seq": f.EntrySeq, "fact": f.Fact, "link": f.LinkOpening, "status": f.StatusOpening})
+	}
+	recordStep(txOp{Op: "openings", Party: p.name, In: []string{bookID, string(audience)}, Out: out})
+	return facts
+}
+
+// recReport is the party's StatusProvider's Report, recorded.
+func (p *party) recReport(logID string, c ReportCopy) (Report, error) {
+	r, err := p.status.Report(context.Background(), logID, c)
+	var out any
+	if err == nil {
+		out = r
+	}
+	recordStep(txOp{Op: "report", Party: p.name, Log: logID,
+		In:  map[string]string{"audience": c.Audience, "nonce": c.Nonce, "referee": c.Referee, "as_of": c.AsOf},
+		Out: map[string]any{"report": out, "error": errText(err)}})
+	return r, err
+}
+
 // recNamingFails makes every naming fail ("the disk is full") until it is
 // called with false, recorded for the replay to do the same.
 func recNamingFails(t *testing.T, fail bool) {
@@ -189,7 +243,7 @@ func (p *party) recGateAct(in ActGateInput) (ActGate, error) {
 // hand, and TestOursResultIsACopy, which reads the profile's cache, are Go's
 // alone; Python tests both of those on its own. So is
 // TestNameRulingsAfterAConcurrentWrite, whose write lands from inside the
-// naming; the naming tests that stamp come with the status provider.
+// naming (Python ports it on its own).
 func TestHolderTranscripts(t *testing.T) {
 	scenarios := []struct {
 		name string
@@ -213,6 +267,9 @@ func TestHolderTranscripts(t *testing.T) {
 		{"name-rulings-leaves-a-part-book", TestNameRulingsLeavesAPartBook},
 		{"name-rulings-only-the-deals-rulings", TestNameRulingsOnlyTheDealsRulings},
 		{"name-rulings-retried-on-a-duplicate", TestNameRulingsRetriedOnADuplicate}, {"name-all-rulings", TestNameAllRulings},
+		{"status-provider-at-a-stamp", TestStatusProviderAtAStamp}, {"status-provider-report", TestStatusProviderReport},
+		{"name-rulings-at-the-next-stamp", TestNameRulingsAtTheNextStamp},
+		{"name-rulings-unreadable-book-is-counted", TestNameRulingsUnreadableBookIsCounted},
 	}
 	type transcript struct {
 		Name  string `json:"name"`

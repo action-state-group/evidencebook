@@ -156,6 +156,7 @@ The holder's `ReceiveProfile` is the shelf's receive profile for x-deal-v1 recor
 counterparty's record is answered, and gates the holder's own acts (`can_act`, `gate_act`).
 `verify_report` checks a sealed report against its deal's first record, as Go's `VerifyReport`.
 The profile's `after_receive` names each counted ruling the holder's book does not name yet (`name_rulings`), as a receiving library must (PROFILE §5).
+`StatusProvider` is the shelf's status provider for v1 deal books: `CadenceConfig(status=...)` stamps each book's status value, and `StatusProvider.report` computes a copy of the v1 report from what the shelf holds.
 
 ```python
 from evidencebook.deal import v1
