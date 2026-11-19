@@ -110,11 +110,11 @@
             "maxLength": 1000
           },
           "limit": {
-            "description": "The limit the rule applied: a number, or a string of at most 64 characters with no line break.",
+            "description": "Present only on a failing money cap: the cap the rule applied, in minor units of the deal's currency. A rule that is not a money cap (a count, a floor, a window) omits it. A number, or a string of at most 64 characters with no line break.",
             "$ref": "#/$defs/scalar"
           },
           "value": {
-            "description": "The value the rule compared with the limit: a number, or a string of at most 64 characters with no line break.",
+            "description": "Present only with `limit`, on a failing money cap: the amount the rule compared with the cap, in minor units of the deal's currency, and greater than `limit`. A number, or a string of at most 64 characters with no line break.",
             "$ref": "#/$defs/scalar"
           }
         }
