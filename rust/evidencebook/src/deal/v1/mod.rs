@@ -14,14 +14,16 @@
 //!
 //! The CI differential check (`test/interop/deal-v1`) holds Go and this
 //! module to the same results on random inputs. Where they still differ, it
-//! is on input no checked record can carry, or no report a sealer writes
-//! from its own text:
+//! is on input no checked record can carry, except the first case below,
+//! which a report can carry:
 //!
-//! - a record text, or a report pair (its free `report` text included), with
-//!   a member named `"$serde_json::private::Number"` or
-//!   `"$serde_json::private::RawValue"`, which serde_json would read as
-//!   something else, is refused here at the canonicalization stage; Go reads
-//!   it as written;
+//! - a record text, or a report pair, with a member named
+//!   `"$serde_json::private::Number"` or `"$serde_json::private::RawValue"`,
+//!   which serde_json would read as something else, is refused here at the
+//!   canonicalization stage; Go reads it as written. This is a limitation of
+//!   this crate: a report's free `report` text is the producer's own (Go's
+//!   `BuildReport` copies it as given), so a report Go builds and verifies
+//!   can carry such a member, and this crate refuses it;
 //! - a record inside status, row or report books is read from a parsed
 //!   value, so a member given twice there is not seen (every text entry
 //!   point, [`decode`], [`check`] and [`verify_sent`], refuses it as Go
