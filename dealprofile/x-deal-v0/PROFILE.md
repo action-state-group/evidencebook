@@ -1092,8 +1092,8 @@ The verdict's `rules` seals the outcome as data:
   `timeout`, `unreadable` or `ruleset_changed`) and `checker_sha256`;
 
 A finding's `limit` and `value` never carry counterparty data: they are the limit and the value from
-the record the rule compared with it (an amount, a count, a window total), never a name, a contact
-detail or an identifier. A checker should report them as numbers. A string there is scanned like
+the record the rule compared with it (a money cap and the amount over it, above), never a name, a
+contact detail or an identifier. A checker should report them as numbers. A string there is scanned like
 every other string in a record, and an answer that cannot be sealed (one that would carry a phone
 number, an email address, the counterparty's details or a word a record may not carry, including a
 run of amounts that reads like a phone number) never fails the check. The check pauses with the
