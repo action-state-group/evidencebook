@@ -478,7 +478,8 @@ func verifyRecordInclusion(e Envelope, checkpointKey string) ([]byte, error) {
 // under the pinned key for one log, sizes strictly growing, each consistency
 // proof present in a history card reaching the next commitment and each
 // history entry's signed prev_size and prev_root naming the entry before, and the
-// last checkpoint the envelope's anchor, whose statement it returns.
+// last checkpoint the envelope's anchor, whose statement it returns. The
+// freshness the envelope states must be what that anchor commits (#521).
 func verifyCheckpointChain(e Envelope, checkpointKey string) ([]byte, error) {
 	artifact, err := evidencerequest.DecodeJSON(e.Artifact)
 	fields, ok := artifact.(map[string]any)

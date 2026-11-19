@@ -545,12 +545,12 @@ func TestACardOneOrCheckpointsAnswerCannotMisstateFreshness(t *testing.T) {
 		size := uint64(1 << 40)
 		bigger := e
 		bigger.Anchor.FreshnessSize = &size
-		if _, _, err := verifyAnchorInclusion(req, bigger, key); err == nil {
+		if _, _, err := verifyAnchorInclusion(req, bigger, key); err == nil || !strings.Contains(err.Error(), "anchor.freshness") {
 			t.Errorf("%s: an answer stating a size its anchor does not commit passed", name)
 		}
 		later := e
 		later.Anchor.FreshnessSize, later.Anchor.FreshnessTime = nil, "2099-01-01T00:00:00Z"
-		if _, _, err := verifyAnchorInclusion(req, later, key); err == nil {
+		if _, _, err := verifyAnchorInclusion(req, later, key); err == nil || !strings.Contains(err.Error(), "anchor.freshness") {
 			t.Errorf("%s: an answer stating a time its anchor does not commit passed", name)
 		}
 	}
