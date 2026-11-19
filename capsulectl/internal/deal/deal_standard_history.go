@@ -369,8 +369,12 @@ func shCardCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "card", Short: "Write the History card as a bundle `verify --bundle` checks and the History page draws, as of the newest checkpoint of the profile's cadence", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		out, _ := c.Flags().GetString("out")
 		shared, _ := c.Flags().GetBool("shared")
+		derivation, _ := c.Flags().GetString("derivation")
 		if out == "" {
 			return cli.InputError("--out is required")
+		}
+		if derivation != standardhistory.Derivation && derivation != standardhistory.Derivation3 {
+			return cli.InputError("--derivation is " + standardhistory.Derivation + " (the default, for x-deal-v0 deals) or " + standardhistory.Derivation3 + " (for x-deal-v1 deals)")
 		}
 		p, err := cli.Selected(c)
 		if err != nil {
@@ -381,7 +385,7 @@ func shCardCommand() *cobra.Command {
 			return err
 		}
 		defer func() { err = errors.Join(err, s.close()) }()
-		b, err := s.standardHistoryBundle(c.Context(), shared)
+		b, err := s.standardHistoryBundle(c.Context(), shared, derivation)
 		if err != nil {
 			return err
 		}
@@ -403,6 +407,7 @@ func shCardCommand() *cobra.Command {
 		return cli.Output(c, map[string]any{"out": out, "shared": shared})
 	}}
 	cmd.Flags().String("out", "", "New file for the bundle")
+	cmd.Flags().String("derivation", standardhistory.Derivation, "standard_history/1 counts x-deal-v0 deals; standard_history/3 counts x-deal-v1 deals from the shelf's book facts")
 	cmd.Flags().Bool("shared", false, "The copy to send: the card, its policy and its anchor, without the deal entries it counts (your own copy has them)")
 	return cmd
 }
@@ -418,6 +423,9 @@ type standardHistoryCard struct {
 	// Tick is the cadence tick the card is as of: its checkpoint statement
 	// is the anchor's octets, and its receipt the witness's.
 	Tick evidencebook.CadenceTick
+	// Derivation is the card's token: standard_history/3 for a card counted
+	// from v1 deal books, empty for /1.
+	Derivation string
 }
 
 // errNoTick is a card with no checkpoint to be as of.
@@ -605,11 +613,16 @@ func (x shelfDealIndex) sealedPayload(ctx context.Context, keys []ed25519.Public
 // cuts that log's checkpoint, and assembles the Evidence Bundle around it,
 // disclosed, with the x-standard-history/v0 block a receiver holds beside
 // the card. The deal entries are in the holder's own copy only.
-func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool) (_ map[string]interface{}, err error) {
+func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool, derivation string) (_ map[string]interface{}, err error) {
 	if s.p.Checkpoint.Signing == (cli.Secret{}) {
 		return nil, cli.InputError("a History card needs the profile's checkpoint key (see `deal init`)")
 	}
-	h, err := s.standardHistory(ctx, 0)
+	var h standardHistoryCard
+	if derivation == standardhistory.Derivation3 {
+		h, err = s.standardHistory3(ctx, 0)
+	} else {
+		h, err = s.standardHistory(ctx, 0)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -673,6 +686,9 @@ func shAsOfBlock(h standardHistoryCard) map[string]interface{} {
 	asOf := map[string]interface{}{
 		"anchor": h.AsOf.Anchor, "anchor_time": h.AsOf.AnchorTime, "first_checkpoint_time": h.AsOf.FirstCheckpointTime,
 		"checkpoint": hex.EncodeToString(h.Tick.Checkpoint),
+	}
+	if h.AsOf.CoverageStartTime != "" {
+		asOf["coverage_start_time"] = h.AsOf.CoverageStartTime
 	}
 	if r := h.Tick.Receipt; h.Tick.Witnessed && r != nil && witness.BindingOf(r.TSURL) == witness.BindingSCRAPI && r.EntryHash == h.AsOf.Anchor {
 		asOf["receipts"] = []string{hex.EncodeToString(r.Receipt)}
