@@ -42,7 +42,7 @@ Every pull request merged since 0.0.21 (the Rust changes are described below the
 - [#529](https://github.com/action-state-group/evidencebook/pull/529): chore(release): evidencebook v0.18.0
 - [#528](https://github.com/action-state-group/evidencebook/pull/528): feat(dealprofile): x-deal-v1 Receive and each stamp name a counted ruling's arrival (#527)
 - [#526](https://github.com/action-state-group/evidencebook/pull/526): feat(dealprofile): x-deal-v1 status value and StatusProvider (#461 step 5, PR 4c-2b-2)
-- [#525](https://github.com/action-state-group/evidencebook/pull/525): feat(shelf): a status provider is handed the book and journal (#461 step 5, PR 4c-2b-1)
+- [#525](https://github.com/action-state-group/evidencebook/pull/525): feat(shelf): a book status source is handed the book and journal (#461 step 5, PR 4c-2b-1)
 - [#520](https://github.com/action-state-group/evidencebook/pull/520): docs(dealprofile): x-deal-v1 carries no demo member
 - [#524](https://github.com/action-state-group/evidencebook/pull/524): chore(release): evidencebook v0.17.0
 - [#506](https://github.com/action-state-group/evidencebook/pull/506): chore(ard-commerce): the ARD demo moved to evidencebook-skills demo/ard
@@ -62,7 +62,7 @@ Every pull request merged since 0.0.21 (the Rust changes are described below the
 - **Tests.** Each of these reads the shared vectors: every fixture under `dealprofile/x-deal-v1/fixtures`, and the records, start, status, report, settled, decline and authorization vectors under `testdata/deal-v1`.
 - **Schema.** The x-deal-v1 schema is vendored byte for byte, and a test holds the vendored copy equal to the source.
 - **`row_status::compute_late`** returns the late statements and late disputes, as Go's `ComputeLate` does, and passes `testdata/row-status/late.json`. `row_status::Date` and `Row` now serialize as Go writes them.
-- **Not yet ported:** the shelf-coupled parts. These are the receive profile, the status provider, ruling naming and the payment check, and they come in PR 6b.
+- **Not yet ported:** the shelf-coupled parts. These are the receive profile, the book status source, ruling naming and the payment check, and they come in PR 6b.
 
 ### Added: the shelf hooks a deal profile runs on (`shelf` feature; evidencebook#461 step 5, PR 6b-1)
 
