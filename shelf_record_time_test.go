@@ -467,6 +467,17 @@ func TestAStampTimeIsTheEarliestNamedReceiptFromThatStampOn(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, ok, "a URL is not a key id")
 
+	// A stamp taken but not yet cut (checkpoint_size 0, no checkpoint) gives
+	// no time of its own and does not disturb the earlier stamps' times.
+	_, err = shelf.db.Exec(`INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', '{}')`,
+		second.N+1, tickTime.Format(time.RFC3339), tickTime.Format(time.RFC3339))
+	require.NoError(t, err)
+	_, ok = stampTime(second.N+1, testWitnessURL, otherWitnessURL)
+	assert.False(t, ok, "an uncut stamp has no checkpoint to witness")
+	at, ok = stampTime(first.N, testWitnessURL, otherWitnessURL)
+	require.True(t, ok)
+	assert.Equal(t, t1, at)
+
 	_, _, err = shelf.StampTime(ctx, 0, []string{testWitnessURL})
 	assert.ErrorIs(t, err, ErrInvalid)
 	_, _, err = shelf.StampTimeByKey(ctx, 0, []string{keyID})

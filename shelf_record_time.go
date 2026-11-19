@@ -274,6 +274,11 @@ func earliestNamedTime(ctx context.Context, tx *sql.Tx, seq uint64, witnesses []
 // first to cover. ok is false when no such receipt is held yet (the time is
 // not known), and when n is a tick with no checkpoint and none later has
 // one. It takes no lock and reads in one transaction, as RecordTime.
+//
+// A stamp index is local to the shelf that cut it: n resolves only in facts
+// of this shelf's own books. A counterparty's fact names a stamp of the
+// counterparty's shelf, which this call cannot resolve (it would read this
+// shelf's unrelated tick n).
 func (s *Shelf) StampTime(ctx context.Context, n uint64, witnesses []string) (t time.Time, ok bool, err error) {
 	return s.stampTime(ctx, n, witnesses, byURL)
 }
