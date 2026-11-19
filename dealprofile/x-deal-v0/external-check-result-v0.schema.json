@@ -110,11 +110,11 @@
             "maxLength": 1000
           },
           "limit": {
-            "description": "The limit the rule applied: a number, or a string of at most 64 characters with no line break.",
+            "description": "A failing money cap only (a per-action or rolling spend cap), and only with `value`: the cap, an integer number in minor units of the deal's currency. A checker MUST omit it on any other finding (a pass, a count of acts, a floor). A string is never read as an amount.",
             "$ref": "#/$defs/scalar"
           },
           "value": {
-            "description": "The value the rule compared with the limit: a number, or a string of at most 64 characters with no line break.",
+            "description": "A failing money cap only, and only with `limit`: the amount the rule compared with the cap, an integer number in minor units of the deal's currency, greater than `limit`. A checker MUST omit it on any other finding. A string is never read as an amount.",
             "$ref": "#/$defs/scalar"
           }
         }

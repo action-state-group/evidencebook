@@ -1054,7 +1054,7 @@ At every check, after the `check` record is sealed:
   verdict: pass|fail|not_applicable|not_evaluable, disposition, reason, limit, value}`, passes
   included; `disposition`, optional, is what a failing rule does on its own: `ask` or `deny`;
   `limit` and `value` are each a number, or a string of at most 64 characters with no line
-  break).
+  break; the paragraph on `limit` and `value` below says what they mean).
   `notice`, optional, `{line}`: one line of text (at most 500 characters; no line break or other
   control character) for the person about what the checker made of `received_cards`; a checker
   prints it only when the input carried cards. The deal check shows it beside the check, outside
@@ -1089,9 +1089,16 @@ The verdict's `rules` seals the outcome as data:
 - `status: not_evaluated`, with `cause` (`checker_unavailable`, `checker_changed`, `refused`,
   `timeout`, `unreadable` or `ruleset_changed`) and `checker_sha256`;
 
+A finding's `limit` and `value` are the amounts of a money cap, a per-action cap or a rolling
+spend cap over a window, that the rule found exceeded. A checker MUST send both on a failing
+money cap and MUST NOT send either on any other finding: a pass, or a rule that is not a money cap
+(a count of acts, a floor). Both are integer numbers in minor units of the deal's currency, `value`
+greater than `limit`, and a string is never read as an amount. The deal card reads them only so, so
+a checker that sends them otherwise is out of profile.
+
 A finding's `limit` and `value` never carry counterparty data: they are the limit and the value from
-the record the rule compared with it (an amount, a count, a window total), never a name, a contact
-detail or an identifier. A checker should report them as numbers. A string there is scanned like
+the cap and the record's amount over it, never a name, a
+contact detail or an identifier. A checker should report them as numbers. A string there is scanned like
 every other string in a record, and an answer that cannot be sealed (one that would carry a phone
 number, an email address, the counterparty's details or a word a record may not carry, including a
 run of amounts that reads like a phone number) never fails the check. The check pauses with the
