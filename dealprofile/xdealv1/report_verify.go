@@ -130,8 +130,10 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 }
 
 // reportNulls refuses what the round trip keeps but BuildReport never
-// writes: a null rows, report text, relied_on, late list or owed, and a
-// negative rulings_unnamed.
+// writes: a null rows, report text, relied_on or late list, an owed that is
+// not an object, a negative rulings_unnamed, and a relied_on record whose
+// witnessed is not whether it has a time. The payload is JCS, so a raw
+// member has no leading white space.
 func reportNulls(r Report) error {
 	switch {
 	case r.Rows == nil:
@@ -147,8 +149,13 @@ func reportNulls(r Report) error {
 			return fmt.Errorf("row %q: relied_on is null", row.ID)
 		case row.Late.Statements == nil || row.Late.Disputes == nil:
 			return fmt.Errorf("row %q: a late list is null", row.ID)
-		case len(row.Owed) == 0 || string(row.Owed) == "null":
-			return fmt.Errorf("row %q: owed is null", row.ID)
+		case len(row.Owed) == 0 || row.Owed[0] != '{':
+			return fmt.Errorf("row %q: owed is not an object", row.ID)
+		}
+		for _, src := range row.ReliedOn {
+			if src.Witnessed != (src.Time != nil) {
+				return fmt.Errorf("row %q: relied_on %q is witnessed exactly when it has a time", row.ID, src.Record)
+			}
 		}
 	}
 	return nil

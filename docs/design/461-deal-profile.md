@@ -1664,7 +1664,8 @@ PROFILE §10). It is as proposed below, with these additions and limits:
     `fyi`) and commits the payload as its `agent_input_digest`;
   - the payload is a `deal_report` of `x-deal-v1` that parses as `Report` and would encode to the
     same bytes, with no null where a report holds a list or an object (`rows`, `report`, and each
-    row's `owed`, `relied_on` and `late` lists) and no negative `rulings_unnamed`;
+    row's `relied_on` and `late` lists), each row's `owed` an object, no negative
+    `rulings_unnamed`, and each `relied_on` record `witnessed` exactly when it has a `time`;
   - each row's `ruling.against` is `buyer`, `seller` or `null`;
   - the first record is a verified book pair at seq 1 holding an agreement of the report's
     `deal_id`, in the log named by `rests_on.own.log_id`;
