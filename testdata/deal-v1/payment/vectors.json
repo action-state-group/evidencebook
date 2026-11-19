@@ -16641,6 +16641,9 @@
           "04915d0ac2d0e53b090650005044c0dd734c9f9a16c9124de1c2e711046ce274",
           "975feb755f225d1be778ef11586a5a0e56aceeffdc10b965f949856c0c9f84ab"
         ],
+        "excluded": [
+          "492e18760f46c700c81b20271734432a937d04f7be4c964a3bfd1e31c7150b4c"
+        ],
         "settlement": {
           "agreed_status": "settled",
           "delivery_state": "none",
