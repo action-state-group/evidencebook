@@ -1555,7 +1555,7 @@ PROFILE §10). It is as proposed below, with these additions and limits:
  "due": "2026-11-04T09:12:00Z" | "not_set",
  "window_end": "2026-11-18T09:12:00Z" | "not_set",
  "status": "<rowstatus status word>", "value": "met" | "not_met" | null,
- "remedy": "none" | "due" | "made" | "not_honoured" | null,
+ "remedy": "none" | "due" | "made" | "not_honoured" | "not_counted" | null,
  "local": false,
  "check": "passed" | "failed" | "not_run" | "not_recomputed",
  "late": {"statements": [{"side": "seller", "value": "met", "record": "<record id>"}],
