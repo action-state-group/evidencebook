@@ -212,10 +212,6 @@ func openBookKeyed(ctx context.Context, p cli.Profile, create bool, artifacts cl
 		BookID: p.LogID, Operator: p.Operator,
 		Store: store, Substrate: substrate, Originals: artifacts, Signer: signer,
 		Now: clock.now, Reproduction: reproduced,
-		// evidencebook v0.14.0 made uniform refusals the library default. capsulectl
-		// keeps the specific tokens it has always answered with; whether it should
-		// move to uniform is a disclosure decision, not part of a dependency bump.
-		Responder: evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicySpecific},
 	})
 	if err != nil {
 		return openedBook{}, errors.Join(bookError(err), store.Release(), substrate.Release())

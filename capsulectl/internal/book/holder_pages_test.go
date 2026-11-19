@@ -118,7 +118,7 @@ func TestHolderAskedListsTheAnsweredRecordsAndNamesNobody(t *testing.T) {
 	holderGolden(t, "asked", page)
 	assert.Contains(t, page, `<span class="pill">2</span>`)
 	assert.Contains(t, page, "<b>proof only</b>")
-	assert.Contains(t, page, "Reason: your settings do not allow it")
+	assert.Contains(t, page, "Reason: policy_declined")
 	// Sentences that promised what nothing produces are not on the page.
 	for _, promised := range []string{"small deals only", "shows you here", "witness"} {
 		assert.NotContains(t, page, promised)
@@ -232,4 +232,15 @@ func TestHolderSharedNeedsTheSharedEntriesAndNoEmptyValues(t *testing.T) {
 	path, digest = wordingFixture(t, string(raw))
 	_, err = invoke(t, "", "holder-page", "--out", filepath.Join(t.TempDir(), "r.html"), "--wording", path, "--wording-digest", digest)
 	assert.ErrorContains(t, err, "share.title")
+}
+
+// A book sealed before refusals became uniform (#473) still holds
+// not_authorized records, which the asked page words; a code the pack does not
+// know is shown as sealed.
+func TestHolderWordingReasonForSealedRefusalCodes(t *testing.T) {
+	entries, err := decodeHolderWording(holderWordingJSON, false)
+	require.NoError(t, err)
+	w := holderWording{entries: entries}
+	assert.Equal(t, "your settings do not allow it", w.reason("not_authorized"))
+	assert.Equal(t, "policy_declined", w.reason("policy_declined"))
 }

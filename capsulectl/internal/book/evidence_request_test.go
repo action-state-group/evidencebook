@@ -169,7 +169,7 @@ func TestFixedPinArtifactSurvivesLogGrowth(t *testing.T) {
 }
 
 // Without --requester the request's sender is unauthenticated: a protected
-// subject is refused not_authorized and nothing is recorded, while the
+// subject is refused policy_declined and nothing is recorded, while the
 // public checkpoints subject is still answered.
 func TestRespondWithoutRequesterAnswersOnlyPublicSubjects(t *testing.T) {
 	x := newEvidenceExchange(t)
@@ -184,7 +184,7 @@ func TestRespondWithoutRequesterAnswersOnlyPublicSubjects(t *testing.T) {
 	size := bookSize(t, x.b)
 	got := unauthenticated("history")
 	assert.Equal(t, evidencebook.OutcomeRefusal, got.Outcome)
-	assert.Equal(t, evidencebook.ReasonNotAuthorized, got.Reason)
+	assert.Equal(t, evidencebook.ReasonPolicyDeclined, got.Reason)
 	assert.Equal(t, sent.RequestDigest, got.RequestDigest)
 	assert.Empty(t, got.RecordID, "unauthenticated traffic is not recorded")
 	assert.Equal(t, size, bookSize(t, x.b))
