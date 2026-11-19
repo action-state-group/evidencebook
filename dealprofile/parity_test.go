@@ -319,6 +319,37 @@ func parityChecks(t *testing.T) []parityCheck {
 		require.NoError(t, err)
 		return string(out)
 	}
+	// typed is a positive typed fixture with one member set at path: the
+	// typed record schemas and the record-common definitions their $refs
+	// resolve to, whose patterns Go's validator also reads as RE2
+	// (evidencebook#548).
+	typed := func(file string, value any, path ...string) string {
+		raw, err := os.ReadFile("x-deal-v0/fixtures/positive-typed/" + file)
+		require.NoError(t, err)
+		var f struct {
+			Record map[string]any `json:"record"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &f))
+		m := f.Record
+		for _, k := range path[:len(path)-1] {
+			next, ok := m[k].(map[string]any)
+			if !ok {
+				next = map[string]any{}
+				m[k] = next
+			}
+			m = next
+		}
+		m[path[len(path)-1]] = value
+		out, err := json.Marshal(f.Record)
+		require.NoError(t, err)
+		return string(out)
+	}
+	// post is a proposed action's body posting a listing to platform: the
+	// schema requires action "post" for a posting.
+	post := func(platform string) map[string]any {
+		return map[string]any{"action": "post",
+			"posting": map[string]any{"text_commitment": strings.Repeat("a", 64), "classes": []any{}, "platform": platform}}
+	}
 	withClass := func(rec map[string]any, class any) string {
 		c := maps.Clone(rec)
 		c["counterparty_class"] = class
@@ -367,6 +398,11 @@ func parityChecks(t *testing.T) []parityCheck {
 		{"a pattern's \\s: a no-break space, not RE2 white space", unpost(false, "platform", "shop\u00a0x.example")},
 		{"a pattern's \\s: a vertical tab, not RE2 white space", unpost(false, "platform", "a\vb.example")},
 		{"a pattern's \\s: a tab, RE2 white space", unpost(false, "platform", "a\tb.example")},
+		{"a pattern's $ before a final newline (typed chain_id)", typed("02-task-authority.json", "deal-7a1e5c0d9b2f4e68\n", "chain_id")},
+		{"a pattern's $ before a final newline (typed at, from record-common)", typed("02-task-authority.json", "2026-10-06T09:02:00Z\n", "at")},
+		{"a pattern's \\s: a typed posting platform as written", typed("05-proposed-action.json", post("shop.example"), "body")},
+		{"a pattern's \\s: a typed posting platform with a no-break space", typed("05-proposed-action.json", post("shop\u00a0x.example"), "body")},
+		{"a pattern's \\s: a typed posting platform with a tab", typed("05-proposed-action.json", post("shop\tx.example"), "body")},
 	}
 	var out []parityCheck
 	add := func(name, text string, local []string) {

@@ -1036,6 +1036,35 @@
       "stage": "schema"
     },
     {
+      "name": "a pattern's $ before a final newline (typed chain_id)",
+      "record": "{\"at\":\"2026-10-06T09:02:00Z\",\"body\":{\"allowed\":[\"pay\"],\"max_total_minor\":60000,\"verbatim_commitment\":\"ff56f9733e6f5a78625cc3dd2adf95964292edee3cbd2b9218d8576d36bde7c7\"},\"canonicalization\":\"jcs\",\"chain_id\":\"deal-7a1e5c0d9b2f4e68\\n\",\"chain_root\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"prev\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"refs\":[{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"rel\":\"source\",\"type\":\"record\"}],\"seq\":2,\"type\":\"task-authority/v0\"}",
+      "stage": "schema"
+    },
+    {
+      "name": "a pattern's $ before a final newline (typed at, from record-common)",
+      "record": "{\"at\":\"2026-10-06T09:02:00Z\\n\",\"body\":{\"allowed\":[\"pay\"],\"max_total_minor\":60000,\"verbatim_commitment\":\"ff56f9733e6f5a78625cc3dd2adf95964292edee3cbd2b9218d8576d36bde7c7\"},\"canonicalization\":\"jcs\",\"chain_id\":\"deal-7a1e5c0d9b2f4e68\",\"chain_root\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"prev\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"refs\":[{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"rel\":\"source\",\"type\":\"record\"}],\"seq\":2,\"type\":\"task-authority/v0\"}",
+      "stage": "schema"
+    },
+    {
+      "name": "a pattern's \\s: a typed posting platform as written",
+      "record": "{\"at\":\"2026-10-06T09:13:00Z\",\"body\":{\"action\":\"post\",\"posting\":{\"classes\":[],\"platform\":\"shop.example\",\"text_commitment\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},\"canonicalization\":\"jcs\",\"chain_id\":\"deal-7a1e5c0d9b2f4e68\",\"chain_root\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"prev\":{\"digest\":\"b529a92142bb0dfd6719797b3baeeabc49f3fc0fa2eab78d4338add734f5cacf\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"seq\":5,\"type\":\"proposed-action/v0\"}",
+      "stage": "",
+      "payload": "{\"at\":\"2026-10-06T09:13:00Z\",\"body\":{\"action\":\"post\",\"posting\":{\"classes\":[],\"platform\":\"shop.example\",\"text_commitment\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},\"canonicalization\":\"jcs\",\"chain_id\":\"deal-7a1e5c0d9b2f4e68\",\"chain_root\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"prev\":{\"digest\":\"b529a92142bb0dfd6719797b3baeeabc49f3fc0fa2eab78d4338add734f5cacf\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"seq\":5,\"type\":\"proposed-action/v0\"}",
+      "digest": "5cf710eccfa377171c941dbb2707140e6f5ec64f8ec78a390f954e821a72ea73"
+    },
+    {
+      "name": "a pattern's \\s: a typed posting platform with a no-break space",
+      "record": "{\"at\":\"2026-10-06T09:13:00Z\",\"body\":{\"action\":\"post\",\"posting\":{\"classes\":[],\"platform\":\"shop x.example\",\"text_commitment\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},\"canonicalization\":\"jcs\",\"chain_id\":\"deal-7a1e5c0d9b2f4e68\",\"chain_root\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"prev\":{\"digest\":\"b529a92142bb0dfd6719797b3baeeabc49f3fc0fa2eab78d4338add734f5cacf\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"seq\":5,\"type\":\"proposed-action/v0\"}",
+      "stage": "",
+      "payload": "{\"at\":\"2026-10-06T09:13:00Z\",\"body\":{\"action\":\"post\",\"posting\":{\"classes\":[],\"platform\":\"shop x.example\",\"text_commitment\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},\"canonicalization\":\"jcs\",\"chain_id\":\"deal-7a1e5c0d9b2f4e68\",\"chain_root\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"prev\":{\"digest\":\"b529a92142bb0dfd6719797b3baeeabc49f3fc0fa2eab78d4338add734f5cacf\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"seq\":5,\"type\":\"proposed-action/v0\"}",
+      "digest": "39b688d682b7080cfa3520123cfd514cef77553bf2939a50be825dedbf239827"
+    },
+    {
+      "name": "a pattern's \\s: a typed posting platform with a tab",
+      "record": "{\"at\":\"2026-10-06T09:13:00Z\",\"body\":{\"action\":\"post\",\"posting\":{\"classes\":[],\"platform\":\"shop\\tx.example\",\"text_commitment\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}},\"canonicalization\":\"jcs\",\"chain_id\":\"deal-7a1e5c0d9b2f4e68\",\"chain_root\":{\"digest\":\"bece2799f6e08d30375ab87f8a8db27458e2a29995add32dc25561362d736246\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"prev\":{\"digest\":\"b529a92142bb0dfd6719797b3baeeabc49f3fc0fa2eab78d4338add734f5cacf\",\"digest_alg\":\"SHA-256\",\"type\":\"record\"},\"seq\":5,\"type\":\"proposed-action/v0\"}",
+      "stage": "schema"
+    },
+    {
       "name": "text \"hello\"",
       "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"hello\"}}",
       "stage": "schema"
