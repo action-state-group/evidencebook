@@ -34,8 +34,10 @@ These are not reopened here.
    `375`, `383`), so no existing fingerprint changes. Section 2.4 says how.
 4. **Acceptance 9.** A deal book opens at agreement. There is no close and no results log. Term
    rows have due dates and contest windows. Each side makes statements. Both agreement records
-   name the same witnesses, and a deal whose records have no time from those witnesses is
-   tallied as not counted. The stamp proof follows the order of design §4.3 (section 7). The
+   name the same witnesses. A started deal whose records have no time from any witness is counted, its rows local,
+   whether or not its agreement names a witness (Steven, ops u616, 2026-11-19: "count it"; ops u608
+   and #570 for a deal that agrees and then goes silent, which starts and is counted, local). AAC
+   `/3` SH-12 still leaves such a deal out when its agreement names a witness; AAC#634 changes it. The stamp proof follows the order of design §4.3 (section 7). The
    rules verdict word stays a record in its own deal book, bound to the deal id and the pack
    digest, carried in the counterparty cut under u195's conditions, and never in the journal
    (today's `rules_verdict`, `names.go:49`).
@@ -662,7 +664,9 @@ The table in 3.3 lists the members.
 
 **Witnesses.** An empty list is allowed (u186, as the How ack records it; design §4.3: "a deal with
 no witness that both accept has no record times"). Then no record of the deal has a time, every
-status is local, and a card tallies the deal as not counted (acceptance 9). A witness is named by
+status is local, and a card counts the deal, its rows local (u608, #570). So does a deal whose
+agreement names a witness but none of whose records has a time from one (u616; acceptance 9). A card
+leaves no started deal out for want of a witnessed time. A witness is named by
 its verified key id, with its URL only as a hint where to find it (Q1, answered).
 
 **The adjudicator** is `{"key_id", "rules_digest", "rules_url"}` or `null`. An agreement with no
@@ -1701,8 +1705,9 @@ not-started book (empty `rows`); and the counterparty-without-layer book.
   - the start state inputs, so a not-started book is in no window and no tally (acceptance 5);
   - `counterparty_layer` and `counterparty_proof_held`, for how it happened (stamped by both, our
     receipt only, no record);
-  - `witnesses`, and each record's time from those witnesses only, so a deal whose records have no
-    such time is tallied as not counted (acceptance 9);
+  - `witnesses`, and each record's time from those witnesses only, so a started deal whose records have no
+    such time is counted, local, whether or not its agreement names a witness (u616, u608, #570;
+    AAC `/3` SH-12 says otherwise for a named witness until AAC#634 lands);
   - `role`, `value_band`, `counterparty_kind`;
   - `agreed_at`, and the first witnessed time of the book's first fact, since design §4.1,
     "Counting only a window", proposes the latter as the window key in place of the time of
@@ -1915,8 +1920,8 @@ since "left out" would let a holder drop deals from its card by never timing the
 `settled` rule of 9 still leaves a `not_reached` row out of settlement, as the design says; that
 decides when a deal is finished, not its card line.
 **Answered** (Steven's AAC#626 ruling, 2026-11-17 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; read by Sherlock2 as u603, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=71e5098f96ceeadf8970c251112bdb8f9677084483f5994ffcc5781294410057)): any `not_reached` row makes the deal undecided on the card, replacing the design's
-"left out" (item 5). A deal with no time from a witness its agreement names stays left out
-(acceptance 9). Items 1 and 2 of the same ruling set three card outcomes, `held`, `undecided` and
+"left out" (item 5). A deal with no time from a witness its agreement names was to stay left
+out (acceptance 9); Steven's later ruling, u616 (2026-11-19, "count it"), counts it, rows local. Items 1 and 2 of the same ruling set three card outcomes, `held`, `undecided` and
 `did_not_hold`, and take `other_side` out of the did-not-hold split: a deal where only the
 counterparty failed is not `did_not_hold` (10). How the card text orders `not_reached` against
 `did_not_hold` is AAC#626's.
