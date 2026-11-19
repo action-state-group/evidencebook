@@ -446,6 +446,15 @@ func TestReportVectors(t *testing.T) {
 
 	add("not-started", reportBooks(t, notStarted(t)), keepCopy("2026-11-05T12:00:00Z"))
 
+	// Both agreed and nothing more: the offerer's agreement has no time and the
+	// acceptor never named it, T after agree_by. The deal counts (u608): rows
+	// are listed and the start is local.
+	silent := heldAt(b, "2026-11-05T12:00:00Z")
+	silent.Own = []StatusRecord{silent.Own[0]}
+	silent.Own[0].Time = NoTime
+	silent.Counterpart, silent.CaseBook, silent.ProofHeld = silent.Counterpart[:1], nil, false
+	add("agree-then-silent", reportBooks(t, silent), keepCopy("2026-11-05T12:00:00Z"))
+
 	untimed := heldAt(b, "2026-11-09T12:00:00Z")
 	untimed.Own = append([]StatusRecord(nil), untimed.Own...)
 	for i := range untimed.Own {

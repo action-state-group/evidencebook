@@ -455,7 +455,7 @@
     },
     {
       "name": "untimed-after-not-named",
-      "why": "the same, T after agree_by, never named: not started",
+      "why": "the same, T after agree_by, never named: counted, started locally (u608)",
       "books": {
         "at": "2026-11-05T12:00:00Z",
         "offer": {
@@ -673,8 +673,8 @@
         "first_act": null
       },
       "expect": {
-        "state": "not_started",
-        "local": false,
+        "state": "started",
+        "local": true,
         "by": null
       }
     },
@@ -3726,7 +3726,7 @@
     },
     {
       "name": "unnamed-witness-after",
-      "why": "the same after agree_by, not named: not started",
+      "why": "the same after agree_by, not named: as untimed, counted locally",
       "books": {
         "at": "2026-11-05T12:00:00Z",
         "offer": {
@@ -3947,8 +3947,8 @@
         "first_act": null
       },
       "expect": {
-        "state": "not_started",
-        "local": false,
+        "state": "started",
+        "local": true,
         "by": null
       }
     },
@@ -4167,7 +4167,7 @@
     },
     {
       "name": "empty-witnesses-after",
-      "why": "the same after agree_by, not named: not started",
+      "why": "the same after agree_by, not named: counted locally",
       "books": {
         "at": "2026-11-05T12:00:00Z",
         "offer": {
@@ -4373,8 +4373,8 @@
         "first_act": null
       },
       "expect": {
-        "state": "not_started",
-        "local": false,
+        "state": "started",
+        "local": true,
         "by": null
       }
     },

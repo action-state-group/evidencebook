@@ -68,7 +68,7 @@
     },
     {
       "name": "untimed-after-agree-by",
-      "why": "the same, T after agree_by, not named: not started",
+      "why": "the same, T after agree_by, not named: counted, started locally (u608)",
       "input": {
         "at": "2026-11-05T12:00:00Z",
         "side": "acceptor",
@@ -83,8 +83,30 @@
         "first_act": null
       },
       "expect": {
-        "state": "not_started",
-        "local": false,
+        "state": "started",
+        "local": true,
+        "by": null
+      }
+    },
+    {
+      "name": "untimed-after-agree-by-offerer-side",
+      "why": "the offerer computes the same from its own book and the acceptor's agreement",
+      "input": {
+        "at": "2026-11-05T12:00:00Z",
+        "side": "offerer",
+        "counterparty_layer": true,
+        "agree_by": "2026-11-02T23:59:59Z",
+        "counterpart_agreement_held": true,
+        "same_offer_and_rows": true,
+        "offerer_names_acceptor": true,
+        "offerer_agreement_time": null,
+        "acceptor_names_offerer": false,
+        "cancellation_named_first": false,
+        "first_act": null
+      },
+      "expect": {
+        "state": "started",
+        "local": true,
         "by": null
       }
     },

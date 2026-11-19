@@ -146,14 +146,13 @@ pub fn start(input: &StartInput) -> Result<StartResult, Error> {
             not_started()
         });
     }
-    if !late {
-        return Ok(StartResult {
-            state: STATE_STARTED.into(),
-            local: true,
-            by: None,
-        });
-    }
-    Ok(not_started())
+    // No time and never named: started locally, also after agree_by (the deal
+    // counts; a witnessed time after agree_by, or a naming, settles it).
+    Ok(StartResult {
+        state: STATE_STARTED.into(),
+        local: true,
+        by: None,
+    })
 }
 
 /// A deal-book record as [`start_from_books`] reads it: the record, its

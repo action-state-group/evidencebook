@@ -799,7 +799,9 @@ when all three hold:
 1. the two agreements cite the same offer record and the same rows digest;
 2. the offerer's agreement names the acceptor's agreement in `seen`, and the acceptor's book names
    no cancellation of that offer, unless it named the offerer's agreement first;
-3. the offerer's agreement has a record time not after `agree_by`, or the acceptor's book names it.
+3. the offerer's agreement has a record time not after `agree_by`, or the acceptor's book names it,
+   or the offerer's agreement has no record time at all (#511: then the deal is started locally,
+   also after `agree_by`, and counts; a time after `agree_by` makes it not started).
 
 A record of the acceptor's book names the offerer's agreement when its `seen` is that agreement's
 record id or a later record id of the offerer's book. Until the offerer's agreement has a time or
@@ -847,11 +849,13 @@ Evaluation, in order:
 4. `offerer_names_acceptor` false: `not_started` while `at` is after `agree_by`, else
    `awaiting_agreement` (the offerer's record does not join the acceptor's).
 5. `acceptor_names_offerer`: `started`, `local` false, `by: acceptor_named`.
-6. `offerer_agreement_time` set and not after `agree_by`: `started`, `local` false,
-   `by: offerer_in_time`.
-7. `offerer_agreement_time` null and `at` not after `agree_by`: `started`, `local` true (Appendix
-   A lines 21 and 22: "a local result until ...").
-8. Otherwise: `not_started` (a time after `agree_by`, or none by then, and never named).
+6. `offerer_agreement_time` set: `started`, `local` false, `by: offerer_in_time` when it is not after
+   `agree_by`, else `not_started` (a late agreement, never named).
+7. `offerer_agreement_time` null: `started`, `local` true, at any `at`, before or after `agree_by`
+   (Appendix A lines 21 and 22: "a local result until ..."; after `agree_by`, #511: Steven's "count
+   it", ops u608, a counterparty that agrees and then goes silent is counted, so the silent side's
+   failure shows). `local` says the result may differ for a reader who holds a witnessed time: one
+   after `agree_by` gives step 6's `not_started`, a naming gives step 5.
 
 `offerer_agreement_time` comes from the witnesses the agreement names (4.3). A receipt from
 another witness gives no time (`shelf_record_time.go:110-115`).
@@ -871,7 +875,7 @@ for a started deal.
 | offerer cancels before acceptor agreed | none; cancellation in the offerer's journal and the acceptor's store | no book |
 | acceptor agrees, then offerer cancels | acceptor's: agreement, then a `statement` naming the cancellation | not started |
 | acceptor agrees, offerer sends nothing | acceptor's, agreement only | awaiting agreement, then not started |
-| acceptor agrees, offerer's agreement has no time by `agree_by` | both | started if the acceptor names it; else not started |
+| acceptor agrees, offerer's agreement has no time by `agree_by` | both | started, local; settled for good once a time in time or the acceptor's naming comes, not started if a time after `agree_by` does (#511) |
 
 A case with no book computes nothing: there is no book to stamp, and no fact.
 
@@ -885,7 +889,7 @@ derive that input.
 |---|---|
 | both agree, offerer's agreement timed before `agree_by` | started, not local |
 | both agree, offerer's agreement untimed, T before `agree_by` | started, local |
-| the same, T after `agree_by`, not named | not started |
+| the same, T after `agree_by`, not named | started, local (#511) |
 | acceptor only, T before `agree_by` | awaiting agreement |
 | acceptor only, T after `agree_by` | not started |
 | late offerer agreement (timed after `agree_by`), acceptor names it | started |
@@ -1496,7 +1500,8 @@ PROFILE §10). It is as proposed below, with these additions and limits:
   the report cannot check yet.
 - **Vectors built** (`testdata/deal-v1/report/`): Appendix A's buyer at each time above, the
   books as held then; its counterparty and adjudicator copies; a not-started book (the seller
-  holding its own agreement only); an untimed own book; a counterparty without the layer; the
+  holding its own agreement only); an agree-then-silent book (#511: the offerer's agreement untimed
+  and never named, T after `agree_by`: started, local, rows listed); an untimed own book; a counterparty without the layer; the
   settled-without-ruling path (lines s1 to s12: the seller concedes row 3 not met and refunds
   with no ruling, so the row is `agreed` `not_met` with `remedy_made`, and the deal is settled);
   the same concession without the refund (`agreed` `not_met`, not settled); an empty witness
