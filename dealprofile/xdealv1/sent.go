@@ -93,6 +93,9 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if err := strictUnmarshal(pair, &p); err != nil || p.Record == nil || p.AgentInput == nil {
 		return bad("not a pair {record, agent_input}: %v", err)
 	}
+	if err := exactMembers(pair, "record", "agent_input"); err != nil {
+		return bad("not a pair {record, agent_input}: %v", err)
+	}
 	var sigHex, keyID string
 	if err := errors.Join(json.Unmarshal(p.Record["signature"], &sigHex), json.Unmarshal(p.Record["key_id"], &keyID)); err != nil || sigHex == "" || keyID == "" {
 		return bad("the Capsule carries no signature and key_id")

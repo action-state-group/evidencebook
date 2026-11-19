@@ -33,13 +33,10 @@
 //! - [`check_authorizations`] reads each `at` as the record checks admit it
 //!   (RFC 3339 UTC to the second); Go's also takes an offset on records
 //!   that were never checked;
-//! - [`verify_book`] and [`verify_sent`] match a pair's own members by their
-//!   exact names, as [`verify_report`] and Go's `VerifyReport` do; Go's
-//!   `VerifyBook` and `VerifySent` also take them in another case;
-//! - [`verify_book`] matches a book pair's `record`, `header` and `payload`
-//!   and [`payment_check`] a settlement member's `leg`, `sealer_role` and
-//!   `terms_ref` by their exact names; Go's reader also takes them in
-//!   another case. A leg so spelled answers no terms leg here, and in Go
+//! - [`payment_check`] matches a settlement member's `leg`, `sealer_role`
+//!   and `terms_ref` by their exact names; Go's reader also takes them in
+//!   another case. (A pair's own members are matched exactly on both sides,
+//!   evidencebook#559.) A leg so spelled answers no terms leg here, and in Go
 //!   AAC's verifier refuses it, so the payment check's outcome is the same
 //!   and only its `excluded` list differs;
 //! - [`verify_book`] decodes the header as Go's typed `Header` does (each

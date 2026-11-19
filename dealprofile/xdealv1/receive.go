@@ -145,6 +145,9 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if err := strictUnmarshal(pair, &p); err != nil || p.Record == nil || p.Header == nil || p.Payload == nil {
 		return bad("not a book pair {record, header, payload}: %v", err)
 	}
+	if err := exactMembers(pair, "record", "header", "payload"); err != nil {
+		return bad("not a book pair {record, header, payload}: %v", err)
+	}
 	if _, inline := p.Record[evidencebook.RecordHeaderMember]; inline {
 		return bad("the Capsule carries its header inline; a book record commits it")
 	}

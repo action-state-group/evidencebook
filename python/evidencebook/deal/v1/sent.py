@@ -228,6 +228,15 @@ def _pair_members(raw: bytes, stage: str, names: tuple[str, ...], what: str) -> 
         raise _err(stage, f"not a {what}: {exc}") from None
     if any(out[n] is None for n in names):
         raise _err(stage, f"not a {what}: <nil>")
+    # Go's exactMembers (evidencebook#559): the reader above also takes a
+    # member in another case, a later spelling replacing an earlier one, so
+    # a pair could carry a second, unverified spelling beside the one read.
+    try:
+        top = rawjson.unmarshal_map(text)
+    except rawjson.GoJSONError as exc:
+        raise _err(stage, f"not a {what}: {exc}") from None
+    if top is None or len(top) != len(names) or any(n not in top for n in names):
+        raise _err(stage, f"not a {what}: its members are not exactly {', '.join(names)}")
     return out
 
 

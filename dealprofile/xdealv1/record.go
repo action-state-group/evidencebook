@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -181,6 +182,26 @@ func sameRecord(data []byte, v any) error {
 	}
 	if !bytes.Equal(want, got) {
 		return fmt.Errorf("xdealv1: the record's text does not read as its type: it would encode to other bytes")
+	}
+	return nil
+}
+
+// exactMembers refuses a pair whose top-level members are not exactly
+// names, each named exactly so. strictUnmarshal also takes a member in
+// another case, and a later spelling replaces an earlier one, so without
+// this a pair could carry a second, unverified spelling of a member beside
+// the one it verifies (evidencebook#559).
+func exactMembers(pair []byte, names ...string) error {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(pair, &top); err != nil {
+		return err
+	}
+	ok := len(top) == len(names)
+	for _, n := range names {
+		ok = ok && top[n] != nil
+	}
+	if !ok {
+		return fmt.Errorf("its members are not exactly %s", strings.Join(names, ", "))
 	}
 	return nil
 }

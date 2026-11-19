@@ -67,12 +67,6 @@ def verify_report(report: bytes, first: bytes) -> ReportRead:
     the holder's deal book. Raises :class:`StageError` where Go refuses."""
     report = bytes(report)
     p = _pair_members(report, STAGE_REPORT, ("record", "agent_input"), _PAIR)
-    try:
-        top = rawjson.unmarshal_map(report)
-    except rawjson.GoJSONError:
-        top = None
-    if top is None or len(top) != 2 or "record" not in top or "agent_input" not in top:
-        raise _err(STAGE_REPORT, f"not a {_PAIR}: its members are not exactly record and agent_input")
     capsule, capsule_id, key_id = _verify_capsule(STAGE_REPORT, p["record"])
     c = json.loads(capsule)
     action_id, action_type = c.get("action_id"), c.get("action_type")
