@@ -233,3 +233,14 @@ func TestHolderSharedNeedsTheSharedEntriesAndNoEmptyValues(t *testing.T) {
 	_, err = invoke(t, "", "holder-page", "--out", filepath.Join(t.TempDir(), "r.html"), "--wording", path, "--wording-digest", digest)
 	assert.ErrorContains(t, err, "share.title")
 }
+
+// A book sealed before refusals became uniform (#473) still holds
+// not_authorized records, which the asked page words; a code the pack does not
+// know is shown as sealed.
+func TestHolderWordingReasonForSealedRefusalCodes(t *testing.T) {
+	entries, err := decodeHolderWording(holderWordingJSON, false)
+	require.NoError(t, err)
+	w := holderWording{entries: entries}
+	assert.Equal(t, "your settings do not allow it", w.reason("not_authorized"))
+	assert.Equal(t, "policy_declined", w.reason("policy_declined"))
+}
