@@ -101,6 +101,18 @@ func rulingRow(t *testing.T, r map[string]any) map[string]any {
 	return nil
 }
 
+// firstSource is the sample's first relied_on record, as a mutable map.
+func firstSource(t *testing.T, r map[string]any) map[string]any {
+	t.Helper()
+	for _, row := range r["rows"].([]any) {
+		if src := row.(map[string]any)["relied_on"].([]any); len(src) > 0 {
+			return src[0].(map[string]any)
+		}
+	}
+	t.Fatal("no relied_on record")
+	return nil
+}
+
 // verifyCases builds every VerifyReport case from one handshake: the
 // seller's report of its deal against the seller's agreement, and each way
 // it is refused.
@@ -152,6 +164,39 @@ func verifyCases(t *testing.T) []verifyCase {
 		ru["Against"] = ru["against"]
 		delete(ru, "against")
 		add("against-misnamed", seal(payloadOf(t, r)), h.agreementPair, StageReport, "does not read as a report")
+	}
+	{
+		// What the round trip keeps but BuildReport never writes.
+		for _, c := range []struct {
+			name string
+			mut  func(r map[string]any)
+		}{
+			{"rows-null", func(r map[string]any) { r["rows"] = nil }},
+			{"report-text-null", func(r map[string]any) { r["report"] = nil }},
+			{"relied-on-null", func(r map[string]any) { r["rows"].([]any)[0].(map[string]any)["relied_on"] = nil }},
+			{"late-statements-null", func(r map[string]any) {
+				r["rows"].([]any)[0].(map[string]any)["late"].(map[string]any)["statements"] = nil
+			}},
+			{"late-disputes-null", func(r map[string]any) {
+				r["rows"].([]any)[0].(map[string]any)["late"].(map[string]any)["disputes"] = nil
+			}},
+			{"owed-null", func(r map[string]any) { r["rows"].([]any)[0].(map[string]any)["owed"] = nil }},
+			{"owed-a-number", func(r map[string]any) { r["rows"].([]any)[0].(map[string]any)["owed"] = 5 }},
+			{"owed-a-list", func(r map[string]any) { r["rows"].([]any)[0].(map[string]any)["owed"] = []any{} }},
+			{"witnessed-without-a-time", func(r map[string]any) {
+				src := firstSource(t, r)
+				src["time"], src["witnessed"] = nil, true
+			}},
+			{"a-time-not-witnessed", func(r map[string]any) {
+				src := firstSource(t, r)
+				src["time"], src["witnessed"] = "2026-11-03T10:00:00Z", false
+			}},
+			{"rulings-unnamed-negative", func(r map[string]any) { r["rulings_unnamed"] = -1 }},
+		} {
+			r := sampleReport(t, h, "appendix-a-21-nov")
+			c.mut(r)
+			add(c.name, seal(payloadOf(t, r)), h.agreementPair, StageReport, "does not read as a report")
+		}
 	}
 	add("signed-by-the-counterparty", sealReport(t, "buyer", withRuling(RoleSeller), ""), h.agreementPair, StageReport,
 		"signed by another key than its deal's first record")

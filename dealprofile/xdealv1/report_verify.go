@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	emit "github.com/action-state-group/capsule-emit/go"
@@ -95,6 +96,12 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 	if err := sameRecord(payload, r); err != nil {
 		return bad("the payload does not read as a report: %v", err)
 	}
+	// Go reads a null list or object as nil and writes nil back as null, so
+	// the round trip keeps these; BuildReport never writes them, and a page
+	// would read a null rows as no rows.
+	if err := reportNulls(r); err != nil {
+		return bad("the payload does not read as a report: %v", err)
+	}
 	if r.Type != dealprofile.ReportType || r.Profile != Profile {
 		return bad("not a deal_report of %s", Profile)
 	}
@@ -120,4 +127,36 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 		return bad("the report is signed by another key than its deal's first record")
 	}
 	return ReportRead{Report: r, CapsuleID: id, KeyID: keyID}, nil
+}
+
+// reportNulls refuses what the round trip keeps but BuildReport never
+// writes: a null rows, report text, relied_on or late list, an owed that is
+// not an object, a negative rulings_unnamed, and a relied_on record whose
+// witnessed is not whether it has a time. The payload is JCS, so a raw
+// member has no leading white space.
+func reportNulls(r Report) error {
+	switch {
+	case r.Rows == nil:
+		return fmt.Errorf("rows is null")
+	case r.Text == nil:
+		return fmt.Errorf("report is null")
+	case r.RulingsUnnamed < 0:
+		return fmt.Errorf("rulings_unnamed is negative")
+	}
+	for _, row := range r.Rows {
+		switch {
+		case row.ReliedOn == nil:
+			return fmt.Errorf("row %q: relied_on is null", row.ID)
+		case row.Late.Statements == nil || row.Late.Disputes == nil:
+			return fmt.Errorf("row %q: a late list is null", row.ID)
+		case len(row.Owed) == 0 || row.Owed[0] != '{':
+			return fmt.Errorf("row %q: owed is not an object", row.ID)
+		}
+		for _, src := range row.ReliedOn {
+			if src.Witnessed != (src.Time != nil) {
+				return fmt.Errorf("row %q: relied_on %q is witnessed exactly when it has a time", row.ID, src.Record)
+			}
+		}
+	}
+	return nil
 }
