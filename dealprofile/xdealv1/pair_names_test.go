@@ -118,6 +118,9 @@ func pairNameCases(t *testing.T) []pairNameCase {
 	add("book-header-correlation-listed-and-unlisted", "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
 		hd["correlation"] = map[string]any{"exchange_id": "ex-1", "unlisted_key": "v-1"}
 	}), false)
+	add("book-header-correlation-case-folded", "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
+		hd["correlation"] = map[string]any{"Exchange_ID": "ex-1"}
+	}), false)
 	// A correlation of another type is a type error; a null is none.
 	for _, v := range []struct {
 		name  string
