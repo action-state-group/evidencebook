@@ -338,6 +338,20 @@ class ReceiveProfile:
             return "", False
         return candidates[0], True
 
+    def after_receive(self, result: Any, at: Any) -> None:
+        """Names, before the receive call returns, each counted ruling of
+        the deals the call touched (Go ``AfterReceive``): those whose
+        counted records grew, and the received record's own deal, stored or
+        held already, so a record sent again retries a naming an earlier
+        call failed."""
+        from .naming import name_rulings
+
+        deals = list(result.changes.grew or [])
+        r = result.record
+        if r is not None and r.refused is None and (r.stored or r.duplicate) and r.deal_id and r.deal_id not in deals:
+            deals.append(r.deal_id)
+        name_rulings(self.shelf, deals, at)
+
     # -- acting ------------------------------------------------------------------------
 
     def can_act(self, inp: CanActInput) -> bool:

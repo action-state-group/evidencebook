@@ -17,7 +17,8 @@ from agent_action_capsule.canonical import jcs
 from capsule_emit.artifact.sqlite import SqliteArtifactStore
 
 from evidencebook.cadence import CadenceConfig
-from evidencebook.deal.v1 import holder, sent
+from evidencebook.deal.v1 import holder, naming as v1_name_rulings, sent
+from evidencebook.deal import v1
 from evidencebook.deal.v1.check import decode
 from evidencebook.record import CITES, OBSERVED_EVENT, Entry, Link
 from evidencebook.shelf import Shelf
@@ -123,9 +124,31 @@ def case(name: str) -> dict:
     return next(c for c in CASES if c["name"] == name)
 
 
+def disk_full() -> None:
+    raise OSError("the disk is full")
+
+
+def book_dump(book) -> list[dict]:
+    """Each record's id and, for one that reads as x-deal-v1, its book pair
+    (Go's recBook)."""
+    out = []
+    for r in book.records():
+        entry = {"record_id": r.record_id}
+        rec, kind = holder._v1_payload(book, r)
+        if kind == holder._V1:
+            stored = book._stored[r.record_id]
+            entry["pair"] = sent.book_pair(jcs(stored.capsule), stored.envelope, stored.header,
+                                           v1.encode(rec)[0]).hex()
+        out.append(entry)
+    return out
+
+
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
 def test_holder_transcript(case, tmp_path):
-    replay(case, tmp_path)
+    try:
+        replay(case, tmp_path)
+    finally:
+        v1_name_rulings._before_append = None
 
 
 def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Party]:
@@ -137,6 +160,9 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
         where = f"step {i} ({op} by {name})"
         if op == "party":
             parties[name] = Party(name, tmp_path / str(i))
+            continue
+        if op == "naming_fails":
+            v1_name_rulings._before_append = disk_full if step["in"] else None
             continue
         p = parties[name]
         if op == "reopen":
@@ -170,12 +196,23 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
             assert jcs(proof.value()) == jcs(step["out"]), where
         elif op == "retention":
             # Go's SetRetention: a lifecycle record citing the record.
-            journal = p.shelf.journal()
+            journal = p.shelf.open(step["log"]) if step.get("log") else p.shelf.journal()
             target = next(r for r in journal.records() if r.seq == step["in"]["seq"])
             rec = journal.append(Entry("lifecycle", OBSERVED_EVENT, links=(Link(CITES, target.record_id),),
                                        statement={"retention_state": step["in"]["state"],
                                                   "reason": step["in"]["reason"]}))
             assert rec.record_id == step["out"], where
+        elif op == "book":
+            assert book_dump(p.shelf.open(step["log"])) == step["out"], where
+        elif op == "name_rulings":
+            try:
+                if step.get("in") is None:
+                    ids, err = v1_name_rulings.name_all_rulings(p.shelf, p.now), None
+                else:
+                    ids, err = v1_name_rulings.name_rulings(p.shelf, step["in"], p.now), None
+            except Exception as exc:  # noqa: BLE001 - the naming's error, with what it sealed first
+                ids, err = exc.sealed, True
+            assert {"sealed": ids or None, "error": err} == step["out"], where
         elif op == "receive":
             record = bytes.fromhex(step["pair"]) if step.get("pair") else None
             proof = go_proof(step["proof"]) if step.get("proof") else None
@@ -184,8 +221,14 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
                 got = outcome(res)
                 # Go's Receive returns an error joining the refusals.
                 got["error"] = bool(res.refusals)
-            except Exception:  # noqa: BLE001 - the store's own error, with no result
-                got = {"error": True, "changes": {"grew": None, "shrank": None, "forked": None, "covered": None}}
+            except Exception as exc:  # noqa: BLE001 - the store's or the profile's error
+                res = getattr(exc, "receive_result", None)
+                if res is not None:
+                    # An after_receive error: the parts' result stays committed.
+                    got = outcome(res)
+                    got["error"] = True
+                else:
+                    got = {"error": True, "changes": {"grew": None, "shrank": None, "forked": None, "covered": None}}
             assert nulls(got) == nulls(step["out"]), where
         elif op == "can_act":
             i_ = step["in"]
@@ -277,3 +320,143 @@ def test_version(raw, want):
 def test_version_of_a_v1_record():
     step = next(s for s in case("handshake-from-offer")["steps"] if s["op"] == "seal")
     assert holder.version(jcs(step["record"])) == "x-deal-v1"
+
+
+def test_book_entry():
+    # Go's TestBookEntry: past seq 1 a record cites the one before it; the
+    # one payload is the record's JCS, whose digest is the record digest;
+    # the header's record_type is deal_step (design §3.1).
+    seal = next(s for s in case("later-records")["steps"] if s["op"] == "seal" and
+                s["record"]["x-deal-v1"]["seq"] > 1)
+    r = decode(jcs(seal["record"]))
+    with pytest.raises(ValueError, match="cites the record before it"):
+        v1.book_entry(r)
+    e = v1.book_entry(r, "ab" * 32)
+    assert e.links == (Link(CITES, "ab" * 32),)
+    assert e.record_type == "deal_step" and e.epistemic_type == "producer_claim"
+    assert e.subject_ref == r.block["deal_id"]
+    payload, d = v1.encode(r)
+    assert e.payloads == (payload,) and v1.digest(r) == d
+    first = next(s for s in case("later-records")["steps"] if s["op"] == "seal")
+    assert v1.book_entry(decode(jcs(first["record"]))).links == ()
+
+
+def _seller_before_the_ruling(tmp_path):
+    """The name-rulings scenario up to the seller receiving the ruling: the
+    parties, the ruling's pair, and a settle at seq 2 of the seller's book
+    (Go's settleRecord, as the part-book scenario sealed it)."""
+    c = case("name-rulings")
+    at = next(i for i, s in enumerate(c["steps"]) if s["op"] == "receive" and i > 4)
+    parties = replay(c, tmp_path, at)
+    settle = next(s for s in case("name-rulings-leaves-a-part-book")["steps"]
+                  if s["op"] == "seal" and s["party"] == "seller" and s["record"]["x-deal-v1"]["seq"] == 2)
+    return parties, bytes.fromhex(c["steps"][at]["pair"]), decode(jcs(settle["record"]))
+
+
+def test_naming_after_a_concurrent_write(tmp_path):
+    # Go's TestNameRulingsAfterAConcurrentWrite: a write landing between the
+    # read and the append moves the statement to the next place; it is
+    # built again there and lands valid.
+    parties, pair, settle = _seller_before_the_ruling(tmp_path)
+    seller = parties["seller"]
+    log = next(lid for lid in seller.shelf.books())
+    book = seller.shelf.open(log)
+    first = book.records()[0].record_id
+    wrote = []
+
+    def write_once():
+        if not wrote:
+            wrote.append(book.append(v1.book_entry(settle, first)).record_id)
+
+    v1_name_rulings._before_append = write_once
+    try:
+        seller.shelf.receive(pair, None)
+    finally:
+        v1_name_rulings._before_append = None
+    recs = book.records()
+    assert len(wrote) == 1 and len(recs) == 3, "the host's record, then the naming statement"
+    rec, kind = holder._v1_payload(book, recs[2])
+    assert kind == holder._V1 and rec.record_type == "statement" and rec.block["seq"] == 3
+    assert rec.block["prev"]["digest"] == v1.digest(settle), "built again for its place"
+
+
+def test_naming_gives_up_after_four_tries(tmp_path):
+    # The book moving at every append: read again three times, then the
+    # naming's error is BusyError, and nothing is sealed.
+    from evidencebook.errors import BusyError
+
+    parties, pair, _ = _seller_before_the_ruling(tmp_path)
+    seller = parties["seller"]
+    tries = []
+    real_open = seller.shelf.open
+
+    class Moving:
+        def __init__(self, book):
+            self._book = book
+
+        def __getattr__(self, name):
+            return getattr(self._book, name)
+
+        def append_at(self, seq, entry):
+            tries.append(seq)
+            raise BusyError("the book moved")
+
+    seller.shelf.open = lambda log_id: Moving(real_open(log_id))
+    v1_name_rulings._before_append = None
+    with pytest.raises(BusyError) as exc:
+        seller.shelf.receive(pair, None)
+    assert len(tries) == 4 and exc.value.sealed == []
+    assert exc.value.receive_result.record.stored, "the ruling stays held"
+
+
+def test_naming_keeps_what_it_sealed_before_an_error(monkeypatch):
+    # Go's NameRulings returns the ids sealed before an error beside it.
+    calls = []
+
+    def name_in(shelf, book, ag, deal, at, out):
+        calls.append(deal)
+        if len(calls) == 1:
+            out.append("a" * 64)
+            return
+        raise OSError("the disk is full")
+
+    class Book:
+        def __init__(self, deal):
+            self.deal = deal
+
+        def records(self):
+            return [type("R", (), {"seq": 1})()]
+
+    deals = {"deal/1": "deal-1111111111111111", "deal/2": "deal-2222222222222222"}
+
+    class Shelf:
+        def books(self):
+            return list(deals)
+
+        def open(self, log_id):
+            return Book(deals[log_id])
+
+    def payload(book, r):
+        rec = type("Rec", (), {"record_type": "agree", "block": {"deal_id": book.deal},
+                               "body": {"kind": "agreement", "adjudicator": {"key_id": "k"}}})()
+        return rec, holder._V1
+
+    monkeypatch.setattr(v1_name_rulings, "_name_rulings_in", name_in)
+    monkeypatch.setattr(holder, "_v1_payload", payload)
+    with pytest.raises(OSError) as exc:
+        v1_name_rulings.name_all_rulings(Shelf(), START)
+    assert exc.value.sealed == ["a" * 64]
+
+    # And when opening the next book fails, after the first was named.
+    calls.clear()
+    monkeypatch.setattr(v1_name_rulings, "_name_rulings_in", lambda shelf, book, ag, deal, at, out: out.append("b" * 64))
+
+    class FailingOpen(Shelf):
+        def open(self, log_id):
+            if log_id == "deal/2":
+                raise OSError("the disk is gone")
+            return super().open(log_id)
+
+    with pytest.raises(OSError) as exc:
+        v1_name_rulings.name_all_rulings(FailingOpen(), START)
+    assert exc.value.sealed == ["b" * 64]
