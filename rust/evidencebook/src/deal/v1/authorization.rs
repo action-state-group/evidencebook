@@ -71,8 +71,12 @@ fn kind_name(k: ActKind) -> &'static str {
     }
 }
 
-fn at_of(r: &Record) -> Result<i64, String> {
-    crate::row_status::parse_time(&r.block.at).map_err(|e| format!("its at {:?}: {e}", r.block.at))
+/// A record's at as Go's `parseAt` reads it (`time.Parse(time.RFC3339,
+/// at)`, [`super::gotime`]): the instant as (Unix seconds, nanoseconds), or
+/// Go's error text.
+fn at_of(r: &Record) -> Result<(i64, u32), String> {
+    super::gotime::parse(&r.block.at)
+        .map_err(|e| format!("its at {}: {e}", crate::deal::check::go_q(&r.block.at)))
 }
 
 /// Checks every act that cites a check (Go `CheckAuthorizations`). `journal`
@@ -117,7 +121,7 @@ pub fn check_authorizations(
             return Err(bad("its verdict has no sealed approval".into()));
         };
         let ab = &w.approval[&ai];
-        let approval_at = at_of(&journal[ai]).unwrap_or(0);
+        let approval_at = at_of(&journal[ai]).unwrap_or((super::gotime::ZERO, 0));
         if approval_at > act_at {
             return Err(bad("its approval was sealed after it".into()));
         }
@@ -138,7 +142,7 @@ pub fn check_authorizations(
         }
         used.insert(ai, i);
         for (k, rec) in journal.iter().enumerate().skip(ci + 1) {
-            let at = at_of(rec).unwrap_or(0);
+            let at = at_of(rec).unwrap_or((super::gotime::ZERO, 0));
             if at <= act_at && changes_details(rec) {
                 return Err(bad(format!(
                     "journal record {} ({}) changed the details after its check: a new check is needed",
@@ -208,7 +212,8 @@ fn walk_journal(journal: &[Record]) -> Result<JournalWalk, Error> {
     let mut confirmed: BTreeMap<usize, bool> = BTreeMap::new();
     let mut confirmations: Vec<usize> = Vec::new();
     let mut first_intent: Option<usize> = None;
-    let mut last: Option<i64> = None;
+    // Go's zero Time: at never decreases from it, so a year-0 time is refused.
+    let mut last: Option<(i64, u32)> = Some((super::gotime::ZERO, 0));
     let mut nonces: BTreeMap<String, usize> = BTreeMap::new();
     for (i, r) in journal.iter().enumerate() {
         let bad = |m: String| {
