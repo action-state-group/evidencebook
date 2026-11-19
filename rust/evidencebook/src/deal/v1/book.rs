@@ -321,9 +321,8 @@ fn go_header(header: &Value) -> Result<GoHeader, String> {
                 _ => return Err("links is not a list".into()),
             };
         } else if is("correlation") {
-            // Every member a string, as each of Go's three is; Go ignores a
-            // member of another name, which this refuses when it is not a
-            // string (no deal-book header carries a correlation).
+            // Every member a string, as each of Go's three is; the names are
+            // held to the schema's by `exact_object` before this reads.
             go_strings_object(v, None)?;
         } else if is("reproduction") {
             go_strings_object(v, Some(&["clock"]))?;

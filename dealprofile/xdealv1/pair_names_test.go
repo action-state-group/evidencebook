@@ -105,6 +105,19 @@ func pairNameCases(t *testing.T) []pairNameCase {
 	add("book-header-correlation-twice", "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
 		hd["correlation"] = map[string]any{"exchange_id": "ex-1", "Exchange_ID": "ex-2"}
 	}), false)
+	// A correlation member the header does not list is refused, each listed
+	// one read (evidencebook#563: the Rust reader holds the names as digests).
+	for _, name := range []string{"request_digest", "twin_bracket_id"} {
+		add("book-header-correlation-"+name, "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
+			hd["correlation"] = map[string]any{name: "v-1"}
+		}), true)
+	}
+	add("book-header-correlation-unlisted", "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
+		hd["correlation"] = map[string]any{"unlisted_key": "v-1"}
+	}), false)
+	add("book-header-correlation-listed-and-unlisted", "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
+		hd["correlation"] = map[string]any{"exchange_id": "ex-1", "unlisted_key": "v-1"}
+	}), false)
 	// Inside the signed header: payload_commitmentſ beside
 	// payload_commitments is not a member the header has, so the pair is
 	// refused whichever payload it carries.

@@ -19,11 +19,12 @@ pub(crate) enum Spec {
     Leaf,
     Obj(&'static [(&'static str, Spec)]),
     List(&'static Spec),
-    /// An object whose member names this crate does not name (a header's
+    /// An object whose member names this crate does not spell (a header's
     /// correlation: its keys are a deployment's vocabulary, which the crate
-    /// carries none of): its values must be strings, and no two of its names
-    /// may be one name spelled two ways.
-    Opaque,
+    /// carries none of), held as the SHA-256 of each name the schema lists
+    /// (`record-header.schema.json`). A name must be one of them exactly, as
+    /// for a closed object.
+    Names(&'static [[u8; 32]]),
 }
 
 /// Go's `encoding/json` name match: ASCII case, U+017F as `s` and U+212A as
@@ -45,14 +46,15 @@ pub(crate) fn go_name_matches(key: &str, field: &str) -> bool {
 pub(crate) fn exact_object(v: &Value, spec: &Spec, open: bool, at: &str) -> Result<(), String> {
     match spec {
         Spec::Leaf => Ok(()),
-        Spec::Opaque => {
+        Spec::Names(digests) => {
+            use sha2::{Digest, Sha256};
             let Some(o) = v.as_object() else {
                 return Ok(());
             };
-            let keys: Vec<&String> = o.keys().collect();
-            for (i, a) in keys.iter().enumerate() {
-                if let Some(b) = keys[i + 1..].iter().find(|b| go_name_matches(a, b)) {
-                    return Err(format!("{at} member {b:?} is {a:?} spelled otherwise"));
+            for k in o.keys() {
+                let d: [u8; 32] = Sha256::digest(k.as_bytes()).into();
+                if !digests.contains(&d) {
+                    return Err(format!("{at} member {k:?} is not one it has"));
                 }
             }
             Ok(())
@@ -129,10 +131,35 @@ pub(crate) const HEADER: Spec = Spec::Obj(&[
     ("subject_ref", Spec::Leaf),
     ("principal_ref", Spec::Leaf),
     ("counterparty_ref", Spec::Leaf),
-    ("correlation", Spec::Opaque),
+    ("correlation", Spec::Names(&CORRELATION_NAMES)),
     ("reproduction", Spec::Obj(&[("clock", Spec::Leaf)])),
     ("statement", Spec::Leaf),
 ]);
+
+/// SHA-256 of each member `record-header.schema.json` lists for a header's
+/// correlation; the digests of the schema's three names, in its order. A test
+/// holds them to the schema.
+const CORRELATION_NAMES: [[u8; 32]; 3] = [
+    hex_digest(*b"78fa58ebf33f1392b50ce2fbe95a73a7588a0beaf4a007559517addc8912b355"),
+    hex_digest(*b"50d465f4b00c1260e0b44e9449fc8e3fc9105959fa0c783c915c052af18e00ec"),
+    hex_digest(*b"cf86218a8f3fc33a72b58976e2229b783f8a2ad4db1f33582347f88e587ff32b"),
+];
+
+const fn hex_digest(h: [u8; 64]) -> [u8; 32] {
+    const fn nib(c: u8) -> u8 {
+        match c {
+            b'0'..=b'9' => c - b'0',
+            _ => c - b'a' + 10,
+        }
+    }
+    let mut out = [0u8; 32];
+    let mut i = 0;
+    while i < 32 {
+        out[i] = nib(h[2 * i]) << 4 | nib(h[2 * i + 1]);
+        i += 1;
+    }
+    out
+}
 
 /// A pair's own members, closed.
 pub(crate) const SENT_PAIR: Spec =
@@ -181,7 +208,27 @@ mod tests {
             panic!("links is a list");
         };
         assert_eq!(go("Link"), names(link));
-        assert!(matches!(field(&HEADER, "correlation"), Spec::Opaque));
+        let Spec::Names(d) = field(&HEADER, "correlation") else {
+            panic!("correlation is held as names");
+        };
+        // The digests are the schema's three names, none else.
+        let schema: Value = serde_json::from_slice(
+            &std::fs::read(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../schemas/record-header.schema.json"
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let listed = schema["properties"]["correlation"]["properties"]
+            .as_object()
+            .unwrap();
+        assert_eq!(listed.len(), d.len());
+        for name in listed.keys() {
+            use sha2::{Digest, Sha256};
+            let want: [u8; 32] = Sha256::digest(name.as_bytes()).into();
+            assert!(d.contains(&want), "{name}");
+        }
         assert_eq!(go("Reproduction"), names(field(&HEADER, "reproduction")));
     }
 }
