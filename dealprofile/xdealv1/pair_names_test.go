@@ -73,9 +73,9 @@ func pairNameCases(t *testing.T) []pairNameCase {
 	add("sent-agent-input-in-another-case", "sent", respell(t, h.offerPair, map[string]string{"agent_input": "AGENT_INPUT"}, nil), false)
 	add("sent-agent-input-twice", "sent", respell(t, h.offerPair, nil, map[string]json.RawMessage{"Agent_Input": otherSent}), false)
 	add("sent-record-twice", "sent", respell(t, h.offerPair, nil, map[string]json.RawMessage{"Record": bookIn["record"]}), false)
-	// Inside the signed Capsule: a member spelled otherwise (U+017F for s,
-	// or another case) is not the member; each reader reads the one spelled
-	// exactly, so all read the same digest and the same references.
+	// Inside the signed Capsule: a member spelled otherwise than one the
+	// profile reads (U+017F for s, or another case) is refused, beside the
+	// member or in its place, so no reader can read the other spelling.
 	other := mustDigest(t, fxOfferRecord(t, h))
 	beside := func(name string, v any) func(c map[string]any) {
 		return func(c map[string]any) {
@@ -83,15 +83,17 @@ func pairNameCases(t *testing.T) []pairNameCase {
 		}
 	}
 	add("sent-resigned", "sent", resignSent(t, h.buyer, h.offerPair, sentIn["agent_input"], func(map[string]any) {}), true)
+	add("sent-capsule-unknown-member", "sent", resignSent(t, h.buyer, h.offerPair, sentIn["agent_input"],
+		func(c map[string]any) { c["x_note"] = "a member the profile does not read" }), true)
 	for _, v := range []struct{ name, member string }{{"long-s", "agent_input_digeſt"}, {"upper", "Agent_Input_Digest"}} {
 		add("sent-capsule-"+v.name+"-digest-beside", "sent",
-			resignSent(t, h.buyer, h.offerPair, sentIn["agent_input"], beside(v.member, other)), true)
+			resignSent(t, h.buyer, h.offerPair, sentIn["agent_input"], beside(v.member, other)), false)
 		add("sent-capsule-"+v.name+"-digest-read", "sent",
 			resignSent(t, h.buyer, h.offerPair, otherSent, beside(v.member, other)), false)
 	}
 	for _, v := range []struct{ name, member string }{{"long-s", "referenceſ"}, {"upper", "References"}} {
 		add("sent-capsule-"+v.name+"-references", "sent", resignSent(t, h.buyer, h.offerPair, sentIn["agent_input"],
-			func(c map[string]any) { c[v.member] = []any{"x"} }), true)
+			func(c map[string]any) { c[v.member] = []any{"x"} }), false)
 	}
 	add("book-as-sent", "book", h.agreementPair, true)
 	// Inside the signed header: payload_commitmentſ beside

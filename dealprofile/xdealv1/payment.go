@@ -5,8 +5,8 @@ package xdealv1
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
@@ -199,6 +199,14 @@ type PaymentResult struct {
 	Settlement  *settlement.Settlement `json:"settlement,omitempty"`
 }
 
+// settlementWire is what the check reads of a leg's settlement member,
+// which carries other members too (exactObject, open).
+type settlementWire struct {
+	Leg        string `json:"leg"`
+	SealerRole string `json:"sealer_role"`
+	TermsRef   string `json:"terms_ref"`
+}
+
 // PaymentCheck runs the check of a payment row (design §6.3; Settlement
 // Records -01): pass when the payer's and the payee's legs answering the
 // offer's terms leg are agreed, with status settled and the terms' amount;
@@ -322,16 +330,9 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		// a leg that is not a leg of this payment takes no part, as AAC's
 		// verifier treats a leg that fails its checks, and the check reads
 		// the others (§6.3: every other case has not run).
-		// Each member by its exact name (exactRaw, evidencebook#559).
-		var member struct{ Leg, SealerRole, TermsRef string }
+		var member settlementWire
 		m := pair.Record[SettlementMember]
-		var errs [3]error
-		if m != nil {
-			member.Leg, errs[0] = exactString(m, "leg")
-			member.SealerRole, errs[1] = exactString(m, "sealer_role")
-			member.TermsRef, errs[2] = exactString(m, "terms_ref")
-		}
-		if m == nil || errors.Join(errs[:]...) != nil {
+		if m == nil || exactObject(m, reflect.TypeOf(member), true, "the settlement member") != nil || json.Unmarshal(m, &member) != nil {
 			out.Excluded = append(out.Excluded, read.Digest)
 			continue
 		}

@@ -121,10 +121,11 @@ def test_a_settle_member_read_as_go_reads_it():
     assert _settlement_member("5") is None
     assert _settlement_member('{"leg": 5}') is None
     assert _settlement_member("null") == {"leg": "", "sealer_role": "", "terms_ref": ""}
-    # Each member by its exact name: another spelling is not the member
-    # (evidencebook#559).
-    assert _settlement_member('{"LEG": "payer_observed", "x": 1}')["leg"] == ""
-    assert _settlement_member('{"leg": "payer_observed", "\u017fealer_role": "payer"}')["sealer_role"] == ""
+    # A member spelled otherwise than one the check reads refuses the member,
+    # as Go's exactObject does; another member is read past (evidencebook#559).
+    assert _settlement_member('{"LEG": "payer_observed", "x": 1}') is None
+    assert _settlement_member('{"leg": "payer_observed", "\u017fealer_role": "payer"}') is None
+    assert _settlement_member('{"leg": "payer_observed", "x": 1}')["leg"] == "payer_observed"
 
 
 # -- pairs read and written as Go reads and writes them (#552 review r1) ---------------
@@ -179,7 +180,7 @@ def test_payment_check_refuses_an_offer_pair_member_in_another_case():
     inp = payment.PaymentInput(OFFER.replace('"record"', '"Record"', 1).encode(), BASE["offer_digest"],
                                BASE["acceptor_key"], BASE["row"],
                                [json.dumps(leg).encode() for leg in BASE["legs"]])
-    with pytest.raises(StageError, match="its members are not exactly"):
+    with pytest.raises(StageError, match="'Record' is 'record' spelled otherwise"):
         payment.payment_check(inp)
 
 

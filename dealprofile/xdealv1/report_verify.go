@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	emit "github.com/action-state-group/capsule-emit/go"
@@ -59,7 +60,7 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 	if err := strictUnmarshal(report, &p); err != nil || p.Record == nil || p.AgentInput == nil {
 		return bad("not a report pair {record, agent_input}: %v", err)
 	}
-	if err := exactMembers(report, "record", "agent_input"); err != nil {
+	if err := exactObject(report, reflect.TypeOf(p), false, "the pair"); err != nil {
 		return bad("not a report pair {record, agent_input}: %v", err)
 	}
 	capsule, id, keyID, err := verifyCapsule(StageReport, p.Record)
@@ -68,7 +69,7 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 	}
 	c, err := readCapsule(capsule)
 	if err != nil {
-		return ReportRead{}, err
+		return bad("%v", err)
 	}
 	if c.ActionID != dealprofile.ReportActionID || c.ActionType != string(emit.ActionTypeFYI) {
 		return bad("not a report Capsule: action_id %q, action_type %q", c.ActionID, c.ActionType)

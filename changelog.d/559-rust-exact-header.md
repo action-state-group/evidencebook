@@ -1,2 +1,2 @@
 <!-- changelog: rust/evidencebook/CHANGELOG.md -->
-- **Fixed (`deal::v1`, feature `deal`):** `verify_book` refuses a header (or a link, correlation or reproduction in it) carrying a member its type does not have exactly, as Go now does (evidencebook#559). The crate replays Go's `testdata/deal-v1/pair-names` vectors.
+- **Fixed (`deal::v1`, feature `deal`):** one exact-name rule (`exact.rs`, Go's `exactObject`) now covers a pair, the signed Capsule's members the profile reads, a settlement member, and a record header with its links (evidencebook#559). A member spelled otherwise than one read is refused, and a header carrying a `correlation` is refused. The crate replays Go's `testdata/deal-v1/pair-names` vectors.

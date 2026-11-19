@@ -6,6 +6,7 @@
 //! agent_input_digest, and the x-deal-v1 record the header commits as its
 //! one payload.
 
+use super::exact::{exact_object, go_name_matches, BOOK_PAIR, HEADER};
 use serde_json::{json, Map, Value};
 use sha2::{Digest as _, Sha256};
 
@@ -94,10 +95,10 @@ pub fn verify_book(pair: &[u8]) -> Result<BookRead, Error> {
     check_text(pair)?;
     let p: Value = serde_json::from_slice(pair)
         .map_err(|e| bad(format!("not a book pair {{record, header, payload}}: {e}")))?;
+    exact_object(&p, &BOOK_PAIR, false, "the pair")
+        .map_err(|e| bad(format!("not a book pair {{record, header, payload}}: {e}")))?;
     let shape = p.as_object().filter(|o| {
-        o.keys()
-            .all(|k| matches!(k.as_str(), "record" | "header" | "payload"))
-            && o.get("record").is_some_and(Value::is_object)
+        o.get("record").is_some_and(Value::is_object)
             && o.contains_key("header")
             && o.contains_key("payload")
     });
@@ -123,7 +124,7 @@ pub fn verify_book(pair: &[u8]) -> Result<BookRead, Error> {
     // way here, from the same bytes, so a member the types refuse refuses
     // the pair and a member Go reads in another case is read.
     let header: Value = serde_json::from_slice(&header_bytes)?;
-    exact_header_names(&header).map_err(bad)?;
+    exact_object(&header, &HEADER, false, "the header").map_err(bad)?;
     let h = go_header(&header).map_err(|e| bad(format!("the header: {e}")))?;
     let payload_text = serde_json::to_vec(&o["payload"])?;
     let d = digest(&payload_text)?;
@@ -182,22 +183,6 @@ struct GoHeader {
     links: Vec<(String, String)>,
 }
 
-/// Go's `encoding/json` field match: the exact name, or one equal to it
-/// under Unicode simple case folding (`bytes.EqualFold`), which for these
-/// ASCII names also takes U+017F for `s` and U+212A for `k`.
-fn go_name_matches(key: &str, field: &str) -> bool {
-    let fold = |c: char| match c {
-        '\u{017F}' => 's',
-        '\u{212A}' => 'k',
-        c => c.to_ascii_lowercase(),
-    };
-    key.chars().count() == field.chars().count()
-        && key
-            .chars()
-            .zip(field.chars())
-            .all(|(a, b)| fold(a) == fold(b))
-}
-
 /// `v` decoded into Go's type, as `json.Unmarshal` does: `null` leaves the
 /// zero value, a value of another JSON type is an error.
 fn go_string(v: &Value) -> Result<Option<String>, String> {
@@ -253,64 +238,6 @@ fn go_strings_object(
 /// object it empties). Go decodes a second non-empty list into the slice the
 /// first left, reusing its elements; that is refused here
 /// (the `deal::v1` module docs).
-/// The member names of Go's `evidencebook.Header` and the structs it
-/// holds, as the types table (`python/evidencebook/deal/_data`) lists them;
-/// a unit test below holds these to it.
-const HEADER_MEMBERS: &[&str] = &[
-    "v",
-    "book_id",
-    "seq",
-    "record_type",
-    "epistemic_type",
-    "committed_at",
-    "event_time_claim",
-    "payload_commitments",
-    "field_commitments",
-    "commit_alg",
-    "retention_state",
-    "links",
-    "subject_ref",
-    "principal_ref",
-    "counterparty_ref",
-    "correlation",
-    "reproduction",
-    "statement",
-];
-const LINK_MEMBERS: &[&str] = &["type", "target"];
-const CORRELATION_MEMBERS: &[&str] = &["exchange_id", "request_digest", "twin_bracket_id"];
-const REPRODUCTION_MEMBERS: &[&str] = &["clock"];
-
-/// Go's `exactNames` over a header (evidencebook#559): each object's
-/// members are exactly names its Go type reads, so a signed header cannot
-/// carry a second spelling of a member that [`go_header`], which matches
-/// names as Go does, would read in place of the one an exact reader takes.
-fn exact_header_names(header: &Value) -> Result<(), String> {
-    fn exact(v: &Value, names: &[&str], at: &str) -> Result<(), String> {
-        if let Some(o) = v.as_object() {
-            if let Some(k) = o.keys().find(|k| !names.contains(&k.as_str())) {
-                return Err(format!("{at} member {k:?} is not one it has"));
-            }
-        }
-        Ok(())
-    }
-    exact(header, HEADER_MEMBERS, "the header")?;
-    let Some(o) = header.as_object() else {
-        return Ok(());
-    };
-    if let Some(links) = o.get("links").and_then(Value::as_array) {
-        for (i, l) in links.iter().enumerate() {
-            exact(l, LINK_MEMBERS, &format!("the header.links[{i}]"))?;
-        }
-    }
-    if let Some(c) = o.get("correlation") {
-        exact(c, CORRELATION_MEMBERS, "the header.correlation")?;
-    }
-    if let Some(r) = o.get("reproduction") {
-        exact(r, REPRODUCTION_MEMBERS, "the header.reproduction")?;
-    }
-    Ok(())
-}
-
 fn go_header(header: &Value) -> Result<GoHeader, String> {
     let mut h = GoHeader {
         book_id: String::new(),
@@ -408,10 +335,8 @@ fn go_header(header: &Value) -> Result<GoHeader, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        go_header, CORRELATION_MEMBERS, HEADER_MEMBERS, LINK_MEMBERS, REPRODUCTION_MEMBERS,
-    };
-    use serde_json::{json, Value};
+    use super::go_header;
+    use serde_json::json;
 
     // A list given twice under two spellings, both non-empty, is refused:
     // Go would decode the second into the first's slice. One empty or
@@ -443,26 +368,5 @@ mod tests {
         let h = go_header(&json!({"Seq": 3, "book_id": "b", "links": [{"Type": "cites", "target": "x", "type": null}], "seq": null}))
             .unwrap();
         assert_eq!((h.seq, h.links[0].0.as_str()), (3, "cites"));
-    }
-
-    /// The header member names taken exactly are the Go Header's, as the
-    /// types table lists them (evidencebook#559).
-    #[test]
-    fn header_members_are_the_go_headers() {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../python/evidencebook/deal/_data/x-deal-v1-types.json");
-        let t: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
-        let names = |s: &str| -> Vec<String> {
-            t["structs"][format!("github.com/action-state-group/evidencebook.{s}")]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|f| f["name"].as_str().unwrap().to_string())
-                .collect()
-        };
-        assert_eq!(names("Header"), HEADER_MEMBERS);
-        assert_eq!(names("Link"), LINK_MEMBERS);
-        assert_eq!(names("Correlation"), CORRELATION_MEMBERS);
-        assert_eq!(names("Reproduction"), REPRODUCTION_MEMBERS);
     }
 }

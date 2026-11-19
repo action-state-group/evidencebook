@@ -146,7 +146,7 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if err := strictUnmarshal(pair, &p); err != nil || p.Record == nil || p.Header == nil || p.Payload == nil {
 		return bad("not a book pair {record, header, payload}: %v", err)
 	}
-	if err := exactMembers(pair, "record", "header", "payload"); err != nil {
+	if err := exactObject(pair, reflect.TypeOf(p), false, "the pair"); err != nil {
 		return bad("not a book pair {record, header, payload}: %v", err)
 	}
 	if _, inline := p.Record[evidencebook.RecordHeaderMember]; inline {
@@ -158,7 +158,7 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	}
 	c, err := readCapsule(capsule)
 	if err != nil {
-		return BookRead{}, err
+		return bad("%v", err)
 	}
 	hdoc, err := decodeJSON(p.Header)
 	if err != nil {
@@ -171,7 +171,7 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if sum := sha256.Sum256(hjcs); c.AgentInputDigest != hex.EncodeToString(sum[:]) {
 		return bad("the Capsule does not commit this header")
 	}
-	if err := exactNames(hdoc, reflect.TypeFor[evidencebook.Header](), "the header"); err != nil {
+	if err := exactObject(hjcs, reflect.TypeFor[evidencebook.Header](), false, "the header"); err != nil {
 		return bad("%v", err)
 	}
 	var h evidencebook.Header
