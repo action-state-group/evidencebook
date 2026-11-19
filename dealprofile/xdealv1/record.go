@@ -269,6 +269,62 @@ func readCapsule(capsule []byte) (capsuleRead, error) {
 	return c, err
 }
 
+// exactNames refuses a decoded JSON value whose objects carry a member
+// that is not exactly one of the names their Go type t reads: json.Unmarshal
+// into t would take a name in another case (U+017F for s, U+212A for k
+// included), so a signed header could carry a second spelling of a member,
+// payload_commitmentſ beside payload_commitments, that Go reads and an
+// exact or schema-checking reader does not (evidencebook#559).
+func exactNames(v any, t reflect.Type, at string) error {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == reflect.TypeFor[json.RawMessage]() {
+		return nil
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil // a type error, which json.Unmarshal reports
+		}
+		fields := map[string]reflect.Type{}
+		for i := range t.NumField() {
+			f := t.Field(i)
+			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if f.IsExported() && name != "-" && name != "" {
+				fields[name] = f.Type
+			}
+		}
+		for k, e := range m {
+			ft, ok := fields[k]
+			if !ok {
+				return fmt.Errorf("%s member %q is not one it has", at, k)
+			}
+			if err := exactNames(e, ft, at+"."+k); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice:
+		if l, ok := v.([]any); ok {
+			for i, e := range l {
+				if err := exactNames(e, t.Elem(), fmt.Sprintf("%s[%d]", at, i)); err != nil {
+					return err
+				}
+			}
+		}
+	case reflect.Map:
+		if m, ok := v.(map[string]any); ok {
+			for k, e := range m {
+				if err := exactNames(e, t.Elem(), at+"."+k); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func strictUnmarshal(data []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -169,6 +170,9 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	}
 	if sum := sha256.Sum256(hjcs); c.AgentInputDigest != hex.EncodeToString(sum[:]) {
 		return bad("the Capsule does not commit this header")
+	}
+	if err := exactNames(hdoc, reflect.TypeFor[evidencebook.Header](), "the header"); err != nil {
+		return bad("%v", err)
 	}
 	var h evidencebook.Header
 	if err := json.Unmarshal(hjcs, &h); err != nil {

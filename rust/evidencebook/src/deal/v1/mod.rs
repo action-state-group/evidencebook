@@ -32,15 +32,11 @@
 //!   takes it;
 //! - [`check_authorizations`] reads each `at` as the record checks admit it
 //!   (RFC 3339 UTC to the second); Go's also takes an offset on records
-//!   that were never checked;
-//! - [`verify_book`] decodes the header as Go's typed `Header` does (each
-//!   member's Go type, null as the zero value, names in any case), except
-//!   that a header's `correlation` must hold only strings: Go ignores a
-//!   member there of a name it has no field for, and that a header giving
-//!   `links` or `payload_commitments` twice under two spellings, both
-//!   non-empty lists, is refused: Go decodes the second into the first's
-//!   slice, reusing its elements. No deal-book header carries a
-//!   correlation, and no book writes a member twice.
+//!   that were never checked.
+//!
+//! [`verify_book`] decodes the header as Go's typed `Header` does (each
+//! member's Go type, null as the zero value), once both have refused a
+//! member name the header's types do not have exactly (evidencebook#559).
 
 mod authorization;
 mod book;

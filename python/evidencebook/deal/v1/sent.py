@@ -217,6 +217,29 @@ def _agent_input_digest(capsule: bytes) -> str:
     return v if isinstance(v, str) else ""
 
 
+def _exact_names(v: Any, t: Any, at: str) -> None:
+    """Go's ``exactNames``: refuses a value whose objects carry a member
+    that is not exactly one of the names their Go type ``t`` reads, so a
+    signed header cannot carry a second spelling of a member that a case
+    folding reader takes (evidencebook#559). Raises at stage book."""
+    if isinstance(t, dict) and "ptr" in t:
+        _exact_names(v, t["ptr"], at)
+    elif isinstance(t, dict) and "struct" in t:
+        if not isinstance(v, dict):
+            return
+        fields = {f["name"]: f["type"] for f in gotypes.table()["structs"][t["struct"]]}
+        for k, e in v.items():
+            if k not in fields:
+                raise _err(STAGE_BOOK, f"{at} member {_go_quote(k)} is not one it has")
+            _exact_names(e, fields[k], f"{at}.{k}")
+    elif isinstance(t, dict) and "slice" in t and isinstance(v, list):
+        for i, e in enumerate(v):
+            _exact_names(e, t["slice"], f"{at}[{i}]")
+    elif isinstance(t, dict) and "map" in t and isinstance(v, dict):
+        for k, e in v.items():
+            _exact_names(e, t["map"], f"{at}.{k}")
+
+
 def _pair_members(raw: bytes, stage: str, names: tuple[str, ...], what: str) -> dict[str, Any]:
     """The pair's members as Go reads them: its text check, then
     ``strictUnmarshal`` into a struct of these fields, ``record`` a map of
@@ -427,7 +450,9 @@ def verify_book(raw: bytes) -> BookRead:
     if _agent_input_digest(capsule) != hashlib.sha256(hjcs).hexdigest():
         raise _err(STAGE_BOOK, "the Capsule does not commit this header")
     try:
-        h = golenient.read(json.loads(hjcs), gotypes.table()["header"], {})
+        hdoc = json.loads(hjcs)
+        _exact_names(hdoc, gotypes.table()["header"], "the header")
+        h = golenient.read(hdoc, gotypes.table()["header"], {})
     except golenient.GoDecodeError as exc:
         raise _err(STAGE_BOOK, f"the header: {exc}") from None
     payload = p["payload"].encode("utf-8")

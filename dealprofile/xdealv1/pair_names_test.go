@@ -94,6 +94,21 @@ func pairNameCases(t *testing.T) []pairNameCase {
 			func(c map[string]any) { c[v.member] = []any{"x"} }), true)
 	}
 	add("book-as-sent", "book", h.agreementPair, true)
+	// Inside the signed header: payload_commitmentſ beside
+	// payload_commitments is not a member the header has, so the pair is
+	// refused whichever payload it carries.
+	otherAg := h.agreement
+	otherAg.Block.At = "2026-11-01T10:01:00Z"
+	require.NoError(t, Check(otherAg))
+	commitmentBeside := func(hd map[string]any) { hd["payload_commitmentſ"] = []any{mustDigest(t, otherAg)} }
+	add("book-header-long-s-commitments-beside", "book", resealHeader(t, "seller", h.agreementPair, commitmentBeside), false)
+	read := resealHeader(t, "seller", h.agreementPair, commitmentBeside)
+	var rm map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(read, &rm))
+	rm["payload"] = jcsOf(t, otherAg)
+	readPair, err := json.Marshal(rm)
+	require.NoError(t, err)
+	add("book-header-long-s-commitments-read", "book", readPair, false)
 	add("book-payload-in-another-case", "book", respell(t, h.agreementPair, map[string]string{"payload": "Payload"}, nil), false)
 	add("book-header-in-another-case", "book", respell(t, h.agreementPair, map[string]string{"header": "HEADER"}, nil), false)
 	add("book-payload-twice", "book", respell(t, h.agreementPair, nil, map[string]json.RawMessage{"Payload": sentIn["agent_input"]}), false)

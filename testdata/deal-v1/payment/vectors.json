@@ -8914,13 +8914,8 @@
           "timestamp": "2026-11-01T09:13:00Z"
         }
       },
-      "valid": true,
-      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
-      "record_id": "025fdf944a0a32d5dda701c7f010146c5fc9b3486a421486dea7a8c6c65c1425",
-      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
-      "log_id": "deal/one-cite",
-      "seq": 2,
-      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+      "valid": false,
+      "stage": "book"
     },
     {
       "name": "header/seq-as-Seq",
@@ -9005,13 +9000,8 @@
           "timestamp": "2026-11-01T09:13:00Z"
         }
       },
-      "valid": true,
-      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
-      "record_id": "eb0aaab56609c84cd85fa87e682bf9dd9ce2bb054346ebe0b5de94780c17316b",
-      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
-      "log_id": "deal/one-cite",
-      "seq": 2,
-      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+      "valid": false,
+      "stage": "book"
     },
     {
       "name": "header/seq-twice-by-case",
@@ -9097,13 +9087,8 @@
           "timestamp": "2026-11-01T09:13:00Z"
         }
       },
-      "valid": true,
-      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
-      "record_id": "f8ba48f4f6ecadd26599fe604dccfd819676b3a71b2907367690b49e4ee09627",
-      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
-      "log_id": "deal/one-cite",
-      "seq": 2,
-      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+      "valid": false,
+      "stage": "book"
     },
     {
       "name": "header/book-id-as-BOOK_ID",
@@ -9188,13 +9173,8 @@
           "timestamp": "2026-11-01T09:13:00Z"
         }
       },
-      "valid": true,
-      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
-      "record_id": "e1a340f8a14c3198c7d75e2334f3044172789f650a5e750db7d795688ed3a71c",
-      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
-      "log_id": "deal/one-cite",
-      "seq": 2,
-      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+      "valid": false,
+      "stage": "book"
     },
     {
       "name": "header/a-links-Target",
@@ -9279,13 +9259,8 @@
           "timestamp": "2026-11-01T09:13:00Z"
         }
       },
-      "valid": true,
-      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
-      "record_id": "0d21e957d151b595f0a57063fd1226a5ab1cc105df6f629f50156ce94f42f423",
-      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
-      "log_id": "deal/one-cite",
-      "seq": 2,
-      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+      "valid": false,
+      "stage": "book"
     },
     {
       "name": "header/a-negative-seq",
@@ -9538,13 +9513,8 @@
           "timestamp": "2026-11-01T09:13:00Z"
         }
       },
-      "valid": true,
-      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
-      "record_id": "a4760af459e50b712eaa4d9177d77a98ea144f3f88a616e938d191d8ef0a9e74",
-      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
-      "log_id": "deal/one-cite",
-      "seq": 2,
-      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+      "valid": false,
+      "stage": "book"
     },
     {
       "name": "header/a-null-seq-after-Seq",
@@ -9630,13 +9600,8 @@
           "timestamp": "2026-11-01T09:13:00Z"
         }
       },
-      "valid": true,
-      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
-      "record_id": "025a410aaa2033d19e4ee22eeb9238311eaf5214cf74de697eaa71faae1554dd",
-      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
-      "log_id": "deal/one-cite",
-      "seq": 2,
-      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+      "valid": false,
+      "stage": "book"
     },
     {
       "name": "header/a-null-book-id-after-BOOK_ID",
@@ -9722,13 +9687,8 @@
           "timestamp": "2026-11-01T09:13:00Z"
         }
       },
-      "valid": true,
-      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
-      "record_id": "cb13299b7466f93a7e4ae0f921ce10027c8d6bf3288812c4d7b81dd2778ed5b1",
-      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
-      "log_id": "deal/one-cite",
-      "seq": 2,
-      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+      "valid": false,
+      "stage": "book"
     },
     {
       "name": "header/null-links-after-Links",
