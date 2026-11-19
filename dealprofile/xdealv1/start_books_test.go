@@ -123,7 +123,7 @@ func TestStartFromBooksVectors(t *testing.T) {
 
 	d = newBookDeal(t, ws, true, "")
 	add("untimed-before", "both agree, the offerer's agreement untimed, T before agree_by: started, local", seller(d, stBefore), startedLocally)
-	add("untimed-after-not-named", "the same, T after agree_by, never named: not started", seller(d, stAfter), notStarted)
+	add("untimed-after-not-named", "the same, T after agree_by, never named: counted, started locally (u608)", seller(d, stAfter), startedLocally)
 	add("offerer-side-untimed", "the offerer computes the same from its own book and the acceptor's agreement",
 		StartBooks{At: stBefore, Offer: d.offer, Own: d.buyer, Counterpart: d.seller}, startedLocally)
 	acceptorOnly := StartBooks{At: stBefore, Offer: d.offer, Own: d.seller}
@@ -175,12 +175,12 @@ func TestStartFromBooksVectors(t *testing.T) {
 	d.buyer[0].Times = map[string]string{label("a witness the agreements do not name"): inTime}
 	add("unnamed-witness-before", "the offerer's agreement timed only by a witness the agreements do not name: as untimed; local before agree_by",
 		seller(d, stBefore), startedLocally)
-	add("unnamed-witness-after", "the same after agree_by, not named: not started", seller(d, stAfter), notStarted)
+	add("unnamed-witness-after", "the same after agree_by, not named: as untimed, counted locally", seller(d, stAfter), startedLocally)
 
 	d = newBookDeal(t, []Witness{}, true, "")
 	timed(d, inTime)
 	add("empty-witnesses-local", "an empty witness list gives no time: started only locally before agree_by", seller(d, stBefore), startedLocally)
-	add("empty-witnesses-after", "the same after agree_by, not named: not started", seller(d, stAfter), notStarted)
+	add("empty-witnesses-after", "the same after agree_by, not named: counted locally", seller(d, stAfter), startedLocally)
 	d.add(&d.seller, TypeStatement, "2026-11-01T12:00:00Z", d.buyer[0].RecordID, receipt())
 	add("empty-witnesses-named", "with an empty witness list a deal starts for good only by the acceptor's naming", seller(d, stAfter), started(false, ByAcceptorNamed))
 

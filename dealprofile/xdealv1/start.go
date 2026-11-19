@@ -12,7 +12,9 @@ import (
 // digest; the offerer's agreement names the acceptor's in seen, and the
 // acceptor's book names no cancellation of that offer unless it named the
 // offerer's agreement first; and the offerer's agreement has a record time
-// not after agree_by, or the acceptor's book names it. Until then the deal's
+// not after agree_by, or the acceptor's book names it, or has no record time
+// at all (then started locally, also after agree_by: the deal is counted, and
+// a later time after agree_by makes it not started). Until then the deal's
 // rows have no status, no dispute on it counts and no card counts it.
 
 // Start states (StartResult.State).
@@ -163,12 +165,12 @@ func Start(in StartInput) (StartResult, error) {
 		}
 		return notStarted, nil
 	}
-	// 7. No time yet, and still in time: started, locally, by nothing yet.
-	if !late {
-		return StartResult{State: StateStarted, Local: true}, nil
-	}
-	// 8. No time by agree_by, and never named.
-	return notStarted, nil
+	// 7. No time and never named: started, locally, by nothing yet. Before
+	// agree_by that is the offerer still in time; after it the acceptor agreed
+	// and the offerer's agreement shows no lateness, so the deal counts (Steven,
+	// u608: an agreement then silence is counted), and a witnessed time after
+	// agree_by, or a naming, still settles it either way.
+	return StartResult{State: StateStarted, Local: true}, nil
 }
 
 func startTime(name, s string) (time.Time, error) {

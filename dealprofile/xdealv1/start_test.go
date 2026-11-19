@@ -61,8 +61,10 @@ func TestStartVectors(t *testing.T) {
 		stBoth(SideAcceptor, stBefore), startedLocally)
 	add("untimed-offerer-side", "the offerer computes the same from its own book and the acceptor's agreement",
 		stBoth(SideOfferer, stBefore), startedLocally)
-	add("untimed-after-agree-by", "the same, T after agree_by, not named: not started",
-		stBoth(SideAcceptor, stAfter), notStarted)
+	add("untimed-after-agree-by", "the same, T after agree_by, not named: counted, started locally (u608)",
+		stBoth(SideAcceptor, stAfter), startedLocally)
+	add("untimed-after-agree-by-offerer-side", "the offerer computes the same from its own book and the acceptor's agreement",
+		stBoth(SideOfferer, stAfter), startedLocally)
 	acceptorOnly := StartInput{At: stBefore, Side: SideAcceptor, CounterpartyLayer: true, AgreeBy: stAgreeBy}
 	add("acceptor-only-before", "the acceptor holds only its own agreement, T before agree_by: awaiting agreement",
 		acceptorOnly, awaiting)

@@ -851,7 +851,13 @@ Evaluation, in order:
    `by: offerer_in_time`.
 7. `offerer_agreement_time` null and `at` not after `agree_by`: `started`, `local` true (Appendix
    A lines 21 and 22: "a local result until ...").
-8. Otherwise: `not_started` (a time after `agree_by`, or none by then, and never named).
+8. Otherwise: `not_started` (a time after `agree_by`, and never named).
+
+Step 7 holds without the `agree_by` condition: an offerer's agreement with no time, never named, is
+`started`, `local` true, also after `agree_by` (#511; Steven's "count it", ops u608: a counterparty
+that agrees and then goes silent is counted, so the silent side's failure shows). `local` already says
+the result may differ for a reader who holds a witnessed time; one after `agree_by` gives step 8's
+`not_started`, a naming gives step 5.
 
 `offerer_agreement_time` comes from the witnesses the agreement names (4.3). A receipt from
 another witness gives no time (`shelf_record_time.go:110-115`).
@@ -871,7 +877,7 @@ for a started deal.
 | offerer cancels before acceptor agreed | none; cancellation in the offerer's journal and the acceptor's store | no book |
 | acceptor agrees, then offerer cancels | acceptor's: agreement, then a `statement` naming the cancellation | not started |
 | acceptor agrees, offerer sends nothing | acceptor's, agreement only | awaiting agreement, then not started |
-| acceptor agrees, offerer's agreement has no time by `agree_by` | both | started if the acceptor names it; else not started |
+| acceptor agrees, offerer's agreement has no time by `agree_by` | both | started, local; settled for good once a time in time or the acceptor's naming comes, not started if a time after `agree_by` does (#511) |
 
 A case with no book computes nothing: there is no book to stamp, and no fact.
 
@@ -885,7 +891,7 @@ derive that input.
 |---|---|
 | both agree, offerer's agreement timed before `agree_by` | started, not local |
 | both agree, offerer's agreement untimed, T before `agree_by` | started, local |
-| the same, T after `agree_by`, not named | not started |
+| the same, T after `agree_by`, not named | started, local (#511) |
 | acceptor only, T before `agree_by` | awaiting agreement |
 | acceptor only, T after `agree_by` | not started |
 | late offerer agreement (timed after `agree_by`), acceptor names it | started |

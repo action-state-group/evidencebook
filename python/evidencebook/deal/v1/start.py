@@ -141,11 +141,10 @@ def start(inp: StartInput) -> StartResult:
         if t <= agree_by:
             return StartResult(STATE_STARTED, False, BY_OFFERER_IN_TIME)
         return not_started
-    # 7. No time yet, and still in time: started, locally, by nothing yet.
-    if not late:
-        return StartResult(STATE_STARTED, True)
-    # 8. No time by agree_by, and never named.
-    return not_started
+    # 7. No time and never named: started, locally, by nothing yet, also after
+    # agree_by (the deal counts; a witnessed time after agree_by, or a naming,
+    # settles it).
+    return StartResult(STATE_STARTED, True)
 
 
 @dataclass(frozen=True)
