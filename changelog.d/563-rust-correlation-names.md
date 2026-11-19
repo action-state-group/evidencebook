@@ -1,2 +1,0 @@
-<!-- changelog: rust/evidencebook/CHANGELOG.md -->
-- **Fixed (`deal::v1`, feature `deal`):** `verify_book` refuses a header `correlation` member that `record-header.schema.json` does not list, as Go's `VerifyBook` and Python's `verify_book` do (evidencebook#563). The crate holds the schema's three names as SHA-256 digests, so it still spells no deployment vocabulary; a test holds the digests to the schema, and `testdata/deal-v1/pair-names` gains Go-written cases for a listed and an unlisted name.

@@ -1,2 +1,0 @@
-<!-- changelog: python/CHANGELOG.md -->
-- **Added (`evidencebook.deal.v1`):** `check_authorizations`, the x-deal-v1 authorization of acts (design §3.2, invariant D): each deal-book perform or settle that cites a check is read against the holder's journal, with v0's limits in force, approvals and confirmations, as Go's `CheckAuthorizations` reads them (evidencebook#461). It passes `testdata/deal-v1/authorization/approval-migration.json`, and its refusal texts are Go's.
