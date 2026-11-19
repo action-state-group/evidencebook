@@ -261,6 +261,25 @@ fn go_v(v: Option<&Value>) -> String {
     }
 }
 
+/// Go's `strconv.IsPrint`: a letter, mark, number, punctuation or symbol, or
+/// the ASCII space.
+fn go_is_print(c: char) -> bool {
+    use icu_properties::props::{GeneralCategory, GeneralCategoryGroup};
+    if c == ' ' {
+        return true;
+    }
+    let cat = icu_properties::CodePointMapData::<GeneralCategory>::new().get(c);
+    [
+        GeneralCategoryGroup::Letter,
+        GeneralCategoryGroup::Mark,
+        GeneralCategoryGroup::Number,
+        GeneralCategoryGroup::Punctuation,
+        GeneralCategoryGroup::Symbol,
+    ]
+    .iter()
+    .any(|g| g.contains(cat))
+}
+
 /// Go's `%q` of a string (`strconv.Quote`), for the strings a refusal names.
 pub(crate) fn go_q(s: &str) -> String {
     let mut out = String::from("\"");
@@ -275,10 +294,10 @@ pub(crate) fn go_q(s: &str) -> String {
             '\u{8}' => out.push_str("\\b"),
             '\u{c}' => out.push_str("\\f"),
             '\u{b}' => out.push_str("\\v"),
-            c if (c as u32) < 0x20 || c == '\u{7f}' => {
-                out.push_str(&format!("\\x{:02x}", c as u32))
-            }
-            c => out.push(c),
+            c if go_is_print(c) => out.push(c),
+            c if (c as u32) < 0x80 => out.push_str(&format!("\\x{:02x}", c as u32)),
+            c if (c as u32) < 0x10000 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push_str(&format!("\\U{:08x}", c as u32)),
         }
     }
     out.push('"');

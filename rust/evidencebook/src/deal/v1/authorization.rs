@@ -121,7 +121,7 @@ pub fn check_authorizations(
             return Err(bad("its verdict has no sealed approval".into()));
         };
         let ab = &w.approval[&ai];
-        let approval_at = at_of(&journal[ai]).unwrap_or((0, 0));
+        let approval_at = at_of(&journal[ai]).unwrap_or((super::gotime::ZERO, 0));
         if approval_at > act_at {
             return Err(bad("its approval was sealed after it".into()));
         }
@@ -142,7 +142,7 @@ pub fn check_authorizations(
         }
         used.insert(ai, i);
         for (k, rec) in journal.iter().enumerate().skip(ci + 1) {
-            let at = at_of(rec).unwrap_or((0, 0));
+            let at = at_of(rec).unwrap_or((super::gotime::ZERO, 0));
             if at <= act_at && changes_details(rec) {
                 return Err(bad(format!(
                     "journal record {} ({}) changed the details after its check: a new check is needed",

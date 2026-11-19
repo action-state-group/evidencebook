@@ -585,9 +585,65 @@ fn authorization_reads_at_as_go() {
         err.to_string(),
         "[authorization] journal record 1: its at is earlier than the record before it: at never decreases"
     );
+    // Go's %q escapes what strconv.IsPrint refuses: a no-break space.
+    let nbsp = read("journal", &|i, was| {
+        if i == 0 {
+            "2026-11-01T10:01:00Z\u{a0}".into()
+        } else {
+            was.to_string()
+        }
+    });
+    let err = v1::check_authorizations(&nbsp, &acts).expect_err("Go refuses it");
+    assert_eq!(
+        err.to_string(),
+        "[authorization] journal record 1: its at \"2026-11-01T10:01:00Z\\u00a0\": parsing time \"2026-11-01T10:01:00Z\\xc2\\xa0\": extra text: \"\\xc2\\xa0\""
+    );
     let err = v1::check_authorizations(&bad, &acts).expect_err("Go refuses it");
     assert_eq!(
         err.to_string(),
         "[authorization] journal record 1: its at \"bad\": parsing time \"bad\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"bad\" as \"2006\""
     );
+}
+
+/// Times compare with their nanoseconds: an approval sealed within the
+/// act's own second is before the act only by its fraction.
+#[test]
+fn authorization_compares_nanoseconds() {
+    let c = vectors("authorization/approval-migration.json")
+        .into_iter()
+        .find(|c| c["valid"].as_bool() == Some(true))
+        .unwrap();
+    let read = |k: &str, at: Option<&str>| -> Vec<v1::Record> {
+        c[k].as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let mut r = r.clone();
+                if let Some(at) = at {
+                    // The approval (journal 2) at .5; the act at the given at.
+                    if (k == "journal" && i == 2) || k == "acts" {
+                        r["x-deal-v1"]["at"] = Value::String(at.to_string());
+                    }
+                }
+                v1::decode(&serde_json::to_vec(&r).unwrap()).unwrap()
+            })
+            .collect()
+    };
+    let journal = read("journal", Some("2026-11-01T10:03:00.5Z"));
+    for (act_at, ok) in [
+        ("2026-11-01T10:03:00.4Z", false),
+        ("2026-11-01T10:03:00.5Z", true),
+        ("2026-11-01T10:03:00.6Z", true),
+    ] {
+        let acts = read("acts", Some(act_at));
+        let got = v1::check_authorizations(&journal, &acts);
+        assert_eq!(got.is_ok(), ok, "{act_at}: {got:?}");
+        if !ok {
+            assert!(got
+                .unwrap_err()
+                .to_string()
+                .contains("its approval was sealed after it"));
+        }
+    }
 }
