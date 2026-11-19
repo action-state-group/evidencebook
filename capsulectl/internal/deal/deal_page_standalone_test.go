@@ -76,6 +76,10 @@ if (edit === "downgraded-in-log") {
   bundle.extensions["x-deal-v0"] = Object.assign({}, bundle.disclosures[id].agent_input.report, { did_line: "A line nobody sealed." });
   delete bundle.disclosures[id];
 }
+if (edit === "v1-only") {
+  bundle.extensions["x-deal-v1"] = { sealed_report: x.record.capsule_id };
+  delete bundle.extensions["x-deal-v0"];
+}
 if (edit === "stripped") {
   bundle.extensions["x-deal-v0"] = x.agent_input.report;
   delete bundle.extensions["x-deal-report/v0"];
@@ -94,9 +98,10 @@ if (edit === "stripped") {
     presentation: resolution.kind,
   };
   if (resolution.kind === "module") {
+    out.module = String((resolution.module && resolution.module.manifest && resolution.module.manifest.id) || "");
     const view = await resolution.module.buildModel(ctx);
-    out.refusal = view.refusal || "";
-    out.scope = view.report ? view.report.scope : "";
+    out.refusal = (view && view.refusal) || "";
+    out.scope = view && view.report ? view.report.scope : "";
   }
   process.stdout.write(JSON.stringify(out));
 })();
@@ -151,4 +156,16 @@ func dealPageUnderNode(t *testing.T) func(edit string) map[string]string {
 		require.NoError(t, json.Unmarshal(out, &got), string(out))
 		return got
 	}
+}
+
+// An x-deal-v1 deal has no lifecycle (evidencebook#461), and deal-view.js
+// reads one. The page never meets a v1 file: the module's manifest requires
+// the x-deal-v0 extension, which a v1 bundle does not carry (its extension is
+// x-deal-v1), so the runtime selects another module and the receipt page (not the composed
+// module, which needs composed/v1) is not run (evidencebook-deal#214). capsule-viewer#322 shows a v1 file.
+func TestAV1OnlyBundleDoesNotSelectTheDealPage(t *testing.T) {
+	run := dealPageUnderNode(t)
+	assert.Equal(t, "capsulectl.deal-view/v0", run("")["module"], "control: the v0 file selects the deal view")
+	got := run("v1-only")
+	assert.NotEqual(t, "capsulectl.deal-view/v0", got["module"], "got %v", got)
 }
