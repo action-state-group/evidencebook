@@ -137,8 +137,11 @@ func v1Refusal(verb, dealID string) error {
 // errNotMigrated is what a v1 verb says on a deal store still in the old
 // layout, never the library's error (§3a, item 3).
 func errNotMigrated() error {
-	return cli.InputError("This deal store is not yet in the layout x-deal-v1 deals need. See `deal set-version --help`; moving it is one-way.")
+	return fmt.Errorf("%w: %w", errNotMigratedSentinel, cli.InputError("This deal store is not yet in the layout x-deal-v1 deals need. See `deal set-version --help`; moving it is one-way."))
 }
+
+// errNotMigratedSentinel marks errNotMigrated for errors.Is.
+var errNotMigratedSentinel = errors.New("deal store not migrated")
 
 // requireV1 refuses a v1 verb unless the profile declared x-deal-v1 and the
 // store is in the new layout.
@@ -422,4 +425,18 @@ func (s *dealSession) journalRecordType(ctx context.Context, digest string) (typ
 		}
 	}
 	return "", false, nil
+}
+
+// sentOfferPair is the pair of the offer whose record digest is given, as
+// this profile sent it, for the status provider's payment check. An offer
+// this profile did not send has no row here: the check is then not run,
+// which the provider says of a nil pair.
+func (s *dealSession) sentOfferPair(ctx context.Context, offerDigest string) ([]byte, error) {
+	var pair []byte
+	err := s.db.QueryRowContext(ctx, `SELECT pair FROM deal_sent WHERE record_digest=? AND kind=? AND pair IS NOT NULL ORDER BY rowid DESC LIMIT 1`,
+		offerDigest, xdealv1.TypePropose).Scan(&pair)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return pair, err
 }

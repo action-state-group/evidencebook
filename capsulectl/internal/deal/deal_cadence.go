@@ -96,6 +96,14 @@ func (s *dealSession) tick(ctx context.Context) (map[string]any, error) {
 		if err := recordSHCut(p, result.Tick.N, now); err != nil {
 			out["cut_time_not_recorded"] = true
 		}
+		// A book whose status could not be built keeps its last fact: say how many,
+		// never why (the reason can hold record text), so a stale fact is not silent.
+		if n := len(result.Unstated); n > 0 {
+			out["books_with_stale_status"] = n
+		}
+		if result.BeforeStamp != "" {
+			out["naming_rulings_failed"] = true
+		}
 		out["state"], out["tick"], out["checkpoint"], out["due"] = "ticked", result.Tick.N, result.Tick.CheckpointSize, result.Tick.DueNext.Format(time.RFC3339)
 	} else {
 		out["state"], out["due"] = "not_due", result.DueNext.Format(time.RFC3339)

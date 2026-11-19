@@ -133,6 +133,10 @@ func (s *dealSession) cadenceOf(ctx context.Context) (*evidencebook.Cadence, cli
 			return nil, cli.Profile{}, err
 		}
 	}
+	// A v1 deal book's fact carries its status value only through this
+	// provider; without it the fact says profile "none" and a /3 card counts
+	// no v1 deal. It claims no other book.
+	cc.Status = &xdealv1.StatusProvider{Shelf: s.shelf, OfferPair: s.sentOfferPair}
 	if s.cadence, err = s.shelf.Cadence(ctx, cc); err != nil {
 		return nil, cli.Profile{}, err
 	}
