@@ -33,9 +33,11 @@
 //! - [`check_authorizations`] reads each `at` as the record checks admit it
 //!   (RFC 3339 UTC to the second); Go's also takes an offset on records
 //!   that were never checked;
-//! - [`verify_book`] refuses a header carrying a `correlation` (no deal-book
-//!   header carries one, and the crate names no correlation keys); Go reads
-//!   one whose members are exactly its own.
+//! - [`verify_book`] reads a header's `correlation` as an object of strings
+//!   whose names it does not check, past one name given in two spellings
+//!   (the crate names no correlation keys); Go refuses one with a member
+//!   `record-header.schema.json` does not list. No deal-profile reader
+//!   reads a correlation.
 //!
 //! [`verify_book`] decodes the header as Go's typed `Header` does (each
 //! member's Go type, null as the zero value), once both have refused a

@@ -96,6 +96,15 @@ func pairNameCases(t *testing.T) []pairNameCase {
 			func(c map[string]any) { c[v.member] = []any{"x"} }), false)
 	}
 	add("book-as-sent", "book", h.agreementPair, true)
+	// A header correlation, which the schema allows and a host may set on
+	// a deal-book entry, read in every language; a second spelling of one of
+	// its names is refused.
+	add("book-header-correlation", "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
+		hd["correlation"] = map[string]any{"exchange_id": "ex-1"}
+	}), true)
+	add("book-header-correlation-twice", "book", resealHeader(t, "seller", h.agreementPair, func(hd map[string]any) {
+		hd["correlation"] = map[string]any{"exchange_id": "ex-1", "Exchange_ID": "ex-2"}
+	}), false)
 	// Inside the signed header: payload_commitmentſ beside
 	// payload_commitments is not a member the header has, so the pair is
 	// refused whichever payload it carries.

@@ -19,10 +19,11 @@ pub(crate) enum Spec {
     Leaf,
     Obj(&'static [(&'static str, Spec)]),
     List(&'static Spec),
-    /// A member this crate does not take at all: refused unless null (a
-    /// header's correlation, whose key names are a deployment's, not the
-    /// crate's; no deal-book header carries one).
-    Refused,
+    /// An object whose member names this crate does not name (a header's
+    /// correlation: its keys are a deployment's vocabulary, which the crate
+    /// carries none of): its values must be strings, and no two of its names
+    /// may be one name spelled two ways.
+    Opaque,
 }
 
 /// Go's `encoding/json` name match: ASCII case, U+017F as `s` and U+212A as
@@ -44,8 +45,18 @@ pub(crate) fn go_name_matches(key: &str, field: &str) -> bool {
 pub(crate) fn exact_object(v: &Value, spec: &Spec, open: bool, at: &str) -> Result<(), String> {
     match spec {
         Spec::Leaf => Ok(()),
-        Spec::Refused if v.is_null() => Ok(()),
-        Spec::Refused => Err(format!("{at} is not taken here")),
+        Spec::Opaque => {
+            let Some(o) = v.as_object() else {
+                return Ok(());
+            };
+            let keys: Vec<&String> = o.keys().collect();
+            for (i, a) in keys.iter().enumerate() {
+                if let Some(b) = keys[i + 1..].iter().find(|b| go_name_matches(a, b)) {
+                    return Err(format!("{at} member {b:?} is {a:?} spelled otherwise"));
+                }
+            }
+            Ok(())
+        }
         Spec::List(item) => {
             if let Some(l) = v.as_array() {
                 for (i, e) in l.iter().enumerate() {
@@ -118,7 +129,7 @@ pub(crate) const HEADER: Spec = Spec::Obj(&[
     ("subject_ref", Spec::Leaf),
     ("principal_ref", Spec::Leaf),
     ("counterparty_ref", Spec::Leaf),
-    ("correlation", Spec::Refused),
+    ("correlation", Spec::Opaque),
     ("reproduction", Spec::Obj(&[("clock", Spec::Leaf)])),
     ("statement", Spec::Leaf),
 ]);
@@ -170,7 +181,7 @@ mod tests {
             panic!("links is a list");
         };
         assert_eq!(go("Link"), names(link));
-        assert!(matches!(field(&HEADER, "correlation"), Spec::Refused));
+        assert!(matches!(field(&HEADER, "correlation"), Spec::Opaque));
         assert_eq!(go("Reproduction"), names(field(&HEADER, "reproduction")));
     }
 }
