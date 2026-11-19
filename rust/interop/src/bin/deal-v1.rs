@@ -162,7 +162,12 @@ fn verify_report(payload: &Value, first: &str) -> Result<String, String> {
             let out = serde_json::json!({"key_id": r.key_id, "report": r.report});
             String::from_utf8(jcs(&out).map_err(|e| e.to_string())?).unwrap()
         }
-        Err(e) => refused(e),
+        Err(e) => match e.stage() {
+            Some(se) if std::env::var_os("DEAL_V1_DEBUG").is_none() => {
+                serde_json::json!({"stage": se.stage}).to_string()
+            }
+            _ => refused(e),
+        },
     })
 }
 

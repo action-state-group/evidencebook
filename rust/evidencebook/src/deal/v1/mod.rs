@@ -14,9 +14,11 @@
 //!
 //! The CI differential check (`test/interop/deal-v1`) holds Go and this
 //! module to the same results on random inputs. Where they still differ, it
-//! is on input no checked record can carry:
+//! is on input no checked record can carry, or no report a sealer writes
+//! from its own text:
 //!
-//! - a record text with a member named `"$serde_json::private::Number"` or
+//! - a record text, or a report pair (its free `report` text included), with
+//!   a member named `"$serde_json::private::Number"` or
 //!   `"$serde_json::private::RawValue"`, which serde_json would read as
 //!   something else, is refused here at the canonicalization stage; Go reads
 //!   it as written;
@@ -29,6 +31,9 @@
 //! - [`check_authorizations`] reads each `at` as the record checks admit it
 //!   (RFC 3339 UTC to the second); Go's also takes an offset on records
 //!   that were never checked;
+//! - [`verify_book`] and [`verify_sent`] match a pair's own members by their
+//!   exact names, as [`verify_report`] and Go's `VerifyReport` do; Go's
+//!   `VerifyBook` and `VerifySent` also take them in another case;
 //! - [`verify_book`] matches a book pair's `record`, `header` and `payload`
 //!   and [`payment_check`] a settlement member's `leg`, `sealer_role` and
 //!   `terms_ref` by their exact names; Go's reader also takes them in

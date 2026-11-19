@@ -245,7 +245,7 @@ def main():
     bad = [(i, reqs[i]["kind"], g, s) for i, (g, s) in enumerate(zip(go, rs)) if g != s]
     kinds = {}
     for q, g in zip(reqs, go):
-        k = (q["kind"], g.startswith("{\"error\"") or g.startswith('"') and g != '"ok"')
+        k = (q["kind"], g.startswith(('{"error"', '{"stage"')) or g.startswith('"') and g != '"ok"')
         kinds[k] = kinds.get(k, 0) + 1
     print(f"seed {a.seed}: {len(lines)} inputs, {len(bad)} disagreements; by kind and refused: {kinds}")
     for i, kind, g, s in bad[:5]:

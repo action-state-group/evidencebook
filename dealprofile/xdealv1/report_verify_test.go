@@ -233,6 +233,19 @@ func verifyCases(t *testing.T) []verifyCase {
 		require.NoError(t, err)
 		add("payload-not-committed", swapped, h.agreementPair, StageReport, "not the one the Capsule commits")
 	}
+	{
+		// The pair's own member names, exactly: another case, or a second
+		// agent_input so spelled, is refused.
+		var m map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(seal(withRuling(RoleSeller)), &m))
+		renamed, err := json.Marshal(map[string]json.RawMessage{"Record": m["record"], "agent_input": m["agent_input"]})
+		require.NoError(t, err)
+		add("pair-member-in-another-case", renamed, h.agreementPair, StageReport, "not a report pair")
+		twice, err := json.Marshal(map[string]json.RawMessage{"record": m["record"], "agent_input": m["agent_input"],
+			"Agent_Input": withRuling(RoleBuyer)})
+		require.NoError(t, err)
+		add("pair-agent-input-twice", twice, h.agreementPair, StageReport, "not a report pair")
+	}
 	add("the-first-record-is-the-report", seal(withRuling(RoleSeller)), seal(withRuling(RoleSeller)), StageBook, "")
 	add("the-report-is-a-book-pair", h.agreementPair, h.agreementPair, StageReport, "not a report pair")
 	return cases

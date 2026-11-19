@@ -59,6 +59,13 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 	if err := strictUnmarshal(report, &p); err != nil || p.Record == nil || p.AgentInput == nil {
 		return bad("not a report pair {record, agent_input}: %v", err)
 	}
+	// Exactly these two names: Go's reader would also take a member in
+	// another case, so a second agent_input so spelled would be read in
+	// place of the one beside it.
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(report, &top); err != nil || len(top) != 2 || top["record"] == nil || top["agent_input"] == nil {
+		return bad("not a report pair {record, agent_input}: its members are not exactly record and agent_input")
+	}
 	capsule, id, keyID, err := verifyCapsule(StageReport, p.Record)
 	if err != nil {
 		return ReportRead{}, err

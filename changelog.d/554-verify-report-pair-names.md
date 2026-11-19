@@ -1,0 +1,1 @@
+- **Fixed (`dealprofile/xdealv1`):** `VerifyReport` refuses a report pair whose members are not exactly `record` and `agent_input`. Go's reader also took a member in another case, so a second `agent_input` spelled `Agent_Input` was read in place of the one beside it (evidencebook#554).
