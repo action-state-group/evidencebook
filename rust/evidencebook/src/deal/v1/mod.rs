@@ -29,12 +29,7 @@
 //!   point, [`decode`], [`check`] and [`verify_sent`], refuses it as Go
 //!   does); a required list written `null`, a member the types do not name
 //!   or a member name in another case is refused there, where Go's reader
-//!   takes it;
-//! - [`verify_book`] reads a header's `correlation` as an object of strings
-//!   whose names it does not check, past one name given in two spellings
-//!   (the crate names no correlation keys); Go refuses one with a member
-//!   `record-header.schema.json` does not list. No deal-profile reader
-//!   reads a correlation.
+//!   takes it.
 //!
 //! [`verify_book`] decodes the header as Go's typed `Header` does (each
 //! member's Go type, null as the zero value), once both have refused a
