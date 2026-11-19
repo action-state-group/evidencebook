@@ -1,0 +1,2 @@
+<!-- changelog: rust/evidencebook/CHANGELOG.md -->
+- **Added (`deal::v1`, feature `deal`):** `verify_report` and `report_pair`, Go's `VerifyReport` and `ReportPair`. They check a sealed v1 deal report against its deal's first record: the holder's key, the deal and log the report rests on, the closed `ruling.against`, and the values `build_report` never writes (evidencebook#554). The crate replays Go's `testdata/deal-v1/report-verify` vectors, and the `x-deal-v1` differential compares it with Go on mutated reports.

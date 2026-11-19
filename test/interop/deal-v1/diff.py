@@ -158,6 +158,7 @@ def mutate_books(r, books):
 
 def requests(r, n):
     recs, status, report = fixtures(), cases("status/vectors.json"), cases("report/vectors.json")
+    verify = verify_reports()
     out = []
     for _ in range(n):
         kind = r.random()
@@ -172,7 +173,12 @@ def requests(r, n):
                 out.append({"kind": "sealed", "record": json.dumps(rec), "context": ctx})
             else:
                 out.append({"kind": "check", "record": json.dumps(rec)})
-        elif kind < 0.75:
+        elif kind < 0.6:
+            payload, first = copy.deepcopy(r.choice(verify))
+            for _ in range(r.randint(0, 3)):
+                payload = mutate_report(r, payload)
+            out.append({"kind": "verify_report", "payload": payload, "first": first})
+        elif kind < 0.8:
             books = copy.deepcopy(r.choice(status)["books"])
             for _ in range(r.randint(0, 2)):
                 mutate_books(r, books)
@@ -190,6 +196,31 @@ def requests(r, n):
                 cp["referee"] = "Lamp Court" if cp["audience"] == "adjudicator" else ""
             out.append({"kind": "report", "books": books, "copy": cp})
     return out
+
+
+def verify_reports():
+    """The valid reports of testdata/deal-v1/report-verify, each its payload
+    and the first record it is read against."""
+    raw = json.loads((VECTORS / "report-verify/vectors.json").read_text())
+    out = []
+    for c in raw["cases"]:
+        if "key_id" in c["want"]:
+            pair = json.loads(bytes.fromhex(c["report"]))
+            out.append((pair["agent_input"], c["first"]))
+    return out
+
+
+def mutate_report(r, payload):
+    """One change to a report payload: mutate's, or a member renamed to
+    another case, which Go reads and then refuses on the round trip."""
+    if r.random() < 0.15:
+        objs = [p for p in paths(payload) if isinstance(get(payload, p), dict) and get(payload, p)]
+        if objs:
+            o = get(payload, r.choice(objs))
+            k = r.choice(list(o))
+            o[k[:1].upper() + k[1:]] = o.pop(k)
+        return payload
+    return mutate(r, payload)
 
 
 def run(binary, lines):
@@ -214,7 +245,7 @@ def main():
     bad = [(i, reqs[i]["kind"], g, s) for i, (g, s) in enumerate(zip(go, rs)) if g != s]
     kinds = {}
     for q, g in zip(reqs, go):
-        k = (q["kind"], g.startswith("{\"error\"") or g.startswith('"') and g != '"ok"')
+        k = (q["kind"], g.startswith(('{"error"', '{"stage"')) or g.startswith('"') and g != '"ok"')
         kinds[k] = kinds.get(k, 0) + 1
     print(f"seed {a.seed}: {len(lines)} inputs, {len(bad)} disagreements; by kind and refused: {kinds}")
     for i, kind, g, s in bad[:5]:

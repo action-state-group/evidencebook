@@ -471,3 +471,34 @@ fn a_schema_white_space_class_is_re2s() {
         other => panic!("a tab is RE2 white space: {other:?}"),
     }
 }
+
+/// report-verify/vectors.json: VerifyReport accepts each valid report with
+/// the signer Go gives, and refuses each other one at Go's stage with Go's
+/// words (design §9, "Verifying a report").
+#[test]
+fn report_verify_vectors() {
+    for c in vectors("report-verify/vectors.json") {
+        let name = c["name"].as_str().unwrap();
+        let report = hex::decode(c["report"].as_str().unwrap()).unwrap();
+        let first = hex::decode(c["first"].as_str().unwrap()).unwrap();
+        let got = v1::verify_report(&report, &first);
+        let want = &c["want"];
+        if let Some(key) = want.get("key_id").and_then(Value::as_str) {
+            let read = got.unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(read.key_id, key, "{name}");
+            assert_eq!(read.report.profile, v1::PROFILE, "{name}");
+            continue;
+        }
+        let err = got.expect_err(name);
+        assert_eq!(
+            err.stage().map(|s| s.stage),
+            want["stage"].as_str(),
+            "{name}: {err}"
+        );
+        let fragment = want.get("error").and_then(Value::as_str).unwrap_or("");
+        assert!(
+            err.to_string().contains(fragment),
+            "{name}: {err} lacks {fragment:?}"
+        );
+    }
+}

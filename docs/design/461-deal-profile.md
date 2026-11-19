@@ -1659,7 +1659,8 @@ PROFILE §10). It is as proposed below, with these additions and limits:
   (capsule-viewer#322, evidencebook-deal#212).
   A reader checks a report against its deal's first record: the record at seq 1 of the holder's
   deal book, as a book pair. The report travels as a sent pair does, `{"record": the report
-  Capsule with its signature and key_id, "agent_input": the payload}`. It is refused unless:
+  Capsule with its signature and key_id, "agent_input": the payload}`, with exactly these two
+  members, named exactly so. It is refused unless:
   - its Capsule verifies under its `key_id`, is a report Capsule (`capsulectl-deal-report`,
     `fyi`) and commits the payload as its `agent_input_digest`;
   - the payload is a `deal_report` of `x-deal-v1` that parses as `Report` and would encode to the

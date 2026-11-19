@@ -3,20 +3,29 @@
 // Command deal-v1 is the Go side of the x-deal-v1 differential check
 // (test/interop/deal-v1/diff.py): one JSON request per line on stdin,
 // {"kind": "check", "record": <text>}, {"kind": "status", "books": ...} or
-// {"kind": "report", "books": ..., "copy": ...}, and one line out for each:
-// "ok" or the refusal's stage for a check, the JCS of the status value or the
-// report, or {"error":true} when it is refused.
+// {"kind": "report", "books": ..., "copy": ...} or {"kind": "verify_report",
+// "payload": ..., "first": <hex>}, and one line out for each: "ok" or the
+// refusal's stage for a check, the JCS of the status value or the report, the
+// JCS of {"key_id", "report"} for a verified report and {"stage": ...} for one
+// refused, or {"error":true} when it is refused. A verify_report payload is sealed as a report Capsule under the
+// test seller's record key (dealprofile/xdealv1's receive tests), and read
+// against first, the seller's agreement book pair.
 package main
 
 import (
 	"bufio"
 	"bytes"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
+	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 )
@@ -33,6 +42,60 @@ type request struct {
 	Check string `json:"check"`
 	With  string `json:"with"`
 	Held  string `json:"held"`
+	// A verify_report request: the report payload and the first record.
+	Payload json.RawMessage `json:"payload"`
+	First   string          `json:"first"`
+}
+
+// sellerKey is the record key of the seller in dealprofile/xdealv1's receive
+// tests, which signed the first record of testdata/deal-v1/report-verify.
+func sellerKey() ed25519.PrivateKey {
+	s := sha256.Sum256([]byte("xdealv1 receive tests\x00seller record key"))
+	return ed25519.NewKeyFromSeed(s[:])
+}
+
+// verifyReport seals payload as a report Capsule under the seller's key and
+// reads it against first.
+func verifyReport(payload json.RawMessage, first string) (string, error) {
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.UseNumber()
+	var doc any
+	if err := dec.Decode(&doc); err != nil {
+		return refusedBy(err), nil
+	}
+	jcs, err := canonical.JCS(doc)
+	if err != nil {
+		return refusedBy(err), nil
+	}
+	identity, err := emit.NewEd25519SigningIdentity(sellerKey())
+	if err != nil {
+		return "", err
+	}
+	in, err := dealprofile.ReportCapsule("seller", "xdealv1-test", time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		return "", err
+	}
+	sealed, err := emit.Seal(emit.SealInput{Capsule: in, Payload: json.RawMessage(jcs), Identity: identity})
+	if err != nil {
+		return "", err
+	}
+	pair, err := xdealv1.ReportPair(sealed.Payload, sealed.Envelope, jcs)
+	if err != nil {
+		return "", err
+	}
+	firstPair, err := hex.DecodeString(first)
+	if err != nil {
+		return "", err
+	}
+	r, err := xdealv1.VerifyReport(pair, firstPair)
+	var se *xdealv1.StageError
+	if errors.As(err, &se) && os.Getenv("DEAL_V1_DEBUG") == "" {
+		return jcsOf(map[string]string{"stage": se.Stage})
+	}
+	if err != nil {
+		return refusedBy(err), nil
+	}
+	return jcsOf(map[string]any{"key_id": r.KeyID, "report": r.Report})
 }
 
 type reportCopy struct {
@@ -152,6 +215,8 @@ func answer(line []byte) (string, error) {
 			return refusedBy(err), nil
 		}
 		return jcsOf(r)
+	case "verify_report":
+		return verifyReport(req.Payload, req.First)
 	}
 	return "", fmt.Errorf("unknown kind %q", req.Kind)
 }

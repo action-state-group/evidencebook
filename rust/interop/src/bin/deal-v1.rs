@@ -118,8 +118,57 @@ fn answer(line: &str) -> Result<String, String> {
                 Err(e) => refused(e),
             })
         }
+        "verify_report" => {
+            verify_report(&req["payload"], req["first"].as_str().unwrap_or_default())
+        }
         other => Err(format!("unknown kind {other:?}")),
     }
+}
+
+/// The record key of the seller in dealprofile/xdealv1's receive tests,
+/// which signed the first record of testdata/deal-v1/report-verify.
+fn seller_key() -> ed25519_dalek::SigningKey {
+    use sha2::{Digest as _, Sha256};
+    let seed: [u8; 32] = Sha256::digest(b"xdealv1 receive tests\x00seller record key").into();
+    ed25519_dalek::SigningKey::from_bytes(&seed)
+}
+
+/// Seals `payload` as a report Capsule under the seller's key, as the Go
+/// side does, and reads it against `first`.
+fn verify_report(payload: &Value, first: &str) -> Result<String, String> {
+    let payload = match jcs(payload) {
+        Ok(p) => p,
+        Err(e) => return Ok(refused(e)),
+    };
+    let key = seller_key();
+    let producer = evidencebook::seal::Producer {
+        operator: "seller",
+        developer: "xdealv1-test",
+        signer: &key,
+    };
+    let sealed = evidencebook::seal::seal_payload(
+        evidencebook::deal::REPORT_ACTION_ID,
+        "2026-11-21T12:00:00Z",
+        &payload,
+        &Default::default(),
+        &producer,
+    )
+    .map_err(|e| e.to_string())?;
+    let pair =
+        v1::report_pair(&sealed.capsule, &sealed.envelope, &payload).map_err(|e| e.to_string())?;
+    let first = hex::decode(first).map_err(|e| e.to_string())?;
+    Ok(match v1::verify_report(&pair, &first) {
+        Ok(r) => {
+            let out = serde_json::json!({"key_id": r.key_id, "report": r.report});
+            String::from_utf8(jcs(&out).map_err(|e| e.to_string())?).unwrap()
+        }
+        Err(e) => match e.stage() {
+            Some(se) if std::env::var_os("DEAL_V1_DEBUG").is_none() => {
+                serde_json::json!({"stage": se.stage}).to_string()
+            }
+            _ => refused(e),
+        },
+    })
 }
 
 fn main() {
