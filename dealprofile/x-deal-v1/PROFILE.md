@@ -402,6 +402,10 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
 - **Audiences.** `keep` and `counterparty` copies list the rows. An `adjudicator` copy names its
   `referee`, has `rows_state` `withheld` and no rows, and carries neither the counterparty's
   prefix, the witnesses, the disputes nor `rulings_unnamed`.
+- **Verifying a report.** `xdealv1.VerifyReport` reads a report against its deal's first record,
+  the agreement at seq 1 of the holder's deal book. It refuses a report not signed by the key that
+  signed that record, and a row whose `ruling.against` is not `buyer`, `seller` or `null` (design
+  note §9, "Verifying a report"; vectors in `testdata/deal-v1/report-verify/`).
 - **No close.** The payload has no `lifecycle` and no rules verdict. A page's deal-level line is
   `start.state` and, for a started deal, `settled`.
 
