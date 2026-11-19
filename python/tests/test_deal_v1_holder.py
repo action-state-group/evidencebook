@@ -17,7 +17,8 @@ from agent_action_capsule.canonical import jcs
 from capsule_emit.artifact.sqlite import SqliteArtifactStore
 
 from evidencebook.cadence import CadenceConfig
-from evidencebook.deal.v1 import holder, sent
+from evidencebook.deal.v1 import holder, naming as v1_name_rulings, sent
+from evidencebook.deal import v1
 from evidencebook.deal.v1.check import decode
 from evidencebook.record import CITES, OBSERVED_EVENT, Entry, Link
 from evidencebook.shelf import Shelf
@@ -123,9 +124,31 @@ def case(name: str) -> dict:
     return next(c for c in CASES if c["name"] == name)
 
 
+def disk_full() -> None:
+    raise OSError("the disk is full")
+
+
+def book_dump(book) -> list[dict]:
+    """Each record's id and, for one that reads as x-deal-v1, its book pair
+    (Go's recBook)."""
+    out = []
+    for r in book.records():
+        entry = {"record_id": r.record_id}
+        rec, kind = holder._v1_payload(book, r)
+        if kind == holder._V1:
+            stored = book._stored[r.record_id]
+            entry["pair"] = sent.book_pair(jcs(stored.capsule), stored.envelope, stored.header,
+                                           v1.encode(rec)[0]).hex()
+        out.append(entry)
+    return out
+
+
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
 def test_holder_transcript(case, tmp_path):
-    replay(case, tmp_path)
+    try:
+        replay(case, tmp_path)
+    finally:
+        v1_name_rulings._before_append = None
 
 
 def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Party]:
@@ -137,6 +160,9 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
         where = f"step {i} ({op} by {name})"
         if op == "party":
             parties[name] = Party(name, tmp_path / str(i))
+            continue
+        if op == "naming_fails":
+            v1_name_rulings._before_append = disk_full if step["in"] else None
             continue
         p = parties[name]
         if op == "reopen":
@@ -170,12 +196,23 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
             assert jcs(proof.value()) == jcs(step["out"]), where
         elif op == "retention":
             # Go's SetRetention: a lifecycle record citing the record.
-            journal = p.shelf.journal()
+            journal = p.shelf.open(step["log"]) if step.get("log") else p.shelf.journal()
             target = next(r for r in journal.records() if r.seq == step["in"]["seq"])
             rec = journal.append(Entry("lifecycle", OBSERVED_EVENT, links=(Link(CITES, target.record_id),),
                                        statement={"retention_state": step["in"]["state"],
                                                   "reason": step["in"]["reason"]}))
             assert rec.record_id == step["out"], where
+        elif op == "book":
+            assert book_dump(p.shelf.open(step["log"])) == step["out"], where
+        elif op == "name_rulings":
+            try:
+                if step.get("in") is None:
+                    ids, err = v1_name_rulings.name_all_rulings(p.shelf, p.now), None
+                else:
+                    ids, err = v1_name_rulings.name_rulings(p.shelf, step["in"], p.now), None
+            except Exception:  # noqa: BLE001 - the naming's error
+                ids, err = [], True
+            assert {"sealed": ids or None, "error": err} == step["out"], where
         elif op == "receive":
             record = bytes.fromhex(step["pair"]) if step.get("pair") else None
             proof = go_proof(step["proof"]) if step.get("proof") else None
@@ -184,8 +221,14 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
                 got = outcome(res)
                 # Go's Receive returns an error joining the refusals.
                 got["error"] = bool(res.refusals)
-            except Exception:  # noqa: BLE001 - the store's own error, with no result
-                got = {"error": True, "changes": {"grew": None, "shrank": None, "forked": None, "covered": None}}
+            except Exception as exc:  # noqa: BLE001 - the store's or the profile's error
+                res = getattr(exc, "receive_result", None)
+                if res is not None:
+                    # An after_receive error: the parts' result stays committed.
+                    got = outcome(res)
+                    got["error"] = True
+                else:
+                    got = {"error": True, "changes": {"grew": None, "shrank": None, "forked": None, "covered": None}}
             assert nulls(got) == nulls(step["out"]), where
         elif op == "can_act":
             i_ = step["in"]
@@ -277,3 +320,22 @@ def test_version(raw, want):
 def test_version_of_a_v1_record():
     step = next(s for s in case("handshake-from-offer")["steps"] if s["op"] == "seal")
     assert holder.version(jcs(step["record"])) == "x-deal-v1"
+
+
+def test_book_entry():
+    # Go's TestBookEntry: past seq 1 a record cites the one before it; the
+    # one payload is the record's JCS, whose digest is the record digest;
+    # the header's record_type is deal_step (design §3.1).
+    seal = next(s for s in case("later-records")["steps"] if s["op"] == "seal" and
+                s["record"]["x-deal-v1"]["seq"] > 1)
+    r = decode(jcs(seal["record"]))
+    with pytest.raises(ValueError, match="cites the record before it"):
+        v1.book_entry(r)
+    e = v1.book_entry(r, "ab" * 32)
+    assert e.links == (Link(CITES, "ab" * 32),)
+    assert e.record_type == "deal_step" and e.epistemic_type == "producer_claim"
+    assert e.subject_ref == r.block["deal_id"]
+    payload, d = v1.encode(r)
+    assert e.payloads == (payload,) and v1.digest(r) == d
+    first = next(s for s in case("later-records")["steps"] if s["op"] == "seal")
+    assert v1.book_entry(decode(jcs(first["record"]))).links == ()

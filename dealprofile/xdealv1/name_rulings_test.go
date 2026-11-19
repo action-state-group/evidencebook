@@ -38,6 +38,7 @@ func TestNameRulings(t *testing.T) {
 	res := h.seller.receive(pair, nil)
 	require.True(t, res.Record.Stored)
 	assert.Contains(t, res.Changes.Grew, fxDealID)
+	h.seller.recBook(h.sellerLog)
 
 	// The receive call itself named it, before it returned: a holder ruled
 	// against cannot skip it by not calling anything.
@@ -66,12 +67,13 @@ func TestNameRulings(t *testing.T) {
 	assert.Equal(t, rd, st.Names.Ruling.Digest)
 	assert.Equal(t, h.agreementID, read.Prev)
 
-	again, err := NameRulings(ctx, h.seller.shelf, []string{fxDealID}, h.seller.now)
+	again, err := h.seller.recNameRulings([]string{fxDealID})
 	require.NoError(t, err)
 	assert.Empty(t, again, "named once: a later call, or the next Receive, seals nothing")
 	h.seller.receive(pair, nil)
 	assert.Equal(t, uint64(2), book.Size(), "the same ruling again names nothing")
-	other, err := NameRulings(ctx, h.seller.shelf, []string{"deal-ffffffffffffffff"}, h.seller.now)
+	h.seller.recBook(h.sellerLog)
+	other, err := h.seller.recNameRulings([]string{"deal-ffffffffffffffff"})
 	require.NoError(t, err)
 	assert.Empty(t, other, "another deal's book is passed over")
 }
@@ -161,6 +163,7 @@ func TestNameRulingsBlock(t *testing.T) {
 	h.buyer.receive(h.agreementPair, &h.proof)
 	_, pair := adjudicator.seal(caseLog, ruling)
 	h.buyer.receive(pair, nil)
+	h.buyer.recBook("deal/b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0")
 	book, err := h.buyer.shelf.Open(ctx, "deal/b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0")
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), book.Size())
@@ -215,16 +218,13 @@ func TestNameRulingsLeavesAPartBook(t *testing.T) {
 	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
 	require.NoError(t, err)
 	next := settleRecord(t, 2, h.agreement, h.agreement, h.agreementID)
-	e, err := BookEntry(next, h.agreementID)
-	require.NoError(t, err)
-	r2, err := book.Append(ctx, e)
-	require.NoError(t, err)
-	_, err = book.SetRetention(ctx, r2.RecordID, evidencebook.Withheld, "test")
-	require.NoError(t, err)
+	h.seller.seal(h.sellerLog, next)
+	h.seller.recRetentionIn(h.sellerLog, 2, evidencebook.Withheld)
 	size := book.Size()
 	_, pair := adjudicator.seal(caseLog, ruling)
 	h.seller.receive(pair, nil)
 	assert.Equal(t, size, book.Size(), "no statement from a part read")
+	h.seller.recBook(h.sellerLog)
 }
 
 // A ruling of another deal in the same case log is not this deal's.
@@ -234,10 +234,11 @@ func TestNameRulingsOnlyTheDealsRulings(t *testing.T) {
 	other := ruling
 	other.Block.DealID = "deal-ffffffffffffffff"
 	_, pair := adjudicator.seal(caseLog, other)
-	h.seller.shelf.Receive(ctx, pair, nil) //nolint:errcheck // refused or stored, it is not this deal's
+	h.seller.receiveRaw(pair, nil) //nolint:errcheck // refused or stored, it is not this deal's
 	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), book.Size())
+	h.seller.recBook(h.sellerLog)
 }
 
 // unnamedCount is the seller's count of counted rulings neither book names,
@@ -264,10 +265,9 @@ func unnamedCount(t *testing.T, h *handshake, adjudicator *party) int {
 func TestNameRulingsRetriedOnADuplicate(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
-	nameRulingsBeforeAppend = func() error { return errors.New("the disk is full") }
-	t.Cleanup(func() { nameRulingsBeforeAppend = nil })
+	recNamingFails(t, true)
 	_, pair := adjudicator.seal(caseLog, ruling)
-	res, err := h.seller.shelf.Receive(ctx, pair, nil)
+	res, err := h.seller.receiveRaw(pair, nil)
 	require.ErrorContains(t, err, "after receive")
 	require.NotNil(t, res.Record)
 	assert.True(t, res.Record.Stored, "the ruling stays committed")
@@ -277,30 +277,31 @@ func TestNameRulingsRetriedOnADuplicate(t *testing.T) {
 	assert.Equal(t, uint64(1), book.Size())
 	assert.Equal(t, 1, unnamedCount(t, h, adjudicator), "held, counted, named by neither book")
 
-	nameRulingsBeforeAppend = nil
+	h.seller.recBook(h.sellerLog)
+	recNamingFails(t, false)
 	again := h.seller.receive(pair, nil)
 	assert.True(t, again.Record.Duplicate)
 	assert.Empty(t, again.Changes.Grew, "nothing grew")
 	assert.Equal(t, uint64(2), book.Size(), "the duplicate retried the naming")
+	h.seller.recBook(h.sellerLog)
 	assert.Equal(t, 0, unnamedCount(t, h, adjudicator))
 }
 
 // NameAllRulings is the host's sweep: a naming that failed, with nothing
 // sent again, is sealed by it; a second sweep seals nothing.
 func TestNameAllRulings(t *testing.T) {
-	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
-	nameRulingsBeforeAppend = func() error { return errors.New("the disk is full") }
-	t.Cleanup(func() { nameRulingsBeforeAppend = nil })
+	recNamingFails(t, true)
 	_, pair := adjudicator.seal(caseLog, ruling)
-	_, err := h.seller.shelf.Receive(ctx, pair, nil)
+	_, err := h.seller.receiveRaw(pair, nil)
 	require.Error(t, err)
-	nameRulingsBeforeAppend = nil
-	sealed, err := NameAllRulings(ctx, h.seller.shelf, h.seller.now)
+	recNamingFails(t, false)
+	sealed, err := h.seller.recNameRulings(nil)
 	require.NoError(t, err)
 	assert.Len(t, sealed, 1)
 	assert.Equal(t, 0, unnamedCount(t, h, adjudicator))
-	sealed, err = NameAllRulings(ctx, h.seller.shelf, h.seller.now)
+	h.seller.recBook(h.sellerLog)
+	sealed, err = h.seller.recNameRulings(nil)
 	require.NoError(t, err)
 	assert.Empty(t, sealed)
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 
@@ -87,16 +88,74 @@ func (p *party) recCanAct(in CanActInput) (bool, error) {
 // recRetention sets the retention state of the holder's journal record at
 // seq, recorded with the lifecycle record it seals.
 func (p *party) recRetention(seq uint64, state evidencebook.RetentionState) {
+	p.recRetentionIn("", seq, state)
+}
+
+// recRetentionIn is recRetention in the book logID ("" for the journal).
+func (p *party) recRetentionIn(logID string, seq uint64, state evidencebook.RetentionState) {
 	ctx := context.Background()
-	journal, err := p.shelf.Journal(ctx)
+	book, err := p.shelf.Journal(ctx)
+	if logID != "" {
+		book, err = p.shelf.Open(ctx, logID)
+	}
 	require.NoError(p.t, err)
-	recs, err := journal.Query(ctx, evidencebook.Filter{FromSeq: seq, ToSeq: seq})
+	recs, err := book.Query(ctx, evidencebook.Filter{FromSeq: seq, ToSeq: seq})
 	require.NoError(p.t, err)
 	require.Len(p.t, recs, 1)
-	rec, err := journal.SetRetention(ctx, recs[0].RecordID, state, "test")
+	rec, err := book.SetRetention(ctx, recs[0].RecordID, state, "test")
 	require.NoError(p.t, err)
-	recordStep(txOp{Op: "retention", Party: p.name, In: map[string]any{"seq": seq, "state": state, "reason": "test"},
+	recordStep(txOp{Op: "retention", Party: p.name, Log: logID, In: map[string]any{"seq": seq, "state": state, "reason": "test"},
 		Out: rec.RecordID})
+}
+
+// recBook records the party's book logID as it is now: each record's id
+// and, for a record that reads as x-deal-v1, its book pair (hex).
+func (p *party) recBook(logID string) {
+	ctx := context.Background()
+	book, err := p.shelf.Open(ctx, logID)
+	require.NoError(p.t, err)
+	recs, err := book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: book.Size()})
+	require.NoError(p.t, err)
+	out := []map[string]string{}
+	for _, r := range recs {
+		entry := map[string]string{"record_id": r.RecordID}
+		if rec, kind, err := v1Payload(ctx, book, r); err == nil && kind == payloadV1 {
+			sealed, err := book.Sealed(ctx, r.RecordID)
+			require.NoError(p.t, err)
+			payload, _, err := Encode(rec)
+			require.NoError(p.t, err)
+			pair, err := BookPair(sealed, payload)
+			require.NoError(p.t, err)
+			entry["pair"] = hex.EncodeToString(pair)
+		}
+		out = append(out, entry)
+	}
+	recordStep(txOp{Op: "book", Party: p.name, Log: logID, Out: out})
+}
+
+// recNameRulings is NameRulings over deals (NameAllRulings for nil),
+// recorded with the record ids it sealed.
+func (p *party) recNameRulings(deals []string) ([]string, error) {
+	var ids []string
+	var err error
+	if deals == nil {
+		ids, err = NameAllRulings(context.Background(), p.shelf, p.now)
+	} else {
+		ids, err = NameRulings(context.Background(), p.shelf, deals, p.now)
+	}
+	recordStep(txOp{Op: "name_rulings", Party: p.name, In: deals, Out: map[string]any{"sealed": ids, "error": errText(err)}})
+	return ids, err
+}
+
+// recNamingFails makes every naming fail ("the disk is full") until it is
+// called with false, recorded for the replay to do the same.
+func recNamingFails(t *testing.T, fail bool) {
+	nameRulingsBeforeAppend = nil
+	if fail {
+		nameRulingsBeforeAppend = func() error { return errors.New("the disk is full") }
+		t.Cleanup(func() { nameRulingsBeforeAppend = nil })
+	}
+	recordStep(txOp{Op: "naming_fails", In: fail})
 }
 
 func (p *party) recProofSender(checkpointKeyID, logID string) (string, bool, error) {
@@ -128,7 +187,9 @@ func (p *party) recGateAct(in ActGateInput) (ActGate, error) {
 // (EB_WRITE_DEAL_V1_VECTORS=1): each scenario run again with its steps
 // recorded. TestBookPairWithTwoPayloads, which appends a book record by
 // hand, and TestOursResultIsACopy, which reads the profile's cache, are Go's
-// alone; Python tests both of those on its own.
+// alone; Python tests both of those on its own. So is
+// TestNameRulingsAfterAConcurrentWrite, whose write lands from inside the
+// naming; the naming tests that stamp come with the status provider.
 func TestHolderTranscripts(t *testing.T) {
 	scenarios := []struct {
 		name string
@@ -148,6 +209,10 @@ func TestHolderTranscripts(t *testing.T) {
 		{"gate-without-witnesses-and-an-agreement", TestGateActWithoutWitnessesAndWithoutAnAgreement},
 		{"gate-refuses-the-counterpartys-agreement", TestGateActRefusesTheCounterpartysAgreement},
 		{"withheld-offer-read-again", TestWithheldOfferReadAgain}, {"can-act-without-a-layer", TestCanActWithoutALayerIsFalse},
+		{"name-rulings", TestNameRulings}, {"name-rulings-block", TestNameRulingsBlock},
+		{"name-rulings-leaves-a-part-book", TestNameRulingsLeavesAPartBook},
+		{"name-rulings-only-the-deals-rulings", TestNameRulingsOnlyTheDealsRulings},
+		{"name-rulings-retried-on-a-duplicate", TestNameRulingsRetriedOnADuplicate}, {"name-all-rulings", TestNameAllRulings},
 	}
 	type transcript struct {
 		Name  string `json:"name"`

@@ -1,0 +1,2 @@
+<!-- changelog: python/CHANGELOG.md -->
+- **Added (`evidencebook.deal.v1`):** the holder's naming of rulings, as Go's `name_rulings.go` (evidencebook#461, #527): `book_entry`, `name_rulings` and `name_all_rulings`. `ReceiveProfile.after_receive` now names each counted ruling of the deals a receive call touched before the call returns. Go's `TestHolderTranscripts` now also records six naming scenarios, and Python replays each one, comparing the naming statements it seals and the whole book byte for byte.
