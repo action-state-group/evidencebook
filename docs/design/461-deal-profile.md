@@ -1655,23 +1655,25 @@ PROFILE §10). It is as proposed below, with these additions and limits:
   | booleans | `local`, `witnessed`, `settled`, `final`, `counterparty_layer`, `remedy_made`, `status_fact.current` |
 
 - A page shows `rows` and `start` as they are. It never recomputes them.
-- **Verifying a report** (`xdealv1.VerifyReport`; the coordinator's decision on actionstate-muse#380's
-  review, so capsule-viewer#322, actionstate-muse#378 and evidencebook-deal#212 apply one rule).
+- **Verifying a report** (`xdealv1.VerifyReport`), so every reader of a report applies one rule
+  (capsule-viewer#322, evidencebook-deal#212).
   A reader checks a report against its deal's first record: the record at seq 1 of the holder's
   deal book, as a book pair. The report travels as a sent pair does, `{"record": the report
   Capsule with its signature and key_id, "agent_input": the payload}`. It is refused unless:
   - its Capsule verifies under its `key_id`, is a report Capsule (`capsulectl-deal-report`,
     `fyi`) and commits the payload as its `agent_input_digest`;
-  - the payload is a `deal_report` of `x-deal-v1` that reads as the report and would encode to the
+  - the payload is a `deal_report` of `x-deal-v1` that parses as `Report` and would encode to the
     same bytes;
   - each row's `ruling.against` is `buyer`, `seller` or `null`;
   - the first record is a verified book pair at seq 1 holding an agreement of the report's
     `deal_id`, in the log named by `rests_on.own.log_id`;
   - the report is signed by the key that signed that first record. In x-deal-v1 a deal book has
     one signing key: the counterparty admits a deal-book record only from the key its agreement
-    names (8.3), so a book whose key changed is no longer received.
+    names (§8.3), so the counterparty stops receiving a book whose key changed.
 
-  The vectors are in `testdata/deal-v1/report-verify/`.
+  A report that passes shows who signed it and which deal it is about, not that its row statuses
+  are correct: it is the holder's own snapshot (PROFILE §10), and a reader who needs the status
+  recomputes it from the books. The vectors are in `testdata/deal-v1/report-verify/`.
 
 **Vectors** (`testdata/deal-v1/report/`), each from Appendix A's two books, at fixed nonces:
 T = 1 Nov after line 22 (all not due), 3 Nov (row 1 agreed so far), 9 Nov (row 2 agreed, row 3
