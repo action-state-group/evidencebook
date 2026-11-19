@@ -210,8 +210,8 @@ def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Par
                     ids, err = v1_name_rulings.name_all_rulings(p.shelf, p.now), None
                 else:
                     ids, err = v1_name_rulings.name_rulings(p.shelf, step["in"], p.now), None
-            except Exception:  # noqa: BLE001 - the naming's error
-                ids, err = [], True
+            except Exception as exc:  # noqa: BLE001 - the naming's error, with what it sealed first
+                ids, err = exc.sealed, True
             assert {"sealed": ids or None, "error": err} == step["out"], where
         elif op == "receive":
             record = bytes.fromhex(step["pair"]) if step.get("pair") else None
@@ -339,3 +339,110 @@ def test_book_entry():
     assert e.payloads == (payload,) and v1.digest(r) == d
     first = next(s for s in case("later-records")["steps"] if s["op"] == "seal")
     assert v1.book_entry(decode(jcs(first["record"]))).links == ()
+
+
+def _seller_before_the_ruling(tmp_path):
+    """The name-rulings scenario up to the seller receiving the ruling: the
+    parties, the ruling's pair, and a settle at seq 2 of the seller's book
+    (Go's settleRecord, as the part-book scenario sealed it)."""
+    c = case("name-rulings")
+    at = next(i for i, s in enumerate(c["steps"]) if s["op"] == "receive" and i > 4)
+    parties = replay(c, tmp_path, at)
+    settle = next(s for s in case("name-rulings-leaves-a-part-book")["steps"]
+                  if s["op"] == "seal" and s["party"] == "seller" and s["record"]["x-deal-v1"]["seq"] == 2)
+    return parties, bytes.fromhex(c["steps"][at]["pair"]), decode(jcs(settle["record"]))
+
+
+def test_naming_after_a_concurrent_write(tmp_path):
+    # Go's TestNameRulingsAfterAConcurrentWrite: a write landing between the
+    # read and the append moves the statement to the next place; it is
+    # built again there and lands valid.
+    parties, pair, settle = _seller_before_the_ruling(tmp_path)
+    seller = parties["seller"]
+    log = next(lid for lid in seller.shelf.books())
+    book = seller.shelf.open(log)
+    first = book.records()[0].record_id
+    wrote = []
+
+    def write_once():
+        if not wrote:
+            wrote.append(book.append(v1.book_entry(settle, first)).record_id)
+
+    v1_name_rulings._before_append = write_once
+    try:
+        seller.shelf.receive(pair, None)
+    finally:
+        v1_name_rulings._before_append = None
+    recs = book.records()
+    assert len(wrote) == 1 and len(recs) == 3, "the host's record, then the naming statement"
+    rec, kind = holder._v1_payload(book, recs[2])
+    assert kind == holder._V1 and rec.record_type == "statement" and rec.block["seq"] == 3
+    assert rec.block["prev"]["digest"] == v1.digest(settle), "built again for its place"
+
+
+def test_naming_gives_up_after_four_tries(tmp_path):
+    # The book moving at every append: read again three times, then the
+    # naming's error is BusyError, and nothing is sealed.
+    from evidencebook.errors import BusyError
+
+    parties, pair, _ = _seller_before_the_ruling(tmp_path)
+    seller = parties["seller"]
+    tries = []
+    real_open = seller.shelf.open
+
+    class Moving:
+        def __init__(self, book):
+            self._book = book
+
+        def __getattr__(self, name):
+            return getattr(self._book, name)
+
+        def append_at(self, seq, entry):
+            tries.append(seq)
+            raise BusyError("the book moved")
+
+    seller.shelf.open = lambda log_id: Moving(real_open(log_id))
+    v1_name_rulings._before_append = None
+    with pytest.raises(BusyError) as exc:
+        seller.shelf.receive(pair, None)
+    assert len(tries) == 4 and exc.value.sealed == []
+    assert exc.value.receive_result.record.stored, "the ruling stays held"
+
+
+def test_naming_keeps_what_it_sealed_before_an_error(monkeypatch):
+    # Go's NameRulings returns the ids sealed before an error beside it.
+    calls = []
+
+    def name_in(shelf, book, ag, deal, at, out):
+        calls.append(deal)
+        if len(calls) == 1:
+            out.append("a" * 64)
+            return
+        raise OSError("the disk is full")
+
+    class Book:
+        def __init__(self, deal):
+            self.deal = deal
+
+        def records(self):
+            return [type("R", (), {"seq": 1})()]
+
+    deals = {"deal/1": "deal-1111111111111111", "deal/2": "deal-2222222222222222"}
+
+    class Shelf:
+        def books(self):
+            return list(deals)
+
+        def open(self, log_id):
+            return Book(deals[log_id])
+
+    def payload(book, r):
+        rec = type("Rec", (), {"record_type": "agree", "block": {"deal_id": book.deal},
+                               "body": {"kind": "agreement", "adjudicator": {"key_id": "k"}}})()
+        return rec, holder._V1
+
+    monkeypatch.setattr(v1_name_rulings, "_name_rulings_in", name_in)
+    monkeypatch.setattr(holder, "_v1_payload", payload)
+    with pytest.raises(OSError) as exc:
+        v1_name_rulings.name_all_rulings(Shelf(), START)
+    assert exc.value.sealed == ["a" * 64]

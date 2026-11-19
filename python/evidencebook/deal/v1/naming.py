@@ -51,6 +51,7 @@ def name_rulings(shelf: Any, deal_ids: list[str], at: datetime) -> list[str]:
     """Seals, in the holder's deal book of each deal given, a statement
     naming each counted ruling of that deal's adjudicator the book does not
     name yet (Go ``NameRulings``); returns the record ids sealed, in order.
+    What it raises carries the ids sealed before it as ``sealed``.
     A deal with no v1 deal book, or whose agreement names no adjudicator, is
     passed over. It takes the shelf's locks."""
     if not deal_ids:
@@ -80,7 +81,13 @@ def _name_rulings(shelf: Any, want: Callable[[str], bool], at: datetime) -> list
         ag = rec.body
         if ag["kind"] != KIND_AGREEMENT or not want(rec.block["deal_id"]) or not isinstance(ag["adjudicator"], dict):
             continue
-        _name_rulings_in(shelf, book, ag, rec.block["deal_id"], at, sealed)
+        try:
+            _name_rulings_in(shelf, book, ag, rec.block["deal_id"], at, sealed)
+        except Exception as exc:
+            # Go returns the ids sealed before the error beside it: the
+            # statements already sealed stay, and a retry passes them over.
+            exc.sealed = list(sealed)  # type: ignore[attr-defined]
+            raise
     return sealed
 
 
