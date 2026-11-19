@@ -254,7 +254,7 @@ func (s *dealSession) dealAssembleAtCheckpoint(ctx context.Context, events []sea
 // rewritten for its audience; for the user's own copy, the full report.
 func (s *dealSession) dealReportExtension(events []sealedEvent, report dealReport, audience, verifyCommand string, private dealPrivate, withhold map[string]bool, coverage map[string]interface{}) (map[string]interface{}, error) {
 	if audience != cli.DealAudienceKeep {
-		ext := dealShareExtension(events, report, audience, private, withhold)
+		ext := dealShareExtension(events, report, audience, private, withhold, s.shareUnchecked)
 		if !s.reportAt.IsZero() {
 			ext["lifecycle"] = shareLifecycle(buildDealLifecycle(events, s.reportAt))
 		}

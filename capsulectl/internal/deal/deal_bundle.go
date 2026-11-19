@@ -52,11 +52,19 @@ func dealBundleRun(c *cobra.Command, use string) error {
 			return cli.InputError(use + " --deal needs --to: who the shared copy is for, as sealed in the disclosure record")
 		}
 	}
+	includeUnchecked, err := shareUncheckedFlag(c, audience)
+	if err != nil {
+		return err
+	}
 	out, _ := c.Flags().GetString("out")
 	if use == "disclose" && out == "" {
 		return cli.InputError("disclose --deal needs --out FILE: the shared bundle is written there after the share is on record")
 	}
 	return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
+		if err := refuseUncheckedOnABuyersDeal(includeUnchecked, events); err != nil {
+			return err
+		}
+		s.shareUnchecked = includeUnchecked
 		verify := dealVerifyCommand("bundle.json")
 		if out != "" {
 			verify = dealVerifyCommand(out)
