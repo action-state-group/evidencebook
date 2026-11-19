@@ -446,3 +446,17 @@ def test_naming_keeps_what_it_sealed_before_an_error(monkeypatch):
     with pytest.raises(OSError) as exc:
         v1_name_rulings.name_all_rulings(Shelf(), START)
     assert exc.value.sealed == ["a" * 64]
+
+    # And when opening the next book fails, after the first was named.
+    calls.clear()
+    monkeypatch.setattr(v1_name_rulings, "_name_rulings_in", lambda shelf, book, ag, deal, at, out: out.append("b" * 64))
+
+    class FailingOpen(Shelf):
+        def open(self, log_id):
+            if log_id == "deal/2":
+                raise OSError("the disk is gone")
+            return super().open(log_id)
+
+    with pytest.raises(OSError) as exc:
+        v1_name_rulings.name_all_rulings(FailingOpen(), START)
+    assert exc.value.sealed == ["b" * 64]

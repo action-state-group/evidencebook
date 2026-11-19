@@ -67,9 +67,21 @@ def name_all_rulings(shelf: Any, at: datetime) -> list[str]:
 
 
 def _name_rulings(shelf: Any, want: Callable[[str], bool], at: datetime) -> list[str]:
+    sealed: list[str] = []
+    try:
+        _name_books(shelf, want, at, sealed)
+    except Exception as exc:
+        # Go returns the ids sealed before the error beside it, whatever
+        # failed: the statements already sealed stay, and a retry passes
+        # them over.
+        exc.sealed = list(sealed)  # type: ignore[attr-defined]
+        raise
+    return sealed
+
+
+def _name_books(shelf: Any, want: Callable[[str], bool], at: datetime, sealed: list[str]) -> None:
     from .holder import _V1, _v1_payload
 
-    sealed: list[str] = []
     for log_id in shelf.books():
         book = shelf.open(log_id)
         first = [r for r in book.records() if r.seq == 1]
@@ -81,14 +93,7 @@ def _name_rulings(shelf: Any, want: Callable[[str], bool], at: datetime) -> list
         ag = rec.body
         if ag["kind"] != KIND_AGREEMENT or not want(rec.block["deal_id"]) or not isinstance(ag["adjudicator"], dict):
             continue
-        try:
-            _name_rulings_in(shelf, book, ag, rec.block["deal_id"], at, sealed)
-        except Exception as exc:
-            # Go returns the ids sealed before the error beside it: the
-            # statements already sealed stay, and a retry passes them over.
-            exc.sealed = list(sealed)  # type: ignore[attr-defined]
-            raise
-    return sealed
+        _name_rulings_in(shelf, book, ag, rec.block["deal_id"], at, sealed)
 
 
 def _name_rulings_in(shelf: Any, book: Any, ag: dict, deal: str, at: datetime, out: list[str]) -> None:
