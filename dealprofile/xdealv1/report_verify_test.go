@@ -89,7 +89,7 @@ func payloadOf(t *testing.T, r map[string]any) []byte {
 	return out
 }
 
-// rulingRow is the index of the sample's ruled row.
+// rulingRow is the ruling of the sample's first ruled row, as a mutable map.
 func rulingRow(t *testing.T, r map[string]any) map[string]any {
 	t.Helper()
 	for _, row := range r["rows"].([]any) {
@@ -141,6 +141,18 @@ func verifyCases(t *testing.T) []verifyCase {
 	add("against-the-adjudicator", seal(withRuling(SideAdjudicator)), h.agreementPair, StageReport, "against buyer, seller or null")
 	add("against-in-another-case", seal(withRuling("Seller")), h.agreementPair, StageReport, "against buyer, seller or null")
 	add("against-empty", seal(withRuling("")), h.agreementPair, StageReport, "against buyer, seller or null")
+	{
+		// A ruling with no against member, or with it in another case, is not
+		// the report's form: a null against is written out.
+		r := sampleReport(t, h, "appendix-a-21-nov")
+		delete(rulingRow(t, r), "against")
+		add("ruling-without-against", seal(payloadOf(t, r)), h.agreementPair, StageReport, "does not read as a report")
+		r = sampleReport(t, h, "appendix-a-21-nov")
+		ru := rulingRow(t, r)
+		ru["Against"] = ru["against"]
+		delete(ru, "against")
+		add("against-misnamed", seal(payloadOf(t, r)), h.agreementPair, StageReport, "does not read as a report")
+	}
 	add("signed-by-the-counterparty", sealReport(t, "buyer", withRuling(RoleSeller), ""), h.agreementPair, StageReport,
 		"signed by another key than its deal's first record")
 	{
