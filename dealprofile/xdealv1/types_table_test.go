@@ -38,6 +38,9 @@ func TestTypesTable(t *testing.T) {
 		"status_books": typeRef(reflect.TypeFor[StatusBooks]()),
 		"row_books":    typeRef(reflect.TypeFor[RowBooks]()),
 		"report_books": typeRef(reflect.TypeFor[ReportBooks]()),
+		// The report payload, which VerifyReport reads strictly and writes
+		// back: Python checks a payload's shape against it.
+		"report": typeRef(reflect.TypeFor[Report]()),
 		// A book record's header, which VerifyBook reads with json.Unmarshal.
 		"header":  typeRef(reflect.TypeFor[evidencebook.Header]()),
 		"structs": tableStructs,
@@ -57,8 +60,8 @@ type typeField struct {
 	Name     string `json:"name"`
 	Type     any    `json:"type"`
 	OmitZero bool   `json:"omitzero,omitempty"`
-	// OmitEmpty is only on the books' fields, which Python reads and never
-	// writes.
+	// OmitEmpty is on the books' fields, which Python reads and never
+	// writes, and on the report's.
 	OmitEmpty bool `json:"omitempty,omitempty"`
 }
 

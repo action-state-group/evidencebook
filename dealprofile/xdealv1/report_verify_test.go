@@ -192,6 +192,9 @@ func verifyCases(t *testing.T) []verifyCase {
 				src["time"], src["witnessed"] = "2026-11-03T10:00:00Z", false
 			}},
 			{"rulings-unnamed-negative", func(r map[string]any) { r["rulings_unnamed"] = -1 }},
+			// A member the report leaves out when empty, written out empty.
+			{"rulings-unnamed-zero", func(r map[string]any) { r["rulings_unnamed"] = 0 }},
+			{"disputes-empty", func(r map[string]any) { r["disputes"] = []any{} }},
 		} {
 			r := sampleReport(t, h, "appendix-a-21-nov")
 			c.mut(r)

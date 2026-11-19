@@ -85,6 +85,9 @@
  "header": {
   "struct": "github.com/action-state-group/evidencebook.Header"
  },
+ "report": {
+  "struct": "dealprofile/xdealv1.Report"
+ },
  "report_books": {
   "struct": "dealprofile/xdealv1.ReportBooks"
  },
@@ -2001,6 +2004,103 @@
     "omitzero": true
    }
   ],
+  "dealprofile/xdealv1.Report": [
+   {
+    "name": "type",
+    "type": "string"
+   },
+   {
+    "name": "profile",
+    "type": "string"
+   },
+   {
+    "name": "deal_id",
+    "type": "string"
+   },
+   {
+    "name": "audience",
+    "type": "string"
+   },
+   {
+    "name": "nonce",
+    "type": "string"
+   },
+   {
+    "name": "referee",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "as_of",
+    "type": "string"
+   },
+   {
+    "name": "deal_checkpoint",
+    "type": {
+     "struct": "dealprofile.Checkpoint"
+    }
+   },
+   {
+    "name": "pack_digest",
+    "type": "string"
+   },
+   {
+    "name": "start",
+    "type": {
+     "struct": "dealprofile/xdealv1.StartResult"
+    }
+   },
+   {
+    "name": "settled",
+    "type": "bool"
+   },
+   {
+    "name": "rows_state",
+    "type": "string"
+   },
+   {
+    "name": "rows",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.ReportRow"
+     }
+    }
+   },
+   {
+    "name": "disputes",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.StatusDispute"
+     }
+    },
+    "omitempty": true
+   },
+   {
+    "name": "rulings_unnamed",
+    "type": "int64",
+    "omitempty": true
+   },
+   {
+    "name": "rests_on",
+    "type": {
+     "struct": "dealprofile/xdealv1.ReportRestsOn"
+    }
+   },
+   {
+    "name": "status_fact",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.ReportFact"
+     }
+    }
+   },
+   {
+    "name": "report",
+    "type": {
+     "map": "raw"
+    }
+   }
+  ],
   "dealprofile/xdealv1.ReportBooks": [
    {
     "name": "Books",
@@ -2068,6 +2168,48 @@
     "type": "bool"
    }
   ],
+  "dealprofile/xdealv1.ReportLate": [
+   {
+    "name": "statements",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.ReportLateStatement"
+     }
+    }
+   },
+   {
+    "name": "disputes",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.ReportLateDispute"
+     }
+    }
+   }
+  ],
+  "dealprofile/xdealv1.ReportLateDispute": [
+   {
+    "name": "side",
+    "type": "string"
+   },
+   {
+    "name": "record",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.ReportLateStatement": [
+   {
+    "name": "side",
+    "type": "string"
+   },
+   {
+    "name": "value",
+    "type": "string"
+   },
+   {
+    "name": "record",
+    "type": "string"
+   }
+  ],
   "dealprofile/xdealv1.ReportLog": [
    {
     "name": "log_id",
@@ -2080,6 +2222,164 @@
    {
     "name": "last",
     "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.ReportRestsOn": [
+   {
+    "name": "own",
+    "type": {
+     "struct": "dealprofile/xdealv1.ReportLog"
+    }
+   },
+   {
+    "name": "counterparty",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.ReportCounterpartLog"
+     }
+    },
+    "omitempty": true
+   },
+   {
+    "name": "counterparty_layer",
+    "type": "bool"
+   },
+   {
+    "name": "counterparty_kind",
+    "type": {
+     "ptr": "string"
+    }
+   },
+   {
+    "name": "counterparty_proof",
+    "type": "string"
+   },
+   {
+    "name": "witnesses",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.Witness"
+     }
+    },
+    "omitempty": true
+   }
+  ],
+  "dealprofile/xdealv1.ReportRow": [
+   {
+    "name": "id",
+    "type": "string"
+   },
+   {
+    "name": "owed_by",
+    "type": "string"
+   },
+   {
+    "name": "owed",
+    "type": "raw"
+   },
+   {
+    "name": "due",
+    "type": "string"
+   },
+   {
+    "name": "window_end",
+    "type": "string"
+   },
+   {
+    "name": "status",
+    "type": "string"
+   },
+   {
+    "name": "value",
+    "type": {
+     "ptr": "string"
+    }
+   },
+   {
+    "name": "remedy",
+    "type": {
+     "ptr": "string"
+    }
+   },
+   {
+    "name": "remedy_made",
+    "type": "bool"
+   },
+   {
+    "name": "local",
+    "type": "bool"
+   },
+   {
+    "name": "check",
+    "type": "string"
+   },
+   {
+    "name": "late",
+    "type": {
+     "struct": "dealprofile/xdealv1.ReportLate"
+    }
+   },
+   {
+    "name": "ruling",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.ReportRuling"
+     }
+    }
+   },
+   {
+    "name": "relied_on",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.ReportSource"
+     }
+    }
+   }
+  ],
+  "dealprofile/xdealv1.ReportRuling": [
+   {
+    "name": "record",
+    "type": "string"
+   },
+   {
+    "name": "value",
+    "type": "string"
+   },
+   {
+    "name": "against",
+    "type": {
+     "ptr": "string"
+    }
+   },
+   {
+    "name": "final",
+    "type": "bool"
+   },
+   {
+    "name": "remedy_due",
+    "type": {
+     "ptr": "string"
+    }
+   }
+  ],
+  "dealprofile/xdealv1.ReportSource": [
+   {
+    "name": "record",
+    "type": "string"
+   },
+   {
+    "name": "side",
+    "type": "string"
+   },
+   {
+    "name": "time",
+    "type": {
+     "ptr": "string"
+    }
+   },
+   {
+    "name": "witnessed",
+    "type": "bool"
    }
   ],
   "dealprofile/xdealv1.Row": [
@@ -2321,6 +2621,22 @@
     "omitzero": true
    }
   ],
+  "dealprofile/xdealv1.StartResult": [
+   {
+    "name": "state",
+    "type": "string"
+   },
+   {
+    "name": "local",
+    "type": "bool"
+   },
+   {
+    "name": "by",
+    "type": {
+     "ptr": "string"
+    }
+   }
+  ],
   "dealprofile/xdealv1.StatementBody": [
    {
     "name": "statements",
@@ -2428,6 +2744,24 @@
     "name": "rulings_unnamed",
     "type": "int64",
     "omitempty": true
+   }
+  ],
+  "dealprofile/xdealv1.StatusDispute": [
+   {
+    "name": "row",
+    "type": "string"
+   },
+   {
+    "name": "claimant",
+    "type": "string"
+   },
+   {
+    "name": "outcome",
+    "type": "string"
+   },
+   {
+    "name": "forum",
+    "type": "string"
    }
   ],
   "dealprofile/xdealv1.StatusRecord": [
