@@ -448,7 +448,7 @@ func TestReportVectors(t *testing.T) {
 
 	// Both agreed and nothing more: the offerer's agreement has no time and the
 	// acceptor never named it, T after agree_by. The deal counts (u608): rows
-	// are listed, every state local.
+	// are listed and the start is local.
 	silent := heldAt(b, "2026-11-05T12:00:00Z")
 	silent.Own = []StatusRecord{silent.Own[0]}
 	silent.Own[0].Time = NoTime

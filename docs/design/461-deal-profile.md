@@ -1500,7 +1500,8 @@ PROFILE §10). It is as proposed below, with these additions and limits:
   the report cannot check yet.
 - **Vectors built** (`testdata/deal-v1/report/`): Appendix A's buyer at each time above, the
   books as held then; its counterparty and adjudicator copies; a not-started book (the seller
-  holding its own agreement only); an untimed own book; a counterparty without the layer; the
+  holding its own agreement only); an agree-then-silent book (#511: the offerer's agreement untimed
+  and never named, T after `agree_by`: started, local, rows listed); an untimed own book; a counterparty without the layer; the
   settled-without-ruling path (lines s1 to s12: the seller concedes row 3 not met and refunds
   with no ruling, so the row is `agreed` `not_met` with `remedy_made`, and the deal is settled);
   the same concession without the refund (`agreed` `not_met`, not settled); an empty witness

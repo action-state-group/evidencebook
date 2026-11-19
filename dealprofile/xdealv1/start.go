@@ -12,7 +12,7 @@ import (
 // digest; the offerer's agreement names the acceptor's in seen, and the
 // acceptor's book names no cancellation of that offer unless it named the
 // offerer's agreement first; and the offerer's agreement has a record time
-// not after agree_by, or the acceptor's book names it, or has no record time
+// not after agree_by, or the acceptor's book names it, or the offerer's agreement has no record time
 // at all (then started locally, also after agree_by: the deal is counted, and
 // a later time after agree_by makes it not started). Until then the deal's
 // rows have no status, no dispute on it counts and no card counts it.
