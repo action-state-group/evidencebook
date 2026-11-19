@@ -23,7 +23,7 @@ pub(crate) enum Spec {
     /// correlation: its keys are a deployment's vocabulary, which the crate
     /// carries none of), held as the SHA-256 of each name the schema lists
     /// (`record-header.schema.json`). A name must be one of them exactly, as
-    /// for a closed object.
+    /// for a closed object, whatever `open` says.
     Names(&'static [[u8; 32]]),
 }
 
