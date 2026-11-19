@@ -1194,9 +1194,17 @@ func dealShareAct(a dealAct, currency string) string {
 	return actText(a, currency)
 }
 
+// The adjudicator copy's line on the claims the seller's agent made without
+// the seller's authority: the seller's own choice either way.
+const (
+	unauthorizedClaimsNotShared  = "Not shared: whether the seller's agent made any claim without the seller's authority. The seller did not choose to show this on this page."
+	unauthorizedClaimsSharedNone = "Shared by the seller's choice: their agent made no claim without their authority"
+	unauthorizedClaimsShared     = "Shared by the seller's choice: every claim their agent made without their authority (%d)"
+)
+
 // dealShareExtension is the x-deal-v0 extension of a shared copy: the steps,
 // what the agent did and the anomalies, rewritten for the audience.
-func dealShareExtension(events []sealedEvent, report dealReport, audience string, p dealPrivate, withhold map[string]bool) map[string]interface{} {
+func dealShareExtension(events []sealedEvent, report dealReport, audience string, p dealPrivate, withhold map[string]bool, includeUnchecked bool) map[string]interface{} {
 	currency := events[0].Event.Open.Terms.Currency
 	byID := map[string]dealEvent{}
 	steps := make([]interface{}, len(events))
@@ -1238,8 +1246,10 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 		out := make([]interface{}, 0, len(list))
 		for _, item := range list {
 			// What the seller's agent said without the seller's authority
-			// is the seller's own matter: no shared copy carries it.
-			if item.Kind == "unapproved_representation" && audience != cli.DealAudienceKeep {
+			// is the seller's own matter: a copy carries it only when the
+			// seller chose to show an adjudicator (includeUnchecked), and then
+			// every such claim, never a few (evidencebook-deal#207).
+			if item.Kind == "unapproved_representation" && audience != cli.DealAudienceKeep && !(includeUnchecked && audience == cli.DealAudienceAdjudicator) {
 				continue
 			}
 			ids := make([]interface{}, len(item.Steps))
@@ -1365,13 +1375,34 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 		}
 		merchant = append(merchant, m)
 	}
+	anomalyList := items(report.Anomalies, true)
+	// An adjudicator's copy of a sale says whether the seller showed it the
+	// claims their agent made without authority: absence is "not shared",
+	// never "none", so silence is not read as "the agent never overstepped".
+	if audience == cli.DealAudienceAdjudicator && dealRole(events) == dealRoleSeller {
+		marker := map[string]interface{}{"kind": "unapproved_representation_not_shared", "side": "agent", "text": unauthorizedClaimsNotShared, "steps": []interface{}{}}
+		if includeUnchecked {
+			count := 0
+			for _, item := range report.Anomalies {
+				if item.Kind == "unapproved_representation" {
+					count++
+				}
+			}
+			text := fmt.Sprintf(unauthorizedClaimsShared, count)
+			if count == 0 {
+				text = unauthorizedClaimsSharedNone
+			}
+			marker = map[string]interface{}{"kind": "unapproved_representation_shared", "side": "agent", "text": text, "steps": []interface{}{}}
+		}
+		anomalyList = append([]interface{}{marker}, anomalyList...)
+	}
 	withheld := make([]interface{}, 0, len(dealWithheldFields[audience]))
 	for _, f := range dealWithheldFieldsFor(audience, dealRole(events)) {
 		withheld = append(withheld, f)
 	}
 	ext := map[string]interface{}{
 		"deal_id": events[0].Event.DealID, "scope": dealScopeLine, "audience": audience, "withheld": withheld, "steps": steps,
-		"asked_step": report.AskedStep, "did": items(report.Did, false), "anomalies": items(report.Anomalies, true),
+		"asked_step": report.AskedStep, "did": items(report.Did, false), "anomalies": anomalyList,
 		"merchant": merchant, "email_scope": emailScopeLine,
 		"told":      scrubTold(toldItems(report.Told, false), p),
 		"lifecycle": shareLifecycle(buildDealLifecycle(events, cli.DealClock())),

@@ -91,6 +91,9 @@ type dealSession struct {
 	// bound checkpoint's, for a report off the deal's log (capsule-cli#294),
 	// so its lifecycle never states when the copy was made.
 	reportAt time.Time
+	// shareUnchecked is the seller's choice, for one adjudicator copy, to carry
+	// every claim their agent made without their authority (evidencebook-deal#207).
+	shareUnchecked bool
 	// originals is the store's artifact store, the shelf's; bookEnded is
 	// which live book deals have ended, read before a receipt is reported
 	// (settleEnded).
@@ -2631,6 +2634,10 @@ func dealReportCommand() *cobra.Command {
 		audience, _ := c.Flags().GetString("share")
 		recipient, _ := c.Flags().GetString("to")
 		recipient = strings.TrimSpace(recipient)
+		includeUnchecked, err := shareUncheckedFlag(c, audience)
+		if err != nil {
+			return err
+		}
 		fromBundle, _ := c.Flags().GetString("from-bundle")
 		directory, _ := c.Flags().GetString("directory")
 		readOnly, _ := c.Flags().GetBool("read-only")
@@ -2667,6 +2674,10 @@ func dealReportCommand() *cobra.Command {
 			if directory == "" {
 				directory = profileCountersignDirectory(s.p)
 			}
+			if err := refuseUncheckedOnABuyersDeal(includeUnchecked, events); err != nil {
+				return err
+			}
+			s.shareUnchecked = includeUnchecked
 			report, reportErr := s.dealReportFor(ctx, events)
 			if reportErr != nil {
 				return reportErr
@@ -2849,6 +2860,7 @@ func dealReportCommand() *cobra.Command {
 	cmd.Flags().String("bundle", "", "Write the deal's Evidence Bundle (for `capsulectl verify --bundle`) to this new file")
 	cmd.Flags().String("share", cli.DealAudienceKeep, "Who the page is for: keep (your own copy, nothing withheld), counterparty or adjudicator (a shared copy, put on record first)")
 	cmd.Flags().String("to", "", "With --share: who the shared copy is for, as sealed in the disclosure record")
+	cmd.Flags().Bool(includeUnauthorizedFlag, false, includeUnauthorizedHelp)
 	cmd.Flags().String("from-bundle", "", "Render from this deal's earlier bundle file instead of a new one, with any countersignatures it carries (see `deal countersign`)")
 	cmd.Flags().String("directory", "", "With --from-bundle: the countersigner directory (HTTPS URL or file) that resolves who countersigned; default: the profile's countersign.directory")
 	cmd.Flags().Bool("read-only", false, "Read the deal as it stands and write nothing: no checkpoint cut, nothing sealed, no file (for a History built over many deals)")

@@ -70,6 +70,29 @@ func cadenceCommand() *cobra.Command {
 	return cadence
 }
 
+const includeUnauthorizedFlag = "include-unauthorized-claims"
+
+const includeUnauthorizedHelp = "With --share adjudicator: also show the adjudicator every claim your agent made without your authority (all of them, marked as shown by your choice); by default the copy says they are not shared. Never in a counterparty copy"
+
+// shareUncheckedFlag reads --include-unauthorized-claims and refuses it
+// anywhere but an adjudicator's shared copy (evidencebook-deal#207).
+func shareUncheckedFlag(c *cobra.Command, audience string) (bool, error) {
+	on, _ := c.Flags().GetBool(includeUnauthorizedFlag)
+	if on && audience != cli.DealAudienceAdjudicator {
+		return false, cli.InputError("--" + includeUnauthorizedFlag + " is a choice for an adjudicator's copy: use it with --share adjudicator; a counterparty's copy never carries these claims")
+	}
+	return on, nil
+}
+
+// refuseUncheckedOnABuyersDeal: only where the user sells can an agent make
+// a claim to a buyer, so the choice means nothing on a buyer's deal.
+func refuseUncheckedOnABuyersDeal(on bool, events []sealedEvent) error {
+	if on && dealRole(events) != dealRoleSeller {
+		return cli.InputError("--" + includeUnauthorizedFlag + " is the seller's choice: this deal is not one where you sell, so your agent made no claims to a buyer")
+	}
+	return nil
+}
+
 // dealBundleFlags defines the flags the plugin adds to bundle, disclose and
 // permalink. A flag the core still defines is left to it.
 func dealBundleFlags(f *pflag.FlagSet, use string) {
@@ -79,6 +102,9 @@ func dealBundleFlags(f *pflag.FlagSet, use string) {
 	if f.Lookup("share") == nil {
 		f.String("share", cli.DealAudienceKeep, "With --deal: who the copy is for: keep (bundle only: your own copy), counterparty or adjudicator (disclose only: a shared copy, put on record first)")
 	}
+	if f.Lookup(includeUnauthorizedFlag) == nil {
+		f.Bool(includeUnauthorizedFlag, false, includeUnauthorizedHelp)
+	}
 	if f.Lookup("to") == nil {
 		f.String("to", "", "With --deal and --share: who the shared copy is for, as sealed in the disclosure record")
 	}
@@ -87,8 +113,8 @@ func dealBundleFlags(f *pflag.FlagSet, use string) {
 // dealBundleExtension runs bundle, disclose and permalink with --deal.
 func dealBundleExtension(c *cobra.Command, use string) (bool, error) {
 	if deal, _ := c.Flags().GetString("deal"); deal == "" {
-		if c.Flags().Changed("share") || c.Flags().Changed("to") {
-			return true, cli.InputError("--share and --to go with --deal: they choose what a deal's shared copy withholds")
+		if c.Flags().Changed("share") || c.Flags().Changed("to") || c.Flags().Changed(includeUnauthorizedFlag) {
+			return true, cli.InputError("--share and --to go with --deal: they choose what a deal's shared copy withholds (so does --include-unauthorized-claims)")
 		}
 		// On a deal profile the core refuses the store (it is the plugin's);
 		// the plugin says what to pass instead.
