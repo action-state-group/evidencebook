@@ -1,3 +1,0 @@
-### Added: the MCP and A2A entries of Shelf.Receive (#577)
-
-- `Shelf.PushMCP` and `Shelf.PushA2A` (and `PushA2AExtension`) carry a record push and a stamp proof over MCP (the tool `record_push`) and A2A (one Agent Card extension, one `data` part) to `Shelf.Receive`, as `spec/bindings/record-push-v0.md` of agent-action-capsule specifies (evidencebook#577, #461 acceptance 4). Duplicates are acknowledged, gaps and forks answered, and a part's refusal is an answer; a malformed push is an invalid-params error and a receiver fault an internal error, never an answer. Vectors: `testdata/shelf/receive-carriage`.

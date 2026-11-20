@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 0.0.23 (2026-11-20)
+
+Every pull request merged since 0.0.22 (the Rust changes are described below the list):
+
+- [#569](https://github.com/action-state-group/evidencebook/pull/569): feat(capsulectl): answer refusals uniformly, the library default (#473)
+- [#578](https://github.com/action-state-group/evidencebook/pull/578): docs(design): an untimed deal is counted, local, unless its agreement names a witness (u608, #570, SH-12)
+- [#582](https://github.com/action-state-group/evidencebook/pull/582): feat: RespondOptions.OnRefusal reports the decided reason locally; README names policy_declined (#580, #581)
+- [#583](https://github.com/action-state-group/evidencebook/pull/583): feat(dealprofile): x-deal-v1 status value carries the first act (#575)
+- [#584](https://github.com/action-state-group/evidencebook/pull/584): feat: CheckStaple reads a standard_history/3 staple, in Go, Rust and Python (#579)
+- [#586](https://github.com/action-state-group/evidencebook/pull/586): feat(shelf): MCP and A2A entries for Shelf.Receive (#577)
+
+The x-deal-v1 status value now carries `start.first_act` (#583), so a status value's commitment changes: a consumer that pins or seals status values regenerates them before bumping its pin.
+
+### Added: the x-deal-v1 status value carries the first act (#575)
+
+- `StatusStart::first_act` (`{"time": <status time>}` or `null`) is the holder's first `perform` or `settle` record for a deal whose counterparty runs no layer, byte for byte with Go's `xdealv1.StatusStart.FirstAct` on the shared status vectors. Every status value now carries `"first_act": null` or the act, so a status value's commitment changes.
+
+### Added: the MCP and A2A entries of `Shelf::receive` (evidencebook#577)
+
+- `Shelf::push_mcp` and `Shelf::push_a2a` (and `push_a2a_extension`), behind the `shelf` feature, carry a record push and a stamp proof over MCP (the tool `record_push`) and A2A (one Agent Card extension, one `data` part) to `Shelf::receive`, as `spec/bindings/record-push-v0.md` of agent-action-capsule specifies and Go's `Shelf.PushMCP` and `PushA2A` do, byte for byte on the shared carriage vectors (`testdata/shelf/receive-carriage`). A part's refusal is an answer; a malformed push is an invalid-params error and a receiver fault an internal error, never an answer.
+
+### Added: `check_staple` reads a `standard_history/3` staple (#579)
+
+- `DERIVATION_STANDARD_HISTORY_3` names `standard_history/3`, and `check_staple` accepts a staple of it over `full_history` whose card has exactly the /3 card's members and names its derivation. As for `standard_history/1`, the card's remaining form (SH §6 `card_form`) has no Rust checker yet. No book builds a /3 staple. `standard_history/1` is unchanged. `StapleCheck` gains `card_form_checked`: false for a `standard_history/1` or `/3` card (members and derivation only), so the departure is in the result, true for a history card.
+
 ## 0.0.22 (2026-11-19)
 
 Every pull request merged since 0.0.21 (the Rust changes are described below the list):
