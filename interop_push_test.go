@@ -121,3 +121,37 @@ func TestPushBothCarriagesOneShelf(t *testing.T) {
 	require.JSONEq(t, `{"record":{"digest":"03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549","stored":false,"duplicate":true,"deleted":false,"counted":true,"ask_for_book":false,"refused":""}}`,
 		string(answerData(t, "a2a", res.Body)))
 }
+
+// Nothing the carriage adds is an identity (RP §2.3 rule 2): the same push
+// answered on fresh shelves, with MCP _meta client information or A2A sender
+// fields set, gets the same answer.
+func TestPushCarriageFieldsNeverChangeTheOutcome(t *testing.T) {
+	v := pushVectors(t)
+	args := map[string]any{"record": b64([]byte(v.Records["a1"]))}
+	answerOn := func(carriage string, decorate func(map[string]any)) string {
+		s, _ := openPushShelf(t, v)
+		var out []byte
+		if carriage == "mcp" {
+			var m map[string]any
+			require.NoError(t, json.Unmarshal(mcpPushRequest(1, MCPToolRecordPush, args), &m))
+			decorate(m["params"].(map[string]any))
+			out = s.PushMCP("").Handle(context.Background(), mustJSON(m))
+			return string(answerData(t, "mcp", out))
+		}
+		msg := a2aPushMessageOf(args, mediaTypeApplicationJSON)
+		decorate(msg)
+		res := s.PushA2A().Handle(context.Background(), A2ARequest{Version: A2AProtocolVersion,
+			Extensions: []string{A2APushExtensionURI}, Body: a2aPushRequest(1, msg)})
+		return string(answerData(t, "a2a", res.Body))
+	}
+	plain := func(map[string]any) {}
+	require.JSONEq(t, answerOn("mcp", plain), answerOn("mcp", func(p map[string]any) {
+		p["_meta"].(map[string]any)["clientInfo"] = map[string]any{"name": "alice", "version": "1"}
+		p["_meta"].(map[string]any)["io.modelcontextprotocol/clientCapabilities"] = map[string]any{"sampling": map[string]any{}}
+	}))
+	require.JSONEq(t, answerOn("a2a", plain), answerOn("a2a", func(m map[string]any) {
+		m["contextId"], m["referenceTaskIds"] = "alice-ctx", []any{"t-9"}
+		m["metadata"] = map[string]any{"sender": "alice"}
+		m["messageId"] = "alice-1"
+	}))
+}
