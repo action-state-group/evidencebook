@@ -57,6 +57,7 @@ mod hooks_tests;
 mod import;
 mod lock;
 mod log;
+mod push;
 mod random;
 mod receive;
 #[cfg(test)]
@@ -91,6 +92,10 @@ pub use history::StandardHistoryAnchor;
 pub const JOURNAL_LOG_ID: &str = "journal";
 pub use import::LegacyCadence;
 pub use log::{Checkpoint, SUBSTRATE_KIND_CLL};
+pub use push::{
+    push_a2a_extension, PushA2a, PushA2aRequest, PushA2aResponse, PushMcp, A2A_PROTOCOL_VERSION,
+    A2A_PUSH_EXTENSION_URI, MCP_PROTOCOL_VERSION, MCP_TOOL_RECORD_PUSH,
+};
 pub use random::{RandomSource, SeededStream, SystemRandom};
 pub use receive::{
     CountedPrefix, Evidence, HeldRecord, ProofOutcome, ReceiveBounds, ReceiveChanges,

@@ -12,6 +12,7 @@ implementation and read by every other. Each file is regenerated only with
 | `correlation.json` | records carrying each correlation member or none, and the positions each identifier answers with (`correlationOf`) | `shelf_correlation_vectors_test.go` |
 | `after-write.json`, `after-continue.json`, `after-migrate.json`, `after-recover-tick.json`, `after-recover-migration.json` | the dump of the scripted shelf after each phase; the migrate phase switches it to a log of book facts (evidencebook#461) and stamps it | `internal/shelfscript` |
 | `receive/script.json`, `receive/after.json` | the received store's script of pushes, proofs, forgets and a reopen, each step's expected outcome, and the store's dump after it (evidencebook#461 §3, §7; `receive/README.md`) | `shelf_receive_vectors_test.go` |
+| `receive-carriage/script.json` | the MCP and A2A entries of `Shelf.Receive`: for each carriage a track of pushes and edge cases on a fresh shelf, each with the message sent and the message returned (evidencebook#577; `receive-carriage/README.md`) | `interop_push_vectors_test.go` |
 | `handover.json`, `handover-result.json` | the whole-shelf handover of the shelf after the migrate phase, at its newest stamp, and its replay (evidencebook#461 §2.7) | `internal/shelfscript` |
 | `record-time.json`, `after-record-time.json` | the record time phase run on the shelf after the migrate phase, each step's receipt and expected outcome, and the dump after it (evidencebook#461 §2.6) | `internal/shelfscript` |
 

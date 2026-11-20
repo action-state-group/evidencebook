@@ -1,0 +1,3326 @@
+{
+  "about": "The MCP and A2A entries of Shelf.Receive (evidencebook#577; agent-action-capsule spec/bindings/record-push-v0.md §3, §4), written by interop_push_vectors_test.go (EB_WRITE_SHELF_VECTORS=1). See README.md.",
+  "tracks": [
+    {
+      "carriage": "mcp",
+      "cases": [
+        {
+          "at": "2026-10-20T00:01:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 1,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 1,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:02:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 2,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 2,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                  "duplicate": true,
+                  "refused": "",
+                  "stored": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:03:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 3,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiYzgwNjhmNjRlOTVlNDIwNGIzODdhMWRmOTc4ODhlNWFhN2U0ZjFkYTllM2Q2NGU3OTViNmQyMGY0NDlkOWNjYSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjMsInByZXYiOiI3ZDIxNjBkNzE0OWU1N2Y2YzVkNzc0OGRlMTUzMjYwNjFlN2QxMjg3MzljYWM1Mzk1MDQwMTI3ZmIxYjI5NTU0Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiIxNTUzMGJlN2Y2MWRkMWJiMzg3MDYzNDExZTlkYWExMDRjYzdmYjg0NzI0YjgxMDQwMzllOGFlYmVhYTRlYWI3IiwidiI6MX0"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 3,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": true,
+                  "counted": false,
+                  "deleted": false,
+                  "digest": "c8068f64e95e4204b387a1df97888e5aa7e4f1da9e3d64e795b6d20f449d9cca",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:04:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 4,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiYzQ5ZDVkODBhYjdiODRkMDJiZmVlY2VhZDQ1NTRhYWU0MTg0NDQ1MjlhMWEwNDNmOThlZTlmOTJlZTM4Njk3NiIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjQsInByZXYiOiJjODA2OGY2NGU5NWU0MjA0YjM4N2ExZGY5Nzg4OGU1YWE3ZTRmMWRhOWUzZDY0ZTc5NWI2ZDIwZjQ0OWQ5Y2NhIiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiIxM2M0MmE2ZGViZGIzNGY3ODkzMDc0ZmJiOTIzNjg3ZmNjMTY2ZjIxZWMyNjcyNDNkNzE4NmUxZWU1NjE4NDU4IiwidiI6MX0"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 4,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": true,
+                  "counted": false,
+                  "deleted": false,
+                  "digest": "c49d5d80ab7b84d02bfeecead4554aae418444529a1a043f98ee9f92ee386976",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:05:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 5,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiNzFkYjUzODM5ZWU5MDAyM2E4MmI1ZDE2NmVjZWIyOWMyNjI4NzJlNDNkZjBiZmU0NmEyMWNiODMxMWM2N2NjYiIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjUsInByZXYiOiJjNDlkNWQ4MGFiN2I4NGQwMmJmZWVjZWFkNDU1NGFhZTQxODQ0NDUyOWExYTA0M2Y5OGVlOWY5MmVlMzg2OTc2Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiI2NDIwNjUzMTZmMzFhMWU0ZDQ4ZWIyYTU0NThkMmFhOTMwNTM2MTAxZjc0NGY2OTA5MmFjZjNjY2IwZGJkZmRkIiwidiI6MX0"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 5,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": true,
+                  "counted": false,
+                  "deleted": false,
+                  "digest": "71db53839ee90023a82b5d166eceb29c262872e43df0bfe46a21cb8311c67ccb",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:06:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 6,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "stamp_proof": "eyJmYWN0IjoiZXlKaWIyOXJYMmxrSWpvaU1ETXhNakkyTVRaaVptVTBOR00zWWpoa1pXUmpPV1l5T0RrNVpHVmpOek5sTm1RNE9USmxPR0UyTURNMk1UYzRNVFl3Wm1VelpEbGtNVFEzWlRVME9TSXNJbU5vWldOcmNHOXBiblJmYzJoaE1qVTJJam9pTURrM1kyVTNZamRrTnprNE9HRTJaVEkyTURSa01ERmxZMlE1TnpVME5HRmlNRGd6T1dSak9UWm1Nak00TTJJNFlUSXdPRGN6TXpCbU16azBORGxpTnlJc0ltdHBibVFpT2lKaWIyOXJYMlpoWTNRaUxDSnNhVzVyWDJOdmJXMXBkRzFsYm5RaU9pSmlZelpqT1RBeU1qY3daVFZpWldNelpqRTROVFV6TjJZMFpHWXhaVGM1TWpFek16Y3labU5oT0RGalpHVXhOekptTVRjMU9HWTVZMk00TTJNeE16UTRJaXdpYkc5blgybGtJam9pWkdWaGJDOWhJaXdpY0hKbGRsOW1ZV04wWDNOcGVtVWlPakFzSW5CeWIyWnBiR1VpT2lKa1pXRnNJaXdpYzJsNlpTSTZPQ3dpYzNSaGRIVnpYMk52YlcxcGRHMWxiblFpT2lKbE9UY3haalJsTVRRME9EVTVObVl5TVRVeVltTmhZbUkyTmpoalpUVTRZemRpTVdNNU1HUTNaVEF5TWpVME5ESTJZek13TUdJM1lqQmxabUprTnpOaElpd2lkaUk2TVgwPSIsInN0YXR1c19vcGVuaW5nIjp7InNhbHQiOiJjNDgzMWY3YTc0MmMyN2ZmZTBmYTZlNDJlMDlhYzMyMTAyZTYwMmExNDNhMTA0MDk2NzRhMjBiZmRjYjY0M2QyIiwidmFsdWUiOnsicm93Ijoib3BlbiJ9fSwiYm9va19jaGVja3BvaW50IjoiMG9SWVhLUUJKd040SDJGd2NHeHBZMkYwYVc5dUwyTnNiQzFqYUdWamEzQnZhVzUwSzJOaWIzSUVXQ0RldXZmRWVMK3pzL0Q0NjhXTDhSM0RzM1BHS3FrbERiVTlaai9LbGx3MjdBK2lBV1prWldGc0wyRUNhR1JsWVd3dllTTTRvRmlzcG1ScmFXNWtibU5zYkMxamFHVmphM0J2YVc1MGFHeHZaMTl6YVhwbENHbHBjM04xWldSZllYUjBNakF5TmkweE1DMHhPVlF4TWpvd01Eb3dNRnBwY0hKbGRsOXphWHBsQUdwamIyMXRhWFJ0Wlc1MFdFV0NXQ0NaWWlLbFlhVVI0MnFpcVNyNzhGbXdFT2ZqbVV3TlYvSnc1UkwxdkxqL0ZGZ2c1V1Nvam1tc1NIZlJ5T2ZnZTV0NmxVUS9IUG44MVNNWEFiN0NFVzl0bTgxdmNISmxkbDlqYjIxdGFYUnRaVzUwUUZoQW41LzJqVlBFcG9TUGkvWDZNVUV2endtM3pQUjFTR2QrRHVVLzgyK2MxUllUdzl4Nk1sUTZlUFdBeXM5a2l6NTVjcmZJMDQrQzVydyt0b2ZXWTJwdURRPT0iLCJpbmNsdXNpb24iOnsia2luZCI6ImNsbC1tbXItaW5jbHVzaW9uIiwic2VxIjozLCJwcm9vZiI6eyJ2IjoxLCJraW5kIjoiaW5jbHVzaW9uIiwic2l6ZSI6NywibGVhZl9pbmRleCI6Miwid2l0bmVzcyI6WyJiM2U2OWI0MWI0ZTE2YzU4ZTZiYWMzNDJiZjJjMmNiNGZkZjVkYmQ1YjE4ZGE3ZTljZjQ4Y2IyZDQ5MWY5NDZjIiwiOTRkMmY3MWZkYzI2MjJhN2Q5ZTVkNzAwMzJhNjMxYjg2Y2MyNjUyOGZlZDEwNjVjNDZlYjU3YTMzM2EyYmU4MSJdLCJwZWFrc19sZWZ0IjpbXSwicGVha3NfcmlnaHQiOltdfX0sInNoZWxmX2NoZWNrcG9pbnQiOiIwb1JZaktRQkp3TjRIMkZ3Y0d4cFkyRjBhVzl1TDJOc2JDMWphR1ZqYTNCdmFXNTBLMk5pYjNJRVdDRGV1dmZFZUwrenMvRDQ2OFdMOFIzRHMzUEdLcWtsRGJVOVpqL0tsbHcyN0EraUFYZ2RaR1ZoYkMxallXUmxibU5sTHpBeE1qTTBOVFkzT0RsaFltTmtaV1lDZUI5a1pXRnNMV05oWkdWdVkyVXZNREV5TXpRMU5qYzRPV0ZpWTJSbFppTTNvRmtCZWFka2EybHVaRzVqYkd3dFkyaGxZMnR3YjJsdWRHaHNiMmRmYzJsNlpRZHBhWE56ZFdWa1gyRjBkREl3TWpZdE1UQXRNVGxVTVRJNk1ERTZNREJhYVhCeVpYWmZjMmw2WlFGcVkyOXRiV2wwYldWdWRGZ2pnVmdnWjNQK0VLa01HazgwemZzekpZbXFIdjN6VHlXNVJiVEtObVZWQk5LZDkvOXZjSEpsZGw5amIyMXRhWFJ0Wlc1MFdDT0JXQ0RaQ2JDVXVzbDBGVDhCZHdHejF2REpEck9JZ0VwRlNQcWlOWjAyVDE0aDVIRmpiMjV6YVhOMFpXNWplVjl3Y205dlpxVm1jMmw2WlY5aEFXWnphWHBsWDJJSFozZHBkRzVsYzNPQmdsZ2dGb1JkWFFyUG5jMmJWS2VCeTVSNytQOEM4eFgxTDZKbzJ1QVE5TG1FU1BCWUlLc2pYaXN1TGp0dUxCQ0ZBRnVYRkRXZWVucWFEc1FCRUliWjVsS1JubDJOYVc1bGQxOXdaV0ZyYzRGWUlHZHovaENwREJwUE5NMzdNeVdKcWg3OTgwOGx1VVcweWpabFZRVFNuZmYvYVc5c1pGOXdaV0ZyYzRGWUlOa0pzSlM2eVhRVlB3RjNBYlBXOE1rT3M0aUFTa1ZJK3FJMW5UWlBYaUhrV0VBRFJNVTZaS2kzR1BuWGw4K3RHbFZiN2pZc3hXUUNWakY5WmsrNHlybEhRc0h2cHF3amNkNGZvRlVRK0ZvZmdpUDlwNUhBT3lLcEIxTU0ydDdyUjE4TCJ9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 6,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "stamp_proof": {
+                  "accepted": true,
+                  "duplicate": false,
+                  "refused": ""
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:07:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 7,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiN2QyMTYwZDcxNDllNTdmNmM1ZDc3NDhkZTE1MzI2MDYxZTdkMTI4NzM5Y2FjNTM5NTA0MDEyN2ZiMWIyOTU1NCIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjIsInByZXYiOiIwMzEyMjYxNmJmZTQ0YzdiOGRlZGM5ZjI4OTlkZWM3M2U2ZDg5MmU4YTYwMzYxNzgxNjBmZTNkOWQxNDdlNTQ5Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiIwNmIwNGIxYjliOWViOGJlOTI5NWVlNzUwODgyNmQxZGVmNWE4ZWFjNGMzMWJhZTM5MTZhOTYxMjEwZjgwOGZlIiwidiI6MX0"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 7,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "7d2160d7149e57f6c5d7748de15326061e7d128739cac5395040127fb1b29554",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:08:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 8,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiNzFkYjUzODM5ZWU5MDAyM2E4MmI1ZDE2NmVjZWIyOWMyNjI4NzJlNDNkZjBiZmU0NmEyMWNiODMxMWM2N2NjYiIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjUsInByZXYiOiJjNDlkNWQ4MGFiN2I4NGQwMmJmZWVjZWFkNDU1NGFhZTQxODQ0NDUyOWExYTA0M2Y5OGVlOWY5MmVlMzg2OTc2Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiI2NDIwNjUzMTZmMzFhMWU0ZDQ4ZWIyYTU0NThkMmFhOTMwNTM2MTAxZjc0NGY2OTA5MmFjZjNjY2IwZGJkZmRkIiwidiI6MX0",
+                "stamp_proof": "eyJmYWN0IjoiZXlKaWIyOXJYMmxrSWpvaU1ETXhNakkyTVRaaVptVTBOR00zWWpoa1pXUmpPV1l5T0RrNVpHVmpOek5sTm1RNE9USmxPR0UyTURNMk1UYzRNVFl3Wm1VelpEbGtNVFEzWlRVME9TSXNJbU5vWldOcmNHOXBiblJmYzJoaE1qVTJJam9pTURrM1kyVTNZamRrTnprNE9HRTJaVEkyTURSa01ERmxZMlE1TnpVME5HRmlNRGd6T1dSak9UWm1Nak00TTJJNFlUSXdPRGN6TXpCbU16azBORGxpTnlJc0ltdHBibVFpT2lKaWIyOXJYMlpoWTNRaUxDSnNhVzVyWDJOdmJXMXBkRzFsYm5RaU9pSmxOREpqWmpoaFltRTVPR0V5TkRrMlptSXpORGswTjJKbFkySXhPVE13WlRGbE5UZzFOalJtWVRkaU1XVTFNbUk0WVRjd09USTFNMlpsTVRobE1qTXdJaXdpYkc5blgybGtJam9pWkdWaGJDOWhJaXdpY0hKbGRsOW1ZV04wWDNOcGVtVWlPamdzSW5CeWIyWnBiR1VpT2lKa1pXRnNJaXdpYzJsNlpTSTZPQ3dpYzNSaGRIVnpYMk52YlcxcGRHMWxiblFpT2lJNFpXTmhObVppT1dNNU9XWmtNak0wTURnM09EQXhaRFJrWlRBNVpXSXdNVGM1TkdJMlkyUmtObVl6WkRCalpUWTFNekpqWkRNMFpEVmtOVEkzTXpVeElpd2lkaUk2TVgwPSIsInN0YXR1c19vcGVuaW5nIjp7InNhbHQiOiJhODM0YTgxMmU5MGRlNWVhMDNjMDNmYmExN2Q3NDc5YjE0Mzk0ZmVmYzlmNGVhNDgzMjEyODVhZjZiZGRmZWVmIiwidmFsdWUiOnsicm93IjoiYWdyZWVkIn19LCJib29rX2NoZWNrcG9pbnQiOiIwb1JZWEtRQkp3TjRIMkZ3Y0d4cFkyRjBhVzl1TDJOc2JDMWphR1ZqYTNCdmFXNTBLMk5pYjNJRVdDRGV1dmZFZUwrenMvRDQ2OFdMOFIzRHMzUEdLcWtsRGJVOVpqL0tsbHcyN0EraUFXWmtaV0ZzTDJFQ2FHUmxZV3d2WVNNNG9GaXNwbVJyYVc1a2JtTnNiQzFqYUdWamEzQnZhVzUwYUd4dloxOXphWHBsQ0dscGMzTjFaV1JmWVhSME1qQXlOaTB4TUMweE9WUXhNam93TURvd01GcHBjSEpsZGw5emFYcGxBR3BqYjIxdGFYUnRaVzUwV0VXQ1dDQ1pZaUtsWWFVUjQycWlxU3I3OEZtd0VPZmptVXdOVi9KdzVSTDF2TGovRkZnZzVXU29qbW1zU0hmUnlPZmdlNXQ2bFVRL0hQbjgxU01YQWI3Q0VXOXRtODF2Y0hKbGRsOWpiMjF0YVhSdFpXNTBRRmhBbjUvMmpWUEVwb1NQaS9YNk1VRXZ6d20zelBSMVNHZCtEdVUvODIrYzFSWVR3OXg2TWxRNmVQV0F5czlraXo1NWNyZkkwNCtDNXJ3K3RvZldZMnB1RFE9PSIsImluY2x1c2lvbiI6eyJraW5kIjoiY2xsLW1tci1pbmNsdXNpb24iLCJzZXEiOjUsInByb29mIjp7InYiOjEsImtpbmQiOiJpbmNsdXNpb24iLCJzaXplIjoxMCwibGVhZl9pbmRleCI6NCwid2l0bmVzcyI6WyJkOTdjMjAwNzJhZTViZmIzZWFmZmE4NTU1YTJmMzk5MTgxZjQ3YzFkZTkzZDA4NWQwMTQxZTk3Zjc2M2NkNDdkIl0sInBlYWtzX2xlZnQiOlsiNjc3M2ZlMTBhOTBjMWE0ZjM0Y2RmYjMzMjU4OWFhMWVmZGYzNGYyNWI5NDViNGNhMzY2NTU1MDRkMjlkZjdmZiJdLCJwZWFrc19yaWdodCI6W119fSwic2hlbGZfY2hlY2twb2ludCI6IjBvUllqYVFCSndONEgyRndjR3hwWTJGMGFXOXVMMk5zYkMxamFHVmphM0J2YVc1MEsyTmliM0lFV0NEZXV2ZkVlTCt6cy9ENDY4V0w4UjNEczNQR0txa2xEYlU5WmovS2xsdzI3QStpQVhnZFpHVmhiQzFqWVdSbGJtTmxMekF4TWpNME5UWTNPRGxoWW1Oa1pXWUNlQ0JrWldGc0xXTmhaR1Z1WTJVdk1ERXlNelExTmpjNE9XRmlZMlJsWmlNeE1LQlpBWG1uWkd0cGJtUnVZMnhzTFdOb1pXTnJjRzlwYm5Sb2JHOW5YM05wZW1VS2FXbHpjM1ZsWkY5aGRIUXlNREkyTFRFd0xURTVWREV5T2pBeU9qQXdXbWx3Y21WMlgzTnBlbVVIYW1OdmJXMXBkRzFsYm5SWVJZSllJR2R6L2hDcERCcFBOTTM3TXlXSnFoNzk4MDhsdVVXMHlqWmxWUVRTbmZmL1dDRHRlQXVpeithVUJuRGk5NmhPbWdvMDg5NXBRVTNRTExaVzRHSGVsYml5aEc5d2NtVjJYMk52YlcxcGRHMWxiblJZSTRGWUlHZHovaENwREJwUE5NMzdNeVdKcWg3OTgwOGx1VVcweWpabFZRVFNuZmYvY1dOdmJuTnBjM1JsYm1ONVgzQnliMjltcFdaemFYcGxYMkVIWm5OcGVtVmZZZ3BuZDJsMGJtVnpjNEdBYVc1bGQxOXdaV0ZyYzRKWUlHZHovaENwREJwUE5NMzdNeVdKcWg3OTgwOGx1VVcweWpabFZRVFNuZmYvV0NEdGVBdWl6K2FVQm5EaTk2aE9tZ28wODk1cFFVM1FMTFpXNEdIZWxiaXloR2x2YkdSZmNHVmhhM09CV0NCbmMvNFFxUXdhVHpUTit6TWxpYW9lL2ZOUEpibEZ0TW8yWlZVRTBwMzMvMWhBTWdkMnB0R2pwTnhtdTVNVUJlYzJSMzNqWlZabHhTZzArTVpXT0NJcDBocnZhcllhNS9na0E2VVFjZjkrVSt2YXg5cjMvQ1JvVDdYTjBqSEVBWXA2Q0E9PSJ9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 8,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "71db53839ee90023a82b5d166eceb29c262872e43df0bfe46a21cb8311c67ccb",
+                  "duplicate": true,
+                  "refused": "",
+                  "stored": false
+                },
+                "stamp_proof": {
+                  "accepted": true,
+                  "duplicate": false,
+                  "refused": ""
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:09:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 9,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "stamp_proof": "eyJmYWN0IjoiZXlKaWIyOXJYMmxrSWpvaU1ETXhNakkyTVRaaVptVTBOR00zWWpoa1pXUmpPV1l5T0RrNVpHVmpOek5sTm1RNE9USmxPR0UyTURNMk1UYzRNVFl3Wm1VelpEbGtNVFEzWlRVME9TSXNJbU5vWldOcmNHOXBiblJmYzJoaE1qVTJJam9pTURrM1kyVTNZamRrTnprNE9HRTJaVEkyTURSa01ERmxZMlE1TnpVME5HRmlNRGd6T1dSak9UWm1Nak00TTJJNFlUSXdPRGN6TXpCbU16azBORGxpTnlJc0ltdHBibVFpT2lKaWIyOXJYMlpoWTNRaUxDSnNhVzVyWDJOdmJXMXBkRzFsYm5RaU9pSmlZelpqT1RBeU1qY3daVFZpWldNelpqRTROVFV6TjJZMFpHWXhaVGM1TWpFek16Y3labU5oT0RGalpHVXhOekptTVRjMU9HWTVZMk00TTJNeE16UTRJaXdpYkc5blgybGtJam9pWkdWaGJDOWhJaXdpY0hKbGRsOW1ZV04wWDNOcGVtVWlPakFzSW5CeWIyWnBiR1VpT2lKa1pXRnNJaXdpYzJsNlpTSTZPQ3dpYzNSaGRIVnpYMk52YlcxcGRHMWxiblFpT2lKbE9UY3haalJsTVRRME9EVTVObVl5TVRVeVltTmhZbUkyTmpoalpUVTRZemRpTVdNNU1HUTNaVEF5TWpVME5ESTJZek13TUdJM1lqQmxabUprTnpOaElpd2lkaUk2TVgwPSIsInN0YXR1c19vcGVuaW5nIjp7InNhbHQiOiJjNDgzMWY3YTc0MmMyN2ZmZTBmYTZlNDJlMDlhYzMyMTAyZTYwMmExNDNhMTA0MDk2NzRhMjBiZmRjYjY0M2QyIiwidmFsdWUiOnsicm93Ijoib3BlbiJ9fSwiYm9va19jaGVja3BvaW50IjoiMG9SWVhLUUJKd040SDJGd2NHeHBZMkYwYVc5dUwyTnNiQzFqYUdWamEzQnZhVzUwSzJOaWIzSUVXQ0RldXZmRWVMK3pzL0Q0NjhXTDhSM0RzM1BHS3FrbERiVTlaai9LbGx3MjdBK2lBV1prWldGc0wyRUNhR1JsWVd3dllTTTRvRmlzcG1ScmFXNWtibU5zYkMxamFHVmphM0J2YVc1MGFHeHZaMTl6YVhwbENHbHBjM04xWldSZllYUjBNakF5TmkweE1DMHhPVlF4TWpvd01Eb3dNRnBwY0hKbGRsOXphWHBsQUdwamIyMXRhWFJ0Wlc1MFdFV0NXQ0NaWWlLbFlhVVI0MnFpcVNyNzhGbXdFT2ZqbVV3TlYvSnc1UkwxdkxqL0ZGZ2c1V1Nvam1tc1NIZlJ5T2ZnZTV0NmxVUS9IUG44MVNNWEFiN0NFVzl0bTgxdmNISmxkbDlqYjIxdGFYUnRaVzUwUUZoQW41LzJqVlBFcG9TUGkvWDZNVUV2endtM3pQUjFTR2QrRHVVLzgyK2MxUllUdzl4Nk1sUTZlUFdBeXM5a2l6NTVjcmZJMDQrQzVydyt0b2ZXWTJwdURRPT0iLCJpbmNsdXNpb24iOnsia2luZCI6ImNsbC1tbXItaW5jbHVzaW9uIiwic2VxIjozLCJwcm9vZiI6eyJ2IjoxLCJraW5kIjoiaW5jbHVzaW9uIiwic2l6ZSI6NywibGVhZl9pbmRleCI6Miwid2l0bmVzcyI6WyJiM2U2OWI0MWI0ZTE2YzU4ZTZiYWMzNDJiZjJjMmNiNGZkZjVkYmQ1YjE4ZGE3ZTljZjQ4Y2IyZDQ5MWY5NDZjIiwiOTRkMmY3MWZkYzI2MjJhN2Q5ZTVkNzAwMzJhNjMxYjg2Y2MyNjUyOGZlZDEwNjVjNDZlYjU3YTMzM2EyYmU4MSJdLCJwZWFrc19sZWZ0IjpbXSwicGVha3NfcmlnaHQiOltdfX0sInNoZWxmX2NoZWNrcG9pbnQiOiIwb1JZaktRQkp3TjRIMkZ3Y0d4cFkyRjBhVzl1TDJOc2JDMWphR1ZqYTNCdmFXNTBLMk5pYjNJRVdDRGV1dmZFZUwrenMvRDQ2OFdMOFIzRHMzUEdLcWtsRGJVOVpqL0tsbHcyN0EraUFYZ2RaR1ZoYkMxallXUmxibU5sTHpBeE1qTTBOVFkzT0RsaFltTmtaV1lDZUI5a1pXRnNMV05oWkdWdVkyVXZNREV5TXpRMU5qYzRPV0ZpWTJSbFppTTNvRmtCZWFka2EybHVaRzVqYkd3dFkyaGxZMnR3YjJsdWRHaHNiMmRmYzJsNlpRZHBhWE56ZFdWa1gyRjBkREl3TWpZdE1UQXRNVGxVTVRJNk1ERTZNREJhYVhCeVpYWmZjMmw2WlFGcVkyOXRiV2wwYldWdWRGZ2pnVmdnWjNQK0VLa01HazgwemZzekpZbXFIdjN6VHlXNVJiVEtObVZWQk5LZDkvOXZjSEpsZGw5amIyMXRhWFJ0Wlc1MFdDT0JXQ0RaQ2JDVXVzbDBGVDhCZHdHejF2REpEck9JZ0VwRlNQcWlOWjAyVDE0aDVIRmpiMjV6YVhOMFpXNWplVjl3Y205dlpxVm1jMmw2WlY5aEFXWnphWHBsWDJJSFozZHBkRzVsYzNPQmdsZ2dGb1JkWFFyUG5jMmJWS2VCeTVSNytQOEM4eFgxTDZKbzJ1QVE5TG1FU1BCWUlLc2pYaXN1TGp0dUxCQ0ZBRnVYRkRXZWVucWFEc1FCRUliWjVsS1JubDJOYVc1bGQxOXdaV0ZyYzRGWUlHZHovaENwREJwUE5NMzdNeVdKcWg3OTgwOGx1VVcweWpabFZRVFNuZmYvYVc5c1pGOXdaV0ZyYzRGWUlOa0pzSlM2eVhRVlB3RjNBYlBXOE1rT3M0aUFTa1ZJK3FJMW5UWlBYaUhrV0VBRFJNVTZaS2kzR1BuWGw4K3RHbFZiN2pZc3hXUUNWakY5WmsrNHlybEhRc0h2cHF3amNkNGZvRlVRK0ZvZmdpUDlwNUhBT3lLcEIxTU0ydDdyUjE4TCJ9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 9,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "stamp_proof": {
+                  "accepted": false,
+                  "duplicate": true,
+                  "refused": ""
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:10:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 10,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "stamp_proof": "eyJmYWN0IjoiZXlKaWIyOXJYMmxrSWpvaVlXVTBaRFpqT1RnNE16TTRaRFUxTlRRM016YzVNRFZqWWpnNVlqWTBPVEl4WldFNVltSXhZalpoTlRWaE5qVXpPR0k1WlRnek5qQmxPV1l3TWpCaFpDSXNJbU5vWldOcmNHOXBiblJmYzJoaE1qVTJJam9pWTJGaU5XRmxNVE5qWTJWbFpEY3lPVEUxWW1ZMlptWXhOREF3WVRjMVpEVTFaakF3WW1ZeU5XTTVaREJoTkdaaE1tWTRaVEJpTVdFME9UZzFNMkl6TkNJc0ltdHBibVFpT2lKaWIyOXJYMlpoWTNRaUxDSnNhVzVyWDJOdmJXMXBkRzFsYm5RaU9pSTJaV0ZsTVRrelltVTFZVFEwTkRka1pUY3hZamcxWVdWaU1XRmtOVGN5WTJWaE0yRmtOR1F3TkRCaFl6Y3daVEk0TVRkbU1ERTNPR0ZtWTJZME9HRmpJaXdpYkc5blgybGtJam9pWkdWaGJDOWhJaXdpY0hKbGRsOW1ZV04wWDNOcGVtVWlPakFzSW5CeWIyWnBiR1VpT2lKa1pXRnNJaXdpYzJsNlpTSTZPQ3dpYzNSaGRIVnpYMk52YlcxcGRHMWxiblFpT2lKaVpEVmhPRFU0WVRZMlpUYzFPR1UyTUdGa1lUUmpOalE0TVRGaFkyTTRPVEU0T1dZMU9ETTNZMll6WW1ZeE5qWmxPREkxTVRsbE1qWTNZV05sWmpSaklpd2lkaUk2TVgwPSIsInN0YXR1c19vcGVuaW5nIjp7InNhbHQiOiIzM2FjZmFiZGFiNzMxYmY5NjIwOTA3N2E1OWYxZWFlMTBmMWFhZGQ1NWIzNzZhZGVkMTE5MjgwZjYxODUwYThmIiwidmFsdWUiOnsicm93Ijoib3BlbiJ9fSwiYm9va19jaGVja3BvaW50IjoiMG9SWVhLUUJKd040SDJGd2NHeHBZMkYwYVc5dUwyTnNiQzFqYUdWamEzQnZhVzUwSzJOaWIzSUVXQ0RldXZmRWVMK3pzL0Q0NjhXTDhSM0RzM1BHS3FrbERiVTlaai9LbGx3MjdBK2lBV1prWldGc0wyRUNhR1JsWVd3dllTTTRvRmlzcG1ScmFXNWtibU5zYkMxamFHVmphM0J2YVc1MGFHeHZaMTl6YVhwbENHbHBjM04xWldSZllYUjBNakF5TmkweE1DMHhPVlF4TWpvd01Eb3dNRnBwY0hKbGRsOXphWHBsQUdwamIyMXRhWFJ0Wlc1MFdFV0NXQ0FjK05KSm80dWFqbnErY1B1NGgrb0tiRjRYQmpCbCtiRGh0eEk2N3o4TjVsZ2dmY3piM3RLWFB5SU1qV0hESENMSm0wZlUrWVdmTVQ4TkZoUDF5TUdGVG9KdmNISmxkbDlqYjIxdGFYUnRaVzUwUUZoQWZZd1FhZUxuMWpaRmxicnJxS0wwOE5zdTlpSWpzeVBQSVkrWXRkdlUrVnZ5b2Vwc3VKVTNnakNDT2FuSVhsMitRZWVjeHhmN083ZXJMRkVQb3pXR0N3PT0iLCJpbmNsdXNpb24iOnsia2luZCI6ImNsbC1tbXItaW5jbHVzaW9uIiwic2VxIjozLCJwcm9vZiI6eyJ2IjoxLCJraW5kIjoiaW5jbHVzaW9uIiwic2l6ZSI6NywibGVhZl9pbmRleCI6Miwid2l0bmVzcyI6WyJiM2U2OWI0MWI0ZTE2YzU4ZTZiYWMzNDJiZjJjMmNiNGZkZjVkYmQ1YjE4ZGE3ZTljZjQ4Y2IyZDQ5MWY5NDZjIiwiZmYyYTA5YjllZWUyNTFhYzZlNzQ0ZWYwNDNkZmNmZTNhMzEwZTA1MmJkMWM0ZGFjMGYxZDhiMWJhYTRhNDJmYyJdLCJwZWFrc19sZWZ0IjpbXSwicGVha3NfcmlnaHQiOltdfX0sInNoZWxmX2NoZWNrcG9pbnQiOiIwb1JZaktRQkp3TjRIMkZ3Y0d4cFkyRjBhVzl1TDJOc2JDMWphR1ZqYTNCdmFXNTBLMk5pYjNJRVdDRGV1dmZFZUwrenMvRDQ2OFdMOFIzRHMzUEdLcWtsRGJVOVpqL0tsbHcyN0EraUFYZ2RaR1ZoYkMxallXUmxibU5sTHpBeE1qTTBOVFkzT0RsaFltTmtaV1lDZUI5a1pXRnNMV05oWkdWdVkyVXZNREV5TXpRMU5qYzRPV0ZpWTJSbFppTTNvRmtCZWFka2EybHVaRzVqYkd3dFkyaGxZMnR3YjJsdWRHaHNiMmRmYzJsNlpRZHBhWE56ZFdWa1gyRjBkREl3TWpZdE1UQXRNVGxVTVRJNk1ERTZNREJhYVhCeVpYWmZjMmw2WlFGcVkyOXRiV2wwYldWdWRGZ2pnVmdnemdmTUV0Y1RHQTVlVWFXMW0ybkNHQmdjMEs3UkJqckt1dDMvQ0VaZDI4UnZjSEpsZGw5amIyMXRhWFJ0Wlc1MFdDT0JXQ0JVdnV3a3pTTTNvcWxRTzNhdXZhL0dZaW91L2ZVck9abUNQcS9KdFB3a1NYRmpiMjV6YVhOMFpXNWplVjl3Y205dlpxVm1jMmw2WlY5aEFXWnphWHBsWDJJSFozZHBkRzVsYzNPQmdsZ2dGb1JkWFFyUG5jMmJWS2VCeTVSNytQOEM4eFgxTDZKbzJ1QVE5TG1FU1BCWUlFUy9JS0hZd2I5c0VLVlVwb0VpQ3dWazRkRno3WkN6MmZabXN1RG9wN21MYVc1bGQxOXdaV0ZyYzRGWUlNNEh6QkxYRXhnT1hsR2x0WnRwd2hnWUhOQ3UwUVk2eXJyZC93aEdYZHZFYVc5c1pGOXdaV0ZyYzRGWUlGUys3Q1ROSXplaXFWQTdkcTY5cjhaaUtpNzk5U3M1bVlJK3I4bTAvQ1JKV0VEbldLbVNhR1ZFTFhiR0V2Z21uTlhDTzlHMU9CZG8vYThkRTNNY25aM25sNWVrNFdCNGt3R29HVlFQblU5TzQ5a2svYU0ybW9UYURWWVJKbmdad2NjSiJ9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 10,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "stamp_proof": {
+                  "accepted": false,
+                  "duplicate": false,
+                  "refused": "invalid"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:11:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 11,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMTliOGEyZjUxZmM1NWJkOTJkYTg1Y2RlY2Q5MWYzOTMxM2QzMDgxMjlhZjExNzkyNDliZDE0ZTNlZDZlMzQ3NiIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjIsInByZXYiOiIwMzEyMjYxNmJmZTQ0YzdiOGRlZGM5ZjI4OTlkZWM3M2U2ZDg5MmU4YTYwMzYxNzgxNjBmZTNkOWQxNDdlNTQ5Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiJmMzJmN2FiYTgwY2Y3NWRmZmE4NDg5Y2ZlYzI3M2JhZGRhNjU4YWUzYzE4NmY3ZmE4NjYyMWY2OGVmYjRmMDlhIiwidiI6MX0"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 11,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": true,
+                  "counted": false,
+                  "deleted": false,
+                  "digest": "19b8a2f51fc55bd92da85cdecd91f39313d308129af1179249bd14e3ed6e3476",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:12:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 12,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC1tIiwiZGlnZXN0IjoiY2EwZGYyYzk1YWExNDRjMWQwZmYyZmYzYzhmOTY3ZmRjMWRlOWVmMGM0MTIwYjM3MjY0MTY3MDFiNTE5ZDYxOSIsImxvZyI6ImRlYWwvbSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJtYWxsb3J5Iiwic2lnIjoiMzU2OGMyNWI3OTZkMzUyOWNhOWE0ZWU0MzA0YmMzOTdiNTQ3ODM3NWU0ZWVmZTAxYjUxMTU0NTAxNDY2MTdkNSIsInYiOjF9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 12,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": false,
+                  "deleted": false,
+                  "digest": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+                  "duplicate": false,
+                  "refused": "refused",
+                  "stored": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:13:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 13,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoib2ZmZXItbzEiLCJkaWdlc3QiOiIyMzUyZGE3MjgwZjFkZWNjM2FjZjFiYTg0ZWI5NDVjOWZjMmI3YjU0MTA5NGUxZDA5OTJkYmZmZDFiNjY2NGNjIiwibG9nIjoib2ZmZXJzL28xIiwib2ZmZXIiOnRydWUsInBvc2l0aW9uIjoxLCJwcmV2IjoiIiwic2VuZGVyIjoiYm9iIiwic2lnIjoiZGY5ODA3ZWY4MTU4OTA1ZDdjZWRjMGE0YzIxZjQxYjFlYmExNTY0YTIzZmJlZmMwYmI4YjFmYzlkZjUxMWJkMiIsInYiOjF9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 13,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "2352da7280f1decc3acf1ba84eb945c9fc2b7b541094e1d0992dbffd1b6664cc",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:14:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 14,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoib2ZmZXItbzIiLCJkaWdlc3QiOiI5MjUwYjk5MTJlZTkxZDZiNDZlMjMyOTk0NTllY2Q2ZWI4MTU0NDUxZDYyNTU4YTNhMGE3MDhhNzc5MjZhZDA0IiwibG9nIjoib2ZmZXJzL28yIiwib2ZmZXIiOnRydWUsInBvc2l0aW9uIjoxLCJwcmV2IjoiIiwic2VuZGVyIjoiYm9iIiwic2lnIjoiNTFiY2YxMzg1MDhlYjdjZTFlOWU3NTQ4NjVmMTQ1MmVmYzRhNGE1MGMzYjlkZjJkMDI1YmE1YjlhM2U4NjgxOSIsInYiOjF9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 14,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "9250b9912ee91d6b46e23299459ecd6eb8154451d62558a3a0a708a77926ad04",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:15:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 15,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoib2ZmZXItbzMiLCJkaWdlc3QiOiJkZTJkOTFkYzBhMjU4MDQxNGU5YTcwZjdkZmM3NmFmNzI3YjY5Y2FjMDgzOGYyY2JlMGE4OGQxMjY0MmVmY2JmIiwibG9nIjoib2ZmZXJzL28zIiwib2ZmZXIiOnRydWUsInBvc2l0aW9uIjoxLCJwcmV2IjoiIiwic2VuZGVyIjoiYm9iIiwic2lnIjoiNTNiZGRiNjU1NDExZmEwZGE5Zjk2MjFlYTM5N2U5MGUwNzkzZTcwM2RiYjI5MWY1NGMxYTBlNGY4NjljNjljYSIsInYiOjF9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 15,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "de2d91dc0a2580414e9a70f7dfc76af727b69cac0838f2cbe0a88d12642efcbf",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:16:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 16,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoib2ZmZXItbzQiLCJkaWdlc3QiOiIxYjI1MDFhMjBmZTFiY2Q4MmI0OGM4ZGIxZTBmOWRkMmRhOWRlNThkNmI2MThmYTA0YTgxYzUxYzNhODZjZWEyIiwibG9nIjoib2ZmZXJzL280Iiwib2ZmZXIiOnRydWUsInBvc2l0aW9uIjoxLCJwcmV2IjoiIiwic2VuZGVyIjoiYm9iIiwic2lnIjoiYTEwZjE2NTUzZjI2YzJlMGU4OGMwYzE0NWIwMzg5NzAxMzQxNWUyMmE2MWI1NWYzMjIyMzRlNzZkNWIzMzFmMiIsInYiOjF9"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 16,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "1b2501a20fe1bcd82b48c8db1e0f9dd2da9de58d6b618fa04a81c51c3a86cea2",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:17:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 17,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0yIiwiZGlnZXN0IjoiN2RjOTZmNzc2Yzg0MjNlNTdhMjc4NTQ4OWEzZjljNDNmYjZlNzU2ODc2ZDZhZDlhOWNhYzRhYTRlNzJlYzE5MyIsImxvZyI6ImRlYWwvYiIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6IjMxYTQyZWE3YjQ4OTkwNjM2ZDMyYzQ3MDc4MDVkNWZhMTgxODE4OGEwNjRhM2EyYjkwZGJjODA1NWMzNzZjNDgiLCJ2IjoxfQ"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 17,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "7dc96f776c8423e57a2785489a3f9c43fb6e756876d6ad9a9cac4aa4e72ec193",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:18:00Z",
+          "op": "forget",
+          "deal": "deal-2",
+          "settled": false
+        },
+        {
+          "at": "2026-10-20T03:00:00Z",
+          "op": "forget",
+          "deal": "deal-2",
+          "settled": true
+        },
+        {
+          "at": "2026-10-20T03:19:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 18,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0yIiwiZGlnZXN0IjoiN2RjOTZmNzc2Yzg0MjNlNTdhMjc4NTQ4OWEzZjljNDNmYjZlNzU2ODc2ZDZhZDlhOWNhYzRhYTRlNzJlYzE5MyIsImxvZyI6ImRlYWwvYiIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6IjMxYTQyZWE3YjQ4OTkwNjM2ZDMyYzQ3MDc4MDVkNWZhMTgxODE4OGEwNjRhM2EyYjkwZGJjODA1NWMzNzZjNDgiLCJ2IjoxfQ"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 18,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": false,
+                  "deleted": true,
+                  "digest": "7dc96f776c8423e57a2785489a3f9c43fb6e756876d6ad9a9cac4aa4e72ec193",
+                  "duplicate": false,
+                  "refused": "",
+                  "stored": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T03:20:00Z",
+          "op": "reopen"
+        },
+        {
+          "at": "2026-10-20T03:21:00Z",
+          "op": "call",
+          "note": "receive step",
+          "request": {
+            "id": 19,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 19,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                  "duplicate": true,
+                  "refused": "",
+                  "stored": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a record whose bytes the profile cannot read: refused invalid, no digest",
+          "request": {
+            "id": 20,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "bm90IGEgcmVjb3Jk"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 20,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": false,
+                  "deleted": false,
+                  "digest": "",
+                  "duplicate": false,
+                  "refused": "invalid",
+                  "stored": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a stamp proof that is not a stamp proof: its part refused invalid",
+          "request": {
+            "id": 21,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "stamp_proof": "bm90IGpzb24"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 21,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "stamp_proof": {
+                  "accepted": false,
+                  "duplicate": false,
+                  "refused": "invalid"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a record and a proof that is not one: each part answered on its own",
+          "request": {
+            "id": 22,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ",
+                "stamp_proof": "e30"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "id": 22,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [],
+              "isError": false,
+              "resultType": "complete",
+              "structuredContent": {
+                "record": {
+                  "ask_for_book": false,
+                  "counted": true,
+                  "deleted": false,
+                  "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                  "duplicate": true,
+                  "refused": "",
+                  "stored": false
+                },
+                "stamp_proof": {
+                  "accepted": false,
+                  "duplicate": false,
+                  "refused": "invalid"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "no member: invalid params, no answer",
+          "request": {
+            "id": 23,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {},
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "arguments do not match the record_push input schema"
+            },
+            "id": 23,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "an extra member: invalid params",
+          "request": {
+            "id": 24,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ",
+                "sender": "alice"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "arguments do not match the record_push input schema"
+            },
+            "id": 24,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "padding is not base64url without padding: invalid params",
+          "request": {
+            "id": 25,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ="
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "arguments do not match the record_push input schema"
+            },
+            "id": 25,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "not base64url: invalid params",
+          "request": {
+            "id": 26,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "a+b/"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "arguments do not match the record_push input schema"
+            },
+            "id": 26,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a member that is not a string: invalid params",
+          "request": {
+            "id": 27,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": 7
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "arguments do not match the record_push input schema"
+            },
+            "id": 27,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "an unknown tool: invalid params",
+          "request": {
+            "id": 90,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+              },
+              "name": "record_pull"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "unknown tool"
+            },
+            "id": 90,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "arguments that are not an object: invalid params",
+          "request": {
+            "id": 91,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": [],
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "arguments is not an object"
+            },
+            "id": 91,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "the tool list: one tool, fixed text",
+          "request": {
+            "id": 92,
+            "jsonrpc": "2.0",
+            "method": "tools/list",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              }
+            }
+          },
+          "expect": {
+            "id": 92,
+            "jsonrpc": "2.0",
+            "result": {
+              "cacheScope": "public",
+              "resultType": "complete",
+              "tools": [
+                {
+                  "description": "Carries one record push (a pushed record, a stamp proof, or both) as opaque octets in base64url without padding, and returns the receiver's answer for each part pushed. The answer is an acknowledgment, never evidence of what the receiver holds.",
+                  "inputSchema": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "record": {
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "stamp_proof": {
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "name": "record_push",
+                  "outputSchema": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "record": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "ask_for_book": {
+                            "type": "boolean"
+                          },
+                          "counted": {
+                            "type": "boolean"
+                          },
+                          "deleted": {
+                            "type": "boolean"
+                          },
+                          "digest": {
+                            "type": "string"
+                          },
+                          "duplicate": {
+                            "type": "boolean"
+                          },
+                          "refused": {
+                            "enum": [
+                              "",
+                              "invalid",
+                              "refused",
+                              "over_limit",
+                              "busy"
+                            ]
+                          },
+                          "stored": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "digest",
+                          "stored",
+                          "duplicate",
+                          "deleted",
+                          "counted",
+                          "ask_for_book",
+                          "refused"
+                        ],
+                        "type": "object"
+                      },
+                      "stamp_proof": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "accepted": {
+                            "type": "boolean"
+                          },
+                          "duplicate": {
+                            "type": "boolean"
+                          },
+                          "refused": {
+                            "enum": [
+                              "",
+                              "invalid",
+                              "refused"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "accepted",
+                          "duplicate",
+                          "refused"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "title": "Record push"
+                }
+              ],
+              "ttlMs": 3600000
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "discovery",
+          "request": {
+            "id": 93,
+            "jsonrpc": "2.0",
+            "method": "server/discover"
+          },
+          "expect": {
+            "id": 93,
+            "jsonrpc": "2.0",
+            "result": {
+              "cacheScope": "public",
+              "capabilities": {
+                "tools": {
+                  "listChanged": false
+                }
+              },
+              "resultType": "complete",
+              "supportedVersions": [
+                "2026-07-28"
+              ],
+              "ttlMs": 3600000
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "another protocol version",
+          "request": {
+            "id": 94,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2025-06-18"
+              },
+              "arguments": {
+                "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32022,
+              "data": {
+                "requested": "2025-06-18",
+                "supported": [
+                  "2026-07-28"
+                ]
+              },
+              "message": "unsupported protocol version"
+            },
+            "id": 94,
+            "jsonrpc": "2.0"
+          }
+        }
+      ]
+    },
+    {
+      "carriage": "a2a",
+      "cases": [
+        {
+          "at": "2026-10-20T00:01:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 1,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 1,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:02:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 2,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 2,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                            "duplicate": true,
+                            "refused": "",
+                            "stored": false
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:03:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 3,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiYzgwNjhmNjRlOTVlNDIwNGIzODdhMWRmOTc4ODhlNWFhN2U0ZjFkYTllM2Q2NGU3OTViNmQyMGY0NDlkOWNjYSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjMsInByZXYiOiI3ZDIxNjBkNzE0OWU1N2Y2YzVkNzc0OGRlMTUzMjYwNjFlN2QxMjg3MzljYWM1Mzk1MDQwMTI3ZmIxYjI5NTU0Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiIxNTUzMGJlN2Y2MWRkMWJiMzg3MDYzNDExZTlkYWExMDRjYzdmYjg0NzI0YjgxMDQwMzllOGFlYmVhYTRlYWI3IiwidiI6MX0"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 3,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": true,
+                            "counted": false,
+                            "deleted": false,
+                            "digest": "c8068f64e95e4204b387a1df97888e5aa7e4f1da9e3d64e795b6d20f449d9cca",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:04:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 4,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiYzQ5ZDVkODBhYjdiODRkMDJiZmVlY2VhZDQ1NTRhYWU0MTg0NDQ1MjlhMWEwNDNmOThlZTlmOTJlZTM4Njk3NiIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjQsInByZXYiOiJjODA2OGY2NGU5NWU0MjA0YjM4N2ExZGY5Nzg4OGU1YWE3ZTRmMWRhOWUzZDY0ZTc5NWI2ZDIwZjQ0OWQ5Y2NhIiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiIxM2M0MmE2ZGViZGIzNGY3ODkzMDc0ZmJiOTIzNjg3ZmNjMTY2ZjIxZWMyNjcyNDNkNzE4NmUxZWU1NjE4NDU4IiwidiI6MX0"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 4,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": true,
+                            "counted": false,
+                            "deleted": false,
+                            "digest": "c49d5d80ab7b84d02bfeecead4554aae418444529a1a043f98ee9f92ee386976",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:05:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 5,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiNzFkYjUzODM5ZWU5MDAyM2E4MmI1ZDE2NmVjZWIyOWMyNjI4NzJlNDNkZjBiZmU0NmEyMWNiODMxMWM2N2NjYiIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjUsInByZXYiOiJjNDlkNWQ4MGFiN2I4NGQwMmJmZWVjZWFkNDU1NGFhZTQxODQ0NDUyOWExYTA0M2Y5OGVlOWY5MmVlMzg2OTc2Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiI2NDIwNjUzMTZmMzFhMWU0ZDQ4ZWIyYTU0NThkMmFhOTMwNTM2MTAxZjc0NGY2OTA5MmFjZjNjY2IwZGJkZmRkIiwidiI6MX0"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 5,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": true,
+                            "counted": false,
+                            "deleted": false,
+                            "digest": "71db53839ee90023a82b5d166eceb29c262872e43df0bfe46a21cb8311c67ccb",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:06:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 6,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "stamp_proof": "eyJmYWN0IjoiZXlKaWIyOXJYMmxrSWpvaU1ETXhNakkyTVRaaVptVTBOR00zWWpoa1pXUmpPV1l5T0RrNVpHVmpOek5sTm1RNE9USmxPR0UyTURNMk1UYzRNVFl3Wm1VelpEbGtNVFEzWlRVME9TSXNJbU5vWldOcmNHOXBiblJmYzJoaE1qVTJJam9pTURrM1kyVTNZamRrTnprNE9HRTJaVEkyTURSa01ERmxZMlE1TnpVME5HRmlNRGd6T1dSak9UWm1Nak00TTJJNFlUSXdPRGN6TXpCbU16azBORGxpTnlJc0ltdHBibVFpT2lKaWIyOXJYMlpoWTNRaUxDSnNhVzVyWDJOdmJXMXBkRzFsYm5RaU9pSmlZelpqT1RBeU1qY3daVFZpWldNelpqRTROVFV6TjJZMFpHWXhaVGM1TWpFek16Y3labU5oT0RGalpHVXhOekptTVRjMU9HWTVZMk00TTJNeE16UTRJaXdpYkc5blgybGtJam9pWkdWaGJDOWhJaXdpY0hKbGRsOW1ZV04wWDNOcGVtVWlPakFzSW5CeWIyWnBiR1VpT2lKa1pXRnNJaXdpYzJsNlpTSTZPQ3dpYzNSaGRIVnpYMk52YlcxcGRHMWxiblFpT2lKbE9UY3haalJsTVRRME9EVTVObVl5TVRVeVltTmhZbUkyTmpoalpUVTRZemRpTVdNNU1HUTNaVEF5TWpVME5ESTJZek13TUdJM1lqQmxabUprTnpOaElpd2lkaUk2TVgwPSIsInN0YXR1c19vcGVuaW5nIjp7InNhbHQiOiJjNDgzMWY3YTc0MmMyN2ZmZTBmYTZlNDJlMDlhYzMyMTAyZTYwMmExNDNhMTA0MDk2NzRhMjBiZmRjYjY0M2QyIiwidmFsdWUiOnsicm93Ijoib3BlbiJ9fSwiYm9va19jaGVja3BvaW50IjoiMG9SWVhLUUJKd040SDJGd2NHeHBZMkYwYVc5dUwyTnNiQzFqYUdWamEzQnZhVzUwSzJOaWIzSUVXQ0RldXZmRWVMK3pzL0Q0NjhXTDhSM0RzM1BHS3FrbERiVTlaai9LbGx3MjdBK2lBV1prWldGc0wyRUNhR1JsWVd3dllTTTRvRmlzcG1ScmFXNWtibU5zYkMxamFHVmphM0J2YVc1MGFHeHZaMTl6YVhwbENHbHBjM04xWldSZllYUjBNakF5TmkweE1DMHhPVlF4TWpvd01Eb3dNRnBwY0hKbGRsOXphWHBsQUdwamIyMXRhWFJ0Wlc1MFdFV0NXQ0NaWWlLbFlhVVI0MnFpcVNyNzhGbXdFT2ZqbVV3TlYvSnc1UkwxdkxqL0ZGZ2c1V1Nvam1tc1NIZlJ5T2ZnZTV0NmxVUS9IUG44MVNNWEFiN0NFVzl0bTgxdmNISmxkbDlqYjIxdGFYUnRaVzUwUUZoQW41LzJqVlBFcG9TUGkvWDZNVUV2endtM3pQUjFTR2QrRHVVLzgyK2MxUllUdzl4Nk1sUTZlUFdBeXM5a2l6NTVjcmZJMDQrQzVydyt0b2ZXWTJwdURRPT0iLCJpbmNsdXNpb24iOnsia2luZCI6ImNsbC1tbXItaW5jbHVzaW9uIiwic2VxIjozLCJwcm9vZiI6eyJ2IjoxLCJraW5kIjoiaW5jbHVzaW9uIiwic2l6ZSI6NywibGVhZl9pbmRleCI6Miwid2l0bmVzcyI6WyJiM2U2OWI0MWI0ZTE2YzU4ZTZiYWMzNDJiZjJjMmNiNGZkZjVkYmQ1YjE4ZGE3ZTljZjQ4Y2IyZDQ5MWY5NDZjIiwiOTRkMmY3MWZkYzI2MjJhN2Q5ZTVkNzAwMzJhNjMxYjg2Y2MyNjUyOGZlZDEwNjVjNDZlYjU3YTMzM2EyYmU4MSJdLCJwZWFrc19sZWZ0IjpbXSwicGVha3NfcmlnaHQiOltdfX0sInNoZWxmX2NoZWNrcG9pbnQiOiIwb1JZaktRQkp3TjRIMkZ3Y0d4cFkyRjBhVzl1TDJOc2JDMWphR1ZqYTNCdmFXNTBLMk5pYjNJRVdDRGV1dmZFZUwrenMvRDQ2OFdMOFIzRHMzUEdLcWtsRGJVOVpqL0tsbHcyN0EraUFYZ2RaR1ZoYkMxallXUmxibU5sTHpBeE1qTTBOVFkzT0RsaFltTmtaV1lDZUI5a1pXRnNMV05oWkdWdVkyVXZNREV5TXpRMU5qYzRPV0ZpWTJSbFppTTNvRmtCZWFka2EybHVaRzVqYkd3dFkyaGxZMnR3YjJsdWRHaHNiMmRmYzJsNlpRZHBhWE56ZFdWa1gyRjBkREl3TWpZdE1UQXRNVGxVTVRJNk1ERTZNREJhYVhCeVpYWmZjMmw2WlFGcVkyOXRiV2wwYldWdWRGZ2pnVmdnWjNQK0VLa01HazgwemZzekpZbXFIdjN6VHlXNVJiVEtObVZWQk5LZDkvOXZjSEpsZGw5amIyMXRhWFJ0Wlc1MFdDT0JXQ0RaQ2JDVXVzbDBGVDhCZHdHejF2REpEck9JZ0VwRlNQcWlOWjAyVDE0aDVIRmpiMjV6YVhOMFpXNWplVjl3Y205dlpxVm1jMmw2WlY5aEFXWnphWHBsWDJJSFozZHBkRzVsYzNPQmdsZ2dGb1JkWFFyUG5jMmJWS2VCeTVSNytQOEM4eFgxTDZKbzJ1QVE5TG1FU1BCWUlLc2pYaXN1TGp0dUxCQ0ZBRnVYRkRXZWVucWFEc1FCRUliWjVsS1JubDJOYVc1bGQxOXdaV0ZyYzRGWUlHZHovaENwREJwUE5NMzdNeVdKcWg3OTgwOGx1VVcweWpabFZRVFNuZmYvYVc5c1pGOXdaV0ZyYzRGWUlOa0pzSlM2eVhRVlB3RjNBYlBXOE1rT3M0aUFTa1ZJK3FJMW5UWlBYaUhrV0VBRFJNVTZaS2kzR1BuWGw4K3RHbFZiN2pZc3hXUUNWakY5WmsrNHlybEhRc0h2cHF3amNkNGZvRlVRK0ZvZmdpUDlwNUhBT3lLcEIxTU0ydDdyUjE4TCJ9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 6,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "stamp_proof": {
+                            "accepted": true,
+                            "duplicate": false,
+                            "refused": ""
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:07:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 7,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiN2QyMTYwZDcxNDllNTdmNmM1ZDc3NDhkZTE1MzI2MDYxZTdkMTI4NzM5Y2FjNTM5NTA0MDEyN2ZiMWIyOTU1NCIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjIsInByZXYiOiIwMzEyMjYxNmJmZTQ0YzdiOGRlZGM5ZjI4OTlkZWM3M2U2ZDg5MmU4YTYwMzYxNzgxNjBmZTNkOWQxNDdlNTQ5Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiIwNmIwNGIxYjliOWViOGJlOTI5NWVlNzUwODgyNmQxZGVmNWE4ZWFjNGMzMWJhZTM5MTZhOTYxMjEwZjgwOGZlIiwidiI6MX0"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 7,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "7d2160d7149e57f6c5d7748de15326061e7d128739cac5395040127fb1b29554",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:08:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 8,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiNzFkYjUzODM5ZWU5MDAyM2E4MmI1ZDE2NmVjZWIyOWMyNjI4NzJlNDNkZjBiZmU0NmEyMWNiODMxMWM2N2NjYiIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjUsInByZXYiOiJjNDlkNWQ4MGFiN2I4NGQwMmJmZWVjZWFkNDU1NGFhZTQxODQ0NDUyOWExYTA0M2Y5OGVlOWY5MmVlMzg2OTc2Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiI2NDIwNjUzMTZmMzFhMWU0ZDQ4ZWIyYTU0NThkMmFhOTMwNTM2MTAxZjc0NGY2OTA5MmFjZjNjY2IwZGJkZmRkIiwidiI6MX0",
+                      "stamp_proof": "eyJmYWN0IjoiZXlKaWIyOXJYMmxrSWpvaU1ETXhNakkyTVRaaVptVTBOR00zWWpoa1pXUmpPV1l5T0RrNVpHVmpOek5sTm1RNE9USmxPR0UyTURNMk1UYzRNVFl3Wm1VelpEbGtNVFEzWlRVME9TSXNJbU5vWldOcmNHOXBiblJmYzJoaE1qVTJJam9pTURrM1kyVTNZamRrTnprNE9HRTJaVEkyTURSa01ERmxZMlE1TnpVME5HRmlNRGd6T1dSak9UWm1Nak00TTJJNFlUSXdPRGN6TXpCbU16azBORGxpTnlJc0ltdHBibVFpT2lKaWIyOXJYMlpoWTNRaUxDSnNhVzVyWDJOdmJXMXBkRzFsYm5RaU9pSmxOREpqWmpoaFltRTVPR0V5TkRrMlptSXpORGswTjJKbFkySXhPVE13WlRGbE5UZzFOalJtWVRkaU1XVTFNbUk0WVRjd09USTFNMlpsTVRobE1qTXdJaXdpYkc5blgybGtJam9pWkdWaGJDOWhJaXdpY0hKbGRsOW1ZV04wWDNOcGVtVWlPamdzSW5CeWIyWnBiR1VpT2lKa1pXRnNJaXdpYzJsNlpTSTZPQ3dpYzNSaGRIVnpYMk52YlcxcGRHMWxiblFpT2lJNFpXTmhObVppT1dNNU9XWmtNak0wTURnM09EQXhaRFJrWlRBNVpXSXdNVGM1TkdJMlkyUmtObVl6WkRCalpUWTFNekpqWkRNMFpEVmtOVEkzTXpVeElpd2lkaUk2TVgwPSIsInN0YXR1c19vcGVuaW5nIjp7InNhbHQiOiJhODM0YTgxMmU5MGRlNWVhMDNjMDNmYmExN2Q3NDc5YjE0Mzk0ZmVmYzlmNGVhNDgzMjEyODVhZjZiZGRmZWVmIiwidmFsdWUiOnsicm93IjoiYWdyZWVkIn19LCJib29rX2NoZWNrcG9pbnQiOiIwb1JZWEtRQkp3TjRIMkZ3Y0d4cFkyRjBhVzl1TDJOc2JDMWphR1ZqYTNCdmFXNTBLMk5pYjNJRVdDRGV1dmZFZUwrenMvRDQ2OFdMOFIzRHMzUEdLcWtsRGJVOVpqL0tsbHcyN0EraUFXWmtaV0ZzTDJFQ2FHUmxZV3d2WVNNNG9GaXNwbVJyYVc1a2JtTnNiQzFqYUdWamEzQnZhVzUwYUd4dloxOXphWHBsQ0dscGMzTjFaV1JmWVhSME1qQXlOaTB4TUMweE9WUXhNam93TURvd01GcHBjSEpsZGw5emFYcGxBR3BqYjIxdGFYUnRaVzUwV0VXQ1dDQ1pZaUtsWWFVUjQycWlxU3I3OEZtd0VPZmptVXdOVi9KdzVSTDF2TGovRkZnZzVXU29qbW1zU0hmUnlPZmdlNXQ2bFVRL0hQbjgxU01YQWI3Q0VXOXRtODF2Y0hKbGRsOWpiMjF0YVhSdFpXNTBRRmhBbjUvMmpWUEVwb1NQaS9YNk1VRXZ6d20zelBSMVNHZCtEdVUvODIrYzFSWVR3OXg2TWxRNmVQV0F5czlraXo1NWNyZkkwNCtDNXJ3K3RvZldZMnB1RFE9PSIsImluY2x1c2lvbiI6eyJraW5kIjoiY2xsLW1tci1pbmNsdXNpb24iLCJzZXEiOjUsInByb29mIjp7InYiOjEsImtpbmQiOiJpbmNsdXNpb24iLCJzaXplIjoxMCwibGVhZl9pbmRleCI6NCwid2l0bmVzcyI6WyJkOTdjMjAwNzJhZTViZmIzZWFmZmE4NTU1YTJmMzk5MTgxZjQ3YzFkZTkzZDA4NWQwMTQxZTk3Zjc2M2NkNDdkIl0sInBlYWtzX2xlZnQiOlsiNjc3M2ZlMTBhOTBjMWE0ZjM0Y2RmYjMzMjU4OWFhMWVmZGYzNGYyNWI5NDViNGNhMzY2NTU1MDRkMjlkZjdmZiJdLCJwZWFrc19yaWdodCI6W119fSwic2hlbGZfY2hlY2twb2ludCI6IjBvUllqYVFCSndONEgyRndjR3hwWTJGMGFXOXVMMk5zYkMxamFHVmphM0J2YVc1MEsyTmliM0lFV0NEZXV2ZkVlTCt6cy9ENDY4V0w4UjNEczNQR0txa2xEYlU5WmovS2xsdzI3QStpQVhnZFpHVmhiQzFqWVdSbGJtTmxMekF4TWpNME5UWTNPRGxoWW1Oa1pXWUNlQ0JrWldGc0xXTmhaR1Z1WTJVdk1ERXlNelExTmpjNE9XRmlZMlJsWmlNeE1LQlpBWG1uWkd0cGJtUnVZMnhzTFdOb1pXTnJjRzlwYm5Sb2JHOW5YM05wZW1VS2FXbHpjM1ZsWkY5aGRIUXlNREkyTFRFd0xURTVWREV5T2pBeU9qQXdXbWx3Y21WMlgzTnBlbVVIYW1OdmJXMXBkRzFsYm5SWVJZSllJR2R6L2hDcERCcFBOTTM3TXlXSnFoNzk4MDhsdVVXMHlqWmxWUVRTbmZmL1dDRHRlQXVpeithVUJuRGk5NmhPbWdvMDg5NXBRVTNRTExaVzRHSGVsYml5aEc5d2NtVjJYMk52YlcxcGRHMWxiblJZSTRGWUlHZHovaENwREJwUE5NMzdNeVdKcWg3OTgwOGx1VVcweWpabFZRVFNuZmYvY1dOdmJuTnBjM1JsYm1ONVgzQnliMjltcFdaemFYcGxYMkVIWm5OcGVtVmZZZ3BuZDJsMGJtVnpjNEdBYVc1bGQxOXdaV0ZyYzRKWUlHZHovaENwREJwUE5NMzdNeVdKcWg3OTgwOGx1VVcweWpabFZRVFNuZmYvV0NEdGVBdWl6K2FVQm5EaTk2aE9tZ28wODk1cFFVM1FMTFpXNEdIZWxiaXloR2x2YkdSZmNHVmhhM09CV0NCbmMvNFFxUXdhVHpUTit6TWxpYW9lL2ZOUEpibEZ0TW8yWlZVRTBwMzMvMWhBTWdkMnB0R2pwTnhtdTVNVUJlYzJSMzNqWlZabHhTZzArTVpXT0NJcDBocnZhcllhNS9na0E2VVFjZjkrVSt2YXg5cjMvQ1JvVDdYTjBqSEVBWXA2Q0E9PSJ9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 8,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "71db53839ee90023a82b5d166eceb29c262872e43df0bfe46a21cb8311c67ccb",
+                            "duplicate": true,
+                            "refused": "",
+                            "stored": false
+                          },
+                          "stamp_proof": {
+                            "accepted": true,
+                            "duplicate": false,
+                            "refused": ""
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:09:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 9,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "stamp_proof": "eyJmYWN0IjoiZXlKaWIyOXJYMmxrSWpvaU1ETXhNakkyTVRaaVptVTBOR00zWWpoa1pXUmpPV1l5T0RrNVpHVmpOek5sTm1RNE9USmxPR0UyTURNMk1UYzRNVFl3Wm1VelpEbGtNVFEzWlRVME9TSXNJbU5vWldOcmNHOXBiblJmYzJoaE1qVTJJam9pTURrM1kyVTNZamRrTnprNE9HRTJaVEkyTURSa01ERmxZMlE1TnpVME5HRmlNRGd6T1dSak9UWm1Nak00TTJJNFlUSXdPRGN6TXpCbU16azBORGxpTnlJc0ltdHBibVFpT2lKaWIyOXJYMlpoWTNRaUxDSnNhVzVyWDJOdmJXMXBkRzFsYm5RaU9pSmlZelpqT1RBeU1qY3daVFZpWldNelpqRTROVFV6TjJZMFpHWXhaVGM1TWpFek16Y3labU5oT0RGalpHVXhOekptTVRjMU9HWTVZMk00TTJNeE16UTRJaXdpYkc5blgybGtJam9pWkdWaGJDOWhJaXdpY0hKbGRsOW1ZV04wWDNOcGVtVWlPakFzSW5CeWIyWnBiR1VpT2lKa1pXRnNJaXdpYzJsNlpTSTZPQ3dpYzNSaGRIVnpYMk52YlcxcGRHMWxiblFpT2lKbE9UY3haalJsTVRRME9EVTVObVl5TVRVeVltTmhZbUkyTmpoalpUVTRZemRpTVdNNU1HUTNaVEF5TWpVME5ESTJZek13TUdJM1lqQmxabUprTnpOaElpd2lkaUk2TVgwPSIsInN0YXR1c19vcGVuaW5nIjp7InNhbHQiOiJjNDgzMWY3YTc0MmMyN2ZmZTBmYTZlNDJlMDlhYzMyMTAyZTYwMmExNDNhMTA0MDk2NzRhMjBiZmRjYjY0M2QyIiwidmFsdWUiOnsicm93Ijoib3BlbiJ9fSwiYm9va19jaGVja3BvaW50IjoiMG9SWVhLUUJKd040SDJGd2NHeHBZMkYwYVc5dUwyTnNiQzFqYUdWamEzQnZhVzUwSzJOaWIzSUVXQ0RldXZmRWVMK3pzL0Q0NjhXTDhSM0RzM1BHS3FrbERiVTlaai9LbGx3MjdBK2lBV1prWldGc0wyRUNhR1JsWVd3dllTTTRvRmlzcG1ScmFXNWtibU5zYkMxamFHVmphM0J2YVc1MGFHeHZaMTl6YVhwbENHbHBjM04xWldSZllYUjBNakF5TmkweE1DMHhPVlF4TWpvd01Eb3dNRnBwY0hKbGRsOXphWHBsQUdwamIyMXRhWFJ0Wlc1MFdFV0NXQ0NaWWlLbFlhVVI0MnFpcVNyNzhGbXdFT2ZqbVV3TlYvSnc1UkwxdkxqL0ZGZ2c1V1Nvam1tc1NIZlJ5T2ZnZTV0NmxVUS9IUG44MVNNWEFiN0NFVzl0bTgxdmNISmxkbDlqYjIxdGFYUnRaVzUwUUZoQW41LzJqVlBFcG9TUGkvWDZNVUV2endtM3pQUjFTR2QrRHVVLzgyK2MxUllUdzl4Nk1sUTZlUFdBeXM5a2l6NTVjcmZJMDQrQzVydyt0b2ZXWTJwdURRPT0iLCJpbmNsdXNpb24iOnsia2luZCI6ImNsbC1tbXItaW5jbHVzaW9uIiwic2VxIjozLCJwcm9vZiI6eyJ2IjoxLCJraW5kIjoiaW5jbHVzaW9uIiwic2l6ZSI6NywibGVhZl9pbmRleCI6Miwid2l0bmVzcyI6WyJiM2U2OWI0MWI0ZTE2YzU4ZTZiYWMzNDJiZjJjMmNiNGZkZjVkYmQ1YjE4ZGE3ZTljZjQ4Y2IyZDQ5MWY5NDZjIiwiOTRkMmY3MWZkYzI2MjJhN2Q5ZTVkNzAwMzJhNjMxYjg2Y2MyNjUyOGZlZDEwNjVjNDZlYjU3YTMzM2EyYmU4MSJdLCJwZWFrc19sZWZ0IjpbXSwicGVha3NfcmlnaHQiOltdfX0sInNoZWxmX2NoZWNrcG9pbnQiOiIwb1JZaktRQkp3TjRIMkZ3Y0d4cFkyRjBhVzl1TDJOc2JDMWphR1ZqYTNCdmFXNTBLMk5pYjNJRVdDRGV1dmZFZUwrenMvRDQ2OFdMOFIzRHMzUEdLcWtsRGJVOVpqL0tsbHcyN0EraUFYZ2RaR1ZoYkMxallXUmxibU5sTHpBeE1qTTBOVFkzT0RsaFltTmtaV1lDZUI5a1pXRnNMV05oWkdWdVkyVXZNREV5TXpRMU5qYzRPV0ZpWTJSbFppTTNvRmtCZWFka2EybHVaRzVqYkd3dFkyaGxZMnR3YjJsdWRHaHNiMmRmYzJsNlpRZHBhWE56ZFdWa1gyRjBkREl3TWpZdE1UQXRNVGxVTVRJNk1ERTZNREJhYVhCeVpYWmZjMmw2WlFGcVkyOXRiV2wwYldWdWRGZ2pnVmdnWjNQK0VLa01HazgwemZzekpZbXFIdjN6VHlXNVJiVEtObVZWQk5LZDkvOXZjSEpsZGw5amIyMXRhWFJ0Wlc1MFdDT0JXQ0RaQ2JDVXVzbDBGVDhCZHdHejF2REpEck9JZ0VwRlNQcWlOWjAyVDE0aDVIRmpiMjV6YVhOMFpXNWplVjl3Y205dlpxVm1jMmw2WlY5aEFXWnphWHBsWDJJSFozZHBkRzVsYzNPQmdsZ2dGb1JkWFFyUG5jMmJWS2VCeTVSNytQOEM4eFgxTDZKbzJ1QVE5TG1FU1BCWUlLc2pYaXN1TGp0dUxCQ0ZBRnVYRkRXZWVucWFEc1FCRUliWjVsS1JubDJOYVc1bGQxOXdaV0ZyYzRGWUlHZHovaENwREJwUE5NMzdNeVdKcWg3OTgwOGx1VVcweWpabFZRVFNuZmYvYVc5c1pGOXdaV0ZyYzRGWUlOa0pzSlM2eVhRVlB3RjNBYlBXOE1rT3M0aUFTa1ZJK3FJMW5UWlBYaUhrV0VBRFJNVTZaS2kzR1BuWGw4K3RHbFZiN2pZc3hXUUNWakY5WmsrNHlybEhRc0h2cHF3amNkNGZvRlVRK0ZvZmdpUDlwNUhBT3lLcEIxTU0ydDdyUjE4TCJ9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 9,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "stamp_proof": {
+                            "accepted": false,
+                            "duplicate": true,
+                            "refused": ""
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:10:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 10,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "stamp_proof": "eyJmYWN0IjoiZXlKaWIyOXJYMmxrSWpvaVlXVTBaRFpqT1RnNE16TTRaRFUxTlRRM016YzVNRFZqWWpnNVlqWTBPVEl4WldFNVltSXhZalpoTlRWaE5qVXpPR0k1WlRnek5qQmxPV1l3TWpCaFpDSXNJbU5vWldOcmNHOXBiblJmYzJoaE1qVTJJam9pWTJGaU5XRmxNVE5qWTJWbFpEY3lPVEUxWW1ZMlptWXhOREF3WVRjMVpEVTFaakF3WW1ZeU5XTTVaREJoTkdaaE1tWTRaVEJpTVdFME9UZzFNMkl6TkNJc0ltdHBibVFpT2lKaWIyOXJYMlpoWTNRaUxDSnNhVzVyWDJOdmJXMXBkRzFsYm5RaU9pSTJaV0ZsTVRrelltVTFZVFEwTkRka1pUY3hZamcxWVdWaU1XRmtOVGN5WTJWaE0yRmtOR1F3TkRCaFl6Y3daVEk0TVRkbU1ERTNPR0ZtWTJZME9HRmpJaXdpYkc5blgybGtJam9pWkdWaGJDOWhJaXdpY0hKbGRsOW1ZV04wWDNOcGVtVWlPakFzSW5CeWIyWnBiR1VpT2lKa1pXRnNJaXdpYzJsNlpTSTZPQ3dpYzNSaGRIVnpYMk52YlcxcGRHMWxiblFpT2lKaVpEVmhPRFU0WVRZMlpUYzFPR1UyTUdGa1lUUmpOalE0TVRGaFkyTTRPVEU0T1dZMU9ETTNZMll6WW1ZeE5qWmxPREkxTVRsbE1qWTNZV05sWmpSaklpd2lkaUk2TVgwPSIsInN0YXR1c19vcGVuaW5nIjp7InNhbHQiOiIzM2FjZmFiZGFiNzMxYmY5NjIwOTA3N2E1OWYxZWFlMTBmMWFhZGQ1NWIzNzZhZGVkMTE5MjgwZjYxODUwYThmIiwidmFsdWUiOnsicm93Ijoib3BlbiJ9fSwiYm9va19jaGVja3BvaW50IjoiMG9SWVhLUUJKd040SDJGd2NHeHBZMkYwYVc5dUwyTnNiQzFqYUdWamEzQnZhVzUwSzJOaWIzSUVXQ0RldXZmRWVMK3pzL0Q0NjhXTDhSM0RzM1BHS3FrbERiVTlaai9LbGx3MjdBK2lBV1prWldGc0wyRUNhR1JsWVd3dllTTTRvRmlzcG1ScmFXNWtibU5zYkMxamFHVmphM0J2YVc1MGFHeHZaMTl6YVhwbENHbHBjM04xWldSZllYUjBNakF5TmkweE1DMHhPVlF4TWpvd01Eb3dNRnBwY0hKbGRsOXphWHBsQUdwamIyMXRhWFJ0Wlc1MFdFV0NXQ0FjK05KSm80dWFqbnErY1B1NGgrb0tiRjRYQmpCbCtiRGh0eEk2N3o4TjVsZ2dmY3piM3RLWFB5SU1qV0hESENMSm0wZlUrWVdmTVQ4TkZoUDF5TUdGVG9KdmNISmxkbDlqYjIxdGFYUnRaVzUwUUZoQWZZd1FhZUxuMWpaRmxicnJxS0wwOE5zdTlpSWpzeVBQSVkrWXRkdlUrVnZ5b2Vwc3VKVTNnakNDT2FuSVhsMitRZWVjeHhmN083ZXJMRkVQb3pXR0N3PT0iLCJpbmNsdXNpb24iOnsia2luZCI6ImNsbC1tbXItaW5jbHVzaW9uIiwic2VxIjozLCJwcm9vZiI6eyJ2IjoxLCJraW5kIjoiaW5jbHVzaW9uIiwic2l6ZSI6NywibGVhZl9pbmRleCI6Miwid2l0bmVzcyI6WyJiM2U2OWI0MWI0ZTE2YzU4ZTZiYWMzNDJiZjJjMmNiNGZkZjVkYmQ1YjE4ZGE3ZTljZjQ4Y2IyZDQ5MWY5NDZjIiwiZmYyYTA5YjllZWUyNTFhYzZlNzQ0ZWYwNDNkZmNmZTNhMzEwZTA1MmJkMWM0ZGFjMGYxZDhiMWJhYTRhNDJmYyJdLCJwZWFrc19sZWZ0IjpbXSwicGVha3NfcmlnaHQiOltdfX0sInNoZWxmX2NoZWNrcG9pbnQiOiIwb1JZaktRQkp3TjRIMkZ3Y0d4cFkyRjBhVzl1TDJOc2JDMWphR1ZqYTNCdmFXNTBLMk5pYjNJRVdDRGV1dmZFZUwrenMvRDQ2OFdMOFIzRHMzUEdLcWtsRGJVOVpqL0tsbHcyN0EraUFYZ2RaR1ZoYkMxallXUmxibU5sTHpBeE1qTTBOVFkzT0RsaFltTmtaV1lDZUI5a1pXRnNMV05oWkdWdVkyVXZNREV5TXpRMU5qYzRPV0ZpWTJSbFppTTNvRmtCZWFka2EybHVaRzVqYkd3dFkyaGxZMnR3YjJsdWRHaHNiMmRmYzJsNlpRZHBhWE56ZFdWa1gyRjBkREl3TWpZdE1UQXRNVGxVTVRJNk1ERTZNREJhYVhCeVpYWmZjMmw2WlFGcVkyOXRiV2wwYldWdWRGZ2pnVmdnemdmTUV0Y1RHQTVlVWFXMW0ybkNHQmdjMEs3UkJqckt1dDMvQ0VaZDI4UnZjSEpsZGw5amIyMXRhWFJ0Wlc1MFdDT0JXQ0JVdnV3a3pTTTNvcWxRTzNhdXZhL0dZaW91L2ZVck9abUNQcS9KdFB3a1NYRmpiMjV6YVhOMFpXNWplVjl3Y205dlpxVm1jMmw2WlY5aEFXWnphWHBsWDJJSFozZHBkRzVsYzNPQmdsZ2dGb1JkWFFyUG5jMmJWS2VCeTVSNytQOEM4eFgxTDZKbzJ1QVE5TG1FU1BCWUlFUy9JS0hZd2I5c0VLVlVwb0VpQ3dWazRkRno3WkN6MmZabXN1RG9wN21MYVc1bGQxOXdaV0ZyYzRGWUlNNEh6QkxYRXhnT1hsR2x0WnRwd2hnWUhOQ3UwUVk2eXJyZC93aEdYZHZFYVc5c1pGOXdaV0ZyYzRGWUlGUys3Q1ROSXplaXFWQTdkcTY5cjhaaUtpNzk5U3M1bVlJK3I4bTAvQ1JKV0VEbldLbVNhR1ZFTFhiR0V2Z21uTlhDTzlHMU9CZG8vYThkRTNNY25aM25sNWVrNFdCNGt3R29HVlFQblU5TzQ5a2svYU0ybW9UYURWWVJKbmdad2NjSiJ9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 10,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "stamp_proof": {
+                            "accepted": false,
+                            "duplicate": false,
+                            "refused": "invalid"
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:11:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 11,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMTliOGEyZjUxZmM1NWJkOTJkYTg1Y2RlY2Q5MWYzOTMxM2QzMDgxMjlhZjExNzkyNDliZDE0ZTNlZDZlMzQ3NiIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjIsInByZXYiOiIwMzEyMjYxNmJmZTQ0YzdiOGRlZGM5ZjI4OTlkZWM3M2U2ZDg5MmU4YTYwMzYxNzgxNjBmZTNkOWQxNDdlNTQ5Iiwic2VuZGVyIjoiYWxpY2UiLCJzaWciOiJmMzJmN2FiYTgwY2Y3NWRmZmE4NDg5Y2ZlYzI3M2JhZGRhNjU4YWUzYzE4NmY3ZmE4NjYyMWY2OGVmYjRmMDlhIiwidiI6MX0"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 11,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": true,
+                            "counted": false,
+                            "deleted": false,
+                            "digest": "19b8a2f51fc55bd92da85cdecd91f39313d308129af1179249bd14e3ed6e3476",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:12:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 12,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC1tIiwiZGlnZXN0IjoiY2EwZGYyYzk1YWExNDRjMWQwZmYyZmYzYzhmOTY3ZmRjMWRlOWVmMGM0MTIwYjM3MjY0MTY3MDFiNTE5ZDYxOSIsImxvZyI6ImRlYWwvbSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJtYWxsb3J5Iiwic2lnIjoiMzU2OGMyNWI3OTZkMzUyOWNhOWE0ZWU0MzA0YmMzOTdiNTQ3ODM3NWU0ZWVmZTAxYjUxMTU0NTAxNDY2MTdkNSIsInYiOjF9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 12,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": false,
+                            "deleted": false,
+                            "digest": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+                            "duplicate": false,
+                            "refused": "refused",
+                            "stored": false
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:13:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 13,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoib2ZmZXItbzEiLCJkaWdlc3QiOiIyMzUyZGE3MjgwZjFkZWNjM2FjZjFiYTg0ZWI5NDVjOWZjMmI3YjU0MTA5NGUxZDA5OTJkYmZmZDFiNjY2NGNjIiwibG9nIjoib2ZmZXJzL28xIiwib2ZmZXIiOnRydWUsInBvc2l0aW9uIjoxLCJwcmV2IjoiIiwic2VuZGVyIjoiYm9iIiwic2lnIjoiZGY5ODA3ZWY4MTU4OTA1ZDdjZWRjMGE0YzIxZjQxYjFlYmExNTY0YTIzZmJlZmMwYmI4YjFmYzlkZjUxMWJkMiIsInYiOjF9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 13,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "2352da7280f1decc3acf1ba84eb945c9fc2b7b541094e1d0992dbffd1b6664cc",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:14:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 14,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoib2ZmZXItbzIiLCJkaWdlc3QiOiI5MjUwYjk5MTJlZTkxZDZiNDZlMjMyOTk0NTllY2Q2ZWI4MTU0NDUxZDYyNTU4YTNhMGE3MDhhNzc5MjZhZDA0IiwibG9nIjoib2ZmZXJzL28yIiwib2ZmZXIiOnRydWUsInBvc2l0aW9uIjoxLCJwcmV2IjoiIiwic2VuZGVyIjoiYm9iIiwic2lnIjoiNTFiY2YxMzg1MDhlYjdjZTFlOWU3NTQ4NjVmMTQ1MmVmYzRhNGE1MGMzYjlkZjJkMDI1YmE1YjlhM2U4NjgxOSIsInYiOjF9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 14,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "9250b9912ee91d6b46e23299459ecd6eb8154451d62558a3a0a708a77926ad04",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:15:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 15,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoib2ZmZXItbzMiLCJkaWdlc3QiOiJkZTJkOTFkYzBhMjU4MDQxNGU5YTcwZjdkZmM3NmFmNzI3YjY5Y2FjMDgzOGYyY2JlMGE4OGQxMjY0MmVmY2JmIiwibG9nIjoib2ZmZXJzL28zIiwib2ZmZXIiOnRydWUsInBvc2l0aW9uIjoxLCJwcmV2IjoiIiwic2VuZGVyIjoiYm9iIiwic2lnIjoiNTNiZGRiNjU1NDExZmEwZGE5Zjk2MjFlYTM5N2U5MGUwNzkzZTcwM2RiYjI5MWY1NGMxYTBlNGY4NjljNjljYSIsInYiOjF9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 15,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "de2d91dc0a2580414e9a70f7dfc76af727b69cac0838f2cbe0a88d12642efcbf",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:16:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 16,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoib2ZmZXItbzQiLCJkaWdlc3QiOiIxYjI1MDFhMjBmZTFiY2Q4MmI0OGM4ZGIxZTBmOWRkMmRhOWRlNThkNmI2MThmYTA0YTgxYzUxYzNhODZjZWEyIiwibG9nIjoib2ZmZXJzL280Iiwib2ZmZXIiOnRydWUsInBvc2l0aW9uIjoxLCJwcmV2IjoiIiwic2VuZGVyIjoiYm9iIiwic2lnIjoiYTEwZjE2NTUzZjI2YzJlMGU4OGMwYzE0NWIwMzg5NzAxMzQxNWUyMmE2MWI1NWYzMjIyMzRlNzZkNWIzMzFmMiIsInYiOjF9"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 16,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "1b2501a20fe1bcd82b48c8db1e0f9dd2da9de58d6b618fa04a81c51c3a86cea2",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:17:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 17,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0yIiwiZGlnZXN0IjoiN2RjOTZmNzc2Yzg0MjNlNTdhMjc4NTQ4OWEzZjljNDNmYjZlNzU2ODc2ZDZhZDlhOWNhYzRhYTRlNzJlYzE5MyIsImxvZyI6ImRlYWwvYiIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6IjMxYTQyZWE3YjQ4OTkwNjM2ZDMyYzQ3MDc4MDVkNWZhMTgxODE4OGEwNjRhM2EyYjkwZGJjODA1NWMzNzZjNDgiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 17,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "7dc96f776c8423e57a2785489a3f9c43fb6e756876d6ad9a9cac4aa4e72ec193",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": true
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T00:18:00Z",
+          "op": "forget",
+          "deal": "deal-2",
+          "settled": false
+        },
+        {
+          "at": "2026-10-20T03:00:00Z",
+          "op": "forget",
+          "deal": "deal-2",
+          "settled": true
+        },
+        {
+          "at": "2026-10-20T03:19:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 18,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0yIiwiZGlnZXN0IjoiN2RjOTZmNzc2Yzg0MjNlNTdhMjc4NTQ4OWEzZjljNDNmYjZlNzU2ODc2ZDZhZDlhOWNhYzRhYTRlNzJlYzE5MyIsImxvZyI6ImRlYWwvYiIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6IjMxYTQyZWE3YjQ4OTkwNjM2ZDMyYzQ3MDc4MDVkNWZhMTgxODE4OGEwNjRhM2EyYjkwZGJjODA1NWMzNzZjNDgiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 18,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": false,
+                            "deleted": true,
+                            "digest": "7dc96f776c8423e57a2785489a3f9c43fb6e756876d6ad9a9cac4aa4e72ec193",
+                            "duplicate": false,
+                            "refused": "",
+                            "stored": false
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-20T03:20:00Z",
+          "op": "reopen"
+        },
+        {
+          "at": "2026-10-20T03:21:00Z",
+          "op": "call",
+          "note": "receive step",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 19,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 19,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                            "duplicate": true,
+                            "refused": "",
+                            "stored": false
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a record whose bytes the profile cannot read: refused invalid, no digest",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 20,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "bm90IGEgcmVjb3Jk"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 20,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": false,
+                            "deleted": false,
+                            "digest": "",
+                            "duplicate": false,
+                            "refused": "invalid",
+                            "stored": false
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a stamp proof that is not a stamp proof: its part refused invalid",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 21,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "stamp_proof": "bm90IGpzb24"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 21,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "stamp_proof": {
+                            "accepted": false,
+                            "duplicate": false,
+                            "refused": "invalid"
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a record and a proof that is not one: each part answered on its own",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 22,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ",
+                      "stamp_proof": "e30"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 22,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                            "duplicate": true,
+                            "refused": "",
+                            "stored": false
+                          },
+                          "stamp_proof": {
+                            "accepted": false,
+                            "duplicate": false,
+                            "refused": "invalid"
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "no member: invalid params, no answer",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 23,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {},
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 23,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "an extra member: invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 24,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ",
+                      "sender": "alice"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 24,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "padding is not base64url without padding: invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 25,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ="
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 25,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "not base64url: invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 26,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "a+b/"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 26,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a member that is not a string: invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 27,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": 7
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 27,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "the push in a raw part: invalid params, no answer",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 80,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "mediaType": "application/octet-stream",
+                    "raw": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ=="
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 80,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "the push in a text part: invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 81,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "mediaType": "text/plain",
+                    "text": "hello"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 81,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a data part of another media type: content type not supported",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 82,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "text/plain"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32005,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 82,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a message that names a task: task not found",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 83,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER",
+                "taskId": "t-1"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32001,
+              "message": "task not found"
+            },
+            "id": 83,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "two parts: invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 84,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  },
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 84,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a message from the agent: invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 85,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_AGENT"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 85,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "the extension not activated in A2A-Extensions: invalid params",
+          "a2a_version": "1.0",
+          "request": {
+            "id": 86,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the record push extension is not activated in A2A-Extensions"
+            },
+            "id": 86,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "no A2A-Version: version not supported",
+          "a2a_version": "",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 87,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32009,
+              "data": {
+                "requested": "",
+                "supported": [
+                  "1.0"
+                ]
+              },
+              "message": "unsupported A2A version"
+            },
+            "id": 87,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "GetTask finds nothing",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 88,
+            "jsonrpc": "2.0",
+            "method": "GetTask",
+            "params": {
+              "id": "t-1"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32001,
+              "message": "task not found"
+            },
+            "id": 88,
+            "jsonrpc": "2.0"
+          }
+        }
+      ]
+    }
+  ]
+}
