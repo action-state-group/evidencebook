@@ -21,7 +21,7 @@ from ..report import normalize_referee
 from .check import utc_second
 from . import golenient
 from .gotypes import NIL_RAW
-from .names import PROFILE, ROLE_BUYER, ROLE_SELLER, TYPE_PERFORM, TYPE_SETTLE, VALUE_NOT_MET
+from .names import PROFILE, ROLE_BUYER, ROLE_SELLER, VALUE_NOT_MET
 from .start import STATE_STARTED, FirstAct, StartInput, start
 from .status import (
     StatusError, _books_of, _decode, TimedRecord, _Books, _compute, _first_remedy, _row_inputs, _Sources, build_status,

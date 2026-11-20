@@ -471,6 +471,26 @@ func TestReportVectors(t *testing.T) {
 	noLayer.ProofHeld = false
 	add("counterparty-without-layer", reportBooks(t, noLayer), keepCopy("2026-11-09T12:00:00Z"))
 
+	// The first act's time as the status value carries it (#575): untimed,
+	// first covered by a stamp the holder holds, and by one it does not.
+	// The deal counts in each; only a resolved time is not local.
+	for _, c := range []struct {
+		name   string
+		time   StatusTime
+		stamps map[uint64]string
+	}{
+		{"counterparty-without-layer-untimed-act", NoTime, nil},
+		{"counterparty-without-layer-stamped-act", StampTime(5), map[uint64]string{5: "2026-11-01T10:20:00Z"}},
+		{"counterparty-without-layer-unresolved-stamp", StampTime(5), nil},
+	} {
+		nl := noLayer
+		nl.Own = append([]StatusRecord(nil), noLayer.Own...)
+		nl.Own[1].Time = c.time
+		rb := reportBooks(t, nl)
+		rb.Stamps = c.stamps
+		add(c.name, rb, keepCopy("2026-11-09T12:00:00Z"))
+	}
+
 	add("settled-without-ruling", reportBooks(t, settledWithoutRuling(t)), keepCopy("2026-12-01T12:00:00Z"))
 	conceded := settledWithoutRuling(t)
 	conceded.Counterpart = conceded.Counterpart[:len(conceded.Counterpart)-1]
