@@ -523,7 +523,13 @@ func TestTheProfileCheckerHoldsAPost(t *testing.T) {
 			delete(b, "said_commitment")
 		}}, "an answer without the user's words does not"},
 		"a post that did not ask": {map[int]func(map[string]any){at["action-evaluation/v0"]: func(r map[string]any) {
-			r["body"].(map[string]any)["disposition"] = "DO"
+			b := r["body"].(map[string]any)
+			b["disposition"] = "DO"
+			// The schema stage (run when jsonschema is installed) requires a
+			// DO to carry no findings or options; clear them so the rule
+			// under test, not the schema, is what refuses the record.
+			b["findings"] = []any{}
+			b["options"] = []any{}
 		}}, "every post check asks"},
 		"another check on the sale": {map[int]func(map[string]any){at["proposed-action/v0"]: func(r map[string]any) {
 			b := r["body"].(map[string]any)
