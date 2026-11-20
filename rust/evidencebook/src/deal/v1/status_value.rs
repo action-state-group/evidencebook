@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use super::names::*;
 use super::record::{Body, Record};
-use super::start::start_input;
+use super::start::{act_check, start_input};
 use super::start::{BookRecord, StartBooks};
 use super::status_rows::{row_inputs_with, BookKind, RecRef, RowBooks, TimedRecord};
 use super::types::*;
@@ -176,6 +176,17 @@ pub struct StatusStart {
     pub offerer_agreement_time: StatusTime,
     pub acceptor_names_offerer: bool,
     pub cancellation_named_first: bool,
+    /// The holder's first act with a counterparty that runs no layer; null
+    /// before it, and when the counterparty runs the layer (#575).
+    pub first_act: Option<StatusFirstAct>,
+}
+
+/// The holder's first perform or settle record in a status value: its time.
+/// None says the record has no time yet, which `start` reads as local.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatusFirstAct {
+    pub time: StatusTime,
 }
 
 /// A named record's time and latest date.
@@ -543,6 +554,16 @@ fn status_start(b: &StatusBooks) -> Result<StatusStart, Error> {
             .map(|r| r.time.clone())
             .unwrap_or_default()
     };
+    let first_act = if input.counterparty_layer {
+        None
+    } else {
+        b.own
+            .iter()
+            .find(|r| act_check(&r.record).is_some())
+            .map(|r| StatusFirstAct {
+                time: r.time.clone(),
+            })
+    };
     Ok(StatusStart {
         side: input.side,
         counterparty_layer: input.counterparty_layer,
@@ -553,6 +574,7 @@ fn status_start(b: &StatusBooks) -> Result<StatusStart, Error> {
         offerer_agreement_time: offerer_time,
         acceptor_names_offerer: input.acceptor_names_offerer,
         cancellation_named_first: input.cancellation_named_first,
+        first_act,
     })
 }
 

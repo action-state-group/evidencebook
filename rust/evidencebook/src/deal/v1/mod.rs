@@ -98,10 +98,10 @@ pub use start::{
 };
 pub use status_rows::{row_inputs, RowBooks, TimedRecord};
 pub use status_value::{
-    build_status, resolve_row, PaymentResult, StatusAdjud, StatusBooks, StatusDispute, StatusNamed,
-    StatusRecord, StatusRow, StatusRowDispute, StatusRowInput, StatusRuling, StatusSideTime,
-    StatusStart, StatusStatement, StatusTime, StatusTimeOnly, StatusValue, ValueBand,
-    OUTCOME_AGAINST_CLAIMANT, OUTCOME_FOR_CLAIMANT, OUTCOME_NO_FINDING, OUTCOME_OPEN,
-    OUTCOME_WITHDRAWN,
+    build_status, resolve_row, PaymentResult, StatusAdjud, StatusBooks, StatusDispute,
+    StatusFirstAct, StatusNamed, StatusRecord, StatusRow, StatusRowDispute, StatusRowInput,
+    StatusRuling, StatusSideTime, StatusStart, StatusStatement, StatusTime, StatusTimeOnly,
+    StatusValue, ValueBand, OUTCOME_AGAINST_CLAIMANT, OUTCOME_FOR_CLAIMANT, OUTCOME_NO_FINDING,
+    OUTCOME_OPEN, OUTCOME_WITHDRAWN,
 };
 pub use types::*;

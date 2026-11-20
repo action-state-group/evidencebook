@@ -50,6 +50,16 @@ var stapleSubjects = map[string]SubjectKind{
 	DerivationStandardHistory: SubjectFullHistory,
 }
 
+// checkedStapleSubjects is stapleSubjects and the /3 card, which CheckStaple
+// reads but Staple does not build: a book holds no shelf facts, so the host
+// that counts a /3 card from its shelf builds the staple itself.
+var checkedStapleSubjects = map[string]SubjectKind{
+	DerivationHistoryCard:      SubjectCheckpoints,
+	DerivationHistoryCard2:     SubjectCheckpoints,
+	DerivationStandardHistory:  SubjectFullHistory,
+	DerivationStandardHistory3: SubjectFullHistory,
+}
+
 // Staple builds a staple of derivation, history_card/1, history_card/2 or
 // standard_history/1,
 // as of the book's newest checkpoint (cut now if the book grew). Any other
@@ -173,7 +183,7 @@ type StapleCheck struct {
 // hex Ed25519 key the reader names for its counterparty) and stays inside
 // the cap: the envelope verifies under holder's key and answers this very
 // request, the derivation is history_card/1 or history_card/2 over
-// checkpoints or standard_history/1 over full_history, the anchor and profile are the
+// checkpoints or standard_history/1 or standard_history/3 over full_history, the anchor and profile are the
 // ones the request named, and a standard_history/1 card is of the standard
 // card's form, and a history_card/1 artifact has the card's members and
 // nothing else (historyCardForm) and its checkpoints form one chain
@@ -189,10 +199,10 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 		return StapleCheck{}, fmt.Errorf("%w: a staple's request is malformed: %s", ErrInvalid, parsed.why)
 	}
 	req := parsed.request
-	subject, ok := stapleSubjects[req.Derivation]
+	subject, ok := checkedStapleSubjects[req.Derivation]
 	if !ok || req.Subject.Kind != subject {
-		return StapleCheck{}, fmt.Errorf("%w: a staple carries %s or %s over %s or %s over %s, not %q over %s", ErrInvalid,
-			DerivationHistoryCard, DerivationHistoryCard2, SubjectCheckpoints, DerivationStandardHistory, SubjectFullHistory, req.Derivation, req.Subject.Kind)
+		return StapleCheck{}, fmt.Errorf("%w: a staple carries %s or %s over %s, or %s or %s over %s, not %q over %s", ErrInvalid,
+			DerivationHistoryCard, DerivationHistoryCard2, SubjectCheckpoints, DerivationStandardHistory, DerivationStandardHistory3, SubjectFullHistory, req.Derivation, req.Subject.Kind)
 	}
 	if req.Coverage.ExpectedPin == "" || req.Nonce == "" {
 		return StapleCheck{}, fmt.Errorf("%w: a staple's request pins its anchor and carries a nonce", ErrInvalid)
@@ -234,8 +244,8 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 			return StapleCheck{}, err
 		}
 	}
-	if req.Derivation == DerivationStandardHistory {
-		properties, err := standardhistory.Check(e.Artifact, nil, nil, nil)
+	if req.Derivation == DerivationStandardHistory || req.Derivation == DerivationStandardHistory3 {
+		properties, err := standardhistory.CheckAs(req.Derivation, e.Artifact, nil, nil, nil)
 		if err != nil {
 			return StapleCheck{}, err
 		}
