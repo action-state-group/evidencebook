@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -303,6 +304,22 @@ var sealSentLib = func(ctx context.Context, shelf *evidencebook.Shelf, e evidenc
 	return shelf.SealSent(ctx, e, actionID)
 }
 
+// offerTermsLeg is the terms leg an offer's sent Capsule carries as its
+// settlement member (§6.3): the offer's, when its terms have exactly one
+// payment row, and none otherwise (the library refuses the member on an offer
+// with no payment row or several).
+func offerTermsLeg(payload []byte) (json.RawMessage, error) {
+	rec, err := xdealv1.Decode(payload)
+	if err != nil {
+		return nil, err
+	}
+	prop, ok := proposeOf(rec)
+	if !ok || len(xdealv1.PaymentRows(prop.TermsRows)) != 1 {
+		return nil, nil
+	}
+	return xdealv1.TermsLeg(rec)
+}
+
 // sendV1 seals a journal record that leaves the shelf whole and returns its
 // pair, the standalone Capsule with the record (§4.2). A re-run of the same
 // request finds the operation row and never seals a record twice: a pair
@@ -339,9 +356,19 @@ func (s *dealSession) sendV1(ctx context.Context, requestDigest, dealID, kind st
 			return nil, fmt.Errorf("%w: the record %s was sealed but its file was not made, and the library cannot rebuild it: for an offer, cancel it with `deal offer cancel`", cli.ErrConflict, digest)
 		}
 	}
-	rec, sent, err := sealSentLib(ctx, s.shelf, evidencebook.Entry{
+	entry := evidencebook.Entry{
 		RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{payload},
-	}, dealID+xdealv1.SentSuffix)
+	}
+	if kind == xdealv1.TypePropose {
+		leg, lerr := offerTermsLeg(payload)
+		if lerr != nil {
+			return nil, lerr
+		}
+		if leg != nil {
+			entry.Members = map[string]json.RawMessage{xdealv1.SettlementMember: leg}
+		}
+	}
+	rec, sent, err := sealSentLib(ctx, s.shelf, entry, dealID+xdealv1.SentSuffix)
 	if err != nil && rec.RecordID == "" {
 		return nil, err
 	}
