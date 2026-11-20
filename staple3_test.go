@@ -135,6 +135,10 @@ func writeStandardHistory3Vectors(t *testing.T) {
 		return vector(name, req3, widened(t, book, good, edit), holder, false)
 	}
 	other := standardHistoryBookSeed(t, 33)
+	badValue := []byte(strings.Replace(string(derived), `"window":{"months":12}`, `"window":{"months":"12"}`, 1))
+	require.NotEqual(t, string(derived), string(badValue))
+	membersOnly := vector("a /3 card with the card's members and a malformed value", req3, sign(req3, DerivationStandardHistory3, badValue), holder, false)
+	membersOnly.MembersOnly, membersOnly.Nonce, membersOnly.Anchor = true, got.Nonce, got.Anchor
 	vectors := []stapleVector{
 		vector("standard_history/3", req3, good, holder, true),
 		vector("another holder", req3, good, KeyID(other.signer), false),
@@ -144,6 +148,7 @@ func writeStandardHistory3Vectors(t *testing.T) {
 		vector("another request", request(DerivationStandardHistory3, flipped(got.Nonce)), good, holder, false),
 		broken("a card with more than the /3 card", func(c map[string]any) { c["counterparties"] = []any{"carol"} }),
 		broken("a card without its coverage start", func(c map[string]any) { delete(c, "coverage_start") }),
+		membersOnly,
 		broken("a card that names /1", func(c map[string]any) { c["derivation"] = DerivationStandardHistory }),
 	}
 	require.NoError(t, os.MkdirAll("testdata/staple-3", 0o755))

@@ -628,6 +628,10 @@ mod tests {
         request: String,
         reply: String,
         pass: bool,
+        /// Go and Python refuse it; Rust passes it, with `card_form_checked`
+        /// false (it checks a standard card's members, not its values).
+        #[serde(default)]
+        members_only: bool,
         #[serde(default)]
         nonce: String,
         #[serde(default)]
@@ -683,7 +687,7 @@ mod tests {
         assert!(vectors.len() >= 6);
         for v in vectors {
             let got = check_staple(v.request.as_bytes(), v.reply.as_bytes(), &v.holder);
-            assert_eq!(got.is_ok(), v.pass, "{}: {got:?}", v.name);
+            assert_eq!(got.is_ok(), v.pass || v.members_only, "{}: {got:?}", v.name);
             if let Ok(c) = got {
                 assert_eq!(
                     (c.derivation.as_str(), c.nonce, c.anchor),
