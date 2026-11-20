@@ -17,6 +17,12 @@ import (
 // sets. It is recipient-free: every requester answered gets the same bytes.
 const DerivationStandardHistory = standardhistory.Derivation
 
+// DerivationStandardHistory3 is the registered token standard_history/3
+// (SH §11): a card counted from a shelf's book facts as of a shelf
+// checkpoint. A Book serves no /3 card, since it holds no shelf facts; the
+// host counts it, and a staple carries it over full_history (CheckStaple).
+const DerivationStandardHistory3 = standardhistory.Derivation3
+
 // StandardHistorySource is what a host supplies for Respond to answer
 // standard_history/1 over the full_history subject. With it set, Respond
 // answers the card to any authenticated requester, whatever the share

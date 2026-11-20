@@ -13,8 +13,11 @@
 //! One departure from Go and Python, stated: for `standard_history/1` this
 //! checks that the card has exactly the standard card's members and names
 //! its derivation, not the rest of the card's form (SH §6 `card_form`),
-//! which has no Rust checker yet. The card's properties are the reader's
-//! verifier in every language.
+//! which has no Rust checker yet. The same holds for `standard_history/3`
+//! (a staple of it is read, none is built): a card with the right members
+//! and a malformed value passes here where Go and Python refuse it; the
+//! result says so (`StapleCheck::card_form_checked` is false). The
+//! card's properties are the reader's verifier in every language.
 
 use crate::answer::{self, DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2};
 use crate::ask::Book;
@@ -34,6 +37,11 @@ use sha2::{Digest, Sha256};
 /// `spec/standard-history-v0.md`).
 pub const DERIVATION_STANDARD_HISTORY: &str = "standard_history/1";
 
+/// The registered token of the shelf card (SH §11), which the host counts
+/// from a shelf's book facts: [`check_staple`] reads a staple of it, and no
+/// book builds one.
+pub const DERIVATION_STANDARD_HISTORY_3: &str = "standard_history/3";
+
 /// The standard card's members (SH §4).
 const CARD_MEMBERS: [&str; 14] = [
     "anchor",
@@ -52,6 +60,30 @@ const CARD_MEMBERS: [&str; 14] = [
     "window",
 ];
 
+/// The `standard_history/3` card's members (SH §11), sorted.
+const CARD_MEMBERS_3: [&str; 20] = [
+    "anchor",
+    "bands",
+    "class_missing",
+    "controller_class",
+    "coverage_start",
+    "derivation",
+    "disputes",
+    "happened",
+    "holder_kind",
+    "in_window",
+    "local_times",
+    "not_counted",
+    "not_honoured",
+    "outcomes",
+    "policy",
+    "remedied",
+    "roles",
+    "since",
+    "unpriced",
+    "window",
+];
+
 /// What [`check_staple`] read from a staple that passed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StapleCheck {
@@ -63,6 +95,12 @@ pub struct StapleCheck {
     pub issued_at: String,
     /// The card, in its canonical octets.
     pub artifact: Vec<u8>,
+    /// Whether the card's whole form was checked. False for a
+    /// `standard_history/1` or `/3` card, of which only the members and the
+    /// derivation are checked (the departure in the module doc): a card with
+    /// the right members and a malformed value passes with this false, where
+    /// Go and Python refuse it. True for a `history_card/1` or `/2`.
+    pub card_form_checked: bool,
 }
 
 /// Why a staple is refused.
@@ -101,10 +139,11 @@ pub fn check_staple(
         (DERIVATION_HISTORY_CARD, Subject::Checkpoints)
             | (DERIVATION_HISTORY_CARD_2, Subject::Checkpoints)
             | (DERIVATION_STANDARD_HISTORY, Subject::FullHistory)
+            | (DERIVATION_STANDARD_HISTORY_3, Subject::FullHistory)
     );
     if !capped {
         return refuse(format!(
-            "a staple carries {DERIVATION_HISTORY_CARD} or {DERIVATION_HISTORY_CARD_2} over checkpoints or {DERIVATION_STANDARD_HISTORY} over full_history, not {derivation:?}"
+            "a staple carries {DERIVATION_HISTORY_CARD} or {DERIVATION_HISTORY_CARD_2} over checkpoints or {DERIVATION_STANDARD_HISTORY} or {DERIVATION_STANDARD_HISTORY_3} over full_history, not {derivation:?}"
         ));
     }
     let (Coverage::ExpectedPin(pin), Some(nonce)) = (&req.coverage, &req.nonce) else {
@@ -149,7 +188,12 @@ pub fn check_staple(
     if derivation == DERIVATION_HISTORY_CARD_2 {
         check_history_card_2(&e.artifact, pin)?;
     }
-    if derivation == DERIVATION_STANDARD_HISTORY {
+    if derivation == DERIVATION_STANDARD_HISTORY || derivation == DERIVATION_STANDARD_HISTORY_3 {
+        let members_of: &[&str] = if derivation == DERIVATION_STANDARD_HISTORY_3 {
+            &CARD_MEMBERS_3
+        } else {
+            &CARD_MEMBERS
+        };
         let card = match decode_strict(&e.artifact) {
             Ok(card) => card,
             Err(_) => return refuse("the stapled card is not JSON"),
@@ -159,7 +203,7 @@ pub fn check_staple(
         };
         let mut names: Vec<&str> = members.keys().map(String::as_str).collect();
         names.sort_unstable();
-        if names != CARD_MEMBERS || members["derivation"] != DERIVATION_STANDARD_HISTORY {
+        if names != members_of || members["derivation"] != derivation {
             return refuse("the stapled card is not the standard card's members");
         }
     }
@@ -169,6 +213,8 @@ pub fn check_staple(
         nonce: nonce.clone(),
         issued_at: e.issued_at.clone(),
         artifact: e.artifact.clone(),
+        card_form_checked: derivation != DERIVATION_STANDARD_HISTORY
+            && derivation != DERIVATION_STANDARD_HISTORY_3,
     })
 }
 
@@ -582,6 +628,10 @@ mod tests {
         request: String,
         reply: String,
         pass: bool,
+        /// Go and Python refuse it; Rust passes it, with `card_form_checked`
+        /// false (it checks a standard card's members, not its values).
+        #[serde(default)]
+        members_only: bool,
         #[serde(default)]
         nonce: String,
         #[serde(default)]
@@ -602,6 +652,8 @@ mod tests {
             let got = check_staple(v.request.as_bytes(), v.reply.as_bytes(), &v.holder);
             assert_eq!(got.is_ok(), v.pass, "{}: {got:?}", v.name);
             if let Ok(c) = got {
+                let standard = c.derivation == DERIVATION_STANDARD_HISTORY;
+                assert_eq!(c.card_form_checked, !standard, "{}", v.name);
                 assert_eq!((c.nonce, c.anchor), (v.nonce, v.anchor), "{}", v.name);
             }
         }
@@ -623,10 +675,39 @@ mod tests {
         }
     }
 
+    /// The `standard_history/3` vectors Go writes (testdata/staple-3).
+    #[test]
+    fn agrees_with_the_go_standard_history_3_vectors() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../testdata/staple-3/staples.json"
+        );
+        let vectors: Vec<Vector> =
+            serde_json::from_slice(&std::fs::read(path).expect("vectors")).expect("parse");
+        assert!(vectors.len() >= 6);
+        for v in vectors {
+            let got = check_staple(v.request.as_bytes(), v.reply.as_bytes(), &v.holder);
+            assert_eq!(got.is_ok(), v.pass || v.members_only, "{}: {got:?}", v.name);
+            if let Ok(c) = got {
+                assert_eq!(
+                    (c.derivation.as_str(), c.nonce, c.anchor),
+                    (DERIVATION_STANDARD_HISTORY_3, v.nonce, v.anchor),
+                    "{}",
+                    v.name
+                );
+                // The departure is in the result, never a plain pass.
+                assert!(!c.card_form_checked, "{}", v.name);
+            }
+        }
+    }
+
     #[test]
     fn card_members_are_sorted() {
         let mut sorted = CARD_MEMBERS;
         sorted.sort_unstable();
         assert_eq!(sorted, CARD_MEMBERS);
+        let mut sorted = CARD_MEMBERS_3;
+        sorted.sort_unstable();
+        assert_eq!(sorted, CARD_MEMBERS_3);
     }
 }

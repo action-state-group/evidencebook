@@ -186,6 +186,10 @@ type stapleVector struct {
 	// Nonce and Anchor are what a passing staple reads as.
 	Nonce  string `json:"nonce,omitempty"`
 	Anchor string `json:"anchor,omitempty"`
+	// MembersOnly marks a staple Go and Python refuse (Pass is false) that
+	// Rust passes with card_form_checked false: it checks a standard card's
+	// members and derivation, not its values (evidencebook#579).
+	MembersOnly bool `json:"members_only,omitempty"`
 }
 
 const stapleVectorsPath = "testdata/staple/staples.json"
