@@ -373,8 +373,8 @@ func shCardCommand() *cobra.Command {
 		if out == "" {
 			return cli.InputError("--out is required")
 		}
-		if derivation != standardhistory.Derivation && derivation != standardhistory.Derivation3 {
-			return cli.InputError("--derivation is " + standardhistory.Derivation + " (the default, for x-deal-v0 deals) or " + standardhistory.Derivation3 + " (for x-deal-v1 deals)")
+		if derivation != standardhistory.Derivation && derivation != standardhistory.Derivation3 && derivation != standardhistory.Derivation4 {
+			return cli.InputError("--derivation is " + standardhistory.Derivation + " (the default, for x-deal-v0 deals), " + standardhistory.Derivation3 + " or " + standardhistory.Derivation4 + " (for x-deal-v1 deals; /4 counts a deal with no witnessed time)")
 		}
 		p, err := cli.Selected(c)
 		if err != nil {
@@ -407,7 +407,7 @@ func shCardCommand() *cobra.Command {
 		return cli.Output(c, map[string]any{"out": out, "shared": shared})
 	}}
 	cmd.Flags().String("out", "", "New file for the bundle")
-	cmd.Flags().String("derivation", standardhistory.Derivation, "standard_history/1 counts x-deal-v0 deals; standard_history/3 counts x-deal-v1 deals from the shelf's book facts")
+	cmd.Flags().String("derivation", standardhistory.Derivation, "standard_history/1 counts x-deal-v0 deals; standard_history/3 and /4 count x-deal-v1 deals from the shelf's book facts (/4 also counts a deal with no witnessed time)")
 	cmd.Flags().Bool("shared", false, "The copy to send: the card, its policy and its anchor, without the deal entries it counts (your own copy has them)")
 	return cmd
 }
@@ -423,7 +423,7 @@ type standardHistoryCard struct {
 	// Tick is the cadence tick the card is as of: its checkpoint statement
 	// is the anchor's octets, and its receipt the witness's.
 	Tick evidencebook.CadenceTick
-	// Derivation is the card's token: standard_history/3 for a card counted
+	// Derivation is the card's token: standard_history/3 or /4 for a card counted
 	// from v1 deal books, empty for /1.
 	Derivation string
 }
@@ -618,8 +618,8 @@ func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool, de
 		return nil, cli.InputError("a History card needs the profile's checkpoint key (see `deal init`)")
 	}
 	var h standardHistoryCard
-	if derivation == standardhistory.Derivation3 {
-		h, err = s.standardHistory3(ctx, 0)
+	if derivation == standardhistory.Derivation3 || derivation == standardhistory.Derivation4 {
+		h, err = s.standardHistoryV1(ctx, 0, derivation)
 	} else {
 		h, err = s.standardHistory(ctx, 0)
 	}

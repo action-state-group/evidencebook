@@ -31,11 +31,19 @@ import (
 
 // errNotMigratedForCard is a /3 card asked of a store still in the old
 // layout, which has no shelf log of book facts to count.
-var errNotMigratedForCard = errors.New("a standard_history/3 card needs a deal store in the new layout")
+var errNotMigratedForCard = errors.New("a standard_history/3 or /4 card needs a deal store in the new layout")
 
 // standardHistory3 derives the /3 card as of tick n, or the newest finished
 // tick when n is 0. The tick must be a stamp's: Handover refuses another.
 func (s *dealSession) standardHistory3(ctx context.Context, tick uint64) (standardHistoryCard, error) {
+	return s.standardHistoryV1(ctx, tick, standardhistory.Derivation3)
+}
+
+// standardHistoryV1 derives the card of x-deal-v1 deals under derivation:
+// /3, or /4 (SH §12), which is /3 except that it leaves no deal out for want
+// of a witness time and discloses such a deal with no_witness_time
+// (evidencebook-deal#230; Steven u616).
+func (s *dealSession) standardHistoryV1(ctx context.Context, tick uint64, derivation string) (standardHistoryCard, error) {
 	settings, ok, err := readSHSettings(s.p)
 	if err != nil {
 		return standardHistoryCard{}, err
@@ -50,7 +58,7 @@ func (s *dealSession) standardHistory3(ctx context.Context, tick uint64) (standa
 	cadence, err := s.requireMigrated(ctx)
 	if err != nil {
 		if errors.Is(err, errNotMigratedSentinel) {
-			return standardHistoryCard{}, shRefusal("a standard_history/3 card needs a deal store in the new layout: see `deal set-version --help`", errors.Join(errNotMigratedForCard, err))
+			return standardHistoryCard{}, shRefusal("a standard_history/3 or /4 card needs a deal store in the new layout: see `deal set-version --help`", errors.Join(errNotMigratedForCard, err))
 		}
 		return standardHistoryCard{}, err
 	}
@@ -70,7 +78,7 @@ func (s *dealSession) standardHistory3(ctx context.Context, tick uint64) (standa
 	if newest, err := cadence.StandardHistoryAnchor(ctx, 0); err != nil {
 		return standardHistoryCard{}, err
 	} else if newest.Tick.N != anchor.Tick.N {
-		return standardHistoryCard{}, cli.InputError("a standard_history/3 card is as of the newest checkpoint only")
+		return standardHistoryCard{}, cli.InputError("a standard_history/3 or /4 card is as of the newest checkpoint only")
 	}
 	handover, err := cadence.Handover(ctx, anchor.Tick.N)
 	if err != nil {
@@ -102,13 +110,13 @@ func (s *dealSession) standardHistory3(ctx context.Context, tick uint64) (standa
 	asOf := anchor.AsOf
 	asOf.CoverageStartTime = coverage
 
-	deals, err := s.dealEntries3(ctx, replay.Latest, asOf.AnchorTime)
+	deals, err := s.dealEntries3(ctx, replay.Latest, asOf.AnchorTime, derivation)
 	if err != nil {
 		return standardHistoryCard{}, err
 	}
 	slices.SortFunc(deals, func(a, b standardhistory.Deal) int { return strings.Compare(a.Deal, b.Deal) })
 	controller := map[string]string{"person": "person_declared", "node": "node_declared"}[settings.HolderKind]
-	card, err := standardhistory.DeriveAs(standardhistory.Derivation3, settings.HolderKind, controller, asOf, policy, deals)
+	card, err := standardhistory.DeriveAs(derivation, settings.HolderKind, controller, asOf, policy, deals)
 	if err != nil {
 		return standardHistoryCard{}, fmt.Errorf("%w: standard history: %v", evidencebook.ErrInvalid, err)
 	}
@@ -116,7 +124,7 @@ func (s *dealSession) standardHistory3(ctx context.Context, tick uint64) (standa
 	if err != nil {
 		return standardHistoryCard{}, err
 	}
-	properties, err := standardhistory.CheckAs(standardhistory.Derivation3, card, &policy, &asOf, deals)
+	properties, err := standardhistory.CheckAs(derivation, card, &policy, &asOf, deals)
 	if err != nil {
 		return standardHistoryCard{}, fmt.Errorf("%w: standard history: %v", evidencebook.ErrInvalid, err)
 	}
@@ -127,7 +135,7 @@ func (s *dealSession) standardHistory3(ctx context.Context, tick uint64) (standa
 			return standardHistoryCard{}, fmt.Errorf("%w: standard history: the card fails %s against its own inputs", evidencebook.ErrInvalid, property)
 		}
 	}
-	return standardHistoryCard{Card: card, Policy: policy, AsOf: asOf, Deals: deals, Tick: anchor.Tick, Derivation: standardhistory.Derivation3}, nil
+	return standardHistoryCard{Card: card, Policy: policy, AsOf: asOf, Deals: deals, Tick: anchor.Tick, Derivation: derivation}, nil
 }
 
 // canonicalCard is a derived card in its JCS octets.
@@ -166,7 +174,7 @@ func (s *dealSession) coverageStartTime(ctx context.Context, c *evidencebook.Cad
 // dealEntries3 makes the /3 deal entry of each v1 deal book among the latest
 // facts, as of the anchor's time at (SH §11.1, §11.2). A journal fact, a book
 // of another profile, and a deal that has not started give no entry.
-func (s *dealSession) dealEntries3(ctx context.Context, latest []evidencebook.HandoverLatest, at string) ([]standardhistory.Deal, error) {
+func (s *dealSession) dealEntries3(ctx context.Context, latest []evidencebook.HandoverLatest, at, derivation string) ([]standardhistory.Deal, error) {
 	var deals []standardhistory.Deal
 	for _, l := range latest {
 		if l.Fact.Kind != evidencebook.FactKindBook || l.Fact.Profile != xdealv1.Profile {
@@ -176,7 +184,7 @@ func (s *dealSession) dealEntries3(ctx context.Context, latest []evidencebook.Ha
 		if err := cli.DecodeJSON(l.StatusOpening.Value, &status); err != nil {
 			return nil, fmt.Errorf("%w: the status opening of book %s: %v", evidencebook.ErrCorrupt, l.Fact.BookID, err)
 		}
-		deal, started, err := s.dealEntry3(ctx, l.Fact.BookID, status, at)
+		deal, started, err := s.dealEntry3(ctx, l.Fact.BookID, status, at, derivation)
 		if err != nil {
 			return nil, err
 		}
@@ -188,7 +196,7 @@ func (s *dealSession) dealEntries3(ctx context.Context, latest []evidencebook.Ha
 }
 
 // dealEntry3 is one book's entry and whether the deal has started at at.
-func (s *dealSession) dealEntry3(ctx context.Context, bookID string, v xdealv1.StatusValue, at string) (standardhistory.Deal, bool, error) {
+func (s *dealSession) dealEntry3(ctx context.Context, bookID string, v xdealv1.StatusValue, at, derivation string) (standardhistory.Deal, bool, error) {
 	keys := make([]string, 0, len(v.Witnesses))
 	for _, w := range v.Witnesses {
 		keys = append(keys, w.KeyID)
@@ -258,19 +266,36 @@ func (s *dealSession) dealEntry3(ctx context.Context, bookID string, v xdealv1.S
 	} else {
 		deal.Unpriced = true
 	}
-	if len(v.Witnesses) > 0 && !holdsWitnessTime(v, stamps) {
-		// The status times miss the holder's own agreement, the book's first
-		// record, which has a time whenever any later record has one (a stamp
-		// that covers a record covers those before it).
-		if _, ok, err := s.shelf.RecordTimeByKey(ctx, bookID, 1, keys); err != nil {
-			return standardhistory.Deal{}, false, err
-		} else if ok {
-			return deal, true, nil
-		}
+	timed, err := s.witnessedTime(ctx, bookID, v, stamps, keys)
+	if err != nil {
+		return standardhistory.Deal{}, false, err
+	}
+	switch {
+	case timed:
+	case derivation == standardhistory.Derivation4:
+		deal.NoWitnessTime = true
+	case len(keys) > 0:
+		// /3 leaves out a deal whose agreement names a witness that timed none
+		// of its records (SH §11.2 left_out); /4 counts it.
 		none := "no_witness_time"
 		deal.LeftOut = &none
 	}
 	return deal, true, nil
+}
+
+// witnessedTime is whether the deal holds a time from a witness its agreement
+// names. The status times may miss the holder's own agreement, the book's first
+// record, which has a time whenever any later record has one (a stamp that
+// covers a record covers those before it).
+func (s *dealSession) witnessedTime(ctx context.Context, bookID string, v xdealv1.StatusValue, stamps map[uint64]string, keys []string) (bool, error) {
+	if len(keys) == 0 {
+		return false, nil
+	}
+	if holdsWitnessTime(v, stamps) {
+		return true, nil
+	}
+	_, ok, err := s.shelf.RecordTimeByKey(ctx, bookID, 1, keys)
+	return ok, err
 }
 
 // statusTimes are the times a status value names, for the stamps to resolve.
