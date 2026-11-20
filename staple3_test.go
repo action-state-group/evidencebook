@@ -149,3 +149,29 @@ func writeStandardHistory3Vectors(t *testing.T) {
 	require.NoError(t, os.MkdirAll("testdata/staple-3", 0o755))
 	writeJSONFile(t, standardHistory3StaplesPath, vectors)
 }
+
+// A /3 card with the members of the card and a malformed value is refused by
+// CheckStaple (Go and Python; Rust checks members only, so no shared vector).
+func TestCheckStapleRefusesAMalformedStandardHistory3Card(t *testing.T) {
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	holder := KeyID(book.signer)
+	base, err := book.Staple(context.Background(), DerivationStandardHistory)
+	require.NoError(t, err)
+	got, err := CheckStaple(base, holder)
+	require.NoError(t, err)
+	req := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory3,
+		Coverage: Coverage{ExpectedPin: got.Anchor}, Nonce: got.Nonce, Profile: ProfileID})
+	card := standardHistory3Card(t, got.Anchor)
+	sign := func(artifact []byte) Staple {
+		return Staple{Request: req, Reply: resigned(t, book, base.Reply, func(e *Envelope) {
+			e.Derivation, e.RequestDigest = DerivationStandardHistory3, digestBytes(req.Octets)
+			e.Artifact, e.ArtifactDigest = artifact, digestBytes(artifact)
+		})}
+	}
+	_, err = CheckStaple(sign(card), holder)
+	require.NoError(t, err)
+	bad := []byte(strings.Replace(string(card), `"window":{"months":12}`, `"window":{"months":"12"}`, 1))
+	require.NotEqual(t, string(card), string(bad))
+	_, err = CheckStaple(sign(bad), holder)
+	assert.ErrorIs(t, err, ErrInvalid)
+}
