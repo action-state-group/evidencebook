@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 
 use super::names::*;
 use super::record::Body;
-use super::start::{act_check, start, FirstAct, StartInput, StartResult, STATE_STARTED};
+use super::start::{start, FirstAct, StartInput, StartResult, STATE_STARTED};
 use super::status_rows::{row_inputs_with, BookKind, RecRef, RowBooks, RowSources, TimedRecord};
 use super::status_value::{
     build_status, first_remedy, payment_checks, resolve_time, StatusBooks, StatusDispute,
@@ -311,7 +311,9 @@ pub fn build_report(b: &ReportBooks, c: &ReportCopy) -> Result<Report, Error> {
         offerer_agreement_time: resolve_time(&st.offerer_agreement_time, &stamps),
         acceptor_names_offerer: st.acceptor_names_offerer,
         cancellation_named_first: st.cancellation_named_first,
-        first_act: first_act(&rb, st.counterparty_layer),
+        first_act: st.first_act.as_ref().map(|a| FirstAct {
+            time: resolve_time(&a.time, &stamps),
+        }),
     })?;
     let mut rows = Vec::new();
     for (i, input) in ins.iter().enumerate() {
@@ -364,18 +366,6 @@ pub fn build_report(b: &ReportBooks, c: &ReportCopy) -> Result<Report, Error> {
 /// The report's payload bytes: its JCS form (Go `ReportPayload`).
 pub fn report_payload(r: &Report) -> Result<Vec<u8>, Error> {
     Ok(jcs(&serde_json::to_value(r)?)?)
-}
-
-fn first_act(b: &RowBooks, layer: bool) -> Option<FirstAct> {
-    if layer {
-        return None;
-    }
-    b.own
-        .iter()
-        .find(|r| act_check(&r.record).is_some())
-        .map(|r| FirstAct {
-            time: r.time.clone(),
-        })
 }
 
 fn counterparty_proof(v: &StatusValue) -> &'static str {

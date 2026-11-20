@@ -169,6 +169,41 @@ func TestStatusVectors(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, res.Local, "local false, as over the full input")
 
+	// A counterparty with no layer (#575): the status value carries the
+	// holder's first act, so a reader computes Start from the fact. Before
+	// the act it is null; after it, its time is known, first covered by a
+	// stamp, or none yet.
+	noLayer := func(upto int, at StatusTime) StatusBooks {
+		nb := base
+		nb.Own = append([]StatusRecord(nil), base.Own[:upto]...)
+		ag := *nb.Own[0].Record.Body.(*AgreeBody)
+		f := false
+		ag.CounterpartyLayer = &f
+		nb.Own[0].Record.Body = &ag
+		if at != (StatusTime{}) || upto > 1 {
+			nb.Own[upto-1].Time = at
+		}
+		nb.Counterpart, nb.CaseBook = nil, nil
+		return nb
+	}
+	firstAct := func(name string) *StatusFirstAct {
+		for _, c := range cases {
+			if c.Name == name {
+				return c.Status.Start.FirstAct
+			}
+		}
+		return nil
+	}
+	add("no-layer-before-act", noLayer(1, StatusTime{}), "2026-11-05T12:00:00Z", nil)
+	add("no-layer-timed-act", noLayer(2, KnownTime("2026-11-01T10:15:00Z")), "2026-11-05T12:00:00Z", nil)
+	add("no-layer-stamped-act", noLayer(2, StampTime(5)), "2026-11-05T12:00:00Z", map[uint64]string{5: "2026-11-01T10:20:00Z"})
+	add("no-layer-untimed-act", noLayer(2, NoTime), "2026-11-05T12:00:00Z", nil)
+	assert.Nil(t, firstAct("no-layer-before-act"))
+	assert.Equal(t, &StatusFirstAct{Time: KnownTime("2026-11-01T10:15:00Z")}, firstAct("no-layer-timed-act"))
+	assert.Equal(t, &StatusFirstAct{Time: StampTime(5)}, firstAct("no-layer-stamped-act"))
+	assert.Equal(t, &StatusFirstAct{Time: NoTime}, firstAct("no-layer-untimed-act"))
+	assert.Nil(t, firstAct("appendix-a"), "a counterparty with the layer has no first act")
+
 	got, err := json.MarshalIndent(map[string]any{
 		"description": "x-deal-v1 status values (evidencebook#461, docs/design/461-deal-profile.md §8.1): BuildStatus(books) must give status; for each row, rowstatus over the status row's input, with each {\"stamp\": n} resolved as stamps gives (untimed otherwise) at at, gives rows. Written by dealprofile/xdealv1's TestStatusVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,

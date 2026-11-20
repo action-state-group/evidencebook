@@ -277,7 +277,7 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 		CounterpartAgreementHeld: st.CounterpartAgreementHeld, SameOfferAndRows: st.SameOfferAndRows,
 		OffererNamesAcceptor: st.OffererNamesAcceptor, OffererAgreementTime: resolveTime(st.OffererAgreementTime, b.Stamps),
 		AcceptorNamesOfferer: st.AcceptorNamesOfferer, CancellationNamedFirst: st.CancellationNamedFirst,
-		FirstAct: firstAct(rb, st.CounterpartyLayer)})
+		FirstAct: resolveFirstAct(st.FirstAct, b.Stamps)})
 	if err != nil {
 		return Report{}, err
 	}
@@ -338,19 +338,13 @@ func resolveTime(t StatusTime, stamps map[uint64]string) *string {
 	return nil
 }
 
-// firstAct is the holder's first act with a counterparty that runs no layer,
-// as StartFromBooks reads it (design §5.2), nil with one that does or before
-// it.
-func firstAct(b RowBooks, layer bool) *FirstAct {
-	if layer {
+// resolveFirstAct is the status value's first act as Start reads it: its
+// time resolved from the stamps, nil time when it is not known.
+func resolveFirstAct(a *StatusFirstAct, stamps map[uint64]string) *FirstAct {
+	if a == nil {
 		return nil
 	}
-	for _, r := range b.Own {
-		if _, _, isAct := actCheck(r.Record); isAct {
-			return &FirstAct{Time: r.Time}
-		}
-	}
-	return nil
+	return &FirstAct{Time: resolveTime(a.Time, stamps)}
 }
 
 func counterpartyProof(v StatusValue) string {

@@ -569,7 +569,12 @@ def _status_start(b: _Books) -> dict:
            "counterpart_agreement_held": inp.counterpart_agreement_held,
            "same_offer_and_rows": inp.same_offer_and_rows, "offerer_names_acceptor": inp.offerer_names_acceptor,
            "offerer_agreement_time": None, "acceptor_names_offerer": inp.acceptor_names_offerer,
-           "cancellation_named_first": inp.cancellation_named_first}
+           "cancellation_named_first": inp.cancellation_named_first, "first_act": None}
+    if not inp.counterparty_layer:
+        for r in b.own:
+            if r.record.record_type in (TYPE_PERFORM, TYPE_SETTLE):
+                out["first_act"] = {"time": r.time}
+                break
     if inp.side == SIDE_OFFERER:
         out["offerer_agreement_time"] = b.own[0].time
     elif b.counterpart:

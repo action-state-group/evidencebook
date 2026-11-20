@@ -1152,7 +1152,7 @@ holds inputs, never a computed status, so a quiet book gets no new fact when a d
  "witnesses": [ ... as the agreement names them ... ],
  "adjudicator": {"key_id": "…", "rules_digest": "…"} | null,
  "counterparty_proof_held": true,
- "start": { StartInput without "at" },
+ "start": { StartInput without "at", its offerer_agreement_time and first_act time as <time> },
  "rows": [
    {"id": "as_described",
     "input": { rowstatus.Input without "at", its times as A below requires },
@@ -1164,6 +1164,14 @@ holds inputs, never a computed status, so a quiet book gets no new fact when a d
     "outcome": "open" | "for_claimant" | "against_claimant" | "no_finding" | "withdrawn",
     "forum": "<the dispute record's forum>"}]}
 ```
+
+**The start member and a counterparty without the layer (#575).** `start.first_act` is `null` when
+the counterparty runs the layer or the holder has written no `perform` or `settle` yet, else
+`{"time": <time>}`: the time of the holder's first such record, a string, `{"stamp": n}`, or `null`
+when the record has no time yet (a start that is then local, 5.2 step 1). A reader of a status
+opening with `counterparty_layer` false so computes `Start` from the fact alone, and the deal
+counts in a tally once the holder has acted. A report resolves the time from its stamps as it does
+`offerer_agreement_time`.
 
 **Times, and which statements a fact carries (A).** A fact carries only some of the holder's
 statements: each side's latest one known to be in time, newer ones whose time is not yet known, and

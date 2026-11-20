@@ -812,7 +812,8 @@
           "offerer_names_acceptor": true,
           "offerer_agreement_time": "2026-11-01T10:00:00Z",
           "acceptor_names_offerer": true,
-          "cancellation_named_first": false
+          "cancellation_named_first": false,
+          "first_act": null
         },
         "rows": [
           {
@@ -1320,7 +1321,8 @@
           "offerer_names_acceptor": true,
           "offerer_agreement_time": "2026-11-01T10:00:00Z",
           "acceptor_names_offerer": true,
-          "cancellation_named_first": false
+          "cancellation_named_first": false,
+          "first_act": null
         },
         "rows": [
           {
@@ -1781,7 +1783,8 @@
           "offerer_names_acceptor": true,
           "offerer_agreement_time": "2026-11-01T10:00:00Z",
           "acceptor_names_offerer": true,
-          "cancellation_named_first": false
+          "cancellation_named_first": false,
+          "first_act": null
         },
         "rows": [
           {
@@ -2734,7 +2737,8 @@
           "offerer_names_acceptor": true,
           "offerer_agreement_time": "2026-11-01T10:00:00Z",
           "acceptor_names_offerer": true,
-          "cancellation_named_first": false
+          "cancellation_named_first": false,
+          "first_act": null
         },
         "rows": [
           {
@@ -3401,7 +3405,8 @@
           "offerer_names_acceptor": true,
           "offerer_agreement_time": "2026-11-01T10:00:00Z",
           "acceptor_names_offerer": true,
-          "cancellation_named_first": false
+          "cancellation_named_first": false,
+          "first_act": null
         },
         "rows": [
           {
@@ -4073,7 +4078,8 @@
           "offerer_names_acceptor": true,
           "offerer_agreement_time": "2026-11-01T10:00:00Z",
           "acceptor_names_offerer": true,
-          "cancellation_named_first": false
+          "cancellation_named_first": false,
+          "first_act": null
         },
         "rows": [
           {
@@ -4243,6 +4249,1412 @@
         "as_described": "in_disagreement",
         "delivered": "agreed",
         "paid_as_agreed": "agreed"
+      }
+    },
+    {
+      "name": "no-layer-before-act",
+      "books": {
+        "offer": {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "record_type": "propose",
+            "at": "2026-11-01T09:30:00Z"
+          },
+          "body": {
+            "role": "buyer",
+            "to": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+            "terms": {
+              "item": "ceramic lamp",
+              "quantity": 1,
+              "price_minor": 6000,
+              "currency": "USD"
+            },
+            "pack_digest": "c94cdaacd19bd6eb4085dbc01023d62fa4b0d3b910737c74daa505558e60f4e3",
+            "stated_at": "2026-11-01T09:30:00Z",
+            "agree_by": "2026-11-02T23:59:59Z",
+            "terms_rows": {
+              "rows": [
+                {
+                  "id": "paid_as_agreed",
+                  "owed_by": "buyer",
+                  "owed": {
+                    "amount_minor": 6000,
+                    "currency": "USD"
+                  },
+                  "due": {
+                    "at": "2026-11-01T23:59:59Z"
+                  },
+                  "window_end": {
+                    "at": "2026-11-04T23:59:59Z"
+                  },
+                  "recomputed": true
+                },
+                {
+                  "id": "delivered",
+                  "owed_by": "seller",
+                  "owed": {
+                    "item": "ceramic lamp",
+                    "quantity": 1
+                  },
+                  "due": {
+                    "after": "paid",
+                    "seconds": 345600
+                  },
+                  "window_end": {
+                    "after": "paid",
+                    "seconds": 604800
+                  }
+                },
+                {
+                  "id": "as_described",
+                  "owed_by": "seller",
+                  "owed": {
+                    "listing": "as published"
+                  },
+                  "due": {
+                    "after": "received",
+                    "seconds": 0
+                  },
+                  "window_end": {
+                    "after": "received",
+                    "seconds": 1209600
+                  }
+                }
+              ],
+              "named": {
+                "paid": {
+                  "side": "buyer",
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "side": "buyer",
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "forums": [
+              "auto:ref"
+            ],
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ],
+            "ask": {
+              "url": "https://buyer.example/ask",
+              "digest": "d4339113bf6f0f1f20ed660db9e22e8e46f37581b495a1c382c0d51a9bf3b159"
+            }
+          }
+        },
+        "own": [
+          {
+            "record": {
+              "x-deal-v1": {
+                "profile": "x-deal-v1",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "record_type": "agree",
+                "at": "2026-11-01T10:00:00Z",
+                "seq": 1,
+                "seen": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d"
+              },
+              "body": {
+                "kind": "agreement",
+                "offer": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737"
+                },
+                "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+                "side": "offerer",
+                "role": "buyer",
+                "admit": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "d69f3b3f5ec5cd7438a65b9ed8a8420893599ffd6e8b5ad3553c7c8f2a7e8bb3"
+                },
+                "intent": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "b77b53a74c6910c1e3193b2f6746e849bac40abab0367d234acf5dcb0358f454"
+                },
+                "witnesses": [
+                  {
+                    "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                    "url": "https://witness.example"
+                  }
+                ],
+                "adjudicator": {
+                  "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+                  "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+                  "rules_url": "https://adjudicator.example/rules"
+                },
+                "forums": [
+                  "auto:ref"
+                ],
+                "counterparty_layer": false,
+                "counterparty_key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+                "checkpoint_key": "6f4dbcf3a4757c293c0e092ec650786b19ec40e5e44376c7a9f50bcfc1a54b6b",
+                "shelf_log_id": "03b24c18cc9277dbaeaec74dc765c63a992e1c46013f3195dfb2c86d3794e56b"
+              }
+            },
+            "record_id": "64bb887db1b74b31d01c36ecf7f30d546af92d13c0cd1278ea61c232a46c04ec",
+            "time": "2026-11-01T10:00:00Z"
+          }
+        ],
+        "counterpart": null,
+        "case_book": null,
+        "proof_held": true
+      },
+      "status": {
+        "v": 1,
+        "role": "buyer",
+        "side": "offerer",
+        "agreed_at": "2026-11-01T10:00:00Z",
+        "counterparty_layer": false,
+        "counterparty_kind": null,
+        "value_band": {
+          "currency": "USD",
+          "decade": 1
+        },
+        "witnesses": [
+          {
+            "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+            "url": "https://witness.example"
+          }
+        ],
+        "adjudicator": {
+          "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+          "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591"
+        },
+        "counterparty_proof_held": true,
+        "start": {
+          "side": "offerer",
+          "counterparty_layer": false,
+          "agree_by": "2026-11-02T23:59:59Z",
+          "counterpart_agreement_held": false,
+          "same_offer_and_rows": null,
+          "offerer_names_acceptor": null,
+          "offerer_agreement_time": "2026-11-01T10:00:00Z",
+          "acceptor_names_offerer": false,
+          "cancellation_named_first": false,
+          "first_act": null
+        },
+        "rows": [
+          {
+            "id": "paid_as_agreed",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "paid_as_agreed",
+                "owed_by": "buyer",
+                "due": {
+                  "at": "2026-11-01T23:59:59Z"
+                },
+                "window_end": {
+                  "at": "2026-11-04T23:59:59Z"
+                },
+                "recomputed": true
+              },
+              "named": {
+                "paid": {
+                  "time": null,
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          },
+          {
+            "id": "delivered",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "delivered",
+                "owed_by": "seller",
+                "due": {
+                  "after": "paid",
+                  "seconds": 345600
+                },
+                "window_end": {
+                  "after": "paid",
+                  "seconds": 604800
+                }
+              },
+              "named": {
+                "paid": {
+                  "time": null,
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          },
+          {
+            "id": "as_described",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "as_described",
+                "owed_by": "seller",
+                "due": {
+                  "after": "received"
+                },
+                "window_end": {
+                  "after": "received",
+                  "seconds": 1209600
+                }
+              },
+              "named": {
+                "paid": {
+                  "time": null,
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          }
+        ],
+        "disputes": []
+      },
+      "at": "2026-11-05T12:00:00Z",
+      "rows": {
+        "as_described": "not_due",
+        "delivered": "not_reached",
+        "paid_as_agreed": "no_statement"
+      }
+    },
+    {
+      "name": "no-layer-timed-act",
+      "books": {
+        "offer": {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "record_type": "propose",
+            "at": "2026-11-01T09:30:00Z"
+          },
+          "body": {
+            "role": "buyer",
+            "to": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+            "terms": {
+              "item": "ceramic lamp",
+              "quantity": 1,
+              "price_minor": 6000,
+              "currency": "USD"
+            },
+            "pack_digest": "c94cdaacd19bd6eb4085dbc01023d62fa4b0d3b910737c74daa505558e60f4e3",
+            "stated_at": "2026-11-01T09:30:00Z",
+            "agree_by": "2026-11-02T23:59:59Z",
+            "terms_rows": {
+              "rows": [
+                {
+                  "id": "paid_as_agreed",
+                  "owed_by": "buyer",
+                  "owed": {
+                    "amount_minor": 6000,
+                    "currency": "USD"
+                  },
+                  "due": {
+                    "at": "2026-11-01T23:59:59Z"
+                  },
+                  "window_end": {
+                    "at": "2026-11-04T23:59:59Z"
+                  },
+                  "recomputed": true
+                },
+                {
+                  "id": "delivered",
+                  "owed_by": "seller",
+                  "owed": {
+                    "item": "ceramic lamp",
+                    "quantity": 1
+                  },
+                  "due": {
+                    "after": "paid",
+                    "seconds": 345600
+                  },
+                  "window_end": {
+                    "after": "paid",
+                    "seconds": 604800
+                  }
+                },
+                {
+                  "id": "as_described",
+                  "owed_by": "seller",
+                  "owed": {
+                    "listing": "as published"
+                  },
+                  "due": {
+                    "after": "received",
+                    "seconds": 0
+                  },
+                  "window_end": {
+                    "after": "received",
+                    "seconds": 1209600
+                  }
+                }
+              ],
+              "named": {
+                "paid": {
+                  "side": "buyer",
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "side": "buyer",
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "forums": [
+              "auto:ref"
+            ],
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ],
+            "ask": {
+              "url": "https://buyer.example/ask",
+              "digest": "d4339113bf6f0f1f20ed660db9e22e8e46f37581b495a1c382c0d51a9bf3b159"
+            }
+          }
+        },
+        "own": [
+          {
+            "record": {
+              "x-deal-v1": {
+                "profile": "x-deal-v1",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "record_type": "agree",
+                "at": "2026-11-01T10:00:00Z",
+                "seq": 1,
+                "seen": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d"
+              },
+              "body": {
+                "kind": "agreement",
+                "offer": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737"
+                },
+                "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+                "side": "offerer",
+                "role": "buyer",
+                "admit": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "d69f3b3f5ec5cd7438a65b9ed8a8420893599ffd6e8b5ad3553c7c8f2a7e8bb3"
+                },
+                "intent": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "b77b53a74c6910c1e3193b2f6746e849bac40abab0367d234acf5dcb0358f454"
+                },
+                "witnesses": [
+                  {
+                    "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                    "url": "https://witness.example"
+                  }
+                ],
+                "adjudicator": {
+                  "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+                  "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+                  "rules_url": "https://adjudicator.example/rules"
+                },
+                "forums": [
+                  "auto:ref"
+                ],
+                "counterparty_layer": false,
+                "counterparty_key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+                "checkpoint_key": "6f4dbcf3a4757c293c0e092ec650786b19ec40e5e44376c7a9f50bcfc1a54b6b",
+                "shelf_log_id": "03b24c18cc9277dbaeaec74dc765c63a992e1c46013f3195dfb2c86d3794e56b"
+              }
+            },
+            "record_id": "64bb887db1b74b31d01c36ecf7f30d546af92d13c0cd1278ea61c232a46c04ec",
+            "time": "2026-11-01T10:00:00Z"
+          },
+          {
+            "record": {
+              "x-deal-v1": {
+                "profile": "x-deal-v1",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "record_type": "settle",
+                "at": "2026-11-01T10:15:00Z",
+                "seq": 2,
+                "prev": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
+                },
+                "agreement_ref": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
+                },
+                "seen": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d",
+                "marks": [
+                  "paid"
+                ]
+              },
+              "body": {
+                "leg": "payer",
+                "statements": [
+                  {
+                    "row": "paid_as_agreed",
+                    "value": "met"
+                  }
+                ],
+                "check": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "c92275672ad7d9779c5d0ad2d5702da4f6f235ca73c3a5c5e0a39d736005013b"
+                }
+              }
+            },
+            "record_id": "bd6bdd7f472e6c6c8db6adaeb37d3d54e70e377f6ac8c7bab237f18ff0ce9bf8",
+            "time": "2026-11-01T10:15:00Z"
+          }
+        ],
+        "counterpart": null,
+        "case_book": null,
+        "proof_held": true
+      },
+      "status": {
+        "v": 1,
+        "role": "buyer",
+        "side": "offerer",
+        "agreed_at": "2026-11-01T10:00:00Z",
+        "counterparty_layer": false,
+        "counterparty_kind": null,
+        "value_band": {
+          "currency": "USD",
+          "decade": 1
+        },
+        "witnesses": [
+          {
+            "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+            "url": "https://witness.example"
+          }
+        ],
+        "adjudicator": {
+          "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+          "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591"
+        },
+        "counterparty_proof_held": true,
+        "start": {
+          "side": "offerer",
+          "counterparty_layer": false,
+          "agree_by": "2026-11-02T23:59:59Z",
+          "counterpart_agreement_held": false,
+          "same_offer_and_rows": null,
+          "offerer_names_acceptor": null,
+          "offerer_agreement_time": "2026-11-01T10:00:00Z",
+          "acceptor_names_offerer": false,
+          "cancellation_named_first": false,
+          "first_act": {
+            "time": "2026-11-01T10:15:00Z"
+          }
+        },
+        "rows": [
+          {
+            "id": "paid_as_agreed",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "paid_as_agreed",
+                "owed_by": "buyer",
+                "due": {
+                  "at": "2026-11-01T23:59:59Z"
+                },
+                "window_end": {
+                  "at": "2026-11-04T23:59:59Z"
+                },
+                "recomputed": true
+              },
+              "named": {
+                "paid": {
+                  "time": "2026-11-01T10:15:00Z",
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              },
+              "statements": [
+                {
+                  "side": "buyer",
+                  "value": "met",
+                  "time": "2026-11-01T10:15:00Z"
+                }
+              ]
+            },
+            "statement_named_by_other": [
+              null
+            ],
+            "ruling_against": null,
+            "remedy_made": null
+          },
+          {
+            "id": "delivered",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "delivered",
+                "owed_by": "seller",
+                "due": {
+                  "after": "paid",
+                  "seconds": 345600
+                },
+                "window_end": {
+                  "after": "paid",
+                  "seconds": 604800
+                }
+              },
+              "named": {
+                "paid": {
+                  "time": "2026-11-01T10:15:00Z",
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          },
+          {
+            "id": "as_described",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "as_described",
+                "owed_by": "seller",
+                "due": {
+                  "after": "received"
+                },
+                "window_end": {
+                  "after": "received",
+                  "seconds": 1209600
+                }
+              },
+              "named": {
+                "paid": {
+                  "time": "2026-11-01T10:15:00Z",
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          }
+        ],
+        "disputes": []
+      },
+      "at": "2026-11-05T12:00:00Z",
+      "rows": {
+        "as_described": "not_due",
+        "delivered": "no_statement",
+        "paid_as_agreed": "uncontested"
+      }
+    },
+    {
+      "name": "no-layer-stamped-act",
+      "books": {
+        "offer": {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "record_type": "propose",
+            "at": "2026-11-01T09:30:00Z"
+          },
+          "body": {
+            "role": "buyer",
+            "to": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+            "terms": {
+              "item": "ceramic lamp",
+              "quantity": 1,
+              "price_minor": 6000,
+              "currency": "USD"
+            },
+            "pack_digest": "c94cdaacd19bd6eb4085dbc01023d62fa4b0d3b910737c74daa505558e60f4e3",
+            "stated_at": "2026-11-01T09:30:00Z",
+            "agree_by": "2026-11-02T23:59:59Z",
+            "terms_rows": {
+              "rows": [
+                {
+                  "id": "paid_as_agreed",
+                  "owed_by": "buyer",
+                  "owed": {
+                    "amount_minor": 6000,
+                    "currency": "USD"
+                  },
+                  "due": {
+                    "at": "2026-11-01T23:59:59Z"
+                  },
+                  "window_end": {
+                    "at": "2026-11-04T23:59:59Z"
+                  },
+                  "recomputed": true
+                },
+                {
+                  "id": "delivered",
+                  "owed_by": "seller",
+                  "owed": {
+                    "item": "ceramic lamp",
+                    "quantity": 1
+                  },
+                  "due": {
+                    "after": "paid",
+                    "seconds": 345600
+                  },
+                  "window_end": {
+                    "after": "paid",
+                    "seconds": 604800
+                  }
+                },
+                {
+                  "id": "as_described",
+                  "owed_by": "seller",
+                  "owed": {
+                    "listing": "as published"
+                  },
+                  "due": {
+                    "after": "received",
+                    "seconds": 0
+                  },
+                  "window_end": {
+                    "after": "received",
+                    "seconds": 1209600
+                  }
+                }
+              ],
+              "named": {
+                "paid": {
+                  "side": "buyer",
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "side": "buyer",
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "forums": [
+              "auto:ref"
+            ],
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ],
+            "ask": {
+              "url": "https://buyer.example/ask",
+              "digest": "d4339113bf6f0f1f20ed660db9e22e8e46f37581b495a1c382c0d51a9bf3b159"
+            }
+          }
+        },
+        "own": [
+          {
+            "record": {
+              "x-deal-v1": {
+                "profile": "x-deal-v1",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "record_type": "agree",
+                "at": "2026-11-01T10:00:00Z",
+                "seq": 1,
+                "seen": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d"
+              },
+              "body": {
+                "kind": "agreement",
+                "offer": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737"
+                },
+                "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+                "side": "offerer",
+                "role": "buyer",
+                "admit": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "d69f3b3f5ec5cd7438a65b9ed8a8420893599ffd6e8b5ad3553c7c8f2a7e8bb3"
+                },
+                "intent": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "b77b53a74c6910c1e3193b2f6746e849bac40abab0367d234acf5dcb0358f454"
+                },
+                "witnesses": [
+                  {
+                    "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                    "url": "https://witness.example"
+                  }
+                ],
+                "adjudicator": {
+                  "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+                  "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+                  "rules_url": "https://adjudicator.example/rules"
+                },
+                "forums": [
+                  "auto:ref"
+                ],
+                "counterparty_layer": false,
+                "counterparty_key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+                "checkpoint_key": "6f4dbcf3a4757c293c0e092ec650786b19ec40e5e44376c7a9f50bcfc1a54b6b",
+                "shelf_log_id": "03b24c18cc9277dbaeaec74dc765c63a992e1c46013f3195dfb2c86d3794e56b"
+              }
+            },
+            "record_id": "64bb887db1b74b31d01c36ecf7f30d546af92d13c0cd1278ea61c232a46c04ec",
+            "time": "2026-11-01T10:00:00Z"
+          },
+          {
+            "record": {
+              "x-deal-v1": {
+                "profile": "x-deal-v1",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "record_type": "settle",
+                "at": "2026-11-01T10:15:00Z",
+                "seq": 2,
+                "prev": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
+                },
+                "agreement_ref": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
+                },
+                "seen": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d",
+                "marks": [
+                  "paid"
+                ]
+              },
+              "body": {
+                "leg": "payer",
+                "statements": [
+                  {
+                    "row": "paid_as_agreed",
+                    "value": "met"
+                  }
+                ],
+                "check": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "c92275672ad7d9779c5d0ad2d5702da4f6f235ca73c3a5c5e0a39d736005013b"
+                }
+              }
+            },
+            "record_id": "bd6bdd7f472e6c6c8db6adaeb37d3d54e70e377f6ac8c7bab237f18ff0ce9bf8",
+            "time": {
+              "stamp": 5
+            }
+          }
+        ],
+        "counterpart": null,
+        "case_book": null,
+        "proof_held": true
+      },
+      "status": {
+        "v": 1,
+        "role": "buyer",
+        "side": "offerer",
+        "agreed_at": "2026-11-01T10:00:00Z",
+        "counterparty_layer": false,
+        "counterparty_kind": null,
+        "value_band": {
+          "currency": "USD",
+          "decade": 1
+        },
+        "witnesses": [
+          {
+            "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+            "url": "https://witness.example"
+          }
+        ],
+        "adjudicator": {
+          "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+          "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591"
+        },
+        "counterparty_proof_held": true,
+        "start": {
+          "side": "offerer",
+          "counterparty_layer": false,
+          "agree_by": "2026-11-02T23:59:59Z",
+          "counterpart_agreement_held": false,
+          "same_offer_and_rows": null,
+          "offerer_names_acceptor": null,
+          "offerer_agreement_time": "2026-11-01T10:00:00Z",
+          "acceptor_names_offerer": false,
+          "cancellation_named_first": false,
+          "first_act": {
+            "time": {
+              "stamp": 5
+            }
+          }
+        },
+        "rows": [
+          {
+            "id": "paid_as_agreed",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "paid_as_agreed",
+                "owed_by": "buyer",
+                "due": {
+                  "at": "2026-11-01T23:59:59Z"
+                },
+                "window_end": {
+                  "at": "2026-11-04T23:59:59Z"
+                },
+                "recomputed": true
+              },
+              "named": {
+                "paid": {
+                  "time": {
+                    "stamp": 5
+                  },
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              },
+              "statements": [
+                {
+                  "side": "buyer",
+                  "value": "met",
+                  "time": {
+                    "stamp": 5
+                  }
+                }
+              ]
+            },
+            "statement_named_by_other": [
+              null
+            ],
+            "ruling_against": null,
+            "remedy_made": null
+          },
+          {
+            "id": "delivered",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "delivered",
+                "owed_by": "seller",
+                "due": {
+                  "after": "paid",
+                  "seconds": 345600
+                },
+                "window_end": {
+                  "after": "paid",
+                  "seconds": 604800
+                }
+              },
+              "named": {
+                "paid": {
+                  "time": {
+                    "stamp": 5
+                  },
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          },
+          {
+            "id": "as_described",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "as_described",
+                "owed_by": "seller",
+                "due": {
+                  "after": "received"
+                },
+                "window_end": {
+                  "after": "received",
+                  "seconds": 1209600
+                }
+              },
+              "named": {
+                "paid": {
+                  "time": {
+                    "stamp": 5
+                  },
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          }
+        ],
+        "disputes": []
+      },
+      "at": "2026-11-05T12:00:00Z",
+      "stamps": {
+        "5": "2026-11-01T10:20:00Z"
+      },
+      "rows": {
+        "as_described": "not_due",
+        "delivered": "no_statement",
+        "paid_as_agreed": "uncontested"
+      }
+    },
+    {
+      "name": "no-layer-untimed-act",
+      "books": {
+        "offer": {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "record_type": "propose",
+            "at": "2026-11-01T09:30:00Z"
+          },
+          "body": {
+            "role": "buyer",
+            "to": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+            "terms": {
+              "item": "ceramic lamp",
+              "quantity": 1,
+              "price_minor": 6000,
+              "currency": "USD"
+            },
+            "pack_digest": "c94cdaacd19bd6eb4085dbc01023d62fa4b0d3b910737c74daa505558e60f4e3",
+            "stated_at": "2026-11-01T09:30:00Z",
+            "agree_by": "2026-11-02T23:59:59Z",
+            "terms_rows": {
+              "rows": [
+                {
+                  "id": "paid_as_agreed",
+                  "owed_by": "buyer",
+                  "owed": {
+                    "amount_minor": 6000,
+                    "currency": "USD"
+                  },
+                  "due": {
+                    "at": "2026-11-01T23:59:59Z"
+                  },
+                  "window_end": {
+                    "at": "2026-11-04T23:59:59Z"
+                  },
+                  "recomputed": true
+                },
+                {
+                  "id": "delivered",
+                  "owed_by": "seller",
+                  "owed": {
+                    "item": "ceramic lamp",
+                    "quantity": 1
+                  },
+                  "due": {
+                    "after": "paid",
+                    "seconds": 345600
+                  },
+                  "window_end": {
+                    "after": "paid",
+                    "seconds": 604800
+                  }
+                },
+                {
+                  "id": "as_described",
+                  "owed_by": "seller",
+                  "owed": {
+                    "listing": "as published"
+                  },
+                  "due": {
+                    "after": "received",
+                    "seconds": 0
+                  },
+                  "window_end": {
+                    "after": "received",
+                    "seconds": 1209600
+                  }
+                }
+              ],
+              "named": {
+                "paid": {
+                  "side": "buyer",
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "side": "buyer",
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "forums": [
+              "auto:ref"
+            ],
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ],
+            "ask": {
+              "url": "https://buyer.example/ask",
+              "digest": "d4339113bf6f0f1f20ed660db9e22e8e46f37581b495a1c382c0d51a9bf3b159"
+            }
+          }
+        },
+        "own": [
+          {
+            "record": {
+              "x-deal-v1": {
+                "profile": "x-deal-v1",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "record_type": "agree",
+                "at": "2026-11-01T10:00:00Z",
+                "seq": 1,
+                "seen": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d"
+              },
+              "body": {
+                "kind": "agreement",
+                "offer": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737"
+                },
+                "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+                "side": "offerer",
+                "role": "buyer",
+                "admit": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "d69f3b3f5ec5cd7438a65b9ed8a8420893599ffd6e8b5ad3553c7c8f2a7e8bb3"
+                },
+                "intent": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "b77b53a74c6910c1e3193b2f6746e849bac40abab0367d234acf5dcb0358f454"
+                },
+                "witnesses": [
+                  {
+                    "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                    "url": "https://witness.example"
+                  }
+                ],
+                "adjudicator": {
+                  "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+                  "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+                  "rules_url": "https://adjudicator.example/rules"
+                },
+                "forums": [
+                  "auto:ref"
+                ],
+                "counterparty_layer": false,
+                "counterparty_key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+                "checkpoint_key": "6f4dbcf3a4757c293c0e092ec650786b19ec40e5e44376c7a9f50bcfc1a54b6b",
+                "shelf_log_id": "03b24c18cc9277dbaeaec74dc765c63a992e1c46013f3195dfb2c86d3794e56b"
+              }
+            },
+            "record_id": "64bb887db1b74b31d01c36ecf7f30d546af92d13c0cd1278ea61c232a46c04ec",
+            "time": "2026-11-01T10:00:00Z"
+          },
+          {
+            "record": {
+              "x-deal-v1": {
+                "profile": "x-deal-v1",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "record_type": "settle",
+                "at": "2026-11-01T10:15:00Z",
+                "seq": 2,
+                "prev": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
+                },
+                "agreement_ref": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
+                },
+                "seen": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d",
+                "marks": [
+                  "paid"
+                ]
+              },
+              "body": {
+                "leg": "payer",
+                "statements": [
+                  {
+                    "row": "paid_as_agreed",
+                    "value": "met"
+                  }
+                ],
+                "check": {
+                  "type": "deal-record",
+                  "digest_alg": "SHA-256",
+                  "digest": "c92275672ad7d9779c5d0ad2d5702da4f6f235ca73c3a5c5e0a39d736005013b"
+                }
+              }
+            },
+            "record_id": "bd6bdd7f472e6c6c8db6adaeb37d3d54e70e377f6ac8c7bab237f18ff0ce9bf8",
+            "time": null
+          }
+        ],
+        "counterpart": null,
+        "case_book": null,
+        "proof_held": true
+      },
+      "status": {
+        "v": 1,
+        "role": "buyer",
+        "side": "offerer",
+        "agreed_at": "2026-11-01T10:00:00Z",
+        "counterparty_layer": false,
+        "counterparty_kind": null,
+        "value_band": {
+          "currency": "USD",
+          "decade": 1
+        },
+        "witnesses": [
+          {
+            "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+            "url": "https://witness.example"
+          }
+        ],
+        "adjudicator": {
+          "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+          "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591"
+        },
+        "counterparty_proof_held": true,
+        "start": {
+          "side": "offerer",
+          "counterparty_layer": false,
+          "agree_by": "2026-11-02T23:59:59Z",
+          "counterpart_agreement_held": false,
+          "same_offer_and_rows": null,
+          "offerer_names_acceptor": null,
+          "offerer_agreement_time": "2026-11-01T10:00:00Z",
+          "acceptor_names_offerer": false,
+          "cancellation_named_first": false,
+          "first_act": {
+            "time": null
+          }
+        },
+        "rows": [
+          {
+            "id": "paid_as_agreed",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "paid_as_agreed",
+                "owed_by": "buyer",
+                "due": {
+                  "at": "2026-11-01T23:59:59Z"
+                },
+                "window_end": {
+                  "at": "2026-11-04T23:59:59Z"
+                },
+                "recomputed": true
+              },
+              "named": {
+                "paid": {
+                  "time": null,
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              },
+              "statements": [
+                {
+                  "side": "buyer",
+                  "value": "met",
+                  "time": null
+                }
+              ]
+            },
+            "statement_named_by_other": [
+              null
+            ],
+            "ruling_against": null,
+            "remedy_made": null
+          },
+          {
+            "id": "delivered",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "delivered",
+                "owed_by": "seller",
+                "due": {
+                  "after": "paid",
+                  "seconds": 345600
+                },
+                "window_end": {
+                  "after": "paid",
+                  "seconds": 604800
+                }
+              },
+              "named": {
+                "paid": {
+                  "time": null,
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          },
+          {
+            "id": "as_described",
+            "input": {
+              "parties": [
+                "buyer",
+                "seller"
+              ],
+              "row": {
+                "id": "as_described",
+                "owed_by": "seller",
+                "due": {
+                  "after": "received"
+                },
+                "window_end": {
+                  "after": "received",
+                  "seconds": 1209600
+                }
+              },
+              "named": {
+                "paid": {
+                  "time": null,
+                  "latest": "2026-11-04T23:59:59Z"
+                },
+                "received": {
+                  "time": null,
+                  "latest": "2026-12-01T23:59:59Z"
+                }
+              }
+            },
+            "statement_named_by_other": [],
+            "ruling_against": null,
+            "remedy_made": null
+          }
+        ],
+        "disputes": []
+      },
+      "at": "2026-11-05T12:00:00Z",
+      "rows": {
+        "as_described": "not_due",
+        "delivered": "not_reached",
+        "paid_as_agreed": "uncontested"
       }
     }
   ],
