@@ -13,7 +13,9 @@ Every pull request merged since v0.19.0:
 - [#584](https://github.com/action-state-group/evidencebook/pull/584): feat: CheckStaple reads a standard_history/3 staple, in Go, Rust and Python (#579)
 - [#586](https://github.com/action-state-group/evidencebook/pull/586): feat(shelf): MCP and A2A entries for Shelf.Receive (#577)
 
-**Consumers: regenerate pinned x-deal-v1 status values.** #583 adds `start.first_act` to every x-deal-v1 status value, so a status value's commitment changes. This is why the release is a minor version (v0.20.0, not a patch): a consumer that pins or seals status values regenerates them before bumping its evidencebook pin.
+**Consumers: regenerate pinned x-deal-v1 status values.** #583 adds `start.first_act` to every x-deal-v1 status value, so a status value's commitment changes. #583 is the breaking change that makes this a minor version (v0.20.0, not a patch): a consumer that pins or seals status values regenerates them before bumping its evidencebook pin.
+
+**Consumers: refusal reasons.** Anyone parsing `capsulectl-book` refusal reasons now sees `policy_declined` where `not_authorized`, `no_such_subject` or `coverage_unsatisfiable` appeared (#569).
 
 ### Changed: capsulectl-book answers refusals uniformly (#473)
 
