@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The x-deal-v1 status value carries the first act (#575): `start["first_act"]` is `{"time": <status time>}` or `None`, as Go's `StatusStart.FirstAct`; every status value's commitment changes.
 - The Goose reference's `loop_book_bundle` takes `disclose` (capsule-emit#407): the bundle then reveals the header of the
   record and of each record it cites, and carries their payloads under `evidencebook/payloads`, as Go's `capsulectl disclose`
   writes them. An outcome bundle of a mailbox ask holds the outcome, the request it answers and the reply bytes.

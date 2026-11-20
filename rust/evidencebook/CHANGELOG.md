@@ -15,6 +15,10 @@ Every pull request merged since 0.0.22 (the Rust changes are described below the
 
 The x-deal-v1 status value now carries `start.first_act` (#583), so a status value's commitment changes: a consumer that pins or seals status values regenerates them before bumping its pin.
 
+### Added: the x-deal-v1 status value carries the first act (#575)
+
+- `StatusStart::first_act` (`{"time": <status time>}` or `null`) is the holder's first `perform` or `settle` record for a deal whose counterparty runs no layer, byte for byte with Go's `xdealv1.StatusStart.FirstAct` on the shared status vectors. Every status value now carries `"first_act": null` or the act, so a status value's commitment changes.
+
 ### Added: the MCP and A2A entries of `Shelf::receive` (evidencebook#577)
 
 - `Shelf::push_mcp` and `Shelf::push_a2a` (and `push_a2a_extension`), behind the `shelf` feature, carry a record push and a stamp proof over MCP (the tool `record_push`) and A2A (one Agent Card extension, one `data` part) to `Shelf::receive`, as `spec/bindings/record-push-v0.md` of agent-action-capsule specifies and Go's `Shelf.PushMCP` and `PushA2A` do, byte for byte on the shared carriage vectors (`testdata/shelf/receive-carriage`). A part's refusal is an answer; a malformed push is an invalid-params error and a receiver fault an internal error, never an answer.
