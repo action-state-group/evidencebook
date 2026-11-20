@@ -3,7 +3,9 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"strings"
@@ -180,6 +182,12 @@ func TestOnRefusalReportsDecidedReason(t *testing.T) {
 		held := mustAppend(t, book, observation("a", "x"))
 		return book, anchorPin(t, book), held
 	}
+	wantSent := func(policy, decided string) string {
+		if policy == RefusalPolicySpecific {
+			return decided
+		}
+		return ReasonPolicyDeclined
+	}
 	type seen struct{ digest, decided, sent string }
 	for _, policy := range []string{RefusalPolicyUniform, RefusalPolicySpecific} {
 		book, pin, held := open("book-r-"+policy, policy)
@@ -200,7 +208,7 @@ func TestOnRefusalReportsDecidedReason(t *testing.T) {
 			msg := jsonRequest(t, EvidenceRequest{Subject: c.subject, Coverage: cov})
 			plain := respondAs(t, book, msg, c.requester)
 			var got []seen
-			reply, _, err := book.Respond(context.Background(), msg, RespondOptions{
+			reply, record, err := book.Respond(context.Background(), msg, RespondOptions{
 				AuthenticatedRequester: c.requester,
 				Policy:                 policyWith("peers"),
 				OnRefusal:              func(d, decided, sent string) { got = append(got, seen{d, decided, sent}) },
@@ -217,15 +225,21 @@ func TestOnRefusalReportsDecidedReason(t *testing.T) {
 			if reply.Refusal.Detail != plain.Refusal.Detail || reply.Refusal.RequestDigest != plain.Refusal.RequestDigest || reply.Refusal.KeyID != plain.Refusal.KeyID {
 				t.Fatalf("%s/%s: the refusal differs with the callback: %+v vs %+v", policy, name, reply.Refusal, plain.Refusal)
 			}
+			if c.requester != "" {
+				// The sealed record carries the sent reason only.
+				var st AnsweredStatement
+				if err := json.Unmarshal(record.Header.Statement, &st); err != nil || st.Reason != reply.Refusal.Reason {
+					t.Fatalf("%s/%s: sealed reason %q, sent %q (%v)", policy, name, st.Reason, reply.Refusal.Reason, err)
+				}
+				if c.decided != wantSent(policy, c.decided) && bytes.Contains(record.Header.Statement, []byte(c.decided)) {
+					t.Fatalf("%s/%s: the sealed record names the decided reason", policy, name)
+				}
+			}
 			if got[0].decided != c.decided || got[0].sent != reply.Refusal.Reason || got[0].digest != reply.Refusal.RequestDigest {
 				t.Fatalf("%s/%s: got %+v, refusal %+v, want decided %s", policy, name, got[0], reply.Refusal, c.decided)
 			}
-			wantSent := ReasonPolicyDeclined
-			if policy == RefusalPolicySpecific {
-				wantSent = c.decided
-			}
-			if reply.Refusal.Reason != wantSent || plain.Refusal.Reason != wantSent {
-				t.Fatalf("%s/%s: sent %s, want %s", policy, name, reply.Refusal.Reason, wantSent)
+			if want := wantSent(policy, c.decided); reply.Refusal.Reason != want || plain.Refusal.Reason != want {
+				t.Fatalf("%s/%s: sent %s, want %s", policy, name, reply.Refusal.Reason, want)
 			}
 		}
 		// A request refused for its shape is never folded: decided is sent.
