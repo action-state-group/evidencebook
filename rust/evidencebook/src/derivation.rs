@@ -313,6 +313,7 @@ pub(crate) fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
         text: text.as_bytes(),
         at: 0,
         canonical: None,
+        keep_numbers: false,
     };
     reader.space();
     let value = reader.value(0)?;
@@ -326,6 +327,30 @@ pub(crate) fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
     }
 }
 
+/// One JSON value read as [`decode_strict`] reads it (UTF-8, no duplicate
+/// member, no unpaired surrogate, bounded nesting, no trailing data), but with
+/// every number kept as written, so a document that is not to be
+/// canonicalized (a JSON-RPC message) is not refused for a number with no
+/// canonical form. An integer of at most 18 digits is an integer; any other
+/// number is a float, which no JSON-RPC id may be.
+pub(crate) fn decode_syntax(document: &[u8]) -> Result<Value, DerivationError> {
+    let text = std::str::from_utf8(document)
+        .map_err(|_| DerivationError::NotJson("JSON text is not valid UTF-8".into()))?;
+    let mut reader = Reader {
+        text: text.as_bytes(),
+        at: 0,
+        canonical: None,
+        keep_numbers: true,
+    };
+    reader.space();
+    let value = reader.value(0)?;
+    reader.space();
+    if reader.at != reader.text.len() {
+        return Err(reader.malformed("trailing data after the JSON value"));
+    }
+    Ok(value)
+}
+
 /// A strict RFC 8259 reader over valid UTF-8.
 struct Reader<'a> {
     text: &'a [u8],
@@ -333,6 +358,9 @@ struct Reader<'a> {
     /// The first number with no canonical form: reported only once the
     /// whole document reads, as Go reads before it canonicalizes.
     canonical: Option<String>,
+    /// Read a number with no canonical form as the number it is, instead of
+    /// as `null` with `canonical` set ([`decode_syntax`]).
+    keep_numbers: bool,
 }
 
 impl Reader<'_> {
@@ -562,6 +590,21 @@ impl Reader<'_> {
             None
         };
         if let Some(reason) = reason {
+            if self.keep_numbers {
+                let kept = token
+                    .parse::<i64>()
+                    .ok()
+                    .filter(|_| token.trim_start_matches('-').len() <= 18)
+                    .map(Value::from)
+                    .or_else(|| {
+                        token
+                            .parse::<f64>()
+                            .ok()
+                            .and_then(serde_json::Number::from_f64)
+                            .map(Value::Number)
+                    });
+                return Ok(kept.unwrap_or(Value::Null));
+            }
             self.canonical.get_or_insert(reason);
             return Ok(Value::Null);
         }
