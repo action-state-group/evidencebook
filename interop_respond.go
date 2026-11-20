@@ -236,7 +236,9 @@ type RespondOptions struct {
 	// protects into policy_declined (evidencebook#580). It is a local
 	// diagnostic for the holder's operator: never sealed, replied or served,
 	// and it changes no byte a requester or a cut sees. It runs on the
-	// caller's goroutine and must not call back into the Book.
+	// caller's goroutine after the refusal is signed and any record of it
+	// sealed, with no book lock held, but Release waits until it returns: keep it
+	// quick, and do not call back into the Book.
 	OnRefusal func(requestDigest, decidedReason, sentReason string)
 	// ConductPacks are the pack ids the book's owner holds as conduct packs
 	// (BundleRequest.ConductPacks). A record that cites one, whatever its type
@@ -307,19 +309,42 @@ func (b *Book) respond(ctx context.Context, request Message, opts RespondOptions
 	a := answer{book: b, ctx: ctx, request: request, opts: opts, own: own, digest: digestBytes(request.Octets)}
 	reply, err := a.run()
 	if err != nil || !a.seal {
+		if err == nil {
+			a.notifyRefusal()
+		}
 		return reply, Record{}, err
 	}
 	body, err := json.Marshal(a.statement)
 	if err != nil {
 		return Reply{}, Record{}, err
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	record, err := b.appendLocked(ctx, Entry{RecordType: RecordTypeRequestAnswered, EpistemicType: ObservedEvent, Links: []Link{}, Statement: body})
+	record, err := b.appendRecord(ctx, body)
 	if err != nil {
 		return Reply{}, Record{}, err
 	}
+	a.notifyRefusal()
 	return reply, record, nil
+}
+
+// appendRecord seals the answered-request statement under the book's lock,
+// which it releases before returning.
+func (b *Book) appendRecord(ctx context.Context, body []byte) (Record, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.appendLocked(ctx, Entry{RecordType: RecordTypeRequestAnswered, EpistemicType: ObservedEvent, Links: []Link{}, Statement: body})
+}
+
+// notifyRefusal calls RespondOptions.OnRefusal once the refusal is signed and
+// any record of it sealed, so it never reports a refusal Respond did not
+// return. No book lock is held.
+func (a *answer) notifyRefusal() {
+	if a.opts.OnRefusal != nil && a.sentReason != "" {
+		decided := a.decided
+		if decided == "" {
+			decided = a.sentReason
+		}
+		a.opts.OnRefusal(a.digest, decided, a.sentReason)
+	}
 }
 
 // answer is one request being answered, from a snapshot of the book's log.
@@ -336,6 +361,8 @@ type answer struct {
 	// decided is the reason the gate decided before the refusal policy folded
 	// it, for RespondOptions.OnRefusal; "" means the reason sent.
 	decided string
+	// sentReason is the reason of the refusal the answer signed, "" if none.
+	sentReason string
 }
 
 // limitReason is the reason a request asking for profile is refused for a
@@ -367,19 +394,13 @@ func requestProfile(m Message) string {
 
 func (a *answer) refuse(reason, detail string) (Reply, error) {
 	b := a.book
-	if a.opts.OnRefusal != nil {
-		decided := a.decided
-		if decided == "" {
-			decided = reason
-		}
-		a.opts.OnRefusal(a.digest, decided, reason)
-	}
 	refusal := Refusal{RequestDigest: a.digest, Reason: reason, IssuedAt: evidencerequest.ProfileTime(a.now), KeyID: KeyID(b.signer), Detail: detail}
 	refusal, err := refusal.Sign(a.ctx, b.signer)
 	if err != nil {
 		return Reply{}, err
 	}
 	a.statement.Outcome, a.statement.Reason = OutcomeRefusal, reason
+	a.sentReason = reason
 	return evidencerequest.EncodeReply(a.request.MediaType, nil, &refusal)
 }
 

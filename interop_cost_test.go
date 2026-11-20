@@ -190,8 +190,14 @@ func TestOnRefusalReportsDecidedReason(t *testing.T) {
 		}{
 			"no such subject": {"peer-1", Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("never"))}, ReasonNoSuchSubject},
 			"not authorized":  {"", Subject{Kind: SubjectRecord, Digest: held.RecordID}, ReasonNotAuthorized},
+			"unmet coverage":  {"peer-1", Subject{Kind: SubjectRecord, Digest: held.RecordID}, ReasonCoverageUnsatisfiable},
 		} {
-			msg := jsonRequest(t, EvidenceRequest{Subject: c.subject, Coverage: Coverage{ExpectedPin: pin}})
+			cov := Coverage{ExpectedPin: pin}
+			if name == "unmet coverage" {
+				cov = Coverage{MinFreshness: &Freshness{Size: new(uint64)}}
+				*cov.MinFreshness.Size = 1 << 40
+			}
+			msg := jsonRequest(t, EvidenceRequest{Subject: c.subject, Coverage: cov})
 			plain := respondAs(t, book, msg, c.requester)
 			var got []seen
 			reply, _, err := book.Respond(context.Background(), msg, RespondOptions{
@@ -208,6 +214,9 @@ func TestOnRefusalReportsDecidedReason(t *testing.T) {
 			if len(got) != 1 {
 				t.Fatalf("%s/%s: callback called %d times", policy, name, len(got))
 			}
+			if reply.Refusal.Detail != plain.Refusal.Detail || reply.Refusal.RequestDigest != plain.Refusal.RequestDigest || reply.Refusal.KeyID != plain.Refusal.KeyID {
+				t.Fatalf("%s/%s: the refusal differs with the callback: %+v vs %+v", policy, name, reply.Refusal, plain.Refusal)
+			}
 			if got[0].decided != c.decided || got[0].sent != reply.Refusal.Reason || got[0].digest != reply.Refusal.RequestDigest {
 				t.Fatalf("%s/%s: got %+v, refusal %+v, want decided %s", policy, name, got[0], reply.Refusal, c.decided)
 			}
@@ -218,6 +227,15 @@ func TestOnRefusalReportsDecidedReason(t *testing.T) {
 			if reply.Refusal.Reason != wantSent || plain.Refusal.Reason != wantSent {
 				t.Fatalf("%s/%s: sent %s, want %s", policy, name, reply.Refusal.Reason, wantSent)
 			}
+		}
+		// A request refused for its shape is never folded: decided is sent.
+		var shape []seen
+		if _, _, err := book.Respond(context.Background(), Message{Octets: []byte(`{}`), MediaType: MediaTypeJSON},
+			RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers"), OnRefusal: func(d, decided, sent string) { shape = append(shape, seen{d, decided, sent}) }}); err != nil {
+			t.Fatal(err)
+		}
+		if len(shape) != 1 || shape[0].decided != ReasonRequestMalformed || shape[0].sent != ReasonRequestMalformed {
+			t.Fatalf("%s: malformed request reported %+v", policy, shape)
 		}
 		called := false
 		reply, _, err := book.Respond(context.Background(), jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: held.RecordID}, Coverage: Coverage{ExpectedPin: pin}}),
