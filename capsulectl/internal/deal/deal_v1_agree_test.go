@@ -77,11 +77,18 @@ func offerTo(key string) string {
 
 func newHandshakeV1(t *testing.T) *handshakeV1 {
 	t.Helper()
+	return newHandshakeV1With(t, offerTo)
+}
+
+// newHandshakeV1With is newHandshakeV1 with the offer input made from the
+// acceptor's key by offer.
+func newHandshakeV1With(t *testing.T, offer func(key string) string) *handshakeV1 {
+	t.Helper()
 	h := &handshakeV1{}
 	h.seller = newV1Side(t)
 	h.buyer = newV1Side(t)
 	h.offerFile = filepath.Join(t.TempDir(), "offer.json")
-	res := dealRun(t, "offer", "--input", writeJSON(t, offerTo(h.seller.party.signer)), "--out", h.offerFile)
+	res := dealRun(t, "offer", "--input", writeJSON(t, offer(h.seller.party.signer)), "--out", h.offerFile)
 	h.dealID, h.offer = res["deal_id"].(string), res["offer"].(string)
 
 	h.seller.act(t)
