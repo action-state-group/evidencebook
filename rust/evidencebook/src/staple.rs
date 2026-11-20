@@ -34,6 +34,11 @@ use sha2::{Digest, Sha256};
 /// `spec/standard-history-v0.md`).
 pub const DERIVATION_STANDARD_HISTORY: &str = "standard_history/1";
 
+/// The registered token of the shelf card (SH §11), which the host counts
+/// from a shelf's book facts: [`check_staple`] reads a staple of it, and no
+/// book builds one.
+pub const DERIVATION_STANDARD_HISTORY_3: &str = "standard_history/3";
+
 /// The standard card's members (SH §4).
 const CARD_MEMBERS: [&str; 14] = [
     "anchor",
@@ -49,6 +54,30 @@ const CARD_MEMBERS: [&str; 14] = [
     "policy",
     "roles",
     "since",
+    "window",
+];
+
+/// The `standard_history/3` card's members (SH §11), sorted.
+const CARD_MEMBERS_3: [&str; 20] = [
+    "anchor",
+    "bands",
+    "class_missing",
+    "controller_class",
+    "coverage_start",
+    "derivation",
+    "disputes",
+    "happened",
+    "holder_kind",
+    "in_window",
+    "local_times",
+    "not_counted",
+    "not_honoured",
+    "outcomes",
+    "policy",
+    "remedied",
+    "roles",
+    "since",
+    "unpriced",
     "window",
 ];
 
@@ -101,10 +130,11 @@ pub fn check_staple(
         (DERIVATION_HISTORY_CARD, Subject::Checkpoints)
             | (DERIVATION_HISTORY_CARD_2, Subject::Checkpoints)
             | (DERIVATION_STANDARD_HISTORY, Subject::FullHistory)
+            | (DERIVATION_STANDARD_HISTORY_3, Subject::FullHistory)
     );
     if !capped {
         return refuse(format!(
-            "a staple carries {DERIVATION_HISTORY_CARD} or {DERIVATION_HISTORY_CARD_2} over checkpoints or {DERIVATION_STANDARD_HISTORY} over full_history, not {derivation:?}"
+            "a staple carries {DERIVATION_HISTORY_CARD} or {DERIVATION_HISTORY_CARD_2} over checkpoints or {DERIVATION_STANDARD_HISTORY} or {DERIVATION_STANDARD_HISTORY_3} over full_history, not {derivation:?}"
         ));
     }
     let (Coverage::ExpectedPin(pin), Some(nonce)) = (&req.coverage, &req.nonce) else {
@@ -149,7 +179,12 @@ pub fn check_staple(
     if derivation == DERIVATION_HISTORY_CARD_2 {
         check_history_card_2(&e.artifact, pin)?;
     }
-    if derivation == DERIVATION_STANDARD_HISTORY {
+    if derivation == DERIVATION_STANDARD_HISTORY || derivation == DERIVATION_STANDARD_HISTORY_3 {
+        let members_of: &[&str] = if derivation == DERIVATION_STANDARD_HISTORY_3 {
+            &CARD_MEMBERS_3
+        } else {
+            &CARD_MEMBERS
+        };
         let card = match decode_strict(&e.artifact) {
             Ok(card) => card,
             Err(_) => return refuse("the stapled card is not JSON"),
@@ -159,7 +194,7 @@ pub fn check_staple(
         };
         let mut names: Vec<&str> = members.keys().map(String::as_str).collect();
         names.sort_unstable();
-        if names != CARD_MEMBERS || members["derivation"] != DERIVATION_STANDARD_HISTORY {
+        if names != members_of || members["derivation"] != derivation {
             return refuse("the stapled card is not the standard card's members");
         }
     }
@@ -623,10 +658,37 @@ mod tests {
         }
     }
 
+    /// The `standard_history/3` vectors Go writes (testdata/staple-3).
+    #[test]
+    fn agrees_with_the_go_standard_history_3_vectors() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../testdata/staple-3/staples.json"
+        );
+        let vectors: Vec<Vector> =
+            serde_json::from_slice(&std::fs::read(path).expect("vectors")).expect("parse");
+        assert!(vectors.len() >= 6);
+        for v in vectors {
+            let got = check_staple(v.request.as_bytes(), v.reply.as_bytes(), &v.holder);
+            assert_eq!(got.is_ok(), v.pass, "{}: {got:?}", v.name);
+            if let Ok(c) = got {
+                assert_eq!(
+                    (c.derivation.as_str(), c.nonce, c.anchor),
+                    (DERIVATION_STANDARD_HISTORY_3, v.nonce, v.anchor),
+                    "{}",
+                    v.name
+                );
+            }
+        }
+    }
+
     #[test]
     fn card_members_are_sorted() {
         let mut sorted = CARD_MEMBERS;
         sorted.sort_unstable();
         assert_eq!(sorted, CARD_MEMBERS);
+        let mut sorted = CARD_MEMBERS_3;
+        sorted.sort_unstable();
+        assert_eq!(sorted, CARD_MEMBERS_3);
     }
 }

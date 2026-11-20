@@ -39,13 +39,20 @@ from .request import (
 )
 
 DERIVATION_STANDARD_HISTORY = sh.DERIVATION
+#: standard_history/3 (SH §11): a card the host counts from a shelf's book
+#: facts. A book builds none (:func:`staple`); :func:`check_staple` reads one.
+DERIVATION_STANDARD_HISTORY_3 = sh.DERIVATION_3
 
 #: The cap: each derivation a staple may carry and the one subject it is
 #: answered over.
 _STAPLE_SUBJECTS = {DERIVATION_HISTORY_CARD: "checkpoints", DERIVATION_HISTORY_CARD_2: "checkpoints",
                     DERIVATION_STANDARD_HISTORY: "full_history"}
 
-__all__ = ["DERIVATION_STANDARD_HISTORY", "Staple", "StapleCheck", "staple", "check_staple"]
+#: What :func:`check_staple` reads: the cap and the /3 card, which a book
+#: does not build.
+_CHECKED_STAPLE_SUBJECTS = {**_STAPLE_SUBJECTS, DERIVATION_STANDARD_HISTORY_3: "full_history"}
+
+__all__ = ["DERIVATION_STANDARD_HISTORY", "DERIVATION_STANDARD_HISTORY_3", "Staple", "StapleCheck", "staple", "check_staple"]
 
 
 @dataclass(frozen=True)
@@ -108,9 +115,9 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
     if parsed.reason:
         raise InvalidError(f"a staple's request is malformed: {parsed.why}")
     req = parsed.request
-    if req.derivation not in _STAPLE_SUBJECTS or req.subject.form != _STAPLE_SUBJECTS[req.derivation]:
+    if req.derivation not in _CHECKED_STAPLE_SUBJECTS or req.subject.form != _CHECKED_STAPLE_SUBJECTS[req.derivation]:
         raise InvalidError(f"a staple carries {DERIVATION_HISTORY_CARD} or {DERIVATION_HISTORY_CARD_2} over checkpoints or "
-                           f"{DERIVATION_STANDARD_HISTORY} "
+                           f"{DERIVATION_STANDARD_HISTORY} or {DERIVATION_STANDARD_HISTORY_3} "
                            f"over full_history, not {req.derivation!r} over {req.subject.form}")
     if req.coverage.expected_pin is None or not req.nonce:
         raise InvalidError("a staple's request pins its anchor and carries a nonce")
@@ -136,12 +143,12 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
         _history_card_chain(e)
     if req.derivation == DERIVATION_HISTORY_CARD_2:
         check_history_card_2(e.artifact, e.anchor_digest)
-    if req.derivation == DERIVATION_STANDARD_HISTORY:
+    if req.derivation in (DERIVATION_STANDARD_HISTORY, DERIVATION_STANDARD_HISTORY_3):
         try:
             card = strict_json(e.artifact)
         except ValueError:
             card = None
-        for name, status in sh.check_card(card).items():
+        for name, status in sh.check_card(card, derivation=req.derivation).items():
             if status == "FAIL":
                 raise InvalidError(f"the stapled card fails {name}")
     return StapleCheck(req.derivation, e.anchor_digest, req.nonce, e.issued_at, e.artifact)
