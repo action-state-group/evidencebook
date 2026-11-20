@@ -85,8 +85,8 @@ derivation are answered and every other subject gets a signed refusal:
 `policy_declined` under the default uniform refusal policy, `not_authorized`
 only if the operator opts into `RefusalPolicySpecific`. To see the reason the
 gate decided under the uniform policy, set `RespondOptions.OnRefusal`, a
-local callback that is never sealed, replied or served. A declared requester id is never trusted and is not
-recorded. See the CHANGELOG for the upgrade note.
+local callback that is never sealed, replied or served. A declared requester
+id is never trusted and is not recorded. See the CHANGELOG for the upgrade note.
 
 ## Testing evidencebook with your own verifier
 
