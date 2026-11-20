@@ -427,16 +427,20 @@ func (s *dealSession) journalRecordType(ctx context.Context, digest string) (typ
 	return "", false, nil
 }
 
-// sentOfferPair is the pair of the offer whose record digest is given, as
-// this profile sent it, for the status provider's payment check. An offer
-// this profile did not send has no row here: the check is then not run,
-// which the provider says of a nil pair.
+// sentOfferPair is the pair of the offer whose record digest is given, for the
+// status provider's payment check: the pair this profile sent, else the pair
+// it received. An offer with neither (one received before the pair was kept)
+// has no pair: the check is then not run, which the provider says of a nil
+// pair.
 func (s *dealSession) sentOfferPair(ctx context.Context, offerDigest string) ([]byte, error) {
 	var pair []byte
 	err := s.db.QueryRowContext(ctx, `SELECT pair FROM deal_sent WHERE record_digest=? AND kind=? AND pair IS NOT NULL ORDER BY rowid DESC LIMIT 1`,
 		offerDigest, xdealv1.TypePropose).Scan(&pair)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		err = s.db.QueryRowContext(ctx, `SELECT pair FROM deal_v1_offers WHERE offer_digest=? AND pair IS NOT NULL`, offerDigest).Scan(&pair)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 	}
 	return pair, err
 }
