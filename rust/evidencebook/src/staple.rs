@@ -13,7 +13,9 @@
 //! One departure from Go and Python, stated: for `standard_history/1` this
 //! checks that the card has exactly the standard card's members and names
 //! its derivation, not the rest of the card's form (SH §6 `card_form`),
-//! which has no Rust checker yet. The card's properties are the reader's
+//! which has no Rust checker yet. The same holds for `standard_history/3`
+//! (a staple of it is read, none is built): a card with the right members
+//! and a malformed value passes here where Go and Python refuse it. The card's properties are the reader's
 //! verifier in every language.
 
 use crate::answer::{self, DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2};

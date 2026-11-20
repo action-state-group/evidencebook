@@ -42,6 +42,20 @@ func TestStandardHistory3StapleVectors(t *testing.T) {
 	}
 }
 
+// A /3 staple carries no shelf handover, so counts_recompute stays not
+// checked (SH §11.7), and a reader of /1 only refuses the /3 card (#461
+// acceptance 7).
+func TestStandardHistory3CardChecksWithoutAHandover(t *testing.T) {
+	card := standardHistory3Card(t, strings.Repeat("b", 64))
+	properties, err := standardhistory.CheckAs(standardhistory.Derivation3, card, nil, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, standardhistory.Pass, properties["card_form"])
+	assert.Equal(t, standardhistory.NotChecked, properties["counts_recompute"])
+	asOne, err := standardhistory.Check(card, nil, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, standardhistory.Fail, asOne["card_form"])
+}
+
 // A Book does not build a /3 staple: it holds no shelf facts.
 func TestStapleBuildsNoStandardHistory3(t *testing.T) {
 	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
@@ -125,7 +139,7 @@ func writeStandardHistory3Vectors(t *testing.T) {
 		vector("standard_history/3", req3, good, holder, true),
 		vector("another holder", req3, good, KeyID(other.signer), false),
 		vector("a /1 card under a /3 request", req3, sign(req3, DerivationStandardHistory3, base.Reply.Envelope.Artifact), holder, false),
-		vector("a /3 card under a /1 request", base.Request, sign(base.Request, DerivationStandardHistory, derived), holder, false),
+		vector("a /3 card under a /1 request, as a reader of /1 only reads it", base.Request, sign(base.Request, DerivationStandardHistory, derived), holder, false),
 		vector("a reply to another derivation", req3, base.Reply, holder, false),
 		vector("another request", request(DerivationStandardHistory3, flipped(got.Nonce)), good, holder, false),
 		broken("a card with more than the /3 card", func(c map[string]any) { c["counterparties"] = []any{"carol"} }),
