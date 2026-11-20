@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+## v0.20.0 (2026-11-20)
+
+Every pull request merged since v0.19.0:
+
+- [#569](https://github.com/action-state-group/evidencebook/pull/569): feat(capsulectl): answer refusals uniformly, the library default (#473)
+- [#578](https://github.com/action-state-group/evidencebook/pull/578): docs(design): an untimed deal is counted, local, unless its agreement names a witness (u608, #570, SH-12)
+- [#582](https://github.com/action-state-group/evidencebook/pull/582): feat: RespondOptions.OnRefusal reports the decided reason locally; README names policy_declined (#580, #581)
+- [#583](https://github.com/action-state-group/evidencebook/pull/583): feat(dealprofile): x-deal-v1 status value carries the first act (#575)
+- [#584](https://github.com/action-state-group/evidencebook/pull/584): feat: CheckStaple reads a standard_history/3 staple, in Go, Rust and Python (#579)
+- [#586](https://github.com/action-state-group/evidencebook/pull/586): feat(shelf): MCP and A2A entries for Shelf.Receive (#577)
+
+**Consumers: regenerate pinned x-deal-v1 status values.** #583 adds `start.first_act` to every x-deal-v1 status value, so a status value's commitment changes. This is why the release is a minor version (v0.20.0, not a patch): a consumer that pins or seals status values regenerates them before bumping its evidencebook pin.
+
+### Changed: capsulectl-book answers refusals uniformly (#473)
+
+- `capsulectl-book` no longer sets `RefusalPolicySpecific`: it follows the library default (`uniform`, v0.14.0), so a refused request is answered `policy_declined` wherever `not_authorized`, `no_such_subject` or `coverage_unsatisfiable` would tell a requester whether the holder has a record for a key it does not hold. A holder's `holder-page --view asked` list shows the sealed code (`policy_declined`) as its reason.
+
+### Added: the x-deal-v1 status value carries the first act (#575)
+
+- `start.first_act` (`{"time": <status time>}` or `null`) is the holder's first `perform` or `settle` record for a deal whose counterparty runs no layer, so a reader of a status opening computes `Start` for such a deal from the fact. Go (`xdealv1.StatusStart.FirstAct`), Rust (`StatusStart::first_act`) and Python (`start["first_act"]`) give it byte for byte; the status vectors gain no-layer cases, and every status value now carries `"first_act": null` or the act, so a status value's commitment changes. A consumer that pins or seals status values (status vectors, status commitments) regenerates them before bumping its evidencebook pin.
+
+### Added: the MCP and A2A entries of Shelf.Receive (#577)
+
+- `Shelf.PushMCP` and `Shelf.PushA2A` (and `PushA2AExtension`) carry a record push and a stamp proof over MCP (the tool `record_push`) and A2A (one Agent Card extension, one `data` part) to `Shelf.Receive`, as `spec/bindings/record-push-v0.md` of agent-action-capsule specifies (evidencebook#577, #461 acceptance 4). Duplicates are acknowledged, gaps and forks answered, and a part's refusal is an answer; a malformed push is an invalid-params error and a receiver fault an internal error, never an answer. Vectors: `testdata/shelf/receive-carriage`.
+
+### Added: a `standard_history/3` staple is read (#579)
+
+- `DerivationStandardHistory3` names `standard_history/3` (SH §11), and `CheckStaple` accepts a staple of it over `full_history`, checking the card with the `standard_history/3` form (`standardhistory.CheckAs`). A book still builds no /3 card, since it holds no shelf facts: the host counts it from a shelf, and `Staple` refuses the token. `standard_history/1` and `/2` are unchanged.
+
+### Added: `RespondOptions.OnRefusal`, the decided reason as a local diagnostic (#580)
+
+- `RespondOptions.OnRefusal` is called once for each refusal `Respond` returns, with the request digest, the reason the gate decided and the reason the refusal carries. They differ only under the uniform refusal policy, which folds `not_authorized`, `no_such_subject` and `coverage_unsatisfiable` into `policy_declined`. It is for the holder's operator: never sealed, replied or served, and no byte of a reply, record or cut changes.
+
+### Fixed: README named the wrong default refusal (#581)
+
+- The README said an unauthenticated request for a protected subject gets `not_authorized`; under the default uniform policy it gets `policy_declined`.
+
 ## v0.19.0 (2026-11-19)
 
 ### Added: the x-deal-v1 sealed deal report (#461 step 5, PR 5)
