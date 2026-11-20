@@ -1010,9 +1010,65 @@
         {
           "at": "2026-10-21T00:00:00Z",
           "op": "call",
-          "note": "a member that is not a string: invalid params",
+          "note": "trailing bits set (not the canonical encoding): invalid params",
           "request": {
             "id": 27,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "AB"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "arguments do not match the record_push input schema"
+            },
+            "id": 27,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "one character left over (length 1 mod 4): invalid params",
+          "request": {
+            "id": 28,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "_meta": {
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+              },
+              "arguments": {
+                "record": "A"
+              },
+              "name": "record_push"
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "arguments do not match the record_push input schema"
+            },
+            "id": 28,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a member that is not a string: invalid params",
+          "request": {
+            "id": 29,
             "jsonrpc": "2.0",
             "method": "tools/call",
             "params": {
@@ -1031,7 +1087,7 @@
               "code": -32602,
               "message": "arguments do not match the record_push input schema"
             },
-            "id": 27,
+            "id": 29,
             "jsonrpc": "2.0"
           }
         },
@@ -1204,6 +1260,33 @@
                   },
                   "title": "Record push"
                 }
+              ],
+              "ttlMs": 3600000
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "an id above 2^53 is echoed as written",
+          "request": {
+            "jsonrpc": "2.0",
+            "id": 9007199254740993,
+            "method": "server/discover"
+          },
+          "expect": {
+            "id": 9007199254740993,
+            "jsonrpc": "2.0",
+            "result": {
+              "cacheScope": "public",
+              "capabilities": {
+                "tools": {
+                  "listChanged": false
+                }
+              },
+              "resultType": "complete",
+              "supportedVersions": [
+                "2026-07-28"
               ],
               "ttlMs": 3600000
             }
@@ -2941,13 +3024,91 @@
         {
           "at": "2026-10-21T00:00:00Z",
           "op": "call",
-          "note": "a member that is not a string: invalid params",
+          "note": "trailing bits set (not the canonical encoding): invalid params",
           "a2a_version": "1.0",
           "a2a_extensions": [
             "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
           ],
           "request": {
             "id": 27,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "AB"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 27,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "one character left over (length 1 mod 4): invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 28,
+            "jsonrpc": "2.0",
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "A"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32602,
+              "message": "the message is not a record push under the extension"
+            },
+            "id": 28,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "a member that is not a string: invalid params",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "id": 29,
             "jsonrpc": "2.0",
             "method": "SendMessage",
             "params": {
@@ -2973,7 +3134,7 @@
               "code": -32602,
               "message": "the message is not a record push under the extension"
             },
-            "id": 27,
+            "id": 29,
             "jsonrpc": "2.0"
           }
         },
@@ -3318,6 +3479,237 @@
             },
             "id": 88,
             "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "acceptedOutputModes that is empty: content type not supported, nothing stored",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "jsonrpc": "2.0",
+            "id": 95,
+            "method": "SendMessage",
+            "params": {
+              "configuration": {
+                "acceptedOutputModes": []
+              },
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32005,
+              "message": "the answer is only application/json"
+            },
+            "id": 95,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "acceptedOutputModes without application/json: content type not supported",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "jsonrpc": "2.0",
+            "id": 96,
+            "method": "SendMessage",
+            "params": {
+              "configuration": {
+                "acceptedOutputModes": [
+                  "text/plain"
+                ]
+              },
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "error": {
+              "code": -32005,
+              "message": "the answer is only application/json"
+            },
+            "id": 96,
+            "jsonrpc": "2.0"
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "acceptedOutputModes with application/json: answered",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "jsonrpc": "2.0",
+            "id": 97,
+            "method": "SendMessage",
+            "params": {
+              "configuration": {
+                "acceptedOutputModes": [
+                  "text/plain",
+                  "application/json"
+                ]
+              },
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 97,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                            "duplicate": true,
+                            "refused": "",
+                            "stored": false
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
+          }
+        },
+        {
+          "at": "2026-10-21T00:00:00Z",
+          "op": "call",
+          "note": "an id above 2^53 and a fraction in metadata are read and the id echoed",
+          "a2a_version": "1.0",
+          "a2a_extensions": [
+            "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+          ],
+          "request": {
+            "jsonrpc": "2.0",
+            "id": 9007199254740993,
+            "method": "SendMessage",
+            "params": {
+              "message": {
+                "extensions": [
+                  "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                ],
+                "messageId": "m-1",
+                "metadata": {
+                  "score": 0.5
+                },
+                "parts": [
+                  {
+                    "data": {
+                      "record": "eyJkZWFsIjoiZGVhbC0xIiwiZGlnZXN0IjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImxvZyI6ImRlYWwvYSIsIm9mZmVyIjpmYWxzZSwicG9zaXRpb24iOjEsInByZXYiOiIiLCJzZW5kZXIiOiJhbGljZSIsInNpZyI6ImU3N2Y0ZmRlMDdiZDFhNjk3OWNlM2E4NDVkMTJmMWY2MzA5YjBkMDllM2NhYWU2YThhMDhmMzA4YjQ0ZDY0MWEiLCJ2IjoxfQ"
+                    },
+                    "mediaType": "application/json"
+                  }
+                ],
+                "role": "ROLE_USER"
+              }
+            }
+          },
+          "expect": {
+            "id": 9007199254740993,
+            "jsonrpc": "2.0",
+            "result": {
+              "task": {
+                "artifacts": [
+                  {
+                    "artifactId": "\u003cid\u003e",
+                    "extensions": [
+                      "https://datatracker.ietf.org/doc/draft-mih-agent-record-push/"
+                    ],
+                    "parts": [
+                      {
+                        "data": {
+                          "record": {
+                            "ask_for_book": false,
+                            "counted": true,
+                            "deleted": false,
+                            "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+                            "duplicate": true,
+                            "refused": "",
+                            "stored": false
+                          }
+                        },
+                        "mediaType": "application/json"
+                      }
+                    ]
+                  }
+                ],
+                "contextId": "\u003cid\u003e",
+                "id": "\u003cid\u003e",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED"
+                }
+              }
+            }
           }
         }
       ]

@@ -38,9 +38,9 @@ padding), so each answer is that step's `expect` object (`record` and `proof`, t
 `stamp_proof`). Then the edge cases, at `2026-10-21T00:00:00Z`: a record the profile cannot read
 (refused `invalid`, empty `digest`); a stamp proof that is not one (refused `invalid`); each part
 answered on its own; a push with no member, an extra member, padding, a character outside
-base64url, or a member that is not a string (invalid params, no answer); and, per carriage, an
+base64url, trailing bits set, one character left over, or a member that is not a string (invalid params, no answer); and, per carriage, an
 unknown tool, arguments that are not an object, `tools/list`, `server/discover` and another
-protocol version (MCP); the push in a `raw` or a `text` part, a data part of another media type,
+protocol version (MCP); the push in a `raw` or a `text` part, a data part of another media type, `acceptedOutputModes` empty or without `application/json`, an id above 2^53 (echoed as written) with a fraction in `metadata`,
 a message that names a task, two parts, a message from the agent, the extension not activated,
 no `A2A-Version` and `GetTask` (A2A).
 

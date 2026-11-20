@@ -354,7 +354,7 @@ class PushA2AServer:
                 modes = c["acceptedOutputModes"]
                 if not isinstance(modes, list):
                     return fail(_INVALID_PARAMS, "acceptedOutputModes is not an array")
-                if modes and _JSON not in modes:
+                if _JSON not in modes:
                     return fail(_CONTENT_TYPE_NOT_SUPPORTED, "the answer is only application/json")
         try:
             answer = _answer(self._shelf, push)

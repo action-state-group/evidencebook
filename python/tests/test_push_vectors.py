@@ -132,3 +132,54 @@ def test_the_message_bound_and_over_limit(tmp_path):
 def test_discovery_is_fixed():
     ext = json.loads(a2a_push_extension())
     assert ext["uri"] == A2A_PUSH_EXTENSION_URI and ext["required"] is False and "params" not in ext
+
+
+class _FaultProfile(VectorProfile):
+    """The vector profile with failures a test switches on: the proof part's
+    lookup and the after-receive hook."""
+
+    fail_proof = False
+    fail_after = False
+
+    def proof_sender(self, key_id, log_id):
+        if self.fail_proof:
+            raise RuntimeError("injected profile failure")
+        return super().proof_sender(key_id, log_id)
+
+    def after_receive(self, result, at):
+        if self.fail_after:
+            raise RuntimeError("injected after-receive failure")
+
+
+@pytest.mark.parametrize("fault", ["proof", "after"])
+@pytest.mark.parametrize("carriage", ["mcp", "a2a"])
+def test_a_partial_fault_is_no_answer_and_a_retry_is_safe(tmp_path, carriage, fault):
+    """One part committed and the call failed: an internal error and no
+    answer; the same push again answers the committed part ``duplicate``
+    (RP §2.3 rule 4)."""
+    import base64
+
+    from evidencebook.shelf_stamp_proof import StampProof
+
+    script = _script()
+    profile = _FaultProfile(script["profile"])
+    config = ReceiveConfig(profile, ReceiveBounds(**script["bounds"]), timedelta(seconds=script["retention_seconds"]))
+    fx = ReceiveFixture(tmp_path, config)
+    try:
+        shelf = fx.open()
+        fx.clock.t = _at("2026-10-20T00:01:00Z")
+        proof = StampProof.from_value(script["proofs"]["p1"]).value()
+        b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()  # noqa: E731
+        args = {"record": b64(script["records"]["a1"].encode()),
+                "stamp_proof": b64(json.dumps(proof, separators=(",", ":")).encode())}
+        server = PushMCPServer(shelf) if carriage == "mcp" else PushA2AServer(shelf)
+        profile.fail_proof, profile.fail_after = fault == "proof", fault == "after"
+        out = _push(server, args, carriage)
+        assert out["error"]["code"] == -32603 and "result" not in out
+        profile.fail_proof = profile.fail_after = False
+        out = _push(server, args, carriage)
+        answer = (out["result"]["structuredContent"] if carriage == "mcp"
+                  else out["result"]["task"]["artifacts"][0]["parts"][0]["data"])
+        assert answer["record"]["duplicate"] is True and answer["record"]["stored"] is False
+    finally:
+        fx.close()

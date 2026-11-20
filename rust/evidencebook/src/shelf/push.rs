@@ -9,8 +9,7 @@
 //! §2.3 rule 2).
 
 use super::{InclusionEvidence, ReceiveError, ReceiveResult, Shelf, ShelfError, StampProof};
-use crate::canonical::jcs;
-use crate::derivation::decode_strict;
+use crate::derivation::decode_syntax;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use rand_core::{OsRng, RngCore};
@@ -98,9 +97,10 @@ fn tool() -> Value {
 }
 
 fn marshal(v: &Value) -> Vec<u8> {
-    // Every value built here is strings, booleans, small integers, arrays and
-    // objects, which JCS always writes.
-    jcs(v).unwrap_or_else(|_| {
+    // Every value built here is strings, booleans, integers, arrays and
+    // objects, which serde_json always writes. Not JCS: a request id of any
+    // size an integer may be is echoed as it was read.
+    serde_json::to_vec(v).unwrap_or_else(|_| {
         br#"{"error":{"code":-32603,"message":"internal error"},"id":null,"jsonrpc":"2.0"}"#
             .to_vec()
     })
@@ -264,7 +264,7 @@ fn envelope(shelf: &Shelf, message: &[u8]) -> Envelope {
             None,
         )));
     }
-    let Ok(root) = decode_strict(message) else {
+    let Ok(root) = decode_syntax(message) else {
         return Envelope::Reply(Some(error(&Value::Null, PARSE_ERROR, "parse error", None)));
     };
     let Value::Object(msg) = root else {
@@ -593,7 +593,7 @@ impl PushA2a<'_> {
                 let Some(list) = modes.as_array() else {
                     return fail(INVALID_PARAMS, "acceptedOutputModes is not an array", None);
                 };
-                if !list.is_empty() && !list.contains(&json!(JSON)) {
+                if !list.contains(&json!(JSON)) {
                     return fail(
                         CONTENT_TYPE_NOT_SUPPORTED,
                         "the answer is only application/json",

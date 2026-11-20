@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -144,6 +145,8 @@ func buildCarriageTracks(t *testing.T, v *receiveVectors) []carriageTrack {
 		add("an extra member: invalid params", send(map[string]any{"record": good, "sender": "alice"}))
 		add("padding is not base64url without padding: invalid params", send(map[string]any{"record": good + "="}))
 		add("not base64url: invalid params", send(map[string]any{"record": "a+b/"}))
+		add("trailing bits set (not the canonical encoding): invalid params", send(map[string]any{"record": "AB"}))
+		add("one character left over (length 1 mod 4): invalid params", send(map[string]any{"record": "A"}))
 		add("a member that is not a string: invalid params", send(map[string]any{"record": 7}))
 		if carriage == "mcp" {
 			track.Cases = append(track.Cases,
@@ -151,6 +154,7 @@ func buildCarriageTracks(t *testing.T, v *receiveVectors) []carriageTrack {
 				call(edgeAt, "arguments that are not an object: invalid params", mcpPushRequest(91, MCPToolRecordPush, []any{})),
 				call(edgeAt, "the tool list: one tool, fixed text", mustJSON(map[string]any{"jsonrpc": "2.0", "id": 92, "method": "tools/list",
 					"params": map[string]any{"_meta": map[string]any{mcpMetaProtocolVersion: MCPProtocolVersion, mcpMetaClientCapabilities: map[string]any{}}}})),
+				call(edgeAt, "an id above 2^53 is echoed as written", json.RawMessage(`{"jsonrpc":"2.0","id":9007199254740993,"method":"server/discover"}`)),
 				call(edgeAt, "discovery", mustJSON(map[string]any{"jsonrpc": "2.0", "id": 93, "method": "server/discover"})),
 				call(edgeAt, "another protocol version", mustJSON(map[string]any{"jsonrpc": "2.0", "id": 94, "method": "tools/call", "params": map[string]any{
 					"_meta": map[string]any{mcpMetaProtocolVersion: "2025-06-18", mcpMetaClientCapabilities: map[string]any{}},
@@ -182,7 +186,21 @@ func buildCarriageTracks(t *testing.T, v *receiveVectors) []carriageTrack {
 			empty := ""
 			noVersion.Version = &empty
 			getTask := call(edgeAt, "GetTask finds nothing", mustJSON(map[string]any{"jsonrpc": "2.0", "id": 88, "method": "GetTask", "params": map[string]any{"id": "t-1"}}))
-			track.Cases = append(track.Cases, noExt, noVersion, getTask)
+			withConfig := func(id int, modes string) json.RawMessage {
+				m := a2aPushMessageOf(map[string]any{"record": good}, mediaTypeApplicationJSON)
+				body, err := json.Marshal(m)
+				require.NoError(t, err)
+				return json.RawMessage(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"SendMessage","params":{"configuration":{"acceptedOutputModes":%s},"message":%s}}`, id, modes, body))
+			}
+			bigID := a2aPushMessageOf(map[string]any{"record": good}, mediaTypeApplicationJSON)
+			bigID["metadata"] = map[string]any{"score": 0.5}
+			bigBody, err := json.Marshal(bigID)
+			require.NoError(t, err)
+			track.Cases = append(track.Cases, noExt, noVersion, getTask,
+				call(edgeAt, "acceptedOutputModes that is empty: content type not supported, nothing stored", withConfig(95, `[]`)),
+				call(edgeAt, "acceptedOutputModes without application/json: content type not supported", withConfig(96, `["text/plain"]`)),
+				call(edgeAt, "acceptedOutputModes with application/json: answered", withConfig(97, `["text/plain","application/json"]`)),
+				call(edgeAt, "an id above 2^53 and a fraction in metadata are read and the id echoed", json.RawMessage(fmt.Sprintf(`{"jsonrpc":"2.0","id":9007199254740993,"method":"SendMessage","params":{"message":%s}}`, bigBody))))
 		}
 		tracks = append(tracks, track)
 	}
@@ -193,8 +211,7 @@ func buildCarriageTracks(t *testing.T, v *receiveVectors) []carriageTrack {
 // checking each is 32 lowercase hex digits.
 func maskPushIDs(t *testing.T, message []byte) json.RawMessage {
 	t.Helper()
-	var m map[string]any
-	require.NoError(t, json.Unmarshal(message, &m))
+	m := decodeNumbers(t, message)
 	if result, ok := m["result"].(map[string]any); ok {
 		if task, ok := result["task"].(map[string]any); ok {
 			mask := func(o map[string]any, key string) {
@@ -233,8 +250,7 @@ func runCarriageTrack(t *testing.T, v *receiveVectors, track carriageTrack) []js
 			if track.Carriage == "mcp" {
 				got = s.PushMCP("v").Handle(ctx, c.Request)
 				if got != nil {
-					var m map[string]any
-					require.NoError(t, json.Unmarshal(got, &m))
+					m := decodeNumbers(t, got)
 					if result, ok := m["result"].(map[string]any); ok {
 						delete(result, "_meta") // the server info is the host's version
 					}
@@ -360,4 +376,15 @@ func answerData(t *testing.T, carriage string, response json.RawMessage) json.Ra
 	require.Len(t, m.Result.Task.Artifacts, 1)
 	require.Len(t, m.Result.Task.Artifacts[0].Parts, 1)
 	return m.Result.Task.Artifacts[0].Parts[0].Data
+}
+
+// decodeNumbers reads a JSON object keeping numbers as written, so an id
+// above 2^53 survives the round trip through the harness.
+func decodeNumbers(t *testing.T, message []byte) map[string]any {
+	t.Helper()
+	d := json.NewDecoder(bytes.NewReader(message))
+	d.UseNumber()
+	var m map[string]any
+	require.NoError(t, d.Decode(&m))
+	return m
 }

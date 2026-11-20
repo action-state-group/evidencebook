@@ -14,7 +14,7 @@ use ed25519_dalek::SigningKey;
 use evidencebook::canonical::jcs;
 use evidencebook::shelf::{
     push_a2a_extension, PushA2aRequest, ReceiveBounds, ReceiveConfig, ReceiveProfile,
-    ReceivedRecord, SeededStream, Shelf, ShelfConfig, Time, A2A_PUSH_EXTENSION_URI,
+    ReceiveResult, ReceivedRecord, SeededStream, Shelf, ShelfConfig, Time, A2A_PUSH_EXTENSION_URI,
     MCP_PROTOCOL_VERSION, MCP_TOOL_RECORD_PUSH,
 };
 use rusqlite::Connection;
@@ -22,6 +22,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -39,6 +40,10 @@ fn key(label: &str) -> SigningKey {
 
 /// The vector profile.
 struct VectorProfile {
+    /// Failures a test switches on: the proof part's lookup and the
+    /// after-receive hook.
+    fail_proof: AtomicBool,
+    fail_after: AtomicBool,
     secrets: HashMap<String, String>,
     admitted: HashSet<String>,
     answered: HashSet<String>,
@@ -64,6 +69,8 @@ impl VectorProfile {
                 .collect()
         };
         VectorProfile {
+            fail_proof: AtomicBool::new(false),
+            fail_after: AtomicBool::new(false),
             secrets: map("secrets"),
             admitted: list("admitted"),
             answered: list("answered"),
@@ -121,7 +128,17 @@ impl ReceiveProfile for VectorProfile {
     }
 
     fn proof_sender(&self, key_id: &str, _log_id: &str) -> Result<Option<String>, String> {
+        if self.fail_proof.load(Ordering::SeqCst) {
+            return Err("injected profile failure".into());
+        }
         Ok(self.proof_keys.get(key_id).cloned())
+    }
+
+    fn after_receive(&self, _result: &ReceiveResult, _at: Time) -> Result<(), String> {
+        if self.fail_after.load(Ordering::SeqCst) {
+            return Err("injected after-receive failure".into());
+        }
+        Ok(())
     }
 }
 
@@ -129,6 +146,15 @@ impl ReceiveProfile for VectorProfile {
 struct Clock(Arc<Mutex<Time>>);
 
 fn open(dir: &Path, script: &Value, clock: &Clock) -> Shelf {
+    open_with(
+        dir,
+        script,
+        clock,
+        Arc::new(VectorProfile::new(&script["profile"])),
+    )
+}
+
+fn open_with(dir: &Path, script: &Value, clock: &Clock, profile: Arc<VectorProfile>) -> Shelf {
     let signer = key("signer");
     let conn = Connection::open(dir.join("shelf.db")).unwrap();
     conn.busy_timeout(Duration::from_secs(5)).unwrap();
@@ -152,7 +178,7 @@ fn open(dir: &Path, script: &Value, clock: &Clock) -> Shelf {
         authenticated_indexes: None,
         correlation_members: Vec::new(),
         receive: ReceiveConfig {
-            profile: Some(Arc::new(VectorProfile::new(&script["profile"]))),
+            profile: Some(profile),
             bounds: ReceiveBounds {
                 max_record_bytes: n("max_record_bytes"),
                 max_records_per_log: n("max_records_per_log"),
@@ -338,4 +364,56 @@ fn discovery_is_fixed() {
     assert_eq!(ext["uri"], A2A_PUSH_EXTENSION_URI);
     assert_eq!(ext["required"], false);
     assert!(ext.get("params").is_none());
+}
+
+/// One part committed and the call failed: an internal error and no answer on
+/// both carriages; the same push again answers the committed part `duplicate`
+/// (RP §2.3 rule 4).
+#[test]
+fn a_partial_fault_is_no_answer_and_a_retry_is_safe() {
+    let script = read("receive/script.json");
+    let a1 = b64(script["records"]["a1"].as_str().unwrap().as_bytes());
+    let proof = b64(&serde_json::to_vec(&script["proofs"]["p1"]).unwrap());
+    let args = json!({"record": a1, "stamp_proof": proof});
+    for fault in ["proof", "after"] {
+        for carriage in ["mcp", "a2a"] {
+            let dir = tempfile::tempdir().unwrap();
+            let clock = Clock(Arc::new(Mutex::new(
+                Time::parse("2026-10-20T00:01:00Z").unwrap(),
+            )));
+            let profile = Arc::new(VectorProfile::new(&script["profile"]));
+            let shelf = open_with(dir.path(), &script, &clock, profile.clone());
+            let push = || -> Vec<u8> {
+                if carriage == "mcp" {
+                    return shelf.push_mcp("").handle(&mcp_push(args.clone())).unwrap();
+                }
+                let body = serde_json::to_vec(&json!({"jsonrpc": "2.0", "id": 1, "method": "SendMessage", "params": {"message": {
+                    "messageId": "m", "role": "ROLE_USER", "extensions": [A2A_PUSH_EXTENSION_URI],
+                    "parts": [{"mediaType": "application/json", "data": args}]}}}))
+                .unwrap();
+                shelf
+                    .push_a2a()
+                    .handle(&PushA2aRequest {
+                        version: "1.0",
+                        extensions: &[A2A_PUSH_EXTENSION_URI.to_owned()],
+                        body: &body,
+                    })
+                    .body
+                    .unwrap()
+            };
+            profile.fail_proof.store(fault == "proof", Ordering::SeqCst);
+            profile.fail_after.store(fault == "after", Ordering::SeqCst);
+            assert_eq!(code(&push()), -32603, "{fault} {carriage}");
+            profile.fail_proof.store(false, Ordering::SeqCst);
+            profile.fail_after.store(false, Ordering::SeqCst);
+            let out: Value = serde_json::from_slice(&push()).unwrap();
+            let answer = if carriage == "mcp" {
+                &out["result"]["structuredContent"]
+            } else {
+                &out["result"]["task"]["artifacts"][0]["parts"][0]["data"]
+            };
+            assert_eq!(answer["record"]["duplicate"], true, "{fault} {carriage}");
+            assert_eq!(answer["record"]["stored"], false);
+        }
+    }
 }

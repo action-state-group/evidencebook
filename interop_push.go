@@ -405,7 +405,7 @@ func (p *PushA2AServer) Handle(ctx context.Context, req A2ARequest) A2AResponse 
 			if !ok {
 				return fail(mcpInvalidParams, "acceptedOutputModes is not an array", nil)
 			}
-			if len(list) > 0 && !slices.Contains(list, any(mediaTypeApplicationJSON)) {
+			if !slices.Contains(list, any(mediaTypeApplicationJSON)) {
 				return fail(a2aContentTypeNotSupported, "the answer is only application/json", nil)
 			}
 		}

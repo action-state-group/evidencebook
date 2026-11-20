@@ -5,6 +5,7 @@ package evidencebook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -154,4 +155,63 @@ func TestPushCarriageFieldsNeverChangeTheOutcome(t *testing.T) {
 		m["metadata"] = map[string]any{"sender": "alice"}
 		m["messageId"] = "alice-1"
 	}))
+}
+
+// faultProfile is the vector profile with failures a test switches on: the
+// proof part's lookup and the after-receive hook.
+type faultProfile struct {
+	vectorProfileSpec
+	failProof, failAfter bool
+}
+
+func (p *faultProfile) ProofSender(ctx context.Context, keyID, logID string) (string, bool, error) {
+	if p.failProof {
+		return "", false, errors.New("injected profile failure")
+	}
+	return p.vectorProfileSpec.ProofSender(ctx, keyID, logID)
+}
+
+func (p *faultProfile) AfterReceive(context.Context, ReceiveResult, time.Time) error {
+	if p.failAfter {
+		return errors.New("injected after-receive failure")
+	}
+	return nil
+}
+
+// A push the receiver completes only in part, one part already committed, is
+// an internal error and no answer on both carriages; sending it again is
+// safe and answers the committed part `duplicate` (RP §2.3 rule 4).
+func TestPushPartialFaultIsNoAnswerAndRetryIsSafe(t *testing.T) {
+	for _, fault := range []string{"proof", "after"} {
+		for _, carriage := range []string{"mcp", "a2a"} {
+			t.Run(fault+"/"+carriage, func(t *testing.T) {
+				v := pushVectors(t)
+				profile := &faultProfile{vectorProfileSpec: v.Profile}
+				f := newShelfFixture(t)
+				f.cfg.Receive = ReceiveConfig{Profile: profile, Bounds: v.Bounds.bounds(), Retention: time.Hour}
+				s := f.open(t)
+				args := pushArguments(t, v, vectorStep{Record: "a1", Proof: "p1"})
+				push := func() (json.RawMessage, bool) {
+					if carriage == "mcp" {
+						out := s.PushMCP("").Handle(context.Background(), mcpPushRequest(1, MCPToolRecordPush, args))
+						return out, strings.Contains(string(out), `"error"`)
+					}
+					res := s.PushA2A().Handle(context.Background(), A2ARequest{Version: A2AProtocolVersion,
+						Extensions: []string{A2APushExtensionURI}, Body: a2aPushRequest(1, a2aPushMessageOf(args, mediaTypeApplicationJSON))})
+					return res.Body, strings.Contains(string(res.Body), `"error"`)
+				}
+				profile.failProof, profile.failAfter = fault == "proof", fault == "after"
+				out, isError := push()
+				require.True(t, isError, string(out))
+				require.EqualValues(t, mcpInternalError, errorCode(t, out))
+				profile.failProof, profile.failAfter = false, false
+				out, isError = push()
+				require.False(t, isError, string(out))
+				var answer map[string]map[string]any
+				require.NoError(t, json.Unmarshal(answerData(t, carriage, out), &answer))
+				require.Equal(t, true, answer["record"]["duplicate"], "the committed record part is a duplicate")
+				require.Equal(t, false, answer["record"]["stored"])
+			})
+		}
+	}
 }
