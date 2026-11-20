@@ -162,3 +162,68 @@ func TestZeroValueRefusalPolicyIsUniform(t *testing.T) {
 		}
 	}
 }
+
+// OnRefusal tells the holder's operator the reason the gate decided, which the
+// uniform policy folds into policy_declined (evidencebook#580). The reply is
+// the same bytes with or without the callback; under the specific policy the
+// two reasons agree; an answered request does not call it.
+func TestOnRefusalReportsDecidedReason(t *testing.T) {
+	open := func(name, policy string) (*Book, string, Record) {
+		f := newFixture(t, name, 3)
+		cfg := f.config(t)
+		cfg.Responder = ResponderPolicy{RefusalPolicy: policy}
+		book, err := Open(context.Background(), cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = book.Release() })
+		held := mustAppend(t, book, observation("a", "x"))
+		return book, anchorPin(t, book), held
+	}
+	type seen struct{ digest, decided, sent string }
+	for _, policy := range []string{RefusalPolicyUniform, RefusalPolicySpecific} {
+		book, pin, held := open("book-r-"+policy, policy)
+		for name, c := range map[string]struct {
+			requester string
+			subject   Subject
+			decided   string
+		}{
+			"no such subject": {"peer-1", Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("never"))}, ReasonNoSuchSubject},
+			"not authorized":  {"", Subject{Kind: SubjectRecord, Digest: held.RecordID}, ReasonNotAuthorized},
+		} {
+			msg := jsonRequest(t, EvidenceRequest{Subject: c.subject, Coverage: Coverage{ExpectedPin: pin}})
+			plain := respondAs(t, book, msg, c.requester)
+			var got []seen
+			reply, _, err := book.Respond(context.Background(), msg, RespondOptions{
+				AuthenticatedRequester: c.requester,
+				Policy:                 policyWith("peers"),
+				OnRefusal:              func(d, decided, sent string) { got = append(got, seen{d, decided, sent}) },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plain.Refusal == nil || reply.Refusal == nil {
+				t.Fatalf("%s/%s: not refused", policy, name)
+			}
+			if len(got) != 1 {
+				t.Fatalf("%s/%s: callback called %d times", policy, name, len(got))
+			}
+			if got[0].decided != c.decided || got[0].sent != reply.Refusal.Reason || got[0].digest != reply.Refusal.RequestDigest {
+				t.Fatalf("%s/%s: got %+v, refusal %+v, want decided %s", policy, name, got[0], reply.Refusal, c.decided)
+			}
+			wantSent := ReasonPolicyDeclined
+			if policy == RefusalPolicySpecific {
+				wantSent = c.decided
+			}
+			if reply.Refusal.Reason != wantSent || plain.Refusal.Reason != wantSent {
+				t.Fatalf("%s/%s: sent %s, want %s", policy, name, reply.Refusal.Reason, wantSent)
+			}
+		}
+		called := false
+		reply, _, err := book.Respond(context.Background(), jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: held.RecordID}, Coverage: Coverage{ExpectedPin: pin}}),
+			RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers"), OnRefusal: func(string, string, string) { called = true }})
+		if err != nil || reply.Envelope == nil || called {
+			t.Fatalf("%s: an answered request called OnRefusal (%v) or failed: %v", policy, called, err)
+		}
+	}
+}

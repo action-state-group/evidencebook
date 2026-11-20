@@ -229,6 +229,15 @@ type RespondOptions struct {
 	// it; set AuthenticatedRequester from the transport's authentication.
 	RequesterID string
 	Policy      SharePolicy
+	// OnRefusal, when set, is called once for each request Respond refuses,
+	// with the request's digest, the reason the gate decided on and the
+	// reason the refusal carries. They differ only under the uniform refusal
+	// policy, which folds a reason that would disclose what the policy
+	// protects into policy_declined (evidencebook#580). It is a local
+	// diagnostic for the holder's operator: never sealed, replied or served,
+	// and it changes no byte a requester or a cut sees. It runs on the
+	// caller's goroutine and must not call back into the Book.
+	OnRefusal func(requestDigest, decidedReason, sentReason string)
 	// ConductPacks are the pack ids the book's owner holds as conduct packs
 	// (BundleRequest.ConductPacks). A record that cites one, whatever its type
 	// and whoever sealed it, is treated like the holder's other private
@@ -324,6 +333,9 @@ type answer struct {
 	digest    string
 	statement AnsweredStatement
 	seal      bool
+	// decided is the reason the gate decided before the refusal policy folded
+	// it, for RespondOptions.OnRefusal; "" means the reason sent.
+	decided string
 }
 
 // limitReason is the reason a request asking for profile is refused for a
@@ -355,6 +367,13 @@ func requestProfile(m Message) string {
 
 func (a *answer) refuse(reason, detail string) (Reply, error) {
 	b := a.book
+	if a.opts.OnRefusal != nil {
+		decided := a.decided
+		if decided == "" {
+			decided = reason
+		}
+		a.opts.OnRefusal(a.digest, decided, reason)
+	}
 	refusal := Refusal{RequestDigest: a.digest, Reason: reason, IssuedAt: evidencerequest.ProfileTime(a.now), KeyID: KeyID(b.signer), Detail: detail}
 	refusal, err := refusal.Sign(a.ctx, b.signer)
 	if err != nil {
@@ -528,10 +547,18 @@ func (a *answer) run() (Reply, error) {
 		a.statement.Relationship = view.relationship(a.opts.AuthenticatedRequester)
 		g.relationship, g.named = a.statement.Relationship, view.named
 		if d = decide(view, check, g, a.now, false); d.NeedAnchor {
+			a.decided = ReasonCoverageUnsatisfiable
 			d.Reason = g.uniform(ReasonCoverageUnsatisfiable)
 		}
 	}
 	if d.Reason != "" {
+		if a.opts.OnRefusal != nil && a.decided == "" && g.refusalPolicy != RefusalPolicySpecific {
+			// Decide again without the fold, only to tell the operator what
+			// the gate decided; decide reads the snapshot and changes nothing.
+			gs := g
+			gs.refusalPolicy = RefusalPolicySpecific
+			a.decided = decide(view, check, gs, a.now, false).Reason
+		}
 		return a.refuse(d.Reason, "")
 	}
 	r, def := d.Resolution, d.def
