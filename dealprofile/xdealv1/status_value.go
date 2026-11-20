@@ -154,6 +154,16 @@ type StatusStart struct {
 	OffererAgreementTime     StatusTime `json:"offerer_agreement_time"`
 	AcceptorNamesOfferer     bool       `json:"acceptor_names_offerer"`
 	CancellationNamedFirst   bool       `json:"cancellation_named_first"`
+	// FirstAct is the holder's first act with a counterparty that runs no
+	// layer; null before it, and when the counterparty runs the layer (#575).
+	FirstAct *StatusFirstAct `json:"first_act"`
+}
+
+// StatusFirstAct is the holder's first perform or settle record in a status
+// value: its time, a StatusTime. None says the record has no time yet, which
+// Start reads as a local start.
+type StatusFirstAct struct {
+	Time StatusTime `json:"time"`
 }
 
 // StatusRow is one agreed row: its rowstatus input without at, each time a
@@ -421,6 +431,14 @@ func statusStart(b StatusBooks) (StatusStart, error) {
 		out.OffererAgreementTime = b.Own[0].Time
 	} else if len(b.Counterpart) > 0 {
 		out.OffererAgreementTime = b.Counterpart[0].Time
+	}
+	if !in.CounterpartyLayer {
+		for _, r := range b.Own {
+			if _, _, isAct := actCheck(r.Record); isAct {
+				out.FirstAct = &StatusFirstAct{Time: r.Time}
+				break
+			}
+		}
 	}
 	return out, nil
 }

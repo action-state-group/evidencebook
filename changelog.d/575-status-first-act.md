@@ -1,0 +1,3 @@
+### Added: the x-deal-v1 status value carries the first act (#575)
+
+- `start.first_act` (`{"time": <status time>}` or `null`) is the holder's first `perform` or `settle` record for a deal whose counterparty runs no layer, so a reader of a status opening computes `Start` for such a deal from the fact. Go (`xdealv1.StatusStart.FirstAct`), Rust (`StatusStart::first_act`) and Python (`start["first_act"]`) give it byte for byte; the status vectors gain no-layer cases, and every status value now carries `"first_act": null` or the act, so a status value's commitment changes.

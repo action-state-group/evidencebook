@@ -136,7 +136,7 @@ def build_report(books: dict, copy: dict) -> dict:
             offerer_agreement_time=resolve_time(st["offerer_agreement_time"], stamps),
             acceptor_names_offerer=st["acceptor_names_offerer"],
             cancellation_named_first=st["cancellation_named_first"],
-            first_act=_first_act(rb, st["counterparty_layer"])))
+            first_act=None if st["first_act"] is None else FirstAct(resolve_time(st["first_act"]["time"], stamps))))
     except ValueError as exc:
         raise StatusError(str(exc)) from None
     text = c["text"]
@@ -183,15 +183,6 @@ def _q(s: str) -> str:
     from ..check import _go_quote
 
     return _go_quote(s)
-
-
-def _first_act(b: _Books, layer: bool) -> FirstAct | None:
-    if layer:
-        return None
-    for r in b.own:
-        if r.record.record_type in (TYPE_PERFORM, TYPE_SETTLE):
-            return FirstAct(r.time)
-    return None
 
 
 def _counterparty_proof(v: dict) -> str:
