@@ -15,7 +15,8 @@
 //! its derivation, not the rest of the card's form (SH §6 `card_form`),
 //! which has no Rust checker yet. The same holds for `standard_history/3`
 //! (a staple of it is read, none is built): a card with the right members
-//! and a malformed value passes here where Go and Python refuse it. The
+//! and a malformed value passes here where Go and Python refuse it; the
+//! result says so (`StapleCheck::card_form_checked` is false). The
 //! card's properties are the reader's verifier in every language.
 
 use crate::answer::{self, DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2};
@@ -94,6 +95,12 @@ pub struct StapleCheck {
     pub issued_at: String,
     /// The card, in its canonical octets.
     pub artifact: Vec<u8>,
+    /// Whether the card's whole form was checked. False for a
+    /// `standard_history/1` or `/3` card, of which only the members and the
+    /// derivation are checked (the departure in the module doc): a card with
+    /// the right members and a malformed value passes with this false, where
+    /// Go and Python refuse it. True for a `history_card/1` or `/2`.
+    pub card_form_checked: bool,
 }
 
 /// Why a staple is refused.
@@ -206,6 +213,8 @@ pub fn check_staple(
         nonce: nonce.clone(),
         issued_at: e.issued_at.clone(),
         artifact: e.artifact.clone(),
+        card_form_checked: derivation != DERIVATION_STANDARD_HISTORY
+            && derivation != DERIVATION_STANDARD_HISTORY_3,
     })
 }
 
@@ -639,6 +648,8 @@ mod tests {
             let got = check_staple(v.request.as_bytes(), v.reply.as_bytes(), &v.holder);
             assert_eq!(got.is_ok(), v.pass, "{}: {got:?}", v.name);
             if let Ok(c) = got {
+                let standard = c.derivation == DERIVATION_STANDARD_HISTORY;
+                assert_eq!(c.card_form_checked, !standard, "{}", v.name);
                 assert_eq!((c.nonce, c.anchor), (v.nonce, v.anchor), "{}", v.name);
             }
         }
@@ -680,6 +691,8 @@ mod tests {
                     "{}",
                     v.name
                 );
+                // The departure is in the result, never a plain pass.
+                assert!(!c.card_form_checked, "{}", v.name);
             }
         }
     }
