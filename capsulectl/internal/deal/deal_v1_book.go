@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -38,7 +39,8 @@ func v1ReceiveContext(c *cobra.Command) {
 
 // dealV1Tables are the deal's own row (which side, which offer, which books),
 // and the offers received from the other side (the offer's payload, to answer
-// it). The holder's own deal book is read back from the book itself.
+// it, and the sent pair as received, for the status provider's payment
+// check). The holder's own deal book is read back from the book itself.
 var dealV1Tables = []string{
 	`CREATE TABLE IF NOT EXISTS deal_v1 (
 	deal_id TEXT PRIMARY KEY,
@@ -54,7 +56,8 @@ var dealV1Tables = []string{
 	offer_digest TEXT PRIMARY KEY,
 	deal_id TEXT NOT NULL,
 	signer_key TEXT NOT NULL,
-	payload BLOB NOT NULL
+	payload BLOB NOT NULL,
+	pair BLOB
 )`,
 }
 
@@ -140,6 +143,9 @@ type bookRecordIn struct {
 	// side's last counted record: the offerer's agreement names the
 	// acceptor's agreement, whatever else it has held since.
 	Seen string
+	// Members are further top-level members of the record's Capsule (the
+	// settlement leg a settle record carries), passed to the entry as they are.
+	Members map[string]json.RawMessage
 	// Validate, when set, checks the finished record (its chain members
 	// included) before anything is stored: what is checked is what is sealed.
 	Validate func(xdealv1.Record) error
@@ -256,6 +262,7 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 		if err != nil {
 			return bookSealed{}, err
 		}
+		entry.Members = in.Members
 		// BookEntry seals the header's record type as deal_step (design §3.1;
 		// evidencebook v0.18.1, #531), which the test below pins.
 		bookAppendHook()

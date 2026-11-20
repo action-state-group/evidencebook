@@ -74,6 +74,8 @@ type receivedInfo struct {
 	sent    *xdealv1.Sent
 	book    *xdealv1.BookRead
 	payload []byte
+	// raw is the file as received; for a sent record it is the pair.
+	raw []byte
 }
 
 // readReceived tells which form a record file is in and verifies it on its
@@ -103,7 +105,7 @@ func (s *dealSession) readReceived(ctx context.Context, raw []byte) (*receivedIn
 				}
 			}
 		}
-		return &receivedInfo{kind: first.Record.Block.RecordType, dealID: first.Record.Block.DealID, sent: &first}, nil
+		return &receivedInfo{kind: first.Record.Block.RecordType, dealID: first.Record.Block.DealID, sent: &first, raw: raw}, nil
 	case members["payload"] != nil:
 		read, err := xdealv1.VerifyBook(raw)
 		if err != nil {
@@ -246,7 +248,7 @@ func (s *dealSession) noteReceived(ctx context.Context, info *receivedInfo) erro
 			info.dealID, xdealv1.SideAcceptor, oppositeRole(prop.Role), digest, info.sent.KeyID); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO deal_v1_offers (offer_digest, deal_id, signer_key, payload) VALUES (?, ?, ?, ?) ON CONFLICT(offer_digest) DO NOTHING`, digest, info.dealID, info.sent.KeyID, payload); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO deal_v1_offers (offer_digest, deal_id, signer_key, payload, pair) VALUES (?, ?, ?, ?, ?) ON CONFLICT(offer_digest) DO UPDATE SET pair=excluded.pair WHERE deal_v1_offers.pair IS NULL`, digest, info.dealID, info.sent.KeyID, payload, info.raw); err != nil {
 			return err
 		}
 		if err := v1NoteStops(); err != nil {
