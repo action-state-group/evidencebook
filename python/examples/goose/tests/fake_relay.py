@@ -16,7 +16,7 @@ class FakeRelay:
 
     def __init__(self) -> None:
         self.events: list[dict] = []
-        self._server = websockets_server.serve(self._handle, "127.0.0.1", 0)
+        self._server = websockets_server.serve(self._handle, "127.0.0.1", 0, max_size=None)
         self.url = f"ws://127.0.0.1:{self._server.socket.getsockname()[1]}"
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
 

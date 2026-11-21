@@ -32,6 +32,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
+from evidencebook import MAX_REPLY_BYTES
+
 __all__ = [
     "REQUEST_KIND", "REPLY_KIND", "MailboxError", "Event", "public_key", "new_secret", "sign_event",
     "check_event", "encode", "decode", "nprofile", "Relay", "publish_all", "poll_replies", "serve_round",
@@ -39,6 +41,11 @@ __all__ = [
 ]
 
 REQUEST_KIND, REPLY_KIND = 4700, 4701
+#: The longest websocket message a relay is read for: the base64url of a reply of ``MAX_REPLY_BYTES``
+#: (the most a book accepts) plus the room the event's id, key, signature, tags and the relay's own
+#: framing take. websockets' default of 1 MiB closes the connection with 1009 on a long history's
+#: ``history_card/1`` (1.37 MB base64 in the event), and a poll then reads that as no reply.
+MAX_MESSAGE_BYTES = (MAX_REPLY_BYTES * 4 + 2) // 3 + (64 << 10)
 
 # -- BIP-340 (the reference algorithm, over secp256k1) ------------------------------------------
 
@@ -282,7 +289,8 @@ class Relay:
         except ImportError:
             raise MailboxError("the mailbox transport needs the websockets package installed") from None
         try:
-            return connect(self._address(), open_timeout=self.timeout, close_timeout=1)
+            return connect(self._address(), open_timeout=self.timeout, close_timeout=1,
+                           max_size=MAX_MESSAGE_BYTES)
         except Exception as exc:  # unreachable relay, refused handshake: all one transport condition
             raise MailboxError(f"relay {self.url} could not be reached: {exc}") from None
 
@@ -364,17 +372,24 @@ def publish_all(relays: Iterable[Relay], event: Event) -> list[str]:
 
 def poll_replies(relays: Iterable[Relay], request_id: str, media: str, mailbox_key: str) -> list[Event]:
     """The replies to the request event ``request_id`` now stored on ``relays``: events that pass the seven
-    checks of binding §4.2, one per ``id``, oldest first. An unreachable relay is skipped
-    (a dropped reply is an absence at the deadline, never a failure)."""
+    checks of binding §4.2, one per ``id``, oldest first. An unreachable relay is skipped while another
+    could be read (a dropped reply is an absence at the deadline). When no relay could be read at all,
+    that is a transport condition, not an empty mailbox: it raises :class:`MailboxError`."""
     found: dict[str, Event] = {}
+    errors: list[str] = []
+    asked = 0
     for relay in relays:
+        asked += 1
         try:
             events = relay.query({"kinds": [REPLY_KIND], "#e": [request_id]})
-        except MailboxError:
+        except MailboxError as exc:
+            errors.append(str(exc))
             continue
         for ev in events:
             if _is_reply(ev, request_id, media, mailbox_key):
                 found.setdefault(ev.id, ev)
+    if asked and len(errors) == asked:
+        raise MailboxError("; ".join(errors))
     return sorted(found.values(), key=lambda e: (e.created_at, e.id))
 
 

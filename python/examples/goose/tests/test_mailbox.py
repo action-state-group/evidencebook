@@ -21,7 +21,7 @@ import commitment as cm  # noqa: E402
 import goose_node as gn  # noqa: E402
 import mailbox_exchange as mx  # noqa: E402
 import nostr_mailbox as mb  # noqa: E402
-from evidencebook import OUTCOME_ARTIFACT, OUTCOME_REFUSAL, RECORD_TYPE_ABSENCE, RECORD_TYPE_RESPONSE  # noqa: E402
+from evidencebook import MAX_REPLY_BYTES, OUTCOME_ARTIFACT, OUTCOME_REFUSAL, RECORD_TYPE_ABSENCE, RECORD_TYPE_RESPONSE  # noqa: E402
 from fake_relay import FakeRelay  # noqa: E402
 
 AT = datetime(2026, 11, 1, 10, tzinfo=timezone.utc)
@@ -326,3 +326,87 @@ def test_the_absence_window_closes_no_sooner_than_a_minute_after_the_request(nod
     assert mx.poll(asker, sent["request_event_id"], factory, clock)["status"] == "pending"
     clock.at = AT + timedelta(seconds=61)
     assert mx.poll(asker, sent["request_event_id"], factory, clock)["status"] == "absent"
+
+
+def _reply_event(asked: gn.Node, request_event_id: str, octets: bytes, clock: Clock) -> dict:
+    """A reply event signed by ``asked``'s mailbox key, as a responder publishes it."""
+    return mb.sign_event(asked.mailbox_secret, mb.REPLY_KIND, [("e", request_event_id), ("m", mx.MEDIA)],
+                         mb.encode(octets), int(clock().timestamp())).to_json()
+
+
+def test_a_reply_over_one_mebibyte_is_read_from_the_relay(nodes, relay, factory, clock):
+    """A history_card/1 of a long history is 1.37 MB base64 in the event: over websockets' default
+    1 MiB message limit, which closed the connection with 1009 and read as an absence."""
+    asker, asked = nodes
+    sent = mx.ask(asker, advertise(asked), "checkpoints", min_freshness=0, relay_factory=factory, now=clock)
+    event = _reply_event(asked, sent["request_event_id"], b"x" * 1_027_634, clock)
+    relay.events.append(event)
+    assert len(json.dumps(event)) > 1_370_000
+    found = mb.poll_replies([factory(WSS)], sent["request_event_id"], mx.MEDIA, asked.mailbox_key)
+    assert [e.id for e in found] == [event["id"]]
+
+
+def test_the_largest_reply_the_book_accepts_is_read_from_the_relay(nodes, relay, factory, clock):
+    asker, asked = nodes
+    sent = mx.ask(asker, advertise(asked), "checkpoints", min_freshness=0, relay_factory=factory, now=clock)
+    event = _reply_event(asked, sent["request_event_id"], b"x" * MAX_REPLY_BYTES, clock)
+    relay.events.append(event)
+    found = mb.poll_replies([factory(WSS)], sent["request_event_id"], mx.MEDIA, asked.mailbox_key)
+    assert [e.id for e in found] == [event["id"]]
+
+
+def _down(_url: str) -> mb.Relay:
+    return mb.Relay("ws://127.0.0.1:1", timeout=0.5)  # nothing listens there
+
+
+def test_poll_replies_raises_when_no_relay_could_be_read(nodes):
+    _, asked = nodes
+    with pytest.raises(mb.MailboxError, match="could not be reached"):
+        mb.poll_replies([_down("")], "0" * 64, mx.MEDIA, asked.mailbox_key)
+
+
+def test_poll_after_the_deadline_with_every_relay_down_is_a_transport_error_not_an_absence(nodes, factory, clock):
+    asker, asked = nodes
+    sent = mx.ask(asker, advertise(asked), "checkpoints", min_freshness=0, relay_factory=factory, now=clock)
+    clock.advance(hours=2)
+    got = mx.poll(asker, sent["request_event_id"], _down, clock)
+    assert got["status"] == "transport_error" and "could not be reached" in got["error"]
+    assert not [r for r in asker.shelf.open(gn.NODE_BOOK).records() if r.header.record_type == RECORD_TYPE_ABSENCE]
+    # The relay answers again and holds no reply: that is an absence.
+    assert mx.poll(asker, sent["request_event_id"], factory, clock)["status"] == "absent"
+
+
+def test_one_relay_down_and_another_empty_is_still_no_reply(nodes, relay, clock):
+    asker, asked = nodes
+    second = "wss://second.example"
+    live = lambda url: mb.Relay(relay.url) if url == WSS else _down(url)  # noqa: E731
+    doc = cm.build(asked, settings=cm.Settings(relays=(WSS, second), endpoint="nostr:mailbox", answers_within="PT1H",
+                                               poll_interval=60), now=AT)[0]
+    sent = mx.ask(asker, doc, "checkpoints", min_freshness=0, relay_factory=live, now=clock)
+    clock.advance(hours=2)
+    assert mx.poll(asker, sent["request_event_id"], live, clock)["status"] == "absent"
+
+
+def test_ask_prefers_history_card_2_where_the_responder_offers_it_else_history_card_1(nodes, factory, clock):
+    asker, asked = nodes
+    one = advertise(asked)
+    two = advertise(asked, derivations=("history_card/1", "history_card/2"))
+
+    def derivation(doc, **kw):
+        sent = mx.ask(asker, doc, "checkpoints", min_freshness=0, relay_factory=factory, now=clock, **kw)
+        statement = asker.shelf.open(gn.NODE_BOOK).get(sent["request_record_id"]).header.statement
+        return statement["request"].get("derivation")
+
+    assert derivation(two) == "history_card/2"
+    assert derivation(one) is None, "no /2 offered: the unnamed default, history_card/1"
+    assert derivation(two, derivation="history_card/1") == "history_card/1", "a caller's choice stands"
+
+
+def test_a_history_card_2_ask_is_answered_with_a_card_the_asker_verifies(nodes, relay, factory, clock):
+    asker, asked = nodes
+    doc = advertise(asked, derivations=("history_card/1", "history_card/2"))
+    sent = mx.ask(asker, doc, "checkpoints", min_freshness=0, relay_factory=factory, now=clock)
+    assert mx.answer_round(asked, [WSS], factory) == [sent["request_event_id"]]
+    clock.advance(minutes=5)
+    got = mx.poll(asker, sent["request_event_id"], factory, clock)
+    assert got["status"] == "answered" and got["outcome"] == OUTCOME_ARTIFACT

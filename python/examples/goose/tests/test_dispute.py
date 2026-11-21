@@ -355,6 +355,17 @@ def test_no_reply_is_pending_then_an_absence_sealed_once_and_a_late_reply_is_sti
     assert _held(deal.buyer, gn.DISPUTE_ABSENT) == [absence]  # the absence stays as written
 
 
+def test_every_relay_down_after_the_deadline_is_a_transport_error_not_an_absence(deal):
+    now = 1_800_000_000
+    asked = deal.buyer.ask_dispute_result(deal.parties(), poll_interval=60, now=lambda: now)
+    rid = asked["request_event_id"]
+    down = lambda _url: mb.Relay("ws://127.0.0.1:1", timeout=0.5)  # noqa: E731 nothing listens there
+    got = deal.buyer.poll_dispute_result(rid, deal.parties(), relay_factory=down, now=lambda: now + 3601)
+    assert got["status"] == "transport_error" and "could not be reached" in got["error"]
+    assert _held(deal.buyer, gn.DISPUTE_ABSENT) == []
+    assert deal.buyer.poll_dispute_result(rid, deal.parties(), now=lambda: now + 3601)["status"] == "absent"
+
+
 def test_a_reply_not_signed_by_the_mailbox_key_is_not_a_reply(deal):
     asked = deal.buyer.ask_dispute_result(deal.parties(), poll_interval=1)
     deal.serve(answer=lambda _request: None)

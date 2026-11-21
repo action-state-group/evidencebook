@@ -33,7 +33,7 @@ from agent_action_capsule.canonical import jcs
 from agent_action_capsule.evidence_request import verify_refusal_offline
 from evidencebook._time import from_nanos, parse_ns
 from evidencebook import (
-    CITES, MINIMUM_ABSENCE_WINDOW, RECORD_TYPE_ABSENCE, RECORD_TYPE_RESPONSE, Coverage, EvidenceRequest, InvalidError,
+    CITES, DERIVATION_HISTORY_CARD_2, MINIMUM_ABSENCE_WINDOW, RECORD_TYPE_ABSENCE, RECORD_TYPE_RESPONSE, Coverage, EvidenceRequest, InvalidError,
     Message, ResponderKeys, Subject, parse_reply,
 )
 
@@ -102,6 +102,9 @@ def ask(node: gn.Node, commitment: Any, subject_form: str, subject_value: Any = 
     """Seal an evidence request in the node book, then publish it to the mailbox the asked node's
     ``commitment`` advertises. Its deadline is ``answers_within`` from now. Poll with :func:`poll`."""
     where = route(commitment)
+    if not derivation and subject_form == "checkpoints" and DERIVATION_HISTORY_CARD_2 in (
+            commitment.get("answers", {}).get("derivations") or ()):
+        derivation = DERIVATION_HISTORY_CARD_2  # the newer card, where the responder offers it
     if where["answers_within"] < MINIMUM_ABSENCE_WINDOW.total_seconds():
         raise gn.Refused("answers_within is shorter than the shortest waiting window an absence can record "
                          f"({int(MINIMUM_ABSENCE_WINDOW.total_seconds())}s)")
@@ -163,7 +166,8 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
 
     ``status`` is ``answered`` (a reply in time, verified under the node's listed keys and recorded;
     ``outcome`` says artifact or refusal), ``pending`` (before the deadline, nothing yet), or
-    ``absent`` (the deadline passed with no recorded answer: the absence is recorded against the node).
+    ``absent`` (the deadline passed with no recorded answer: the absence is recorded against the node), or
+    ``transport_error`` (no relay could be read: nothing is recorded, ``error`` says why, poll again).
     ``late`` is true when a reply arrived after the deadline: it is signature-checked and kept beside
     the absence as a ``goose_mailbox_late`` record, and the absence is not rewritten."""
     asked = next((st for _, st in node.notes(ASKED) if st["request_event_id"] == request_event_id), None)
@@ -178,7 +182,12 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
     sealed = from_nanos(parse_ns(node.shelf.open(gn.NODE_BOOK).get(request_record).header.committed_at))
     deadline = max(datetime.fromtimestamp(asked["deadline"], timezone.utc), sealed + MINIMUM_ABSENCE_WINDOW)
     factory = _factory(relay_factory)
-    replies = mb.poll_replies([factory(u) for u in asked["relays"]], request_event_id, MEDIA, asked["mailbox_key"])
+    try:
+        replies = mb.poll_replies([factory(u) for u in asked["relays"]], request_event_id, MEDIA, asked["mailbox_key"])
+    except mb.MailboxError as exc:
+        # No relay could be read: that says nothing about the asked node, so no outcome is recorded
+        # and the next poll tries again.
+        return {"status": "transport_error", "error": str(exc), "deadline": int(deadline.timestamp())}
     book = node.shelf.open(gn.NODE_BOOK)
     keys = ResponderKeys(signer=asked["responder"], checkpoint=asked["checkpoint_key"])
     outcome = _outcome(node, request_record)

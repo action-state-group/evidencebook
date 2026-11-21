@@ -131,7 +131,9 @@ Step 07 over the mailbox (binding `nostr-mailbox-v0`, experimental; the exchange
   book, and publishes it to the mailbox the commitment names with a `deadline` of its `answers_within`. `loop_ask_mailbox_poll`
   then returns `answered` (the reply verified under the asked node's listed keys and recorded: an artifact or a signed
   refusal), `pending`, or `absent` once the deadline has passed with no recorded answer, which records the absence against the
-  node. A reply that arrives after the absence is kept beside it (`goose_mailbox_late`, signature-checked, `late: true`) and
+  node, or `transport_error` when no relay could be read (it records nothing: poll again). The ask uses `history_card/2` on the
+  `checkpoints` subject when the commitment's `answers.derivations` lists it, else `history_card/1`, unless you name a
+  derivation. Replies up to the book's 8 MiB limit are read from the relay. A reply that arrives after the absence is kept beside it (`goose_mailbox_late`, signature-checked, `late: true`) and
   never rewrites it (binding §5.3). Arrival is judged by your clock at the poll that first sees the reply, so poll at least
   as often as the asked node's `answers_within`.
   `loop_book_bundle` with `disclose` writes the outcome's Evidence Bundle with the headers of the outcome and of the
