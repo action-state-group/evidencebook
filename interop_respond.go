@@ -546,7 +546,14 @@ func (a *answer) run() (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
-	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: req.Subject.Kind, Relationship: view.relationship(a.opts.AuthenticatedRequester)}
+	// checkpoint_range is recorded as checkpoints: the statement's subject
+	// kind is the request draft's registered form, as before -03 and as the
+	// Rust book records it.
+	statementKind := req.Subject.Kind
+	if statementKind == SubjectCheckpointRange {
+		statementKind = SubjectCheckpoints
+	}
+	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: statementKind, Relationship: view.relationship(a.opts.AuthenticatedRequester)}
 	a.seal = a.statement.Relationship != RelationshipStranger
 	a.statement.Deal = a.opts.stapleDeal
 	_, isCLL := b.commitments.(cllMaterialSource)

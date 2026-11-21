@@ -419,7 +419,7 @@ func TestARangedCheckpointsRequestIsRefusedByReason(t *testing.T) {
 	mustRefusal(t, ranged(1, 2, DerivationHistoryCard), ReasonNoSuchSubject)
 	mustRefusal(t, ranged(1, 2, DerivationHistoryCard2), ReasonNoSuchSubject)
 	// a > b is a malformed request, which the request reader refuses.
-	bad := []byte(`{"coverage":{"expected_pin":"` + pin + `"},"nonce":"n","profile":"evidence-interop/0","subject":{"checkpoints":[5,2]}}`)
+	bad := []byte(`{"coverage":{"expected_pin":"` + pin + `"},"nonce":"n","profile":"evidence-interop/0","subject":{"checkpoint_range":[5,2]}}`)
 	reply, _, err := book.Respond(context.Background(), Message{Octets: bad, MediaType: MediaTypeJSON}, RespondOptions{Policy: policyWith("peers")})
 	if err != nil {
 		t.Fatal(err)
@@ -553,5 +553,24 @@ func TestACardOneOrCheckpointsAnswerCannotMisstateFreshness(t *testing.T) {
 		if _, _, err := verifyAnchorInclusion(req, later, key); err == nil || !strings.Contains(err.Error(), "anchor.freshness") {
 			t.Errorf("%s: an answer stating a time its anchor does not commit passed", name)
 		}
+	}
+}
+
+// Evidence Request -03: the ranged form is checkpoint_range on the wire, a
+// range on checkpoints is malformed, and an answered statement records the
+// form as checkpoints (the Rust book does the same).
+func TestCheckpointRangeWireFormAndStatementKind(t *testing.T) {
+	book := cardBook(t, 3, 20)
+	pin := anchorPin(t, book)
+	wire := func(subject string) Message {
+		return Message{Octets: []byte(`{"coverage":{"expected_pin":"` + pin + `"},"nonce":"n","profile":"evidence-interop/0","subject":` + subject + `}`), MediaType: MediaTypeJSON}
+	}
+	reply, statement := respondWith(t, book, wire(`{"checkpoint_range":[4,12]}`), RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers")})
+	mustEnvelope(t, reply)
+	if statement.SubjectKind != SubjectCheckpoints {
+		t.Fatalf("statement subject kind %q, want %q", statement.SubjectKind, SubjectCheckpoints)
+	}
+	for _, old := range []string{`{"checkpoints":[4,12]}`, `{"checkpoint_range":null}`, `{"checkpoint_range":[1]}`} {
+		mustRefusal(t, respondAs(t, book, wire(old), ""), ReasonRequestMalformed)
 	}
 }
