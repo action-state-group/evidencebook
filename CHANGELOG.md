@@ -13,7 +13,7 @@ A minor version: #590 widens what the x-deal-v1 schema accepts and states the `a
 
 ### Added: x-deal-v1 `admit` takes admission pack row ids (#590)
 
-- x-deal-v1 `admit` names admission pack rows as the pack names them (capsule-engine#303): `rows` takes `^[a-z][a-z0-9_-]*$`, the admission pack loader's grammar, so a baseline row such as `owner-signed` is valid; every record valid before stays valid. PROFILE.md states what `tier`, `rows`, `pack_digest` and `card_digest` hold, that a NO, which has no tier, is not sealed as an `admit`, and that an agreement cites a GO, or a LIMIT whose tier holds the deal (a host refuses an ASK or a NO). Vectors: `testdata/deal-v1/records/admit-rows.json`.
+- x-deal-v1 `admit` names admission pack rows as the pack names them (capsule-engine#303): `rows` takes `^[a-z][a-z0-9_-]*$`, the admission pack loader's grammar, so a baseline row such as `owner-signed` is valid; every record valid before stays valid. PROFILE.md states what `tier`, `rows`, `pack_digest` and `card_digest` hold, that a NO, which has no tier, is not sealed as an `admit`, and that an agreement cites a GO, or a LIMIT whose tier holds the deal: a host refuses to seal an agreement whose `admit` is ASK or NO (capsulectl-deal's check is evidencebook-deal#240). Vectors: `testdata/deal-v1/records/admit-rows.json`.
 
 ### Changed: capsulectl-book and the report builder build against capsule-cli v0.1.0-rc45 (#593)
 
