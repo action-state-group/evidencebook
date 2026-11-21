@@ -112,6 +112,65 @@ func TestDealIDPresence(t *testing.T) {
 	assert.True(t, bytes.Equal(want, got), "deal-id-presence.json differs from this build's; regenerate only for an intended change")
 }
 
+// admit-rows (§3.3, capsule-engine#303): an admit's rows name the admission
+// pack's rows as the pack names them, in the grammar the pack loader accepts
+// (capsule-engine go/admission/pack.go, ^[a-z][a-z0-9_-]*$, unbounded), so a
+// hyphenated baseline row passes and anything else is refused at the schema
+// stage. The cases are written to testdata/deal-v1/records/admit-rows.json
+// (EB_WRITE_DEAL_V1_VECTORS=1), which the Rust and Python tests read.
+func TestAdmitRowVectors(t *testing.T) {
+	type vcase struct {
+		Name   string          `json:"name"`
+		Record json.RawMessage `json:"record"`
+		Valid  bool            `json:"valid"`
+		Stage  string          `json:"stage,omitempty"`
+	}
+	base := validRecords(t)["admit"]
+	cases := []struct {
+		name  string
+		rows  []string
+		valid bool
+	}{
+		{"admission-baseline rows, hyphenated", []string{"owner-signed", "card-verified", "selection"}, true},
+		{"an underscored row, as Appendix A names it", []string{"selected_records_in_band"}, true},
+		{"a row id longer than 64 characters", []string{"a" + strings.Repeat("b-", 40)}, true},
+		{"no rows", []string{}, true},
+		{"an upper-case letter", []string{"Owner-signed"}, false},
+		{"a dot", []string{"card.verified"}, false},
+		{"a leading hyphen", []string{"-owner"}, false},
+		{"a leading digit", []string{"1-row"}, false},
+		{"an empty row id", []string{""}, false},
+	}
+	var out []vcase
+	for _, c := range cases {
+		raw := edit(t, base, func(_, b map[string]any) { b["rows"] = c.rows })
+		err := Check(raw)
+		v := vcase{Name: c.name, Record: raw, Valid: c.valid}
+		if c.valid {
+			require.NoError(t, err, c.name)
+		} else {
+			require.Error(t, err, c.name)
+			assert.Equal(t, StageSchema, stageOf(err), "%s: %v", c.name, err)
+			v.Stage = StageSchema
+		}
+		out = append(out, v)
+	}
+	got, err := json.MarshalIndent(map[string]any{
+		"description": "admit-rows (evidencebook#461 §3.3, capsule-engine#303): an admit's rows are admission pack row ids, ^[a-z][a-z0-9_-]*$ as the admission pack loader accepts them, with no length bound; each record passes or is refused at the stage given (Check). Written by dealprofile/xdealv1's TestAdmitRowVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
+		"cases":       out,
+	}, "", "  ")
+	require.NoError(t, err)
+	got = append(got, '\n')
+	path := filepath.Join(vectorDir, "admit-rows.json")
+	if os.Getenv("EB_WRITE_DEAL_V1_VECTORS") == "1" {
+		require.NoError(t, os.WriteFile(path, got, 0o644))
+		return
+	}
+	want, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.True(t, bytes.Equal(want, got), "admit-rows.json differs from this build's; regenerate only for an intended change")
+}
+
 // Version gives x-deal-v0 for every positive v0 fixture, typed ones
 // included (design §11.2).
 func TestVersionOfEveryV0Fixture(t *testing.T) {

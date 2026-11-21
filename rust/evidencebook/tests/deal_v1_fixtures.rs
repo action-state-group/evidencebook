@@ -176,6 +176,34 @@ fn deal_id_presence_vectors() {
     }
 }
 
+/// admit-rows (`testdata/deal-v1/records/`): an admit's rows are admission
+/// pack row ids, hyphens included; each record passes or is refused at its
+/// stage (capsule-engine#303).
+#[test]
+fn admit_row_vectors() {
+    let v = read(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/deal-v1/records/admit-rows.json"),
+    );
+    let cases = v["cases"].as_array().unwrap();
+    assert!(!cases.is_empty());
+    for c in cases {
+        let name = c["name"].as_str().unwrap();
+        let text = serde_json::to_vec(&c["record"]).unwrap();
+        let got = v1::check(&text);
+        if c["valid"].as_bool().unwrap() {
+            got.unwrap_or_else(|e| panic!("{name}: {e}"));
+        } else {
+            let err = got.expect_err(name);
+            assert_eq!(
+                err.stage().map(|s| s.stage),
+                c["stage"].as_str(),
+                "{name}: {err}"
+            );
+        }
+    }
+}
+
 /// A member named as serde_json's arbitrary_precision names its private
 /// number would be read as a number, not as written: it is refused at the
 /// canonicalization stage, so no two texts share one digest (Codex, #533).

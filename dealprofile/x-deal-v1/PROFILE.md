@@ -221,7 +221,13 @@ That the agreement's adjudicator signed it is the reader's, from the ruling's Ca
 `refusal` or `absence`) and `answer` (the digest ref of the library's answer document).
 
 **`admit`.** `outcome` (`GO`, `ASK`, `LIMIT` or `NO`), `tier`, `rows`, `asks`, `pack_digest`,
-`card_digest`, `answers`, `nonce`.
+`card_digest`, `answers`, `nonce`. `tier` is the id of the admission pack's tier the decision
+admitted at. `rows` are the ids of the pack's rows the decision read, as the pack names them: an
+admission pack row id is `^[a-z][a-z0-9_-]*$`, so a row such as `owner-signed` keeps its hyphen.
+`pack_digest` is the pack's `definition_digest`. `card_digest` is the SHA-256 of the JCS bytes of
+the counterparty's card document the decision read. `asks` and `answers` cite the holder's own
+`ask` and `answer` records of the admission. A decision without a tier (a NO) is not sealed as an
+`admit`: no agreement can cite it, and the holder's local admission decision keeps it.
 
 **`check`.** v0's `body_check`, plus `payment_ref` and `nonce`. Without `payment_ref` and `nonce`
 the body MUST be valid under v0's closed `body_check`.

@@ -470,6 +470,18 @@ the store and originals, as received or sealed today.
 **`admit`** (journal). `outcome` (`GO` | `ASK` | `LIMIT` | `NO`), `tier`, `rows` (the pack row
 ids that decided it), `asks` (digest refs), `pack_digest`, `card_digest`, `answers` (digest refs).
 Decided: design §7, `admit`; Appendix A lines 9 and 9g.
+- **The members' meaning** (capsule-engine#303; Sherlock2's door confirmation,
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=a5114d0c48a1835b90e8e071a9fd086a3bae8c75c6f0b8ce55419e0c0c8d11e5).
+  `tier` is the pack tier admitted at; `rows` are the pack's row ids the decision read, in the
+  admission pack loader's grammar `^[a-z][a-z0-9_-]*$` (capsule-engine `go/admission/pack.go`),
+  not the profile's `row_id`, which refuses the hyphen of a baseline row such as `owner-signed`;
+  `pack_digest` is the pack's `definition_digest`; `card_digest` is the SHA-256 of the JCS bytes
+  of the card document the decision read. The widening keeps every record valid that was valid
+  (`testdata/deal-v1/records/admit-rows.json`).
+- **No `admit` for a NO.** A NO has no tier, and `tier` is required. A deal cites a GO (THE_LOOP
+  step 4), so a NO is not sealed as an `admit`; the local `admission_decision` keeps it. A NO is
+  never cited by a sent or deal-book record, so it needs no nonce; if that changes, the rule below
+  applies (Sherlock2, same message).
 
 **A cited journal record carries its own secret** (decided: Sherlock2, on its twin's privacy P1,
 buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=6a07cefde698fa8db9dcafc2aa97914bb931a56995fea0736efb57bdf1e4d927;

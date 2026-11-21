@@ -1,0 +1,226 @@
+{
+  "cases": [
+    {
+      "name": "admission-baseline rows, hyphenated",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [
+            "owner-signed",
+            "card-verified",
+            "selection"
+          ],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "an underscored row, as Appendix A names it",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [
+            "selected_records_in_band"
+          ],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "a row id longer than 64 characters",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [
+            "ab-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-b-"
+          ],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "no rows",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "an upper-case letter",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [
+            "Owner-signed"
+          ],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": false,
+      "stage": "schema"
+    },
+    {
+      "name": "a dot",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [
+            "card.verified"
+          ],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": false,
+      "stage": "schema"
+    },
+    {
+      "name": "a leading hyphen",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [
+            "-owner"
+          ],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": false,
+      "stage": "schema"
+    },
+    {
+      "name": "a leading digit",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [
+            "1-row"
+          ],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": false,
+      "stage": "schema"
+    },
+    {
+      "name": "an empty row id",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [
+            ""
+          ],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": false,
+      "stage": "schema"
+    }
+  ],
+  "description": "admit-rows (evidencebook#461 §3.3, capsule-engine#303): an admit's rows are admission pack row ids, ^[a-z][a-z0-9_-]*$ as the admission pack loader accepts them, with no length bound; each record passes or is refused at the stage given (Check). Written by dealprofile/xdealv1's TestAdmitRowVectors (EB_WRITE_DEAL_V1_VECTORS=1)."
+}
