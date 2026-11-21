@@ -684,3 +684,75 @@ fn authorization_compares_nanoseconds() {
         }
     }
 }
+
+/// report-bundle/vectors.json: VerifyReportBundle accepts each valid report
+/// and extension with the signer Go gives, and refuses each other one at Go's
+/// stage with Go's words (design §9, "The bundle extension").
+#[test]
+fn report_bundle_vectors() {
+    for c in vectors("report-bundle/vectors.json") {
+        let name = c["name"].as_str().unwrap();
+        let report = hex::decode(c["report"].as_str().unwrap()).unwrap();
+        let ext = serde_json::to_vec(&c["extension"]).unwrap();
+        let got = v1::verify_report_bundle(&report, &ext);
+        let want = &c["want"];
+        if let Some(key) = want.get("key_id").and_then(Value::as_str) {
+            let read = got.unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(read.key_id, key, "{name}");
+            continue;
+        }
+        let err = got.expect_err(name);
+        assert_eq!(
+            err.stage().map(|s| s.stage),
+            want["stage"].as_str(),
+            "{name}: {err}"
+        );
+        let fragment = want.get("error").and_then(Value::as_str).unwrap_or("");
+        assert!(
+            err.to_string().contains(fragment),
+            "{name}: {err} lacks {fragment:?}"
+        );
+    }
+}
+
+/// What Go's reader refuses and a field-order reader would not: an extension
+/// or a book that is a list, and a number no float64 holds, which is refused
+/// by the text check (Go's `checkText`) before the extension is read.
+#[test]
+fn report_bundle_refuses_the_shapes_go_refuses() {
+    let c = vectors("report-bundle/vectors.json")
+        .into_iter()
+        .find(|c| c["name"] == "keep-copy")
+        .expect("the case");
+    let report = hex::decode(c["report"].as_str().unwrap()).unwrap();
+    let ext = &c["extension"];
+    let (sealed, book) = (&ext["sealed_report"], &ext["book"]);
+    let list_book = serde_json::json!([book["agreement"], book["relied_on"]]);
+    let big = |n: &str| {
+        let text = serde_json::to_string(ext).unwrap();
+        text.replacen(
+            &format!("\"sealed_report\":{sealed}"),
+            &format!("\"sealed_report\":{n}"),
+            1,
+        )
+    };
+    let cases: [(&str, String, &str); 5] = [
+        (
+            "a list for the extension",
+            serde_json::json!([sealed, book]).to_string(),
+            "report",
+        ),
+        (
+            "a list for the book",
+            serde_json::json!({"sealed_report": sealed, "book": list_book}).to_string(),
+            "report",
+        ),
+        ("a number past float64", big("1e400"), "canonicalization"),
+        ("a negative one", big("-1e999"), "canonicalization"),
+        ("one that does not overflow", big("1e308"), "report"),
+    ];
+    for (name, text, stage) in cases {
+        let err = v1::verify_report_bundle(&report, text.as_bytes()).expect_err(name);
+        assert_eq!(err.stage().map(|s| s.stage), Some(stage), "{name}: {err}");
+    }
+}

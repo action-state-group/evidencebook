@@ -14,6 +14,9 @@ refuse.
 With --python, the Python side (python_side.py, run by CMD, a Python
 interpreter with the package installed) is compared with Go too, on the
 kinds it answers; it answers "skip" for the others.
+
+A verify_report_bundle request holds a sealed report pair of testdata/deal-v1/report-bundle and the
+bundle extension as text, mutated in the extension.
 """
 
 import argparse
@@ -158,7 +161,7 @@ def mutate_books(r, books):
 
 def requests(r, n):
     recs, status, report = fixtures(), cases("status/vectors.json"), cases("report/vectors.json")
-    verify = verify_reports()
+    verify, bundles = verify_reports(), bundle_cases()
     out = []
     for _ in range(n):
         kind = r.random()
@@ -178,7 +181,9 @@ def requests(r, n):
             for _ in range(r.randint(0, 3)):
                 payload = mutate_report(r, payload)
             out.append({"kind": "verify_report", "payload": payload, "first": first})
-        elif kind < 0.8:
+        elif kind < 0.7:
+            out.append(bundle(r, bundles))
+        elif kind < 0.85:
             books = copy.deepcopy(r.choice(status)["books"])
             for _ in range(r.randint(0, 2)):
                 mutate_books(r, books)
@@ -208,6 +213,67 @@ def verify_reports():
             pair = json.loads(bytes.fromhex(c["report"]))
             out.append((pair["agent_input"], c["first"]))
     return out
+
+
+# A placeholder bundle() writes as a number that overflows a float64.
+BIG = "@@overflow@@"
+
+
+def bundle_cases():
+    """The reports of testdata/deal-v1/report-bundle that verify with their
+    extension, each its hex pair and its extension."""
+    return [(c["report"], c["extension"]) for c in cases("report-bundle/vectors.json") if "key_id" in c["want"]]
+
+
+def mutate_extension(r, ext):
+    """One change to a bundle extension: mutate's, a relied_on record
+    dropped, copied under another key or moved to another member, a member
+    renamed to another case, or an unknown member."""
+    if not isinstance(ext, dict):
+        return ext
+    op = r.random()
+    book = ext.get("book")
+    relied = book.get("relied_on") if isinstance(book, dict) else None
+    if op < 0.1 and isinstance(relied, dict) and relied:
+        del relied[r.choice(list(relied))]
+    elif op < 0.2 and isinstance(relied, dict) and relied:
+        k = r.choice(list(relied))
+        relied[r.choice(STRINGS + [k[::-1]])] = copy.deepcopy(relied[k])
+    elif op < 0.3 and isinstance(relied, dict) and isinstance(book.get("agreement"), dict):
+        relied[r.choice(STRINGS)] = copy.deepcopy(book["agreement"])
+    elif op < 0.4:
+        objs = [p for p in paths(ext) if isinstance(get(ext, p), dict) and get(ext, p)]
+        o = get(ext, r.choice(objs))
+        k = r.choice(list(o))
+        o[k[:1].upper() + k[1:]] = o.pop(k)
+    elif op < 0.45:
+        ext[r.choice(STRINGS)] = r.choice(STRINGS)
+    elif op < 0.55 and isinstance(book, dict):
+        # A list where Go reads a struct, which a reader taking fields by
+        # position would accept.
+        if r.random() < 0.5:
+            return list(ext.values())
+        ext["book"] = list(book.values())
+    elif op < 0.65:
+        # A number no float64 holds, in a member Go does and does not read.
+        objs = [p for p in paths(ext) if isinstance(get(ext, p), dict) and get(ext, p)]
+        o = get(ext, r.choice(objs))
+        o[r.choice(list(o))] = BIG
+    else:
+        mutate(r, ext)
+    return ext
+
+
+def bundle(r, cases_):
+    """A verify_report_bundle request: a valid report with its extension
+    changed, or with the extension of another."""
+    report, ext = copy.deepcopy(r.choice(cases_))
+    if r.random() < 0.15:
+        ext = copy.deepcopy(r.choice(cases_)[1])
+    for _ in range(r.randint(0, 2)):
+        ext = mutate_extension(r, ext)
+    text = json.dumps(ext).replace(json.dumps(BIG), r.choice(["1e400", "-1e999", "1e308", "1E+9999"]))
+    return {"kind": "verify_report_bundle", "report": report, "extension": text}
 
 
 def mutate_report(r, payload):

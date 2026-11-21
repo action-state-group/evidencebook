@@ -20,9 +20,10 @@ use super::names::*;
 use super::payment::{payment_check, PaymentInput};
 use super::record::{Body, Record};
 use super::report::{
-    build_report, Report, ReportBooks, ReportCheckpoint, ReportCopy, ReportCounterpartLog,
+    build_report_rows, Report, ReportBooks, ReportCheckpoint, ReportCopy, ReportCounterpartLog,
     ReportFact, ReportLog,
 };
+use super::report_bundle::ReportBook;
 use super::sent::{payment_rows, verify_sent};
 use super::status_value::{build_status, PaymentResult, StatusBooks, StatusRecord, StatusTime};
 use super::types::*;
@@ -581,6 +582,22 @@ pub struct DealStatus {
     offer_pair: Option<OfferPair>,
 }
 
+/// One snapshot of what a report rests on, with the book pair of each record
+/// read, by record id.
+type ReportSnapshot = (ReportBooks, BTreeMap<String, Vec<u8>>);
+
+/// What a deal book's status is built from (Go `statusBooks`): its books, the
+/// last received value, the digests the payment checks read, the
+/// counterparty's counted prefix and the book pair of each record read, by
+/// record id.
+type StatusParts = (
+    StatusBooks,
+    Option<Value>,
+    Vec<String>,
+    Option<ReportCounterpartLog>,
+    BTreeMap<String, Vec<u8>>,
+);
+
 /// A held record of the holder's own book, with its sealed pair.
 struct OwnRecord {
     rec: StatusRecord,
@@ -710,15 +727,7 @@ impl DealStatus {
         &self,
         shelf: &Shelf,
         input: &StatusInput<'_>,
-    ) -> Result<
-        Option<(
-            StatusBooks,
-            Option<Value>,
-            Vec<String>,
-            Option<ReportCounterpartLog>,
-        )>,
-        ShelfError,
-    > {
+    ) -> Result<Option<StatusParts>, ShelfError> {
         let Some(journal) = input.journal else {
             return Ok(None);
         };
@@ -799,7 +808,24 @@ impl DealStatus {
             .collect();
         checked_over.sort();
         checked_over.dedup();
-        Ok(Some((b, last_received, checked_over, counterpart_log)))
+        // The book pair of each record read, by record id: the holder's own
+        // records and every record held for the deal (Go `statusBooks`).
+        let mut pairs: BTreeMap<String, Vec<u8>> = own
+            .iter()
+            .map(|o| (o.rec.record_id.clone(), o.pair.clone()))
+            .collect();
+        for h in &held {
+            pairs
+                .entry(h.received.digest.clone())
+                .or_insert_with(|| h.record.clone());
+        }
+        Ok(Some((
+            b,
+            last_received,
+            checked_over,
+            counterpart_log,
+            pairs,
+        )))
     }
 
     /// Each payment row's check over both books, when the host gives the
@@ -867,6 +893,20 @@ impl DealStatus {
     /// checkpoint or kept changing while it was read. It takes the shelf's
     /// lock, so never call it from a stamp or a receive.
     pub fn report(&self, log_id: &str, copy: &ReportCopy) -> Result<Report, ShelfError> {
+        self.report_with_book(log_id, copy).map(|(r, _)| r)
+    }
+
+    /// [`report`](Self::report) with the book pairs the report rests on, read
+    /// in the same snapshot (Go `StatusProvider.ReportWithBook`; design §9,
+    /// "The bundle extension"): the holder's agreement at seq 1 and every
+    /// record the report's rows rely on, whether the copy lists its rows or
+    /// not. The host carries them as the x-deal-v1 bundle extension's book
+    /// ([`ReportBook`](super::ReportBook)) beside the sealed report.
+    pub fn report_with_book(
+        &self,
+        log_id: &str,
+        copy: &ReportCopy,
+    ) -> Result<(Report, ReportBook), ShelfError> {
         let shelf = self.shelf()?;
         let book = shelf.open(log_id)?;
         let not_v1 = || {
@@ -884,8 +924,10 @@ impl DealStatus {
         })?;
         let book_id = first.record_id.clone();
         for _ in 0..3 {
-            if let Some(rb) = self.report_books(&shelf, log_id, &book_id, &book, &journal)? {
-                return build_report(&rb, copy).map_err(deal_err);
+            if let Some((rb, pairs)) =
+                self.report_books(&shelf, log_id, &book_id, &book, &journal)?
+            {
+                return report_with_book(&rb, copy, &pairs);
             }
         }
         Err(ShelfError::Busy(format!(
@@ -902,7 +944,7 @@ impl DealStatus {
         book_id: &str,
         book: &ShelfBook,
         journal: &ShelfBook,
-    ) -> Result<Option<ReportBooks>, ShelfError> {
+    ) -> Result<Option<ReportSnapshot>, ShelfError> {
         let size = book.size();
         let cp = book
             .checkpoints()?
@@ -920,7 +962,7 @@ impl DealStatus {
             book,
             journal: Some(journal),
         };
-        let Some((b, _, _, counterpart)) = self.status_books(shelf, &input)? else {
+        let Some((b, _, _, counterpart, pairs)) = self.status_books(shelf, &input)? else {
             return Err(invalid(format!(
                 "xdealv1: report: book {log_id} is not an x-deal-v1 deal book"
             )));
@@ -935,26 +977,29 @@ impl DealStatus {
             )));
         }
         let fact = self.fact_current(shelf, book_id, &b)?;
-        Ok(Some(ReportBooks {
-            own: ReportLog {
-                log_id: log_id.into(),
-                size,
-                last: b
-                    .own
-                    .last()
-                    .map(|r| r.record_id.clone())
-                    .unwrap_or_default(),
+        Ok(Some((
+            ReportBooks {
+                own: ReportLog {
+                    log_id: log_id.into(),
+                    size,
+                    last: b
+                        .own
+                        .last()
+                        .map(|r| r.record_id.clone())
+                        .unwrap_or_default(),
+                },
+                books: b,
+                stamps: None,
+                counterpart,
+                checkpoint: ReportCheckpoint {
+                    log_id: log_id.into(),
+                    mmr_size: cp.tree_size,
+                    root: cp.root,
+                },
+                fact,
             },
-            books: b,
-            stamps: None,
-            counterpart,
-            checkpoint: ReportCheckpoint {
-                log_id: log_id.into(),
-                mmr_size: cp.tree_size,
-                root: cp.root,
-            },
-            fact,
-        }))
+            pairs,
+        )))
     }
 
     /// The book's last status fact against the status value `b` builds now,
@@ -992,7 +1037,7 @@ impl BookStatus for DealStatus {
     /// `BookValues`).
     fn values(&self, input: &StatusInput<'_>) -> Result<Option<StatusValues>, String> {
         let shelf = self.shelf().map_err(|e| e.to_string())?;
-        let Some((b, last_received, checked_over, _)) = self
+        let Some((b, last_received, checked_over, _, _)) = self
             .status_books(&shelf, input)
             .map_err(|e| e.to_string())?
         else {
@@ -1016,6 +1061,37 @@ impl BookStatus for DealStatus {
             .map(drop)
             .map_err(|e| e.error.to_string())
     }
+}
+
+/// The report and its book from `pairs`, the book pair of each record the
+/// snapshot read, by record id (Go `reportWithBook`).
+fn report_with_book(
+    rb: &ReportBooks,
+    copy: &ReportCopy,
+    pairs: &BTreeMap<String, Vec<u8>>,
+) -> Result<(Report, ReportBook), ShelfError> {
+    let (r, rows) = build_report_rows(rb, copy).map_err(deal_err)?;
+    let pair = |id: &str| -> Result<Value, ShelfError> {
+        let p = pairs.get(id).ok_or_else(|| {
+            invalid(format!(
+                "xdealv1: report: no book pair read for record {id}"
+            ))
+        })?;
+        serde_json::from_slice(p)
+            .map_err(|e| invalid(format!("xdealv1: report: the book pair of {id}: {e}")))
+    };
+    let agreement = pair(&rb.books.own[0].record_id)?;
+    let mut relied_on = BTreeMap::new();
+    for row in &rows {
+        for src in &row.relied_on {
+            relied_on.insert(src.record.clone(), pair(&src.record)?);
+        }
+    }
+    let book = ReportBook {
+        agreement: Some(agreement),
+        relied_on: Some(relied_on),
+    };
+    Ok((r, book))
 }
 
 #[cfg(test)]

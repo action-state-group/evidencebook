@@ -4,12 +4,15 @@
 // (test/interop/deal-v1/diff.py): one JSON request per line on stdin,
 // {"kind": "check", "record": <text>}, {"kind": "status", "books": ...} or
 // {"kind": "report", "books": ..., "copy": ...} or {"kind": "verify_report",
-// "payload": ..., "first": <hex>}, and one line out for each: "ok" or the
+// "payload": ..., "first": <hex>} or {"kind": "verify_report_bundle", "report": <hex>,
+// "extension": <text>}, and one line out for each: "ok" or the
 // refusal's stage for a check, the JCS of the status value or the report, the
 // JCS of {"key_id", "report"} for a verified report and {"stage": ...} for one
 // refused, or {"error":true} when it is refused. A verify_report payload is sealed as a report Capsule under the
 // test seller's record key (dealprofile/xdealv1's receive tests), and read
-// against first, the seller's agreement book pair.
+// against first, the seller's agreement book pair. A verify_report_bundle request
+// carries a sealed report pair (hex) and the x-deal-v1 bundle extension as text,
+// and is answered as verify_report is.
 package main
 
 import (
@@ -45,6 +48,10 @@ type request struct {
 	// A verify_report request: the report payload and the first record.
 	Payload json.RawMessage `json:"payload"`
 	First   string          `json:"first"`
+	// A verify_report_bundle request: the sealed report pair (hex) and the
+	// extension's text.
+	Report    string `json:"report"`
+	Extension string `json:"extension"`
 }
 
 // sellerKey is the record key of the seller in dealprofile/xdealv1's receive
@@ -88,6 +95,23 @@ func verifyReport(payload json.RawMessage, first string) (string, error) {
 		return "", err
 	}
 	r, err := xdealv1.VerifyReport(pair, firstPair)
+	var se *xdealv1.StageError
+	if errors.As(err, &se) && os.Getenv("DEAL_V1_DEBUG") == "" {
+		return jcsOf(map[string]string{"stage": se.Stage})
+	}
+	if err != nil {
+		return refusedBy(err), nil
+	}
+	return jcsOf(map[string]any{"key_id": r.KeyID, "report": r.Report})
+}
+
+// verifyReportBundle reads the sealed report pair with the extension.
+func verifyReportBundle(report, ext string) (string, error) {
+	pair, err := hex.DecodeString(report)
+	if err != nil {
+		return "", err
+	}
+	r, err := xdealv1.VerifyReportBundle(pair, []byte(ext))
 	var se *xdealv1.StageError
 	if errors.As(err, &se) && os.Getenv("DEAL_V1_DEBUG") == "" {
 		return jcsOf(map[string]string{"stage": se.Stage})
@@ -217,6 +241,8 @@ func answer(line []byte) (string, error) {
 		return jcsOf(r)
 	case "verify_report":
 		return verifyReport(req.Payload, req.First)
+	case "verify_report_bundle":
+		return verifyReportBundle(req.Report, req.Extension)
 	}
 	return "", fmt.Errorf("unknown kind %q", req.Kind)
 }

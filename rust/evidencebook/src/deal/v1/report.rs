@@ -233,6 +233,16 @@ fn normalize_referee(v: &str) -> String {
 /// Computes one copy of the v1 report from `b` at `c.as_of` (Go
 /// `BuildReport`), with Go's refusals.
 pub fn build_report(b: &ReportBooks, c: &ReportCopy) -> Result<Report, Error> {
+    build_report_rows(b, c).map(|(r, _)| r)
+}
+
+/// [`build_report`] with every row it computed, listed in the copy or not:
+/// the records they rely on are the ones the x-deal-v1 bundle extension
+/// carries for every copy (Go `buildReport`).
+pub(crate) fn build_report_rows(
+    b: &ReportBooks,
+    c: &ReportCopy,
+) -> Result<(Report, Vec<ReportRow>), Error> {
     if ![AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_ADJUDICATOR].contains(&c.audience.as_str())
     {
         return Err(report_err(format!(
@@ -356,7 +366,7 @@ pub fn build_report(b: &ReportBooks, c: &ReportCopy) -> Result<Report, Error> {
         r.rows_state = ROWS_NOT_STARTED.into();
     } else {
         r.rows_state = ROWS_LISTED.into();
-        r.rows = rows;
+        r.rows = rows.clone();
     }
     if !adj {
         r.rests_on.counterparty = b.counterpart.clone();
@@ -364,7 +374,7 @@ pub fn build_report(b: &ReportBooks, c: &ReportCopy) -> Result<Report, Error> {
         r.disputes = v.disputes.clone();
         r.rulings_unnamed = v.rulings_unnamed;
     }
-    Ok(r)
+    Ok((r, rows))
 }
 
 /// The report's payload bytes: its JCS form (Go `ReportPayload`).
