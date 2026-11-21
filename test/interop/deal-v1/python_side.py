@@ -13,7 +13,7 @@ import json
 import sys
 from datetime import datetime, timezone
 
-from agent_action_capsule.canonical import jcs
+from agent_action_capsule.canonical import FloatInDigestError, jcs
 
 import evidencebook.deal.v1 as v1
 from evidencebook.deal.v1 import report as v1_report
@@ -108,6 +108,9 @@ def verify_report_bundle(report, ext):
         r = v1.verify_report_bundle(bytes.fromhex(report), ext.encode("utf-8", "surrogateescape"))
     except v1.StageError as e:
         return jcs({"stage": e.stage}).decode()
+    except FloatInDigestError:
+        # A pair's record holding a float: Go's Digest refuses it with no stage.
+        return '{"error":true}'
     return jcs({"key_id": r.key_id, "report": r.report}).decode()
 
 

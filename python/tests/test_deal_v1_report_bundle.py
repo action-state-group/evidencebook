@@ -62,3 +62,27 @@ def test_report_with_book_from_a_shelf(tmp_path):
     withheld, wbook = buyer.status.report_with_book(log, adj)
     assert withheld["rows_state"] == v1.ROWS_WITHHELD and withheld["rows"] == []
     assert wbook == book, "a withheld copy carries the keep copy's book"
+
+
+def test_shapes_go_refuses():
+    """A list where Go reads a struct, and a number no float64 holds (refused
+    by the text check before the extension is read)."""
+    case = next(c for c in CASES if c["name"] == "keep-copy")
+    report, ext = bytes.fromhex(case["report"]), case["extension"]
+    sealed, book = ext["sealed_report"], ext["book"]
+
+    def big(n):
+        return json.dumps(ext, separators=(",", ":")).replace(f'"sealed_report":"{sealed}"',
+                                                               f'"sealed_report":{n}', 1)
+
+    for name, text, stage in [
+        ("a list for the extension", json.dumps([sealed, book]), "report"),
+        ("a list for the book", json.dumps({"sealed_report": sealed,
+                                              "book": [book["agreement"], book["relied_on"]]}), "report"),
+        ("a number past float64", big("1e400"), "canonicalization"),
+        ("a negative one", big("-1e999"), "canonicalization"),
+        ("one that does not overflow", big("1e308"), "report"),
+    ]:
+        with pytest.raises(StageError) as exc:
+            v1.verify_report_bundle(report, text.encode())
+        assert exc.value.stage == stage, name

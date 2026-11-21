@@ -1600,7 +1600,8 @@ records by reading that leg, not a new report member.
   signed by a party and, for the holder's and a named counterparty prefix, within the stated
   logs; an adjudicator's records have no log bound, and in an adjudicator's copy the
   counterparty's are bound to one log only. Rust has `deal::v1::verify_report_bundle` and
-  `DealStatus::report_with_book`; Python follows (evidencebook#598). The vectors are in
+  `DealStatus::report_with_book`, Python `verify_report_bundle` and `StatusProvider.report_with_book`
+  (evidencebook#598). The vectors are in
   `testdata/deal-v1/report-bundle/`.
 
 **Proposed: the v1 report.**
@@ -1866,7 +1867,7 @@ same vectors, each in its own pull request.
 5. **The v1 report** and its vectors (section 9). Then (evidencebook#588) the payment legs in
    `relied_on`, in Go, Rust and Python together, since all three replay the report vectors; and the
    bundle extension's `VerifyReportBundle` and `ReportWithBook` in Go, with Rust and Python
-   following in their own pull requests (evidencebook#598; Rust first).
+   following in their own pull requests (evidencebook#598).
 6. **Rust `deal::v1`**, then **Python `evidencebook.deal.v1`**, to the same vectors, with a CI
    differential job like `row-status-diff`.
 
