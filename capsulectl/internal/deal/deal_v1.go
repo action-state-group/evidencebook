@@ -424,16 +424,17 @@ func (s *dealSession) writePair(ctx context.Context, c *cobra.Command, path, dig
 	return err
 }
 
-// journalRecordType is the x-deal-v1 record type of the journal record whose
-// payload digest is digest, and whether the journal holds one.
-func (s *dealSession) journalRecordType(ctx context.Context, digest string) (typ string, held bool, err error) {
+// journalRecord is the x-deal-v1 record the journal holds under payload
+// digest digest (nil when the journal's record there is not one), and
+// whether the journal holds one.
+func (s *dealSession) journalRecord(ctx context.Context, digest string) (rec *xdealv1.Record, held bool, err error) {
 	j, err := s.shelf.Journal(ctx)
 	if err != nil {
-		return "", false, err
+		return nil, false, err
 	}
 	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
 	if err != nil {
-		return "", false, err
+		return nil, false, err
 	}
 	for _, r := range read.Records {
 		for _, c := range r.Header.PayloadCommitments {
@@ -442,16 +443,16 @@ func (s *dealSession) journalRecordType(ctx context.Context, digest string) (typ
 			}
 			payload, err := j.ResolvePayload(ctx, r.RecordID, digest)
 			if err != nil {
-				return "", false, err
+				return nil, false, err
 			}
-			rec, err := xdealv1.Decode(payload)
+			r, err := xdealv1.Decode(payload)
 			if err != nil {
-				return "", true, nil
+				return nil, true, nil
 			}
-			return rec.Block.RecordType, true, nil
+			return &r, true, nil
 		}
 	}
-	return "", false, nil
+	return nil, false, nil
 }
 
 // sentOfferPair is the pair of the offer whose record digest is given, for the

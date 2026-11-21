@@ -39,13 +39,21 @@ func sealAdmit(t *testing.T, outcome string) string {
 	// without one the other side could test guesses at the outcome (u528).
 	nonce, err := xdealv1.NewNonce()
 	require.NoError(t, err)
+	return sealAdmitBody(t, xdealv1.AdmitBody{Outcome: outcome, Tier: "standard", Rows: []string{"paid_as_agreed"}, Asks: []xdealv1.Ref{},
+		PackDigest: strings.Repeat("a", 64), CardDigest: strings.Repeat("b", 64), Answers: []xdealv1.Ref{}, Nonce: nonce})
+}
+
+// sealAdmitBody seals an admit record with the given body in the profile's
+// journal, after the profile's own check, and returns its record digest.
+func sealAdmitBody(t *testing.T, body xdealv1.AdmitBody) string {
+	t.Helper()
 	rec := xdealv1.Record{
 		Block: xdealv1.Block{Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, RecordType: xdealv1.TypeAdmit, At: v1Now()},
-		Body: xdealv1.AdmitBody{Outcome: outcome, Tier: "standard", Rows: []string{"paid_as_agreed"}, Asks: []xdealv1.Ref{},
-			PackDigest: strings.Repeat("a", 64), CardDigest: strings.Repeat("b", 64), Answers: []xdealv1.Ref{}, Nonce: nonce},
+		Body:  body,
 	}
 	payload, digest, err := xdealv1.Encode(rec)
 	require.NoError(t, err)
+	require.NoError(t, xdealv1.Check(payload))
 	withSession(t, func(s *dealSession) {
 		_, _, err := s.shelf.SealSent(t.Context(), evidencebook.Entry{RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{payload}}, "admit/sent")
 		require.NoError(t, err)
@@ -164,6 +172,35 @@ func TestAnAgreementRefusesWhatItCannotCite(t *testing.T) {
 	assert.Contains(t, v1Err(t, "agree", digest, "--admit", strings.Repeat("c", 64)), "not a record in your journal")
 	// The offerer agrees only once it holds the acceptor's agreement.
 	admit := sealAdmit(t, "GO")
+	assert.Contains(t, v1Err(t, "agree", digest, "--admit", admit), "has not been received")
+	// An agreement cites a GO, or a LIMIT whose tier holds the deal; never an
+	// ASK, whose questions are open, or a NO (evidencebook-deal#240).
+	for _, outcome := range []string{"ASK", "NO"} {
+		assert.Contains(t, v1Err(t, "agree", digest, "--admit", sealAdmit(t, outcome)), "is an admission decision of "+outcome, outcome)
+	}
+	assert.Contains(t, v1Err(t, "agree", digest, "--admit", sealAdmit(t, "LIMIT")), "has not been received")
+}
+
+// engineAdmit is the admit body capsule-engine's admission evaluate emits for
+// conformance-vectors/admission/v0/admit.json case
+// t0-attestation-unknown-is-missing (capsule-engine go/v0.5.0, #311): a LIMIT
+// at the tier that holds the deal, whose rows carry the admission pack's
+// hyphenated ids.
+const engineAdmit = `{"answers":[{"digest":"b752ebd2ceed2379f1342389d96e32d3d6acd6a72018998dc9c8ab0501d3c0e7","digest_alg":"SHA-256","type":"deal-record"}],"asks":[{"digest":"94fd5e8499aba5d80c4607b540405c154c698dadd6f380c0eadb5eef03e1a46e","digest_alg":"SHA-256","type":"deal-record"}],"card_digest":"cbc5d785b2bb67b0729471a00a9d1de4e3c4dc207e12bd0c25b78153d580a11e","nonce":"76683c64e0e225c7d1b0238eb54b0bf3efae9be6bc4f0c0a9018cc5d60831512","outcome":"LIMIT","pack_digest":"9eee5bce2771ed8f0523b628c4536bdfbfff80ddd8ef37f041cb55ed7d28ab66","rows":["attestation","deny-list","adverse","halves"],"tier":"T0"}`
+
+// An admit body the engine emits passes the x-deal-v1 check when sealed, and
+// an agreement may cite it (capsule-engine#303).
+func TestAnAgreementCitesAnEngineAdmit(t *testing.T) {
+	newV1Side(t)
+	buyerOffer := filepath.Join(t.TempDir(), "o.json")
+	digest := dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", buyerOffer)["offer"].(string)
+	dec := json.NewDecoder(strings.NewReader(engineAdmit))
+	dec.DisallowUnknownFields()
+	var body xdealv1.AdmitBody
+	require.NoError(t, dec.Decode(&body))
+	admit := sealAdmitBody(t, body)
+	// It passes the admit check and stops only at the offerer's wait for the
+	// acceptor's agreement.
 	assert.Contains(t, v1Err(t, "agree", digest, "--admit", admit), "has not been received")
 }
 
