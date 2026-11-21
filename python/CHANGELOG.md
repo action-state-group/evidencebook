@@ -368,3 +368,5 @@ The Go shelf's hooks from #484, #490, #517, #525, #526, #528 and #530, which the
   history's `history_card/1` and the poll recorded an absence. A poll that could not read any relay returns
   `transport_error` (`loop_ask_mailbox_poll`, `loop_dispute_poll`) and records nothing, instead of reading as no reply.
   `loop_ask_mailbox` asks for `history_card/2` on `checkpoints` when the asked node's commitment offers it, else `history_card/1`.
+
+- `evidencebook.deal.v1`: an `admit`'s `rows` take admission pack row ids, hyphens included (`^[a-z][a-z0-9_-]*$`; capsule-engine#303), as Go; the vendored x-deal-v1 schema moves with it, and `admit-rows.json` is decided the same.
