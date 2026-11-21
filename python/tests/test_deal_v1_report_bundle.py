@@ -86,3 +86,13 @@ def test_shapes_go_refuses():
         with pytest.raises(StageError) as exc:
             v1.verify_report_bundle(report, text.encode())
         assert exc.value.stage == stage, name
+
+
+@pytest.mark.parametrize("bad", [b"", b"1 2", b"{", b"not json"])
+def test_a_pair_that_is_not_one_json_value_is_not_written(bad):
+    """Go's json.Marshal of a json.RawMessage refuses text that is not one
+    JSON value; compacting it would write something else (1 2 as 12)."""
+    ok = b'{"a":1}'
+    for book in (v1.ReportBook(bad, {}), v1.ReportBook(ok, {"x": bad})):
+        with pytest.raises(ValueError):
+            v1.ReportBundle("id", book).json()

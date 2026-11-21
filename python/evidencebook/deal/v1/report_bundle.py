@@ -20,7 +20,7 @@ from ..names import AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP
 from .names import ROLE_BUYER, ROLE_SELLER
 from .report import ROWS_LISTED, ROWS_NOT_STARTED, ROWS_WITHHELD, SIDE_ADJUDICATOR
 from .report_verify import STAGE_REPORT, ReportRead, verify_report
-from .sent import _compact, _err, verify_book
+from .sent import _compact, _err, _raw_message, verify_book
 from .start import STATE_STARTED
 
 __all__ = ["ReportBook", "ReportBundle", "verify_report_bundle"]
@@ -54,10 +54,13 @@ class ReportBundle:
     def json(self) -> bytes:
         """The extension as Go's ``json.Marshal`` writes it: the members in
         field order, the relied_on keys in byte order, each pair compacted as
-        a ``json.RawMessage`` is."""
+        a ``json.RawMessage`` is. Raises :class:`ValueError` for a pair that
+        is not one JSON value, as Go's ``json.Marshal`` errs."""
 
         def text(b: bytes) -> str:
-            return _compact(rawjson.raw_text(bytes(b)))
+            # json.Marshal of a json.RawMessage: text that is not one JSON
+            # value is refused, then compacted.
+            return _compact(_raw_message(b))
 
         def key(s: str) -> str:
             return _compact(json.dumps(s, ensure_ascii=False))
