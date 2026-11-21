@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"time"
@@ -220,8 +221,16 @@ var reportNonce = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // that is not an adjudicator's or none on one that is, an as_of that is not
 // RFC 3339 UTC to the second, and books holding a record timed after as_of.
 func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
-	bad := func(format string, args ...any) (Report, error) {
-		return Report{}, fmt.Errorf("xdealv1: report: "+format, args...)
+	r, _, err := buildReport(b, c)
+	return r, err
+}
+
+// buildReport is BuildReport with every row it computed, listed in the copy
+// or not: the records they rely on are the ones the x-deal-v1 bundle
+// extension carries for every copy (ReportWithBook).
+func buildReport(b ReportBooks, c ReportCopy) (Report, []ReportRow, error) {
+	bad := func(format string, args ...any) (Report, []ReportRow, error) {
+		return Report{}, nil, fmt.Errorf("xdealv1: report: "+format, args...)
 	}
 	switch c.Audience {
 	case dealprofile.AudienceKeep, dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator:
@@ -243,7 +252,7 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 	}
 	v, err := BuildStatus(b.Books)
 	if err != nil {
-		return Report{}, err
+		return Report{}, nil, err
 	}
 	of, _ := asPropose(b.Books.Offer.Body)
 	own, _ := asAgree(b.Books.Own[0].Record.Body)
@@ -270,7 +279,7 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 	}
 	ins, srcs, err := rowInputs(rb, c.AsOf)
 	if err != nil {
-		return Report{}, err
+		return Report{}, nil, err
 	}
 	st := v.Start
 	start, err := Start(StartInput{At: c.AsOf, Side: st.Side, CounterpartyLayer: st.CounterpartyLayer, AgreeBy: st.AgreeBy,
@@ -279,7 +288,7 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 		AcceptorNamesOfferer: st.AcceptorNamesOfferer, CancellationNamedFirst: st.CancellationNamedFirst,
 		FirstAct: resolveFirstAct(st.FirstAct, b.Stamps)})
 	if err != nil {
-		return Report{}, err
+		return Report{}, nil, err
 	}
 
 	r := Report{Type: dealprofile.ReportType, Profile: Profile, DealID: b.Books.Offer.Block.DealID, Audience: c.Audience,
@@ -290,11 +299,15 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 	if r.Text == nil {
 		r.Text = map[string]any{}
 	}
+	legs, err := paymentLegs(b.Books, rb)
+	if err != nil {
+		return Report{}, nil, err
+	}
 	rows := []ReportRow{}
 	for i, in := range ins {
-		row, err := reportRow(rb, of.TermsRows.Rows[i], in, srcs[i])
+		row, err := reportRow(rb, of.TermsRows.Rows[i], in, srcs[i], legs[of.TermsRows.Rows[i].ID])
 		if err != nil {
-			return Report{}, err
+			return Report{}, nil, err
 		}
 		rows = append(rows, row)
 	}
@@ -317,7 +330,7 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 		r.Disputes = v.Disputes
 		r.RulingsUnnamed = v.RulingsUnnamed
 	}
-	return r, nil
+	return r, rows, nil
 }
 
 // ReportPayload is the report's payload bytes: its JCS form.
@@ -360,7 +373,53 @@ func counterpartyProof(v StatusValue) string {
 
 // reportRow is one row: rowstatus's result and late records at in.At, the
 // effective ruling, and the records the input came from.
-func reportRow(b RowBooks, agreed Row, in rowstatus.Input, src rowSources) (ReportRow, error) {
+// paymentLegs maps each payment row's PaymentResult to the book records it
+// read: CheckedOver, whose first entry is the offer's digest (a journal
+// record, not a book record) and whose others are the digests of settle
+// legs of the holder's or the counterparty's book. It refuses a result
+// whose first entry is not the offer's digest, or that names a record the
+// books given do not hold: a report rests only on what the holder held.
+func paymentLegs(b StatusBooks, rb RowBooks) (map[string][]recRef, error) {
+	if len(b.Payments) == 0 {
+		return nil, nil
+	}
+	od, err := Digest(b.Offer)
+	if err != nil {
+		return nil, err
+	}
+	held := map[string]recRef{}
+	for _, bk := range []struct {
+		book byte
+		recs []TimedRecord
+	}{{bookOwn, rb.Own}, {bookCounterpart, rb.Counterpart}} {
+		for i, r := range bk.recs {
+			d, err := Digest(r.Record)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := held[d]; !ok {
+				held[d] = recRef{bk.book, i}
+			}
+		}
+	}
+	out := map[string][]recRef{}
+	for _, row := range slices.Sorted(maps.Keys(b.Payments)) {
+		over := b.Payments[row].CheckedOver
+		if len(over) == 0 || over[0] != od {
+			return nil, fmt.Errorf("xdealv1: report: row %s's payment check does not begin with the offer's digest", row)
+		}
+		for _, d := range over[1:] {
+			ref, ok := held[d]
+			if !ok {
+				return nil, fmt.Errorf("xdealv1: report: row %s's payment check read record %s, which the books given do not hold", row, d)
+			}
+			out[row] = append(out[row], ref)
+		}
+	}
+	return out, nil
+}
+
+func reportRow(b RowBooks, agreed Row, in rowstatus.Input, src rowSources, legs []recRef) (ReportRow, error) {
 	res, err := rowstatus.Compute(in)
 	if err != nil {
 		return ReportRow{}, err
@@ -434,7 +493,7 @@ func reportRow(b RowBooks, agreed Row, in rowstatus.Input, src rowSources) (Repo
 		remedyRef = &recRef{owingBook, i}
 	}
 	var refs []recRef
-	for _, n := range slices.Sorted(mapKeys(src.named)) {
+	for _, n := range slices.Sorted(maps.Keys(src.named)) {
 		refs = append(refs, src.named[n])
 	}
 	for _, list := range [][]recRef{src.statements, src.disputes, src.withdrawals, src.rulings, src.remedies} {
@@ -443,6 +502,8 @@ func reportRow(b RowBooks, agreed Row, in rowstatus.Input, src rowSources) (Repo
 	if remedyRef != nil {
 		refs = append(refs, *remedyRef)
 	}
+	// The settle legs the payment check read (Steven's ruling on #588).
+	refs = append(refs, legs...)
 	seen := map[recRef]bool{}
 	for _, ref := range refs {
 		if seen[ref] {
@@ -453,16 +514,6 @@ func reportRow(b RowBooks, agreed Row, in rowstatus.Input, src rowSources) (Repo
 		row.ReliedOn = append(row.ReliedOn, ReportSource{Record: r.RecordID, Side: side, Time: r.Time, Witnessed: r.Time != nil})
 	}
 	return row, nil
-}
-
-func mapKeys(m map[string]recRef) func(func(string) bool) {
-	return func(yield func(string) bool) {
-		for k := range m {
-			if !yield(k) {
-				return
-			}
-		}
-	}
 }
 
 func reportCheck(agreed Row, check string) string {
@@ -519,79 +570,90 @@ func settled(start StartResult, rows []ReportRow) bool {
 // that grew past its checkpoint or kept changing while it was read. Each shelf call takes the
 // shelf's lock, so it is never called from a stamp or a Receive.
 func (p *StatusProvider) Report(ctx context.Context, logID string, c ReportCopy) (Report, error) {
+	r, _, err := p.ReportWithBook(ctx, logID, c)
+	return r, err
+}
+
+// ReportWithBook is Report with the book pairs the report rests on, read in
+// the same snapshot (design §9, "The bundle extension"): the holder's
+// agreement at seq 1 and every record the report's rows rely on, whether
+// the copy lists its rows or not. The host carries them as the x-deal-v1
+// bundle extension's book (ReportBundle) beside the sealed report.
+func (p *StatusProvider) ReportWithBook(ctx context.Context, logID string, c ReportCopy) (Report, ReportBook, error) {
 	if p.Shelf == nil {
-		return Report{}, fmt.Errorf("xdealv1: the status provider has no shelf")
+		return Report{}, ReportBook{}, fmt.Errorf("xdealv1: the status provider has no shelf")
 	}
 	book, err := p.Shelf.Open(ctx, logID)
 	if err != nil {
-		return Report{}, err
+		return Report{}, ReportBook{}, err
 	}
 	first, err := book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: 1})
 	if err != nil {
-		return Report{}, err
+		return Report{}, ReportBook{}, err
 	}
 	notV1 := fmt.Errorf("xdealv1: report: book %s is not an x-deal-v1 deal book", logID)
 	if len(first) != 1 {
-		return Report{}, notV1
+		return Report{}, ReportBook{}, notV1
 	}
 	if rec, kind, err := v1Payload(ctx, book, first[0]); err != nil {
-		return Report{}, err
+		return Report{}, ReportBook{}, err
 	} else if a, ok := asAgree(rec.Body); kind != payloadV1 || !ok || a.Kind != KindAgreement {
-		return Report{}, notV1
+		return Report{}, ReportBook{}, notV1
 	}
 	journal, err := p.Shelf.ExistingJournal(ctx)
 	if err != nil {
-		return Report{}, err
+		return Report{}, ReportBook{}, err
 	}
 	if journal == nil {
-		return Report{}, fmt.Errorf("xdealv1: report: the shelf has no journal, which holds the deal's offer")
+		return Report{}, ReportBook{}, fmt.Errorf("xdealv1: report: the shelf has no journal, which holds the deal's offer")
 	}
 	bookID := first[0].RecordID
 	for attempt := 0; attempt < 3; attempt++ {
-		rb, stable, err := p.reportBooks(ctx, logID, bookID, book, journal)
+		rb, pairs, stable, err := p.reportBooks(ctx, logID, bookID, book, journal)
 		if err != nil {
-			return Report{}, err
+			return Report{}, ReportBook{}, err
 		}
 		if stable {
-			return BuildReport(rb, c)
+			return reportWithBook(rb, c, pairs)
 		}
 	}
-	return Report{}, fmt.Errorf("%w: report: book %s kept changing while it was read", evidencebook.ErrBusy, logID)
+	return Report{}, ReportBook{}, fmt.Errorf("%w: report: book %s kept changing while it was read", evidencebook.ErrBusy, logID)
 }
 
-// reportBooks reads one snapshot of what a report rests on; stable false
-// when the book moved during the read. The counterparty's prefix is the one
+// reportBooks reads one snapshot of what a report rests on, with the book
+// pair of each record read by record id; stable false when the book moved
+// during the read. The counterparty's prefix is the one
 // read the status walked.
-func (p *StatusProvider) reportBooks(ctx context.Context, logID, bookID string, book, journal *evidencebook.Book) (ReportBooks, bool, error) {
+func (p *StatusProvider) reportBooks(ctx context.Context, logID, bookID string, book, journal *evidencebook.Book) (ReportBooks, map[string][]byte, bool, error) {
 	cps, err := book.Checkpoints(ctx)
 	if err != nil {
-		return ReportBooks{}, false, err
+		return ReportBooks{}, nil, false, err
 	}
 	size := book.Size()
 	if len(cps) == 0 || cps[len(cps)-1].Entries != size {
-		return ReportBooks{}, false, fmt.Errorf("xdealv1: report: book %s has no checkpoint at its size %d; a stamp checkpoints it", logID, size)
+		return ReportBooks{}, nil, false, fmt.Errorf("xdealv1: report: book %s has no checkpoint at its size %d; a stamp checkpoints it", logID, size)
 	}
 	cp := cps[len(cps)-1]
-	b, _, counterpart, ok, err := p.statusBooks(ctx, evidencebook.StatusInput{BookID: bookID, LogID: logID, Book: book, Journal: journal})
+	b, _, counterpart, pairs, ok, err := p.statusBooks(ctx, evidencebook.StatusInput{BookID: bookID, LogID: logID, Book: book, Journal: journal})
 	if err != nil {
-		return ReportBooks{}, false, err
+		return ReportBooks{}, nil, false, err
 	}
 	if !ok {
-		return ReportBooks{}, false, fmt.Errorf("xdealv1: report: book %s is not an x-deal-v1 deal book", logID)
+		return ReportBooks{}, nil, false, fmt.Errorf("xdealv1: report: book %s is not an x-deal-v1 deal book", logID)
 	}
 	if book.Size() != size {
-		return ReportBooks{}, false, nil
+		return ReportBooks{}, nil, false, nil
 	}
 	if uint64(len(b.Own)) != size {
-		return ReportBooks{}, false, fmt.Errorf("xdealv1: report: book %s holds a record past seq %d that is not a readable x-deal-v1 record", logID, len(b.Own))
+		return ReportBooks{}, nil, false, fmt.Errorf("xdealv1: report: book %s holds a record past seq %d that is not a readable x-deal-v1 record", logID, len(b.Own))
 	}
 	rb := ReportBooks{Books: b, Counterpart: counterpart,
 		Own:        ReportLog{LogID: logID, Size: size, Last: b.Own[len(b.Own)-1].RecordID},
 		Checkpoint: dealprofile.Checkpoint{LogID: logID, MMRSize: cp.TreeSize, Root: cp.Root}}
 	if rb.Fact, err = p.factCurrent(ctx, bookID, b); err != nil {
-		return ReportBooks{}, false, err
+		return ReportBooks{}, nil, false, err
 	}
-	return rb, true, nil
+	return rb, pairs, true, nil
 }
 
 // factCurrent is the book's last status fact against the status value b

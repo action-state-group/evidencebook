@@ -61,7 +61,7 @@ func (p *StatusProvider) BookValues(ctx context.Context, in evidencebook.StatusI
 	if p.Shelf == nil {
 		return none(fmt.Errorf("xdealv1: the status provider has no shelf"))
 	}
-	b, link, _, ok, err := p.statusBooks(ctx, in)
+	b, link, _, _, ok, err := p.statusBooks(ctx, in)
 	if err != nil || !ok {
 		return none(err)
 	}
@@ -79,11 +79,12 @@ func (p *StatusProvider) BookValues(ctx context.Context, in evidencebook.StatusI
 // statusBooks is what a v1 deal book's status value is built from, read
 // through in's handles and the shelf's lock-free readers, with its link value
 // and the counterparty's counted prefix as a report rests on it, from the one
-// prefix read the status walked; ok false for a book that is not a v1 deal
-// book.
-func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.StatusInput) (StatusBooks, evidencebook.LinkValue, *ReportCounterpartLog, bool, error) {
-	fail := func(err error) (StatusBooks, evidencebook.LinkValue, *ReportCounterpartLog, bool, error) {
-		return StatusBooks{}, evidencebook.LinkValue{}, nil, false, err
+// prefix read the status walked, and the book pair of each record read, by
+// record id (the holder's own records and every record held for the deal);
+// ok false for a book that is not a v1 deal book.
+func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.StatusInput) (StatusBooks, evidencebook.LinkValue, *ReportCounterpartLog, map[string][]byte, bool, error) {
+	fail := func(err error) (StatusBooks, evidencebook.LinkValue, *ReportCounterpartLog, map[string][]byte, bool, error) {
+		return StatusBooks{}, evidencebook.LinkValue{}, nil, nil, false, err
 	}
 	own, err := p.ownBook(ctx, in)
 	if err != nil || len(own) == 0 {
@@ -158,7 +159,16 @@ func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.Status
 	if len(theirs) > 0 {
 		cp = &ReportCounterpartLog{LogID: theirLog, Counted: uint64(len(theirs)), Last: theirs[len(theirs)-1].rec.RecordID, ForkAt: prefix.ForkAt}
 	}
-	return b, link, cp, true, nil
+	pairs := map[string][]byte{}
+	for _, o := range own {
+		pairs[o.rec.RecordID] = o.pair
+	}
+	for _, h := range held {
+		if _, ok := pairs[h.Digest]; !ok {
+			pairs[h.Digest] = h.Record
+		}
+	}
+	return b, link, cp, pairs, true, nil
 }
 
 // ownRecord is a record of the holder's book with its sealed pair.

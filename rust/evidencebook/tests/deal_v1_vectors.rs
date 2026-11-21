@@ -121,6 +121,43 @@ fn report_vectors() {
     }
 }
 
+/// A payment result that does not begin with the offer's digest, or names a
+/// record the books do not hold, is refused (Go's TestBuildReportPaymentLegs).
+#[test]
+fn report_refuses_payment_legs_not_held() {
+    let c = vectors("report/vectors.json")
+        .into_iter()
+        .find(|c| c["name"] == "appendix-a-payee-leg-unstated")
+        .expect("the case");
+    let copy = v1::ReportCopy {
+        audience: "keep".into(),
+        nonce: c["copy"]["nonce"].as_str().unwrap().into(),
+        referee: String::new(),
+        as_of: c["copy"]["as_of"].as_str().unwrap().into(),
+        text: None,
+    };
+    let over = c["books"]["Books"]["payments"]["paid_as_agreed"]["checked_over"].clone();
+    let mut not_held = over.clone();
+    not_held
+        .as_array_mut()
+        .unwrap()
+        .push(Value::from("e".repeat(64)));
+    for (name, list) in [
+        ("empty", Value::Array(vec![])),
+        (
+            "not the offer",
+            Value::Array(vec![Value::from("0".repeat(64))]),
+        ),
+        ("not held", not_held),
+    ] {
+        let mut books = c["books"].clone();
+        books["Books"]["payments"]["paid_as_agreed"]["checked_over"] = list;
+        let books: v1::ReportBooks = serde_json::from_value(books).unwrap();
+        let err = v1::build_report(&books, &copy).expect_err(name);
+        assert!(err.to_string().contains("payment check"), "{name}: {err}");
+    }
+}
+
 /// settled/vectors.json: each case's rows settle as given.
 #[test]
 fn settled_vectors() {

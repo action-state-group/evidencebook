@@ -1519,7 +1519,8 @@ PROFILE §10). It is as proposed below, with these additions and limits:
   `Shelf.ExistingJournal`, which never creates it, and reads again, up to three times, when the
   book moves during the read. A book holding a record not readable as x-deal-v1 is refused for
   good, not as busy (Codex and the stand-in, #530 review).
-- **`relied_on`** includes the remedy record `remedy_made` rests on.
+- **`relied_on`** includes the remedy record `remedy_made` rests on, and, on a payment row, each
+  settle leg `PaymentCheck` read (evidencebook#588, below).
 - **A payment remedy is not counted** (Sherlock2, the twin and the coordinator, #530 review).
   RowInputs counts no remedy that is a payment (6.1): it needs its own terms leg, which the
   profile does not define. The report must never state a breach its records contradict, so a
@@ -1541,9 +1542,55 @@ PROFILE §10). It is as proposed below, with these additions and limits:
   list (no record has a time, so the rows that rest on statements are `local`); and a ruling held
   unnamed with a status fact that is not current.
   `testdata/deal-v1/settled/` holds the `settled` cases.
-- **Not here:** the `x-deal-v1` bundle extension's `sealed_report` pointer and the sealing call
-  are the host's (evidencebook-deal#212); `report/` (`capsulectl book report`) refuses a bundle
-  carrying the `x-deal-v1` extension and points to this report (#485).
+- **Not here:** building and sealing the bundle, its `x-deal-v1` extension included, are the
+  host's (evidencebook-deal#212); this package defines the extension and verifies it (below);
+  `report/` (`capsulectl book report`) refuses a bundle carrying the `x-deal-v1` extension and
+  points to this report (#485).
+
+**The payment legs and the bundle extension** (evidencebook#588; Steven's ruling of 2026-11-21,
+buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=2c5ad840c8507d912bbdea4016c9b407ad8f0c2c565fdade8ce852dafa34b5fd,
+approving the three parts as filed in
+buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=90f3d38dbc96c52e2247785e8c60ba2909fb1b9c0caa1bde7cce062e3e0c3348;
+Sherlock2 confirmed the levels below). A seller's page shows the payment its own received leg
+records by reading that leg, not a new report member.
+
+- **The legs in `relied_on`.** A payment row's `relied_on` lists, after the records it lists
+  otherwise and once each, every settle leg `PaymentCheck` read for the row: its result's
+  `checked_over` after the first entry (the offer's digest, a journal record). A leg the check
+  excluded, and a check not run over legs (several payment rows, a refund citing the offer's terms
+  leg), add none. `BuildReport` refuses a payment result whose first entry is not the offer's
+  digest, or that names a record the books given do not hold. The leg stays as sealed: a payee
+  issued `payment_hash` is not a payment id u499 withholds, since both parties hold it.
+- **The extension.** A bundle that carries a v1 report carries the extension `x-deal-v1`:
+
+  ```json
+  {"sealed_report": "<the report Capsule's id>",
+   "book": {"agreement": {"record": …, "header": …, "payload": …},
+            "relied_on": {"<record id>": {"record": …, "header": …, "payload": …}, …}}}
+  ```
+
+  `agreement` is the book pair of the holder's deal book record at seq 1, which `VerifyReport` reads
+  the report against. `relied_on` holds the book pair of every record the holder's rows rely on at
+  the report's `as_of`, computed whatever the copy's `rows_state`, keyed by record id; it is `{}`
+  when no row relies on a record. A bundle carries a Capsule and its disclosed header, not the
+  record payload, so the pairs are what lets a reader read the records. `StatusProvider.ReportWithBook`
+  returns the report and its book from one snapshot; the host builds and seals the bundle.
+- **Who gets it**, by the four bundle levels (u590): the owner's copy (`keep`), the counterparty's
+  and the adjudicator's carry the agreement and the same `relied_on` records, so the settle legs
+  travel in each; an adjudicator's report still withholds its rows. A bundle for anyone else
+  carries no report and no extension.
+- **Verifying it** (`xdealv1.VerifyReportBundle`). The extension is exactly these members. The
+  report passes `VerifyReport` against `book.agreement`, and `sealed_report` is its Capsule's id.
+  The copy's audience and rows agree: an adjudicator's copy, and only it, is `withheld` with no
+  rows; rows appear only when `listed`, and a copy is `listed` exactly when its deal has started.
+  Each `relied_on` pair passes `VerifyBook`, is of the report's deal, has its record id as its key,
+  and is signed by a party of the agreement (the agreement's own key, its `counterparty_key`, or
+  its adjudicator's key); the holder's sit in `rests_on.own`'s log at a seq no greater than its
+  `size`, and, where the copy names `rests_on.counterparty`, the counterparty's sit in that log at a
+  seq no greater than its `counted`. When the rows are listed, the keys are exactly the records the
+  rows name in `relied_on`, each named with the side of its pair's signer. A page shows each leg's
+  settlement member as recorded, found by its `relied_on` id; it picks no leg, and `check` stays
+  the only verdict. The vectors are in `testdata/deal-v1/report-bundle/`.
 
 **Proposed: the v1 report.**
 
@@ -1617,7 +1664,8 @@ PROFILE §10). It is as proposed below, with these additions and limits:
     absent.
   - `ruling` is the first final ruling rowstatus applied, or `null`.
   - `relied_on` lists each record the row's inputs came from, with its record time (4.3) and
-    whether that time came from a named witness.
+    whether that time came from a named witness; on a payment row, these include the settle legs
+    the payment check read (evidencebook#588).
 - `rests_on` says what the whole report rests on: the holder's book at the `deal_checkpoint` it is
   made at, and the counterparty's counted prefix it used (`CountedPrefix`,
   `shelf_receive.go:1121-1136`), including a fork's position.
@@ -1804,7 +1852,10 @@ same vectors, each in its own pull request.
    proofs (Q8). `CanAct` gate B
    (7.2). Acceptance: vectors `times-three-cases`, `unwitnessed-then-witnessed`, `carry-forward`,
    `carry-forward-lower-bound` (REQUIRED), and the order vectors of 7.3.
-5. **The v1 report** and its vectors (section 9).
+5. **The v1 report** and its vectors (section 9). Then (evidencebook#588) the payment legs in
+   `relied_on`, in Go, Rust and Python together, since all three replay the report vectors; and the
+   bundle extension's `VerifyReportBundle` and `ReportWithBook` in Go, with Rust and Python
+   following in their own pull requests.
 6. **Rust `deal::v1`**, then **Python `evidencebook.deal.v1`**, to the same vectors, with a CI
    differential job like `row-status-diff`.
 
@@ -1867,7 +1918,9 @@ actionstate-muse#378 (pages that read the v1 report).
   all three languages. For every T from the stamp to 1 Jan 2027 in one-hour steps, `Compute` over
   the selected statements equals `Compute` over all of them (8.1).
 - **Order.** Section 7.3.
-- **Reports.** Section 9's vectors, byte for byte (fixed nonces).
+- **Reports.** Section 9's vectors, byte for byte (fixed nonces), the payment legs in
+  `relied_on` included (evidencebook#588); and the bundle extension's vectors
+  (`testdata/deal-v1/report-bundle/`), each verified or refused as given.
 - **Interlock.** One language writes the acceptor's book and another the offerer's. Each receives
   the other's records and proofs through `Receive`, stamps, and dumps its facts, and the dumps
   equal the committed vectors for every pair of languages, as the shelf interlock does today.

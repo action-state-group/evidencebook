@@ -111,6 +111,23 @@ def test_build_report_refuses(change, detail):
     assert detail in str(exc.value)
 
 
+@pytest.mark.parametrize("over, detail", [
+    ([], "does not begin with the offer's digest"),
+    (["0" * 64], "does not begin with the offer's digest"),
+    (None, "which the books given do not hold"),
+])
+def test_build_report_refuses_payment_legs_not_held(over, detail):
+    """Go's TestBuildReportPaymentLegs: a payment result that does not begin
+    with the offer's digest, or names a record the books do not hold."""
+    case = next(c for c in REPORTS if c["name"] == "appendix-a-payee-leg-unstated")
+    books = _copy.deepcopy(case["books"])
+    res = books["Books"]["payments"]["paid_as_agreed"]
+    res["checked_over"] = res["checked_over"] + ["e" * 64] if over is None else over
+    with pytest.raises(v1.StatusError) as exc:
+        v1.build_report(books, case["copy"])
+    assert detail in str(exc.value)
+
+
 def test_report_payload_is_the_reports_jcs():
     r = v1.build_report(REPORT["books"], REPORT["copy"])
     assert v1.report_payload(r) == jcs(REPORT["report"])
