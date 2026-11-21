@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v0.21.0 (2026-11-21)
+
+Every pull request merged since v0.20.1:
+
+- [#590](https://github.com/action-state-group/evidencebook/pull/590): feat(dealprofile): x-deal-v1 admit rows take admission pack row ids
+- [#593](https://github.com/action-state-group/evidencebook/pull/593): build(capsulectl,report): require capsule-cli v0.1.0-rc45
+
+A minor version: #590 widens what the x-deal-v1 schema accepts and states the `admit` citation rule; no record valid before is refused.
+
+### Added: x-deal-v1 `admit` takes admission pack row ids (#590)
+
+- x-deal-v1 `admit` names admission pack rows as the pack names them (capsule-engine#303): `rows` takes `^[a-z][a-z0-9_-]*$`, the admission pack loader's grammar, so a baseline row such as `owner-signed` is valid; every record valid before stays valid. PROFILE.md states what `tier`, `rows`, `pack_digest` and `card_digest` hold, that a NO, which has no tier, is not sealed as an `admit`, and that an agreement cites a GO, or a LIMIT whose tier holds the deal: a host refuses to seal an agreement whose `admit` is ASK or NO (capsulectl-deal's check is evidencebook-deal#240). Vectors: `testdata/deal-v1/records/admit-rows.json`.
+
+### Changed: capsulectl-book and the report builder build against capsule-cli v0.1.0-rc45 (#593)
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc45` (the witness fix: `selectedWitness` scopes `PendingWitnessesFor` and delivers older rows first, capsule-cli#590). `capsulectl/go.mod` also requires evidencebook `v0.20.1` (was v0.14.2): agent-action-capsule go v0.23.0, which the bump brings, parses a ranged `checkpoints` subject (Evidence Request -03 as agent-action-capsule go v0.23.0 reads it), and v0.14.2 would have answered it with the whole chain; v0.20.1 answers the positions asked with a consistency proof to the anchor (`TestRespondAnswersARangedCheckpointsRequest`). The bump moves agent-action-capsule go to v0.23.0 and capsule-viewer go to v0.19.2, whose page runtime the committed monthly pages under `report/testdata/presentation` are rewritten with (`EVIDENCEBOOK_UPDATE_PRESENTATION_PAGES=1`: the runtime's version, commit and script hash only). A maintainer's `capsulectl/v0.1.0-rc45` tag on #593's merge commit pairs capsulectl-book with that capsulectl release.
+
 ## v0.20.1 (2026-11-21)
 
 Every pull request merged since v0.20.0:
