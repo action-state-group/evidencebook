@@ -27,8 +27,8 @@ const (
 const (
 	RequestDraft01 = "draft-mih-agent-evidence-request-01"
 	RequestDraft02 = "draft-mih-agent-evidence-request-02"
-	// RequestDraft03 adds history_card/2 (§8.1.2) and a range on the
-	// checkpoints subject (§8.1.3).
+	// RequestDraft03 adds history_card/2 (§8.1.2) and the
+	// checkpoint_range subject (§8.1.3).
 	RequestDraft03 = "draft-mih-agent-evidence-request-03"
 )
 
@@ -42,6 +42,11 @@ const (
 	SubjectRange       = evidencerequest.SubjectRange
 	SubjectCorrelation = evidencerequest.SubjectCorrelation
 	SubjectExchange    = evidencerequest.SubjectExchange
+
+	// SubjectCheckpointRange (ER -03 §3.1, §8.1.3) is the checkpoints at
+	// positions a through b. It is not one of the six forms: the unranged
+	// checkpoints form is content-free again, as -02 posted it.
+	SubjectCheckpointRange = evidencerequest.SubjectCheckpointRange
 )
 
 // SubjectForms lists the six forms in code-point order.

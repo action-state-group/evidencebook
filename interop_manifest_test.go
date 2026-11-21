@@ -17,7 +17,7 @@ func TestManifestIsHistoryFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"bindings":["evidence-request/1","http"],"derivations":["history_card/1","history_card/2"],"drafts":["draft-mih-agent-evidence-request-00","draft-mih-agent-evidence-request-01","draft-mih-agent-evidence-request-02","draft-mih-agent-evidence-request-03"],"profiles":["evidence-interop/0","evidence-interop/1"],"refusal_policy":"specific","subject_forms":["checkpoints","correlation","exchange","full_history","range","record"]}`
+	want := `{"bindings":["evidence-request/1","http"],"derivations":["history_card/1","history_card/2"],"drafts":["draft-mih-agent-evidence-request-00","draft-mih-agent-evidence-request-01","draft-mih-agent-evidence-request-02","draft-mih-agent-evidence-request-03"],"profiles":["evidence-interop/0","evidence-interop/1"],"refusal_policy":"specific","subject_forms":["checkpoint_range","checkpoints","correlation","exchange","full_history","range","record"]}`
 	if string(empty) != want {
 		t.Fatalf("manifest\n got %s\nwant %s", empty, want)
 	}

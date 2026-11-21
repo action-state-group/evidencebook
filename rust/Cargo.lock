@@ -30,7 +30,7 @@ dependencies = [
  "checkpointed-local-log",
  "curve25519-dalek",
  "ed25519-dalek",
- "evidence-request",
+ "evidence-request 0.7.0",
  "hex",
  "p256",
  "serde",
@@ -414,11 +414,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efb48cc95fada13e1b10d17adcc5e0b0f717fd3f589d62b43ca16b8fa9bc09f9"
 dependencies = [
  "base64",
- "checkpointed-local-log",
  "ciborium",
  "ed25519-dalek",
  "hex",
  "k256",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "evidence-request"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6ab5fb305bed1e24915280e25bb3bd9f5e176e46d0e132b09f92d0e68fe6d84"
+dependencies = [
+ "base64",
+ "checkpointed-local-log",
+ "ciborium",
+ "ed25519-dalek",
+ "hex",
  "serde",
  "serde_json",
  "sha2",
@@ -437,7 +453,7 @@ dependencies = [
  "ciborium",
  "coset",
  "ed25519-dalek",
- "evidence-request",
+ "evidence-request 0.8.0",
  "hex",
  "hmac",
  "icu_casemap",
@@ -465,7 +481,7 @@ dependencies = [
  "checkpointed-local-log",
  "ciborium",
  "ed25519-dalek",
- "evidence-request",
+ "evidence-request 0.8.0",
  "evidencebook",
  "hex",
  "rusqlite",

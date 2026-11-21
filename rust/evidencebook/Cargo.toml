@@ -35,7 +35,7 @@ ciborium = "0.2"
 # checks of the Checkpointed Local Log material. evidence-request 0.7.0 and
 # agent-action-capsule 0.12.0 are on checkpointed-local-log 0.6, the line this
 # crate uses, so one copy of each is in the graph.
-evidence-request = { version = "0.7.0", default-features = false, features = ["cll"] }
+evidence-request = { version = "0.8.0", default-features = false, features = ["cll"] }
 # AAC's witness receipt verifier (`witness`, feature `strict`): the served
 # summary counts a checkpoint witnessed only on a receipt it verifies.
 agent-action-capsule = { version = "0.12.0", default-features = false, features = ["strict"] }

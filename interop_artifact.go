@@ -93,7 +93,7 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 	var built builtArtifact
 	var declared declaredFields
 	switch {
-	case req.Derivation == "" && req.Subject.Kind == SubjectCheckpoints && req.Subject.Ranged:
+	case req.Derivation == "" && req.Subject.Kind == SubjectCheckpointRange:
 		// The checkpoints at positions a through b (ER -03 §8.1.3): the
 		// artifact is the entries alone, and the envelope's anchor is the
 		// checkpoint the request's coverage resolved.

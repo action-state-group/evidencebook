@@ -353,7 +353,7 @@ func TestARangedCheckpointsRequestIsAnsweredAndVerified(t *testing.T) {
 	book := cardBook(t, 3, 20)
 	pin := anchorPin(t, book)
 	ask := func(a, b uint64) EvidenceRequest {
-		return EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}
+		return EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}
 	}
 	for _, r := range [][2]uint64{{4, 12}, {0, 20}, {7, 7}} {
 		reply := respondAs(t, book, jsonRequest(t, ask(r[0], r[1])), "")
@@ -412,7 +412,7 @@ func TestARangedCheckpointsRequestIsRefusedByReason(t *testing.T) {
 	book := cardBook(t, 3, 20)
 	pin := anchorPin(t, book)
 	ranged := func(a, b uint64, derivation string) Reply {
-		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), "")
+		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{a, b}}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), "")
 	}
 	mustRefusal(t, ranged(5, 21, ""), ReasonCoverageUnsatisfiable)
 	mustRefusal(t, ranged(5, 5000, ""), ReasonCoverageUnsatisfiable)
@@ -438,7 +438,7 @@ func TestARangedCheckpointsRequestOverTheCapIsDeclined(t *testing.T) {
 	}
 	pin := anchorPin(t, book)
 	ask := func(a, b uint64) Reply {
-		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}), "")
+		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}), "")
 	}
 	mustEnvelope(t, ask(2, 4))
 	mustRefusal(t, ask(0, 7), ReasonPolicyDeclined)
@@ -449,9 +449,9 @@ func TestARangedCheckpointsRequestOverTheCapIsDeclined(t *testing.T) {
 func TestARangedAnswerMustReachItsAnchor(t *testing.T) {
 	book := cardBook(t, 3, 20)
 	pin := anchorPin(t, book)
-	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
+	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
 	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, req), ""))
-	other := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 14}}, Coverage: Coverage{ExpectedPin: pin}}), ""))
+	other := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{4, 14}}, Coverage: Coverage{ExpectedPin: pin}}), ""))
 	key := responderKeys(book, 9).Checkpoint
 	if _, err := verifyCheckpointRange(req, e, key); err != nil {
 		t.Fatal(err)
@@ -494,7 +494,7 @@ func TestAHistoryCard2OrRangeAnswerCannotMisstateFreshnessOrCarryUnreadReceipts(
 	book := cardBook(t, 3, 20)
 	pin := anchorPin(t, book)
 	key := responderKeys(book, 9).Checkpoint
-	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
+	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
 	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, req), ""))
 	card := mustEnvelope(t, askCard2(t, book, SubjectCheckpoints))
 	lie := func(e Envelope) Envelope {

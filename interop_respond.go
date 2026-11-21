@@ -445,7 +445,7 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 		// subject names.
 		Authorize: func(req EvidenceRequest) bool {
 			switch {
-			case req.Subject.Kind == SubjectCheckpoints && req.Derivation == "", req.Derivation == DerivationHistoryCard, req.Derivation == DerivationHistoryCard2:
+			case (req.Subject.Kind == SubjectCheckpoints || req.Subject.Kind == SubjectCheckpointRange) && req.Derivation == "", req.Derivation == DerivationHistoryCard, req.Derivation == DerivationHistoryCard2:
 				return true // public: commitments only
 			case req.Derivation == DerivationStandardHistory:
 				// Counts only, the same for every requester it is answered
@@ -534,7 +534,7 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(check.reason, check.detail)
 	}
 	req := check.request
-	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints && req.Derivation != DerivationHistoryCard && req.Derivation != DerivationHistoryCard2 {
+	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints && req.Subject.Kind != SubjectCheckpointRange && req.Derivation != DerivationHistoryCard && req.Derivation != DerivationHistoryCard2 {
 		b.mu.Lock()
 		allowed := b.unsignedAllowLocked(held.UnsignedAsksPerWeek, a.now)
 		b.mu.Unlock()
