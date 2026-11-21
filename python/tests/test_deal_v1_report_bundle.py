@@ -47,7 +47,7 @@ def test_a_bundle_is_written_as_go_writes_it():
 
 
 def test_report_with_book_from_a_shelf(tmp_path):
-    from tests.test_deal_v1_holder import _report_scenario
+    from test_deal_v1_holder import _report_scenario
 
     buyer, log, copy = _report_scenario(tmp_path)
     report, book = buyer.status.report_with_book(log, copy)
