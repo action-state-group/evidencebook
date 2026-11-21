@@ -445,7 +445,7 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 		// subject names.
 		Authorize: func(req EvidenceRequest) bool {
 			switch {
-			case req.Subject.Kind == SubjectCheckpoints && req.Derivation == "", req.Derivation == DerivationHistoryCard, req.Derivation == DerivationHistoryCard2:
+			case (req.Subject.Kind == SubjectCheckpoints || req.Subject.Kind == SubjectCheckpointRange) && req.Derivation == "", req.Derivation == DerivationHistoryCard, req.Derivation == DerivationHistoryCard2:
 				return true // public: commitments only
 			case req.Derivation == DerivationStandardHistory:
 				// Counts only, the same for every requester it is answered
@@ -534,7 +534,7 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(check.reason, check.detail)
 	}
 	req := check.request
-	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints && req.Derivation != DerivationHistoryCard && req.Derivation != DerivationHistoryCard2 {
+	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints && req.Subject.Kind != SubjectCheckpointRange && req.Derivation != DerivationHistoryCard && req.Derivation != DerivationHistoryCard2 {
 		b.mu.Lock()
 		allowed := b.unsignedAllowLocked(held.UnsignedAsksPerWeek, a.now)
 		b.mu.Unlock()
@@ -546,7 +546,14 @@ func (a *answer) run() (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
-	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: req.Subject.Kind, Relationship: view.relationship(a.opts.AuthenticatedRequester)}
+	// checkpoint_range is recorded as checkpoints: the statement's subject
+	// kind is the request draft's registered form, as before -03 and as the
+	// Rust book records it.
+	statementKind := req.Subject.Kind
+	if statementKind == SubjectCheckpointRange {
+		statementKind = SubjectCheckpoints
+	}
+	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: statementKind, Relationship: view.relationship(a.opts.AuthenticatedRequester)}
 	a.seal = a.statement.Relationship != RelationshipStranger
 	a.statement.Deal = a.opts.stapleDeal
 	_, isCLL := b.commitments.(cllMaterialSource)

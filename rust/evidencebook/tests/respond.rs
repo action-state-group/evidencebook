@@ -455,6 +455,37 @@ fn a_record_is_refused_to_a_requester_it_does_not_name_but_the_asking_is_recorde
     assert_eq!(reason(&reply), Reason::NotAuthorized);
 }
 
+/// Evidence Request -03: the ranged form is `checkpoint_range`; a range on
+/// `checkpoints` is `request_malformed`, and `checkpoints` is content-free.
+#[test]
+fn a_checkpoint_range_request_is_answered_and_a_ranged_checkpoints_one_is_malformed() {
+    let (mut b, _) = book();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
+    let pin = json!({"expected_pin": b.pin(1)});
+    let (reply, _) = run(
+        &mut b,
+        &policy,
+        &req(json!({"checkpoint_range": [0, 1]}), pin.clone()),
+        Binding::Json,
+        &ask(None),
+    );
+    assert!(
+        matches!(reply, Reply::Envelope(_)),
+        "checkpoint_range is answered"
+    );
+    let (reply, _) = run(
+        &mut b,
+        &policy,
+        &req(json!({"checkpoints": [0, 1]}), pin),
+        Binding::Json,
+        &ask(None),
+    );
+    assert_eq!(reason(&reply), Reason::RequestMalformed);
+}
+
 #[test]
 fn range_and_full_history_are_answered_to_no_one() {
     let (mut b, _) = book();
@@ -1472,7 +1503,7 @@ mod history_card_2 {
     ) -> Reply {
         let pin = b.pin(b.checkpoints() - 1);
         let mut request = json!({
-            "subject": {"checkpoints": range}, "profile": "evidence-interop/0",
+            "subject": {"checkpoint_range": range}, "profile": "evidence-interop/0",
             "coverage": {"expected_pin": pin}, "nonce": "n",
         });
         if let Some(d) = derivation {

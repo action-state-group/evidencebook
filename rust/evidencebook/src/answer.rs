@@ -599,7 +599,7 @@ fn jcs(object: Map<String, Value>) -> Result<Vec<u8>, AnswerError> {
         .map_err(|e| AnswerError::Artifact(e.to_string()))
 }
 
-/// The entries of a `history_card/2` (or a ranged `checkpoints` answer):
+/// The entries of a `history_card/2` (or a `checkpoint_range` answer):
 /// `{position, checkpoint, receipts, consistency_from_previous}` for each
 /// position, each proof from the entry listed before it. This responder
 /// holds no witness receipts for its checkpoints, so every list is empty.

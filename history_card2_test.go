@@ -353,7 +353,7 @@ func TestARangedCheckpointsRequestIsAnsweredAndVerified(t *testing.T) {
 	book := cardBook(t, 3, 20)
 	pin := anchorPin(t, book)
 	ask := func(a, b uint64) EvidenceRequest {
-		return EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}
+		return EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}
 	}
 	for _, r := range [][2]uint64{{4, 12}, {0, 20}, {7, 7}} {
 		reply := respondAs(t, book, jsonRequest(t, ask(r[0], r[1])), "")
@@ -412,14 +412,14 @@ func TestARangedCheckpointsRequestIsRefusedByReason(t *testing.T) {
 	book := cardBook(t, 3, 20)
 	pin := anchorPin(t, book)
 	ranged := func(a, b uint64, derivation string) Reply {
-		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), "")
+		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{a, b}}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), "")
 	}
 	mustRefusal(t, ranged(5, 21, ""), ReasonCoverageUnsatisfiable)
 	mustRefusal(t, ranged(5, 5000, ""), ReasonCoverageUnsatisfiable)
 	mustRefusal(t, ranged(1, 2, DerivationHistoryCard), ReasonNoSuchSubject)
 	mustRefusal(t, ranged(1, 2, DerivationHistoryCard2), ReasonNoSuchSubject)
 	// a > b is a malformed request, which the request reader refuses.
-	bad := []byte(`{"coverage":{"expected_pin":"` + pin + `"},"nonce":"n","profile":"evidence-interop/0","subject":{"checkpoints":[5,2]}}`)
+	bad := []byte(`{"coverage":{"expected_pin":"` + pin + `"},"nonce":"n","profile":"evidence-interop/0","subject":{"checkpoint_range":[5,2]}}`)
 	reply, _, err := book.Respond(context.Background(), Message{Octets: bad, MediaType: MediaTypeJSON}, RespondOptions{Policy: policyWith("peers")})
 	if err != nil {
 		t.Fatal(err)
@@ -438,7 +438,7 @@ func TestARangedCheckpointsRequestOverTheCapIsDeclined(t *testing.T) {
 	}
 	pin := anchorPin(t, book)
 	ask := func(a, b uint64) Reply {
-		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}), "")
+		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}), "")
 	}
 	mustEnvelope(t, ask(2, 4))
 	mustRefusal(t, ask(0, 7), ReasonPolicyDeclined)
@@ -449,9 +449,9 @@ func TestARangedCheckpointsRequestOverTheCapIsDeclined(t *testing.T) {
 func TestARangedAnswerMustReachItsAnchor(t *testing.T) {
 	book := cardBook(t, 3, 20)
 	pin := anchorPin(t, book)
-	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
+	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
 	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, req), ""))
-	other := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 14}}, Coverage: Coverage{ExpectedPin: pin}}), ""))
+	other := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{4, 14}}, Coverage: Coverage{ExpectedPin: pin}}), ""))
 	key := responderKeys(book, 9).Checkpoint
 	if _, err := verifyCheckpointRange(req, e, key); err != nil {
 		t.Fatal(err)
@@ -494,7 +494,7 @@ func TestAHistoryCard2OrRangeAnswerCannotMisstateFreshnessOrCarryUnreadReceipts(
 	book := cardBook(t, 3, 20)
 	pin := anchorPin(t, book)
 	key := responderKeys(book, 9).Checkpoint
-	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
+	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpointRange, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
 	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, req), ""))
 	card := mustEnvelope(t, askCard2(t, book, SubjectCheckpoints))
 	lie := func(e Envelope) Envelope {
@@ -553,5 +553,24 @@ func TestACardOneOrCheckpointsAnswerCannotMisstateFreshness(t *testing.T) {
 		if _, _, err := verifyAnchorInclusion(req, later, key); err == nil || !strings.Contains(err.Error(), "anchor.freshness") {
 			t.Errorf("%s: an answer stating a time its anchor does not commit passed", name)
 		}
+	}
+}
+
+// Evidence Request -03: the ranged form is checkpoint_range on the wire, a
+// range on checkpoints is malformed, and an answered statement records the
+// form as checkpoints (the Rust book does the same).
+func TestCheckpointRangeWireFormAndStatementKind(t *testing.T) {
+	book := cardBook(t, 3, 20)
+	pin := anchorPin(t, book)
+	wire := func(subject string) Message {
+		return Message{Octets: []byte(`{"coverage":{"expected_pin":"` + pin + `"},"nonce":"n","profile":"evidence-interop/0","subject":` + subject + `}`), MediaType: MediaTypeJSON}
+	}
+	reply, statement := respondWith(t, book, wire(`{"checkpoint_range":[4,12]}`), RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers")})
+	mustEnvelope(t, reply)
+	if statement.SubjectKind != SubjectCheckpoints {
+		t.Fatalf("statement subject kind %q, want %q", statement.SubjectKind, SubjectCheckpoints)
+	}
+	for _, old := range []string{`{"checkpoints":[4,12]}`, `{"checkpoint_range":null}`, `{"checkpoint_range":[1]}`} {
+		mustRefusal(t, respondAs(t, book, wire(old), ""), ReasonRequestMalformed)
 	}
 }

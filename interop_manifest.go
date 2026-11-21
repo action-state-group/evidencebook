@@ -47,6 +47,11 @@ func (b *Book) Manifest(opts ManifestOptions) ([]byte, error) {
 			return nil, fmt.Errorf("%w: %q is not a binding token", ErrInvalid, binding)
 		}
 	}
+	// The manifest lists the six forms of the profile it pins (-02, §11.4.2: a
+	// responder MUST NOT list a token beyond its profiles'), not -03's
+	// checkpoint_range, and it lists checkpoints whatever the log's size:
+	// dropping it past the answer cap would make the manifest vary with the
+	// log (profile §11.4.3).
 	forms := make([]any, len(SubjectForms))
 	for i, form := range SubjectForms {
 		forms[i] = string(form)
