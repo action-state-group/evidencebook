@@ -168,6 +168,43 @@ func TestFixedPinArtifactSurvivesLogGrowth(t *testing.T) {
 	require.Equal(t, string(before.Artifact), string(after.Artifact), "a fixed pin's artifact does not change as the log grows")
 }
 
+// A ranged checkpoints request (Evidence Request -03 §8.1.3), which the
+// request parser accepts since agent-action-capsule go v0.23.0, is answered
+// with the checkpoints at those positions and a consistency proof to the
+// anchor, never the whole chain.
+func TestRespondAnswersARangedCheckpointsRequest(t *testing.T) {
+	x := newEvidenceExchange(t)
+	x.ask("cut", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
+	require.NotNil(t, x.respond("cut").Envelope)
+	appendHalves(t, x.b, half{"x2", "r2", "p2"}, half{"x3", "r3", "p3"})
+	x.ask("grow", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":`+strconv.FormatUint(bookSize(t, x.b), 10)+`}}`)
+	require.NotNil(t, x.respond("grow").Envelope)
+
+	// The plugin's request input takes only the content-free form, so the
+	// ranged request goes out as a request map (--sent), made from one the
+	// book wrote.
+	x.ask("template", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(mustRead(t, filepath.Join(x.dir, "template.sent")), &wire))
+	wire["subject"] = map[string]any{"checkpoints": []any{0, 0}}
+	wire["nonce"] = "ranged-request"
+	raw, err := json.Marshal(wire)
+	require.NoError(t, err)
+	path := filepath.Join(x.dir, "ranged.json")
+	require.NoError(t, os.WriteFile(path, raw, 0o600))
+	out, err := invoke(t, "", "request", "--profile", "a", "--sent", "--request", path, "--responder", "b", "--output", filepath.Join(x.dir, "ranged.sent"))
+	require.NoError(t, err, out)
+	env := x.respond("ranged").Envelope
+	require.NotNil(t, env)
+	var artifact map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(env.Artifact, &artifact))
+	var history []json.RawMessage
+	require.NoError(t, json.Unmarshal(artifact["history"], &history))
+	assert.Len(t, history, 1, "positions 0 through 0: one checkpoint, not the chain")
+	assert.Contains(t, artifact, "consistency_to_anchor")
+	assert.NotContains(t, artifact, "checkpoints")
+}
+
 // Without --requester the request's sender is unauthenticated: a protected
 // subject is refused policy_declined and nothing is recorded, while the
 // public checkpoints subject is still answered.
