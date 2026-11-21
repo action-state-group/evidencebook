@@ -503,6 +503,25 @@ func TestReportVectors(t *testing.T) {
 	rb.Fact = &ReportFact{Current: false}
 	add("ruling-held-unnamed", rb, keepCopy("2026-11-21T12:00:00Z"))
 
+	// The settle legs the payment check read are in the payment row's
+	// relied_on (Steven's ruling on #588): with both legs stating the row
+	// they are there already, and the check passes; with a payee leg that
+	// states nothing, the leg is there through the check alone; with a
+	// check not run over legs (a refund citing the offer's terms leg), no
+	// leg is added.
+	paid := heldAt(b, "2026-11-09T12:00:00Z")
+	paid.Payments = paymentsOver(t, paid, PaymentPass, "", paid.Own[1], paid.Counterpart[1])
+	add("appendix-a-payment-passed", reportBooks(t, paid), keepCopy("2026-11-09T12:00:00Z"))
+	unstated := payeeLegUnstated(t, heldAt(b, "2026-11-09T12:00:00Z"))
+	unstated.Payments = paymentsOver(t, unstated, PaymentPass, "", unstated.Own[1], unstated.Counterpart[1])
+	add("appendix-a-payee-leg-unstated", reportBooks(t, unstated), keepCopy("2026-11-09T12:00:00Z"))
+	ucp := keepCopy("2026-11-09T12:00:00Z")
+	ucp.Audience = dealprofile.AudienceCounterparty
+	add("appendix-a-payee-leg-unstated-counterparty-copy", reportBooks(t, unstated), ucp)
+	notRun := payeeLegUnstated(t, heldAt(b, "2026-11-09T12:00:00Z"))
+	notRun.Payments = paymentsOver(t, notRun, "", ReasonRefundCitesOffer)
+	add("appendix-a-payment-not-run", reportBooks(t, notRun), keepCopy("2026-11-09T12:00:00Z"))
+
 	writeOrCompare(t, filepath.Join(reportDir, "vectors.json"), map[string]any{
 		"description": "x-deal-v1 reports (evidencebook#461, docs/design/461-deal-profile.md §9): BuildReport(books, copy) must give report. Written by dealprofile/xdealv1's TestReportVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
@@ -617,4 +636,103 @@ func TestStatusProviderReport(t *testing.T) {
 	_, err = d.buyer.recReport(d.buyerLog, keepCopy(at))
 	require.ErrorContains(t, err, "not a readable x-deal-v1 record")
 	assert.NotErrorIs(t, err, evidencebook.ErrBusy)
+}
+
+// paymentsOver is the payment row's PaymentCheck result over legs: the
+// offer's digest, then each leg's record digest.
+func paymentsOver(t *testing.T, b StatusBooks, check, reason string, legs ...StatusRecord) map[string]PaymentResult {
+	t.Helper()
+	od, err := Digest(b.Offer)
+	require.NoError(t, err)
+	over := []string{od}
+	for _, l := range legs {
+		d, err := Digest(l.Record)
+		require.NoError(t, err)
+		over = append(over, d)
+	}
+	return map[string]PaymentResult{"paid_as_agreed": {Check: check, Reason: reason, CheckedOver: over}}
+}
+
+// payeeLegUnstated is b with the seller's payee leg (its seq 2) stating
+// nothing, so no statement puts it in a row's relied_on.
+func payeeLegUnstated(t *testing.T, b StatusBooks) StatusBooks {
+	t.Helper()
+	b.Counterpart = append([]StatusRecord(nil), b.Counterpart...)
+	leg := *b.Counterpart[1].Record.Body.(*SettleBody)
+	require.Equal(t, LegPayee, leg.Leg)
+	leg.Statements = statements()
+	b.Counterpart[1].Record.Body = &leg
+	return b
+}
+
+// The legs the payment check read join the payment row's relied_on, after
+// the records it listed already and only once; a check not run over legs
+// adds none; and a result that does not begin with the offer's digest, or
+// names a record the books do not hold, is refused.
+func TestBuildReportPaymentLegs(t *testing.T) {
+	_, b := appendixAStatus(t)
+	at := "2026-11-09T12:00:00Z"
+	ids := func(r Report) []string {
+		var out []string
+		for _, s := range rowByID(t, r, "paid_as_agreed").ReliedOn {
+			out = append(out, s.Record+"/"+s.Side)
+		}
+		return out
+	}
+	base, err := BuildReport(reportBooks(t, heldAt(b, at)), keepCopy(at))
+	require.NoError(t, err)
+
+	paid := heldAt(b, at)
+	paid.Payments = paymentsOver(t, paid, PaymentPass, "", paid.Own[1], paid.Counterpart[1])
+	r, err := BuildReport(reportBooks(t, paid), keepCopy(at))
+	require.NoError(t, err)
+	assert.Equal(t, ids(base), ids(r), "both legs state the row: already relied on, not listed twice")
+	assert.Equal(t, CheckPassed, rowByID(t, r, "paid_as_agreed").Check)
+
+	unstated := payeeLegUnstated(t, heldAt(b, at))
+	r, err = BuildReport(reportBooks(t, unstated), keepCopy(at))
+	require.NoError(t, err)
+	before := ids(r)
+	assert.NotContains(t, before, unstated.Counterpart[1].RecordID+"/seller", "a leg stating nothing is no statement source")
+	unstated.Payments = paymentsOver(t, unstated, PaymentPass, "", unstated.Own[1], unstated.Counterpart[1])
+	r, err = BuildReport(reportBooks(t, unstated), keepCopy(at))
+	require.NoError(t, err)
+	assert.Equal(t, append(before, unstated.Counterpart[1].RecordID+"/seller"), ids(r), "the payee leg joins through the check, last")
+	for _, id := range []string{"delivered", "as_described"} {
+		assert.NotContains(t, func() []string {
+			var out []string
+			for _, s := range rowByID(t, r, id).ReliedOn {
+				out = append(out, s.Record)
+			}
+			return out
+		}(), unstated.Counterpart[1].RecordID, "only the payment row relies on its legs")
+	}
+
+	unstated.Payments = paymentsOver(t, unstated, "", ReasonRefundCitesOffer)
+	r, err = BuildReport(reportBooks(t, unstated), keepCopy(at))
+	require.NoError(t, err)
+	assert.Equal(t, before, ids(r), "a check not run over legs adds none")
+
+	for name, p := range map[string]map[string]PaymentResult{
+		"empty":         {"paid_as_agreed": {}},
+		"not the offer": {"paid_as_agreed": {CheckedOver: []string{strings.Repeat("0", 64)}}},
+		"not held": func() map[string]PaymentResult {
+			m := paymentsOver(t, unstated, PaymentPass, "", unstated.Own[1])
+			res := m["paid_as_agreed"]
+			res.CheckedOver = append(res.CheckedOver, strings.Repeat("e", 64))
+			m["paid_as_agreed"] = res
+			return m
+		}(),
+	} {
+		bad := unstated
+		bad.Payments = p
+		_, err := BuildReport(reportBooks(t, bad), keepCopy(at))
+		assert.ErrorContains(t, err, "payment check", name)
+	}
+	// A leg the books held at as_of no longer: the result names a record
+	// the report does not rest on.
+	early := heldAt(b, "2026-11-01T10:05:00Z")
+	early.Payments = paymentsOver(t, heldAt(b, at), PaymentPass, "", paid.Own[1], paid.Counterpart[1])
+	_, err = BuildReport(reportBooks(t, early), keepCopy("2026-11-01T10:05:00Z"))
+	assert.ErrorContains(t, err, "do not hold")
 }

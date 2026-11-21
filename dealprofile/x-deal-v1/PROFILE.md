@@ -387,6 +387,11 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   `settled`, `rows_state` and `rows` (each agreed row's rowstatus result at `as_of`, its `check`,
   its `late` statements and disputes, its effective ruling and the records it relied on), and
   `rests_on`, as design note §9 gives them. A page shows them as they are.
+- **The payment legs.** A payment row's `relied_on` also lists each settle leg
+  `xdealv1.PaymentCheck` read for the row, after the records it lists otherwise and once each; a
+  leg the check excluded, or a check not run over legs, adds none. A page shows each leg's
+  settlement member as recorded, found by its `relied_on` id in the bundle extension below; it
+  picks no leg, and `check` stays the only verdict.
 - **What a page must not misread** (Sherlock2, evidencebook#526 and #528):
   - `rests_on.counterparty_kind` is null while nothing states it; a page shows "not stated".
   - `rests_on.counterparty_proof` reads the counterparty's layer and the held proof together:
@@ -420,6 +425,22 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   not that its rows are correct. The vectors are in `testdata/deal-v1/report-verify/`.
 - **No close.** The payload has no `lifecycle` and no rules verdict. A page's deal-level line is
   `start.state` and, for a started deal, `settled`.
+- **The bundle extension.** A bundle that carries a v1 report carries the extension `x-deal-v1`:
+  `{"sealed_report": "<the report Capsule's id>", "book": {"agreement": <pair>, "relied_on":
+  {"<record id>": <pair>, ...}}}`, each pair a book pair `{record, header, payload}`. `agreement`
+  is the holder's deal book record at seq 1; `relied_on` holds every record the holder's rows rely
+  on at `as_of`, whatever the copy's `rows_state`, so the owner's (`keep`), counterparty's and
+  adjudicator's copies carry the same records, and `{}` when no row relies on one. A bundle for
+  anyone else carries no report and no extension. The host builds and seals the bundle;
+  `xdealv1.StatusProvider.ReportWithBook` returns a report and its book from one snapshot.
+  `xdealv1.VerifyReportBundle` reads a report with its extension (design note §9, "The payment
+  legs and the bundle extension"): among its checks, each pair is signed by a party of the
+  agreement, the holder's and the counterparty's sit in the book or counted prefix the report
+  says it rests on, and, when the rows are listed, the pairs are exactly the records they rely on.
+  An adjudicator's records have no log bound, and an adjudicator's copy, which names no
+  counterparty prefix, binds the counterparty's records to one log only; in a copy that lists no
+  rows, nothing ties the pairs to rows. Rust and Python follow in evidencebook#598. The vectors
+  are in `testdata/deal-v1/report-bundle/`.
 
 ## 11. Not defined here yet
 

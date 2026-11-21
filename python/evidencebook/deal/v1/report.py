@@ -18,7 +18,7 @@ from agent_action_capsule.canonical import jcs
 from ... import row_status
 from ..names import AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP, REPORT_TYPE
 from ..report import normalize_referee
-from .check import utc_second
+from .check import digest, utc_second
 from . import golenient
 from .gotypes import NIL_RAW
 from .names import PROFILE, ROLE_BUYER, ROLE_SELLER, VALUE_NOT_MET
@@ -151,7 +151,8 @@ def build_report(books: dict, copy: dict) -> dict:
     }
     if referee:
         r["referee"] = referee
-    rows = [_report_row(rb, agreed, inp, src)
+    legs = _payment_legs(rb)
+    rows = [_report_row(rb, agreed, inp, src, legs.get(agreed["id"], []))
             for agreed, inp, src in zip(sb.offer.body["terms_rows"]["rows"] or [], ins, srcs)]
     r["settled"] = settled(r["start"], rows)
     if audience == AUDIENCE_ADJUDICATOR:
@@ -201,7 +202,34 @@ def _report_check(agreed: dict, check: str) -> str:
     return CHECK_NOT_RUN
 
 
-def _report_row(b: _Books, agreed: dict, inp: dict, src: _Sources) -> dict:
+def _payment_legs(b: _Books) -> dict[str, list[tuple[str, int]]]:
+    """Each payment row's PaymentResult mapped to the book records it read
+    (Go ``paymentLegs``): ``checked_over``, whose first entry is the offer's
+    digest and whose others are settle legs of the holder's or the
+    counterparty's book. Refuses a result whose first entry is not the
+    offer's digest, or that names a record the books given do not hold."""
+    if not b.payments:
+        return {}
+    od = digest(b.offer)
+    held: dict[str, tuple[str, int]] = {}
+    for book, recs in (("o", b.own), ("c", b.counterpart)):
+        for i, r in enumerate(recs):
+            held.setdefault(digest(r.record), (book, i))
+    out: dict[str, list[tuple[str, int]]] = {}
+    for row in sorted(b.payments):
+        over = b.payments[row]["checked_over"] or []
+        if not over or over[0] != od:
+            raise _bad(f"row {row}'s payment check does not begin with the offer's digest")
+        refs = []
+        for d in over[1:]:
+            if d not in held:
+                raise _bad(f"row {row}'s payment check read record {d}, which the books given do not hold")
+            refs.append(held[d])
+        out[row] = refs
+    return out
+
+
+def _report_row(b: _Books, agreed: dict, inp: dict, src: _Sources, legs: list[tuple[str, int]]) -> dict:
     res = _compute(inp)
     try:
         late = row_status.compute_late(inp)
@@ -259,6 +287,8 @@ def _report_row(b: _Books, agreed: dict, inp: dict, src: _Sources) -> dict:
         refs += lst
     if remedy_ref is not None:
         refs.append(remedy_ref)
+    # The settle legs the payment check read (Steven's ruling on #588).
+    refs += legs
     seen: set[tuple[str, int]] = set()
     for ref in refs:
         if ref in seen:

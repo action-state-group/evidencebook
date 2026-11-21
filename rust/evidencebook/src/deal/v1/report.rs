@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use super::check::record_digest;
 use super::names::*;
 use super::record::Body;
 use super::start::{start, FirstAct, StartInput, StartResult, STATE_STARTED};
@@ -315,9 +316,12 @@ pub fn build_report(b: &ReportBooks, c: &ReportCopy) -> Result<Report, Error> {
             time: resolve_time(&a.time, &stamps),
         }),
     })?;
+    let legs = payment_legs(&b.books, &rb)?;
     let mut rows = Vec::new();
     for (i, input) in ins.iter().enumerate() {
-        rows.push(report_row(&rb, &of.terms_rows.rows[i], input, &srcs[i])?);
+        let agreed = &of.terms_rows.rows[i];
+        let row_legs = legs.get(&agreed.id).map(Vec::as_slice).unwrap_or(&[]);
+        rows.push(report_row(&rb, agreed, input, &srcs[i], row_legs)?);
     }
     let mut r = Report {
         r#type: REPORT_TYPE.into(),
@@ -378,11 +382,54 @@ fn counterparty_proof(v: &StatusValue) -> &'static str {
     }
 }
 
+/// Each payment row's `PaymentResult` mapped to the book records it read
+/// (Go `paymentLegs`): `checked_over`, whose first entry is the offer's
+/// digest and whose others are settle legs of the holder's or the
+/// counterparty's book. Refuses a result whose first entry is not the
+/// offer's digest, or that names a record the books given do not hold.
+fn payment_legs(b: &StatusBooks, rb: &RowBooks) -> Result<BTreeMap<String, Vec<RecRef>>, Error> {
+    let mut out = BTreeMap::new();
+    if b.payments.is_empty() {
+        return Ok(out);
+    }
+    let od = record_digest(&b.offer)?;
+    let mut held: BTreeMap<String, RecRef> = BTreeMap::new();
+    for (book, recs) in [
+        (BookKind::Own, &rb.own),
+        (BookKind::Counterpart, &rb.counterpart),
+    ] {
+        for (i, r) in recs.iter().enumerate() {
+            held.entry(record_digest(&r.record)?)
+                .or_insert(RecRef { book, i });
+        }
+    }
+    for (row, res) in &b.payments {
+        let over = &res.checked_over;
+        if over.first() != Some(&od) {
+            return Err(report_err(format!(
+                "row {row}'s payment check does not begin with the offer's digest"
+            )));
+        }
+        let mut refs = Vec::new();
+        for d in &over[1..] {
+            let Some(rf) = held.get(d) else {
+                return Err(report_err(format!(
+                    "row {row}'s payment check read record {d}, which the books given do not hold"
+                )));
+            };
+            refs.push(*rf);
+        }
+        out.insert(row.clone(), refs);
+    }
+    Ok(out)
+}
+
 fn report_row(
     b: &RowBooks,
     agreed: &Row,
     input: &Input,
     src: &RowSources,
+    legs: &[RecRef],
 ) -> Result<ReportRow, Error> {
     let res = row_status::compute(input).map_err(|e| Error::Invalid(e.to_string()))?;
     let late = row_status::compute_late(input).map_err(|e| Error::Invalid(e.to_string()))?;
@@ -493,6 +540,8 @@ fn report_row(
         refs.extend(list.iter().copied());
     }
     refs.extend(remedy_ref);
+    // The settle legs the payment check read (Steven's ruling on #588).
+    refs.extend(legs.iter().copied());
     let mut seen = BTreeSet::new();
     for rf in refs {
         if !seen.insert(rf) {
