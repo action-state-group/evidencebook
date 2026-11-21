@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.20.1 (2026-11-21)
+
+Every pull request merged since v0.20.0:
+
+- [#591](https://github.com/action-state-group/evidencebook/pull/591): fix(goose): the mailbox receives a reply over 1 MiB, a poll reports a transport error, and ask prefers history_card/2 (#589)
+
+### Fixed: the Goose reference's mailbox receives a large reply (#589)
+
+- The Goose reference (`python/examples/goose`) reads a relay message up to the base64 of the largest reply a book accepts, where websockets' 1 MiB default closed the connection on a long history's `history_card/1` and the poll recorded an absence. A poll that could read no relay returns `transport_error` and records nothing, and `loop_ask_mailbox` asks `history_card/2` where the asked node's commitment offers it. No Go, Rust or wire change; details in `python/CHANGELOG.md`.
+
 ## v0.20.0 (2026-11-20)
 
 Every pull request merged since v0.19.0:

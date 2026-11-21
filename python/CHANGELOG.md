@@ -362,3 +362,9 @@ The Go shelf's hooks from #484, #490, #517, #525, #526, #528 and #530, which the
 ### Added: `check_staple` reads a `standard_history/3` staple (#579)
 
 - `DERIVATION_STANDARD_HISTORY_3` names `standard_history/3`, and `check_staple` accepts a staple of it over `full_history`, checking the card with `agent_action_capsule.standard_history.check_card(..., derivation=...)`. A book still builds no /3 card, so `staple` refuses the token. `standard_history/1` is unchanged.
+
+- The Goose reference's mailbox receives a large reply (evidencebook#589): the relay connection accepts a message of the
+  largest reply a book accepts (`MAX_REPLY_BYTES`) in base64, where websockets' 1 MiB default closed it with 1009 on a long
+  history's `history_card/1` and the poll recorded an absence. A poll that could not read any relay returns
+  `transport_error` (`loop_ask_mailbox_poll`, `loop_dispute_poll`) and records nothing, instead of reading as no reply.
+  `loop_ask_mailbox` asks for `history_card/2` on `checkpoints` when the asked node's commitment offers it, else `history_card/1`.
