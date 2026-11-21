@@ -251,16 +251,18 @@ func TestBookRequestInput(t *testing.T) {
 		assert.Equal(t, tc.want, got, name)
 	}
 	for name, body := range map[string]string{
-		"old shape":                   `{"subject":{"kind":"full_history"},"coverage":{"min_freshness":{"size":1}}}`,
-		"two forms":                   `{"subject":{"full_history":null,"checkpoints":null},"coverage":{"min_freshness":1}}`,
-		"no subject":                  `{"coverage":{"min_freshness":1}}`,
-		"unknown form":                `{"subject":{"everything":null},"coverage":{"min_freshness":1}}`,
-		"content on history":          `{"subject":{"full_history":"x"},"coverage":{"min_freshness":1}}`,
-		"range not a pair":            `{"subject":{"range":[1]},"coverage":{"min_freshness":1}}`,
-		"checkpoint_range not a pair": `{"subject":{"checkpoint_range":[1,2,3]},"coverage":{"min_freshness":1}}`,
-		"null floor":                  `{"subject":{"full_history":null},"coverage":{"min_freshness":null}}`,
-		"negative floor":              `{"subject":{"full_history":null},"coverage":{"min_freshness":-1}}`,
-		"unknown member":              `{"subject":{"full_history":null},"coverage":{"min_freshness":1},"extra":1}`,
+		"old shape":                       `{"subject":{"kind":"full_history"},"coverage":{"min_freshness":{"size":1}}}`,
+		"two forms":                       `{"subject":{"full_history":null,"checkpoints":null},"coverage":{"min_freshness":1}}`,
+		"no subject":                      `{"coverage":{"min_freshness":1}}`,
+		"unknown form":                    `{"subject":{"everything":null},"coverage":{"min_freshness":1}}`,
+		"content on history":              `{"subject":{"full_history":"x"},"coverage":{"min_freshness":1}}`,
+		"range not a pair":                `{"subject":{"range":[1]},"coverage":{"min_freshness":1}}`,
+		"checkpoint_range not a pair":     `{"subject":{"checkpoint_range":[1,2,3]},"coverage":{"min_freshness":1}}`,
+		"checkpoint_range null positions": `{"subject":{"checkpoint_range":[null,null]},"coverage":{"min_freshness":1}}`,
+		"range null position":             `{"subject":{"range":[0,null]},"coverage":{"min_freshness":1}}`,
+		"null floor":                      `{"subject":{"full_history":null},"coverage":{"min_freshness":null}}`,
+		"negative floor":                  `{"subject":{"full_history":null},"coverage":{"min_freshness":-1}}`,
+		"unknown member":                  `{"subject":{"full_history":null},"coverage":{"min_freshness":1},"extra":1}`,
 	} {
 		_, err := parseBookRequest("--request", []byte(body))
 		assert.ErrorIs(t, err, cli.ErrInput, name)

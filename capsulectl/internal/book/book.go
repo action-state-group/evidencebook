@@ -1380,16 +1380,17 @@ func parseBookRequest(label string, raw []byte) (evidencebook.EvidenceRequest, e
 		case evidencebook.SubjectRecord, evidencebook.SubjectExchange:
 			err = json.Unmarshal(content, &req.Subject.Digest)
 		case evidencebook.SubjectRange, evidencebook.SubjectCheckpointRange:
-			var pair []uint64
-			if err = json.Unmarshal(content, &pair); err == nil && len(pair) != 2 {
+			// *uint64 so a null position is refused rather than read as 0.
+			var pair []*uint64
+			if err = json.Unmarshal(content, &pair); err == nil && (len(pair) != 2 || pair[0] == nil || pair[1] == nil) {
 				err = errors.New("its content is two log positions")
 			} else if err == nil {
-				req.Subject.Range = [2]uint64{pair[0], pair[1]}
+				req.Subject.Range = [2]uint64{*pair[0], *pair[1]}
 			}
 		case evidencebook.SubjectCorrelation:
 			err = json.Unmarshal(content, &req.Subject.Correlation)
 		default:
-			err = errors.New("not one of the seven forms")
+			err = errors.New("not a subject form")
 		}
 		if err != nil {
 			return req, cli.InputError(fmt.Sprintf("%s: subject %q: %v", label, form, err))
