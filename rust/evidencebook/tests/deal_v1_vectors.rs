@@ -684,3 +684,33 @@ fn authorization_compares_nanoseconds() {
         }
     }
 }
+
+/// report-bundle/vectors.json: VerifyReportBundle accepts each valid report
+/// and extension with the signer Go gives, and refuses each other one at Go's
+/// stage with Go's words (design §9, "The bundle extension").
+#[test]
+fn report_bundle_vectors() {
+    for c in vectors("report-bundle/vectors.json") {
+        let name = c["name"].as_str().unwrap();
+        let report = hex::decode(c["report"].as_str().unwrap()).unwrap();
+        let ext = serde_json::to_vec(&c["extension"]).unwrap();
+        let got = v1::verify_report_bundle(&report, &ext);
+        let want = &c["want"];
+        if let Some(key) = want.get("key_id").and_then(Value::as_str) {
+            let read = got.unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(read.key_id, key, "{name}");
+            continue;
+        }
+        let err = got.expect_err(name);
+        assert_eq!(
+            err.stage().map(|s| s.stage),
+            want["stage"].as_str(),
+            "{name}: {err}"
+        );
+        let fragment = want.get("error").and_then(Value::as_str).unwrap_or("");
+        assert!(
+            err.to_string().contains(fragment),
+            "{name}: {err} lacks {fragment:?}"
+        );
+    }
+}

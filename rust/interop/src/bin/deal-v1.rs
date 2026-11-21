@@ -121,6 +121,10 @@ fn answer(line: &str) -> Result<String, String> {
         "verify_report" => {
             verify_report(&req["payload"], req["first"].as_str().unwrap_or_default())
         }
+        "verify_report_bundle" => verify_report_bundle(
+            req["report"].as_str().unwrap_or_default(),
+            req["extension"].as_str().unwrap_or_default(),
+        ),
         other => Err(format!("unknown kind {other:?}")),
     }
 }
@@ -158,6 +162,24 @@ fn verify_report(payload: &Value, first: &str) -> Result<String, String> {
         v1::report_pair(&sealed.capsule, &sealed.envelope, &payload).map_err(|e| e.to_string())?;
     let first = hex::decode(first).map_err(|e| e.to_string())?;
     Ok(match v1::verify_report(&pair, &first) {
+        Ok(r) => {
+            let out = serde_json::json!({"key_id": r.key_id, "report": r.report});
+            String::from_utf8(jcs(&out).map_err(|e| e.to_string())?).unwrap()
+        }
+        Err(e) => match e.stage() {
+            Some(se) if std::env::var_os("DEAL_V1_DEBUG").is_none() => {
+                serde_json::json!({"stage": se.stage}).to_string()
+            }
+            _ => refused(e),
+        },
+    })
+}
+
+/// Reads the sealed report pair (hex) with the bundle extension's text, as
+/// the Go side does.
+fn verify_report_bundle(report: &str, ext: &str) -> Result<String, String> {
+    let pair = hex::decode(report).map_err(|e| e.to_string())?;
+    Ok(match v1::verify_report_bundle(&pair, ext.as_bytes()) {
         Ok(r) => {
             let out = serde_json::json!({"key_id": r.key_id, "report": r.report});
             String::from_utf8(jcs(&out).map_err(|e| e.to_string())?).unwrap()

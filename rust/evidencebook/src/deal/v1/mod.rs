@@ -46,6 +46,7 @@ mod names;
 mod payment;
 mod record;
 mod report;
+mod report_bundle;
 mod report_verify;
 mod sent;
 #[cfg(feature = "shelf")]
@@ -82,6 +83,7 @@ pub use report::{
     PROOF_NO_LAYER, REMEDY_NOT_COUNTED, ROWS_LISTED, ROWS_NOT_STARTED, ROWS_WITHHELD,
     SIDE_ADJUDICATOR,
 };
+pub use report_bundle::{verify_report_bundle, ReportBook, ReportBundle};
 pub use report_verify::{report_pair, verify_report, ReportRead, STAGE_REPORT};
 pub use sent::{
     pair, payment_rows, terms_leg, verify_sent, OfferContext, Sent, SENT_SUFFIX, SETTLEMENT_MEMBER,

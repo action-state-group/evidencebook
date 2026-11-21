@@ -1461,3 +1461,80 @@ fn deal_status_report() {
     let err = status.report(&buyer_log, &copy).unwrap_err();
     assert!(!matches!(err, ShelfError::Busy(_)), "{err}");
 }
+
+/// The report with its book from the shelf (Go `TestReportWithBook`, without
+/// the payment leg): the book carries the holder's agreement and exactly the
+/// records the report's rows rely on, each its own record's pair, read in the
+/// report's snapshot; every copy carries the same records, so one whose rows
+/// are withheld still does; `report` is the report alone.
+#[test]
+fn deal_status_report_with_book() {
+    let h = handshake_of(Party::with_status("buyer"), Party::new("seller"), |a| {
+        a["body"]["witnesses"] = json!([])
+    });
+    let mut ba = buyer_agreement(&h, true);
+    ba["body"]["witnesses"] = json!([]);
+    let buyer_log = log_of("buyer log");
+    h.buyer.seal(&buyer_log, &ba);
+    h.buyer.receive(Some(&h.agreement_pair), Some(&h.proof));
+    let status = h.buyer.status.clone().unwrap();
+    let copy = |audience: &str, referee: &str| v1::ReportCopy {
+        audience: audience.into(),
+        nonce: "a".repeat(64),
+        referee: referee.into(),
+        as_of: h.buyer.now().rfc3339(),
+        text: None,
+    };
+    let err = status
+        .report_with_book(&buyer_log, &copy("keep", ""))
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("no checkpoint at its size"),
+        "{err}"
+    );
+    h.buyer.tick();
+    h.buyer.cadence.stamp(h.buyer.now()).unwrap();
+    let next = settle(2, &h.agreement, &h.agreement, &h.agreement_id);
+    let (_, next_pair) = h.seller.seal(&h.seller_log, &next);
+    h.buyer.receive(Some(&next_pair), None);
+    h.buyer.tick();
+    h.buyer.cadence.stamp(h.buyer.now()).unwrap();
+    let book = h.buyer.shelf.open(&buyer_log).unwrap();
+    let (keep, kb) = status
+        .report_with_book(&buyer_log, &copy("keep", ""))
+        .unwrap();
+    assert_eq!(keep.rows_state, v1::ROWS_LISTED);
+    let first = book.record_by_seq(1).unwrap();
+    let agreement = kb.agreement.clone().unwrap();
+    assert_eq!(
+        v1::verify_book(&serde_json::to_vec(&agreement).unwrap())
+            .unwrap()
+            .record_id,
+        first.record_id,
+        "the agreement is the holder's record at seq 1"
+    );
+    let relied = kb.relied_on.clone().unwrap();
+    let rows: std::collections::BTreeSet<&str> = keep
+        .rows
+        .iter()
+        .flat_map(|r| r.relied_on.iter().map(|s| s.record.as_str()))
+        .collect();
+    assert_eq!(
+        relied.keys().map(String::as_str).collect::<Vec<_>>(),
+        rows.iter().copied().collect::<Vec<_>>(),
+        "exactly the records the rows rely on"
+    );
+    assert!(!relied.is_empty(), "the fixture's rows rely on records");
+    for (id, pair) in &relied {
+        let b = v1::verify_book(&serde_json::to_vec(pair).unwrap()).unwrap();
+        assert_eq!(&b.record_id, id, "each key is its pair's record id");
+    }
+    let adj = status
+        .report_with_book(&buyer_log, &copy("adjudicator", "Lamp Court"))
+        .unwrap();
+    assert_eq!(adj.0.rows_state, v1::ROWS_WITHHELD);
+    assert!(adj.0.rows.is_empty());
+    assert_eq!(adj.1, kb, "a withheld copy carries the keep copy's book");
+    let alone = status.report(&buyer_log, &copy("keep", "")).unwrap();
+    assert_eq!(alone, keep, "report is the report alone");
+}
