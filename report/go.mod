@@ -3,9 +3,9 @@ module github.com/action-state-group/evidencebook/report
 go 1.27.0
 
 require (
-	github.com/action-state-group/agent-action-capsule/go v0.21.0
-	github.com/action-state-group/capsule-cli v0.1.0-rc39
-	github.com/action-state-group/capsule-viewer/go v0.19.1
+	github.com/action-state-group/agent-action-capsule/go v0.23.0
+	github.com/action-state-group/capsule-cli v0.1.0-rc45
+	github.com/action-state-group/capsule-viewer/go v0.19.2
 	github.com/action-state-group/evidencebook v0.13.3
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/net v0.59.0
