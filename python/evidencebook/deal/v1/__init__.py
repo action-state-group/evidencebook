@@ -48,6 +48,7 @@ from .sent import (
     OfferContext, Sent, book_pair, pair, payment_rows, terms_leg, verify_book, verify_sent,
 )
 from .holder import GATE_NO_LAYER, GATE_NO_PROOF, ActGate, ActGateInput, CanActInput, ReceiveProfile, version
+from .report_bundle import ReportBook, ReportBundle, verify_report_bundle
 from .report_verify import STAGE_REPORT, ReportRead, report_pair, verify_report
 from .naming import book_entry, name_all_rulings, name_rulings
 from .status_provider import StatusProvider

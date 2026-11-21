@@ -31,7 +31,7 @@ from .status import (
 __all__ = [
     "ROWS_LISTED", "ROWS_NOT_STARTED", "ROWS_WITHHELD", "PROOF_HELD", "PROOF_NOT_YET", "PROOF_NO_LAYER",
     "REMEDY_NOT_COUNTED", "CHECK_PASSED", "CHECK_FAILED", "CHECK_NOT_RUN", "CHECK_NOT_RECOMPUTED", "NOT_SET",
-    "SIDE_ADJUDICATOR", "build_report", "report_payload", "settled",
+    "SIDE_ADJUDICATOR", "build_report", "build_report_rows", "report_payload", "settled",
 ]
 
 ROWS_LISTED = "listed"
@@ -98,6 +98,13 @@ def build_report(books: dict, copy: dict) -> dict:
     referee on a copy that is not an adjudicator's or none on one that is,
     an as_of that is not RFC 3339 UTC to the second, and books holding a
     record timed after as_of."""
+    return build_report_rows(books, copy)[0]
+
+
+def build_report_rows(books: dict, copy: dict) -> tuple[dict, list[dict]]:
+    """``build_report`` with every row it computed, listed in the copy or
+    not: the records they rely on are the ones the x-deal-v1 bundle extension
+    carries for every copy (Go ``buildReport``)."""
     rbooks = _decode(books, "report_books")
     c = _read_copy(copy)
     audience, nonce, as_of = c["audience"], c["nonce"], c["as_of"]
@@ -172,7 +179,7 @@ def build_report(books: dict, copy: dict) -> dict:
             r["disputes"] = v["disputes"]
         if v.get("rulings_unnamed"):
             r["rulings_unnamed"] = v["rulings_unnamed"]
-    return r
+    return r, rows
 
 
 def report_payload(report: dict) -> bytes:

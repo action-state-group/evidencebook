@@ -2,8 +2,8 @@
 """The Python side of the x-deal-v1 differential check (diff.py): one JSON
 request per line on stdin, and one answer line for each, as the Go side
 (main.go) answers. It answers the kinds the Python package implements
-(check, sealed, against, status, report, verify_report) and "skip" for any
-other.
+(check, sealed, against, status, report, verify_report, verify_report_bundle) and "skip" for
+any other.
 
     python3 test/interop/deal-v1/python_side.py < requests
 """
@@ -13,7 +13,7 @@ import json
 import sys
 from datetime import datetime, timezone
 
-from agent_action_capsule.canonical import jcs
+from agent_action_capsule.canonical import FloatInDigestError, jcs
 
 import evidencebook.deal.v1 as v1
 from evidencebook.deal.v1 import report as v1_report
@@ -81,6 +81,8 @@ def answer(req):
             return '{"error":true}'
     if kind == "verify_report":
         return verify_report(req["payload"], req["first"])
+    if kind == "verify_report_bundle":
+        return verify_report_bundle(req["report"], req["extension"])
     return '"skip"'
 
 
@@ -97,6 +99,18 @@ def verify_report(payload, first):
         r = v1.verify_report(v1.report_pair(capsule, envelope, payload), bytes.fromhex(first))
     except v1.StageError as e:
         return jcs({"stage": e.stage}).decode()
+    return jcs({"key_id": r.key_id, "report": r.report}).decode()
+
+
+def verify_report_bundle(report, ext):
+    """Reads the sealed report pair (hex) with the extension's text, as main.go does."""
+    try:
+        r = v1.verify_report_bundle(bytes.fromhex(report), ext.encode("utf-8", "surrogateescape"))
+    except v1.StageError as e:
+        return jcs({"stage": e.stage}).decode()
+    except FloatInDigestError:
+        # A pair's record holding a float: Go's Digest refuses it with no stage.
+        return '{"error":true}'
     return jcs({"key_id": r.key_id, "report": r.report}).decode()
 
 

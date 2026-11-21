@@ -439,8 +439,8 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   says it rests on, and, when the rows are listed, the pairs are exactly the records they rely on.
   An adjudicator's records have no log bound, and an adjudicator's copy, which names no
   counterparty prefix, binds the counterparty's records to one log only; in a copy that lists no
-  rows, nothing ties the pairs to rows. Rust has `deal::v1::verify_report_bundle`; Python follows
-  (evidencebook#598). The vectors
+  rows, nothing ties the pairs to rows. Rust has `deal::v1::verify_report_bundle` and Python
+  `evidencebook.deal.v1.verify_report_bundle` (evidencebook#598). The vectors
   are in `testdata/deal-v1/report-bundle/`.
 
 ## 11. Not defined here yet
