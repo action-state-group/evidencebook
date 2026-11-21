@@ -228,8 +228,8 @@ admission pack row id is `^[a-z][a-z0-9_-]*$`, so a row such as `owner-signed` k
 the counterparty's card document the decision read. `asks` and `answers` cite the holder's own
 `ask` and `answer` records of the admission. A holder does not seal a decision without a tier
 (a NO) as an `admit`: no agreement cites it, and the holder's local admission decision keeps it.
-`outcome` still lists `NO`, so an `admit` written with a tier and `NO` stays valid and is read like
-any other.
+`outcome` keeps `NO` in its enum for compatibility. An agreement cites only an `admit` whose
+outcome is `GO`: a host refuses to seal an agreement whose `admit` holds any other outcome.
 
 **`check`.** v0's `body_check`, plus `payment_ref` and `nonce`. Without `payment_ref` and `nonce`
 the body MUST be valid under v0's closed `body_check`.

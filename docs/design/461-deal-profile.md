@@ -480,10 +480,11 @@ Decided: design §7, `admit`; Appendix A lines 9 and 9g.
   (`testdata/deal-v1/records/admit-rows.json`).
 - **No `admit` for a NO.** A NO has no tier, and `tier` is required. A deal cites a GO (THE_LOOP
   step 4), so a holder does not seal a NO as an `admit`; the local `admission_decision` keeps it.
-  The schema is unchanged: `outcome` still lists `NO`, and an `admit` with a tier and `NO` stays
-  valid and is read like any other. A NO is
-  never cited by a sent or deal-book record, so it needs no nonce; if that changes, the rule below
-  applies (Sherlock2, same message).
+  The schema is unchanged: `outcome` keeps `NO` for compatibility. An agreement cites only an
+  `admit` whose outcome is `GO`; a host refuses to seal one citing any other (Sherlock2, #590
+  review, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=ba094d3ad20efa71e2c3dad724434c34a171942bbb9f980f7096074e869e7000).
+  A NO is never cited by a sent or deal-book record, so it needs no nonce; if that changes, the
+  rule below applies (Sherlock2, the door confirmation above).
 
 **A cited journal record carries its own secret** (decided: Sherlock2, on its twin's privacy P1,
 buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=6a07cefde698fa8db9dcafc2aa97914bb931a56995fea0736efb57bdf1e4d927;
