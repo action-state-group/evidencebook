@@ -565,7 +565,8 @@ def loop_ask_mailbox_poll(request_event_id: str) -> str:
 
     ``status`` is ``answered`` (verified under the node's listed keys and recorded: an artifact or
     a signed refusal), ``pending`` (before the deadline) or ``absent`` (the deadline passed with no
-    recorded answer; the absence is recorded against the node). ``late`` marks a reply that came
+    recorded answer; the absence is recorded against the node) or ``transport_error`` (no relay could
+    be read and no outcome is recorded yet: nothing is written, poll again). ``late`` marks a reply that came
     after the absence: it is kept beside it and the absence stays as written."""
     return _out(ok=True, step="07", **mx.poll(node(), request_event_id))
 
@@ -592,7 +593,8 @@ def loop_dispute_poll(request_event_id: str, deal_file: str) -> str:
 
     ``status`` is ``received`` (the Result verified and is sealed in your book,
     citing both halves), ``pending`` (before the request's deadline) or ``absent``
-    (the deadline passed with no reply; the absence is sealed). A reply that fails
+    (the deadline passed with no reply; the absence is sealed) or ``transport_error`` (no relay
+    could be read: nothing is sealed, poll again). A reply that fails
     verification is refused and the refusal sealed with its code. Both parties'
     books then hold the same ``result_digest``."""
     got = node().poll_dispute_result(request_event_id, _read_json(deal_file))

@@ -1070,7 +1070,8 @@ class Node:
         ``{"status": "received", "record_id"}`` once a reply that passes the mailbox checks
         holds a Result the node accepts (sealed as received, cited halves and all);
         ``{"status": "pending"}`` before the request's deadline; ``{"status": "absent"}``
-        once the deadline has passed with no reply, after sealing the absence once. A
+        once the deadline has passed with no reply, after sealing the absence once; ``{"status":
+        "transport_error", "error"}`` when no relay could be read, which seals nothing. A
         reply that arrives and fails verification is refused, and the refusal sealed
         (:meth:`receive_dispute_result`). A reply that arrives after the absence was
         sealed is still taken, and the absence record stays as written (binding §5.3)."""
@@ -1084,7 +1085,13 @@ class Node:
         factory = relay_factory or mb.Relay
         relays = [factory(u) for u in asked["relays"]]
         last: Refused | None = None
-        for reply in mb.poll_replies(relays, request_event_id, MAILBOX_MEDIA, asked["mailbox_key"]):
+        try:
+            replies = mb.poll_replies(relays, request_event_id, MAILBOX_MEDIA, asked["mailbox_key"])
+        except mb.MailboxError as exc:  # no relay could be read: it says nothing about the referee, so no absence
+            if any(st.get("request_event_id") == request_event_id for _, st in self.notes(DISPUTE_ABSENT)):
+                return {"status": "absent", "deadline": asked["deadline"]}  # sealed earlier; it stands
+            return {"status": "transport_error", "error": str(exc), "deadline": asked["deadline"]}
+        for reply in replies:
             raw = mb.decode(reply.content) or b""
             try:
                 delivered = json.loads(raw)
