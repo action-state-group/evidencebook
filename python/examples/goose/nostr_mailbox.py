@@ -347,10 +347,10 @@ class Relay:
                         events.append(Event.from_json(msg[2]))
                     except MailboxError:
                         continue
-                elif msg[0] == "EOSE":
+                elif msg[0] == "EOSE" and msg[1:2] == ["poll"]:
                     complete = True
                     break
-                elif msg[0] == "CLOSED":
+                elif msg[0] == "CLOSED" and msg[1:2] == ["poll"]:
                     raise MailboxError(f"relay {self.url} refused the subscription: {msg[2:3]}")
             try:
                 ws.send(json.dumps(["CLOSE", "poll"]))

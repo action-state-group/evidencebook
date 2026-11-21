@@ -420,8 +420,12 @@ def _stub_relay(answer):
     return server, f"ws://127.0.0.1:{server.socket.getsockname()[1]}"
 
 
-@pytest.mark.parametrize("answer", [lambda ws, sub: None, lambda ws, sub: ws.send(json.dumps(["CLOSED", sub, "auth-required: x"]))],
-                         ids=["no_eose_before_the_window_closes", "subscription_closed"])
+@pytest.mark.parametrize("answer", [
+    lambda ws, sub: None,
+    lambda ws, sub: ws.send(json.dumps(["CLOSED", sub, "auth-required: x"])),
+    lambda ws, sub: ws.send(json.dumps(["EOSE", "other"])),
+    lambda ws, sub: ws.send(json.dumps(["EOSE"])),
+], ids=["no_eose_before_the_window_closes", "subscription_closed", "eose_of_another_subscription", "eose_without_one"])
 def test_a_relay_that_does_not_finish_the_stored_events_is_not_an_empty_mailbox(answer):
     server, url = _stub_relay(answer)
     try:
