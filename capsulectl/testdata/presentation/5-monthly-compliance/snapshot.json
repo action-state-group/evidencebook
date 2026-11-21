@@ -113,7 +113,7 @@
     "Witnessed by",
     "not stated in this bundle: it carries no witness receipt for its checkpoint. The checkpoint: log \"example-log\", size 47, root 0dae73173e1b….",
     "Verified by",
-    "this page's code: @action-state-group/capsule-viewer 0.19.1 at 25886484a705, verifier @action-state-group/agent-action-capsule 0.14.0 with cll 0.4.0. The bundle's own report, which this page does not check, names the tool that built it as \"evidencebook\", version not stated.",
+    "this page's code: @action-state-group/capsule-viewer 0.19.2 at 613a8a95144e, verifier @action-state-group/agent-action-capsule 0.14.0 with cll 0.4.0. The bundle's own report, which this page does not check, names the tool that built it as \"evidencebook\", version not stated.",
     "Regulation (EU) 2024/1689 (the EU AI Act)",
     "What was checked and what we found",
     "Each session (one conversation with the agent) was checked against 4 requirements under 3 obligations. Results are counts of sessions: there is no overall score. Open a requirement to read the sessions behind its exceptions.",
