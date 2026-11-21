@@ -8,7 +8,7 @@ Every pull request merged since v0.21.0:
 
 - [#597](https://github.com/action-state-group/evidencebook/pull/597): feat(dealprofile): x-deal-v1 report relies on the payment legs, and the bundle extension carries them
 
-A minor version: #597 adds `xdealv1` API and vectors, and `BuildReport` now refuses a payment result whose legs the books given do not hold.
+A minor version: #597 adds `xdealv1` API and vectors; a payment row's `relied_on` now lists the settle legs, so a report differs from v0.21.0's for the same deal, and `BuildReport` now refuses a payment result that does not begin with the offer's digest or names a record the books given do not hold. A report sealed by v0.21.0 still verifies: `VerifyReport` does not recompute rows.
 
 ### Added: the payment legs in the x-deal-v1 report, and the `x-deal-v1` bundle extension (#597)
 
