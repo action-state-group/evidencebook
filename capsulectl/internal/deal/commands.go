@@ -55,11 +55,12 @@ func onProfiles(cmd *cobra.Command, check func(cli.Profile) error) *cobra.Comman
 }
 
 // InstallDealHooks gives the core tree the deal commands it reaches from its
-// own: `bundle --deal`, `cll checkpoint cadence`, and the deal verbs `canary
-// run` drives. Call it before the tree is built.
+// own: `bundle --deal`, `cll checkpoint cadence`, the x-deal-v1 report rule of
+// `verify --bundle`, and the deal verbs `canary run` drives. Call it before the tree is built.
 func InstallDealHooks() {
 	cli.ExtendBundle(cli.BundleExtension{Flags: dealBundleFlags, Run: dealBundleExtension})
 	cli.GraftCommand([]string{"cll", "checkpoint"}, cadenceCommand)
+	cli.SetDealV1ReportVerifier(verifyV1Report)
 	cli.ErrorPhase = dealErrorPhase
 }
 
