@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.23.0 (2026-11-21)
+
+Every pull request merged since v0.22.0:
+
+- [#601](https://github.com/action-state-group/evidencebook/pull/601): feat: follow Evidence Request -03 checkpoint_range (AAC go v0.24.0, evidence-request 0.8.0)
+
+A minor version: the module requires agent-action-capsule go v0.24.0, which drops `Subject.Ranged`, so a consumer of this module moves its agent-action-capsule go pin to v0.24.0 with it, and a ranged checkpoints request is now `{"checkpoint_range": [a, b]}`: a requester still sending `{"checkpoints": [a, b]}` is refused `request_malformed`. capsulectl and report pin v0.20.1 and take this release in a follow-up.
+
+### Changed: the ranged checkpoints request is `checkpoint_range` (#595)
+
+- Requires agent-action-capsule go v0.24.0: the ranged checkpoints request is the `checkpoint_range` subject (`SubjectCheckpointRange`, wire `{"checkpoint_range": [a, b]}`) as Evidence Request -03 names it; `{"checkpoints": [a, b]}` is `request_malformed` and `checkpoints` is content-free again. The book answers and verifies `checkpoint_range` as it did the ranged form; the manifest's `subject_forms` stay the profile's six forms (a responder lists no token beyond its profiles', interop profile §11.4.2) and an answered statement still records the form as `checkpoints` (evidencebook#595). `Subject.Ranged` no longer exists upstream.
+
 ## v0.22.0 (2026-11-21)
 
 Every pull request merged since v0.21.0:
