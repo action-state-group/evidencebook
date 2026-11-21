@@ -478,8 +478,9 @@ Decided: design §7, `admit`; Appendix A lines 9 and 9g.
   `pack_digest` is the pack's `definition_digest`; `card_digest` is the SHA-256 of the JCS bytes
   of the card document the decision read. The widening keeps every record valid that was valid
   (`testdata/deal-v1/records/admit-rows.json`).
-- **No `admit` for a NO.** A NO has no tier, and `tier` is required. A deal cites a GO (THE_LOOP
-  step 4), so a holder does not seal a NO as an `admit`; the local `admission_decision` keeps it.
+- **No `admit` for a NO.** A NO has no tier, and `tier` is required. A deal cites an `admit` that
+  admitted it (THE_LOOP step 4), and a NO admits nothing, so a holder does not seal a NO as an
+  `admit`; the local `admission_decision` keeps it.
   The schema is unchanged: `outcome` keeps `NO` for compatibility. An agreement cites an `admit`
   that admitted the deal: `GO`, or `LIMIT` at a tier that holds the deal, as the admission design
   §2 maps LIMIT ("`allow` if the deal's band is within the limited tier, else `deny`"). That case
