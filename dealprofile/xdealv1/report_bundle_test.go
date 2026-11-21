@@ -263,6 +263,81 @@ func TestReportBundleVectors(t *testing.T) {
 	refuse("a null relied_on", []byte(`{"sealed_report":"`+x.SealedReport+`","book":{"agreement":`+string(x.Book.Agreement)+`,"relied_on":null}}`), nil, "a relied_on object")
 	refuse("no book", []byte(`{"sealed_report":"`+x.SealedReport+`"}`), nil, "a relied_on object")
 
+	// Copies with a case book record a row relies on, and copies of a deal
+	// not started, which carry their computed rows' records.
+	valid := func(name string, p *party, signer, logID string, c ReportCopy) (Report, []byte, ReportBundle) {
+		t.Helper()
+		r, rp, rx := holderBundle(t, p, signer, logID, c)
+		bc := bundleCase{Name: name, Report: hex.EncodeToString(rp), Extension: extJSON(t, rx)}
+		read, err := VerifyReportBundle(rp, bc.Extension)
+		require.NoError(t, err, name)
+		bc.Want.KeyID = read.KeyID
+		cases = append(cases, bc)
+		return r, rp, rx
+	}
+	h, buyerLog, _ := rulingHolder(t)
+	hat := h.buyer.now.UTC().Truncate(time.Second).Format(time.RFC3339)
+	valid("ruling-keep-copy", h.buyer, "buyer", buyerLog, copyAt(hat, dealprofile.AudienceKeep))
+	valid("ruling-adjudicator-copy", h.buyer, "buyer", buyerLog, copyAt(hat, dealprofile.AudienceAdjudicator))
+	ns, _ := notStartedHolder(t)
+	nat := ns.seller.now.UTC().Truncate(time.Second).Format(time.RFC3339)
+	nsKeep, _, nsX := valid("not-started-keep-copy", ns.seller, "seller", ns.sellerLog, copyAt(nat, dealprofile.AudienceKeep))
+	valid("not-started-adjudicator-copy", ns.seller, "seller", ns.sellerLog, copyAt(nat, dealprofile.AudienceAdjudicator))
+
+	// The not-started rules, on the not-started keep copy sealed again.
+	nsResealed := func(r Report) ([]byte, []byte) {
+		t.Helper()
+		payload, err := ReportPayload(r)
+		require.NoError(t, err)
+		p := sealReport(t, "seller", payload, "")
+		read, err := VerifyReport(p, nsX.Book.Agreement)
+		require.NoError(t, err)
+		c := nsX
+		c.SealedReport = read.CapsuleID
+		return p, extJSON(t, c)
+	}
+	listedNotStarted := nsKeep
+	listedNotStarted.RowsState = RowsListed
+	rp, rx = nsResealed(listedNotStarted)
+	refuse("listed while not started", rx, rp, "listed exactly when its deal has started")
+	rowsNotStarted := nsKeep
+	rowsNotStarted.Rows = keep.Rows
+	rp, rx = nsResealed(rowsNotStarted)
+	refuse("a not_started copy listing rows", rx, rp, "copy lists no rows")
+	unknownState := nsKeep
+	unknownState.RowsState = "partial"
+	rp, rx = nsResealed(unknownState)
+	refuse("an unknown rows_state", rx, rp, "is not one of listed, not_started, withheld")
+
+	// An adjudicator's copy naming no referee.
+	noReferee := keep
+	noReferee.Audience, noReferee.RowsState, noReferee.Rows = dealprofile.AudienceAdjudicator, RowsWithheld, []ReportRow{}
+	rp, rx = resealed(noReferee)
+	refuse("an adjudicator's copy naming no referee", rx, rp, "names a referee")
+
+	// A keep copy that counted none of the counterparty's book carries a
+	// counterparty record.
+	noPrefix := keep
+	noPrefix.RestsOn.Counterparty = nil
+	rp, rx = resealed(noPrefix)
+	refuse("a counterparty record with no counted prefix", rx, rp, "counted none of its book")
+
+	// An adjudicator's copy whose counterparty records sit in two logs.
+	adjCopy := keep
+	adjCopy.Audience, adjCopy.Referee, adjCopy.RowsState, adjCopy.Rows = dealprofile.AudienceAdjudicator, "Lamp Court", RowsWithheld, []ReportRow{}
+	adjCopy.RestsOn.Counterparty, adjCopy.RestsOn.Witnesses, adjCopy.Disputes = nil, nil, nil
+	twoLogs := clone()
+	elsewhere := d.sellerAg
+	elsewhereID, elsewherePair := d.seller.seal("deal/"+strings.Repeat("8", 32), elsewhere)
+	twoLogs.Book.ReliedOn[elsewhereID] = elsewherePair
+	payload, err := ReportPayload(adjCopy)
+	require.NoError(t, err)
+	ap := sealReport(t, "buyer", payload, "")
+	aread, err := VerifyReport(ap, x.Book.Agreement)
+	require.NoError(t, err)
+	twoLogs.SealedReport = aread.CapsuleID
+	refuse("an adjudicator's copy with counterparty records in two logs", extJSON(t, twoLogs), ap, "in another counterparty book")
+
 	writeOrCompare(t, reportBundleVectors, map[string]any{
 		"description": "x-deal-v1 bundle extension (evidencebook#588, docs/design/461-deal-profile.md §9, PROFILE §10): VerifyReportBundle(report, extension) gives want: the report's signing key, or a refusal at stage with error in its text. report is the report pair's hex; extension is the x-deal-v1 extension as a bundle carries it. Written by dealprofile/xdealv1's TestReportBundleVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
@@ -290,5 +365,112 @@ func TestReportBundleVectorsReplay(t *testing.T) {
 		require.ErrorAs(t, err, &se, c.Name)
 		assert.Equal(t, c.Want.Stage, se.Stage, c.Name)
 		assert.ErrorContains(t, err, c.Want.Error, c.Name)
+	}
+}
+
+// rulingHolder is the buyer of a handshake whose agreements name an
+// adjudicator: it holds its agreement, the seller's, and the adjudicator's
+// final ruling against the seller, which the receive call names; stamped.
+// Its report is started, and the as_described row relies on the ruling, a
+// case book record.
+func rulingHolder(t *testing.T) (*handshake, string, BookRead) {
+	t.Helper()
+	h, adjudicator, ruling, caseLog := rulingCase(t)
+	od, err := Digest(h.offer)
+	require.NoError(t, err)
+	ab := fxAgreement(&Ref{Type: RecordRef, DigestAlg: DigestAlg, Digest: od}, ref('e'), ref('f'), SideOfferer, RoleBuyer, h.seller.key())
+	ab.CheckpointKey, ab.ShelfLogID = h.buyer.checkpointKey(), testCadenceLog
+	adj := fxAdjudicator
+	adj.KeyID = adjudicator.key()
+	ab.Adjudicator = Some(adj)
+	bb := journalBlock(TypeAgree, "2026-11-01T10:00:00Z", true)
+	bb.Seq, bb.Seen = 1, Some(h.agreementID)
+	buyerLog := "deal/b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
+	h.buyer.seal(buyerLog, Record{Block: bb, Body: ab})
+	h.buyer.recUseStatus(map[string][]byte{od: h.offerPair})
+	h.buyer.receive(h.agreementPair, &h.proof)
+	_, pair := adjudicator.seal(caseLog, ruling)
+	h.buyer.receive(pair, nil)
+	_, err = h.buyer.recStampTick()
+	require.NoError(t, err)
+	read, err := VerifyBook(pair)
+	require.NoError(t, err)
+	return h, buyerLog, read
+}
+
+// notStartedHolder is the seller of a handshake holding its own agreement
+// and the adjudicator's ruling against it, which the receive call names,
+// and not the buyer's agreement: its deal has not started, so its copies
+// list no rows, and their book still carries the ruling a row relies on.
+func notStartedHolder(t *testing.T) (*handshake, BookRead) {
+	t.Helper()
+	h, adjudicator, ruling, caseLog := rulingCase(t)
+	od, err := Digest(h.offer)
+	require.NoError(t, err)
+	h.seller.recUseStatus(map[string][]byte{od: h.offerPair})
+	_, pair := adjudicator.seal(caseLog, ruling)
+	h.seller.receive(pair, nil)
+	_, err = h.seller.recStampTick()
+	require.NoError(t, err)
+	read, err := VerifyBook(pair)
+	require.NoError(t, err)
+	return h, read
+}
+
+// holderBundle is one copy of p's report of logID, sealed under name's
+// record key, and its extension.
+func holderBundle(t *testing.T, p *party, name, logID string, c ReportCopy) (Report, []byte, ReportBundle) {
+	t.Helper()
+	r, book, err := p.status.ReportWithBook(context.Background(), logID, c)
+	require.NoError(t, err)
+	payload, err := ReportPayload(r)
+	require.NoError(t, err)
+	pair := sealReport(t, name, payload, "")
+	read, err := VerifyReport(pair, book.Agreement)
+	require.NoError(t, err)
+	return r, pair, ReportBundle{SealedReport: read.CapsuleID, Book: book}
+}
+
+func copyAt(at, audience string) ReportCopy {
+	c := keepCopy(at)
+	c.Audience = audience
+	if audience == dealprofile.AudienceAdjudicator {
+		c.Referee = "Lamp Court"
+	}
+	return c
+}
+
+// A case book record a row relies on travels in every copy's book, signed
+// by the agreement's adjudicator; and a deal not started carries the
+// records its computed rows rely on though its copies list none.
+func TestReportWithBookRulingAndNotStarted(t *testing.T) {
+	h, buyerLog, ruling := rulingHolder(t)
+	at := h.buyer.now.UTC().Truncate(time.Second).Format(time.RFC3339)
+	for _, audience := range []string{dealprofile.AudienceKeep, dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator} {
+		r, pair, x := holderBundle(t, h.buyer, "buyer", buyerLog, copyAt(at, audience))
+		assert.Contains(t, x.Book.ReliedOn, ruling.RecordID, audience)
+		if audience != dealprofile.AudienceAdjudicator {
+			require.Equal(t, RowsListed, r.RowsState, audience)
+			var sides []string
+			for _, src := range rowByID(t, r, "as_described").ReliedOn {
+				sides = append(sides, src.Record+"/"+src.Side)
+			}
+			assert.Contains(t, sides, ruling.RecordID+"/"+SideAdjudicator, audience)
+		}
+		_, err := VerifyReportBundle(pair, extJSON(t, x))
+		require.NoError(t, err, audience)
+	}
+
+	s, sRuling := notStartedHolder(t)
+	at = s.seller.now.UTC().Truncate(time.Second).Format(time.RFC3339)
+	for _, audience := range []string{dealprofile.AudienceKeep, dealprofile.AudienceAdjudicator} {
+		r, pair, x := holderBundle(t, s.seller, "seller", s.sellerLog, copyAt(at, audience))
+		assert.Empty(t, r.Rows, audience)
+		if audience == dealprofile.AudienceKeep {
+			assert.Equal(t, RowsNotStarted, r.RowsState)
+		}
+		assert.Contains(t, x.Book.ReliedOn, sRuling.RecordID, audience)
+		_, err := VerifyReportBundle(pair, extJSON(t, x))
+		require.NoError(t, err, audience)
 	}
 }

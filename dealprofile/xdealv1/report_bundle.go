@@ -75,19 +75,27 @@ func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte) (Repo
 //     sealed_report is the report Capsule's id;
 //   - the copy's audience and rows agree: an adjudicator's copy is
 //     withheld with no rows, no other copy is withheld, rows appear only
-//     when listed, and a copy is listed exactly when its deal has started;
+//     when listed, and a keep or counterparty copy is listed exactly when
+//     its deal has started;
 //   - each relied_on pair passes VerifyBook, is of the report's deal, has
 //     its record id as its key, and is signed by a party of the agreement:
 //     the agreement's own key (the holder), its counterparty_key, or its
 //     adjudicator's key; the holder's sit in rests_on.own's log at a seq no
 //     greater than its size, and, where the copy names
 //     rests_on.counterparty, the counterparty's sit in that log at a seq no
-//     greater than its counted;
+//     greater than its counted; a keep or counterparty copy that names none
+//     carries no counterparty record, and in an adjudicator's copy the
+//     counterparty's records sit in one log;
+//   - an adjudicator's copy, and only it, names a referee;
 //   - when the rows are listed, the keys are exactly the records the rows
 //     name in relied_on, each named with the side of its pair's signer.
 //
 // A bundle that passes shows the records the holder says its rows rest on,
 // signed by the deal's parties; like the report, it is not a recomputation.
+// In a copy whose rows are not listed nothing ties the keys to rows; an
+// adjudicator's records have no log bound, and in an adjudicator's copy,
+// which names no counterparty prefix, the counterparty's records are bound
+// only to one log.
 func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 	bad := func(format string, args ...any) (ReportRead, error) {
 		return ReportRead{}, stageErr(StageReport, "the x-deal-v1 extension: "+format, args...)
@@ -117,12 +125,14 @@ func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 	switch {
 	case r.Audience != dealprofile.AudienceKeep && r.Audience != dealprofile.AudienceCounterparty && !adj:
 		return bad("audience %q is not a copy audience", r.Audience)
+	case adj != (r.Referee != ""):
+		return bad("an adjudicator's copy, and only it, names a referee")
 	case adj != (r.RowsState == RowsWithheld):
 		return bad("an adjudicator's copy, and only it, is withheld; this %s copy is %q", r.Audience, r.RowsState)
 	case r.RowsState != RowsListed && len(r.Rows) > 0:
 		return bad("a %s copy lists no rows", r.RowsState)
 	case !adj && (r.RowsState == RowsListed) != (r.Start.State == StateStarted):
-		return bad("a copy is listed exactly when its deal has started; this one is %q at start %q", r.RowsState, r.Start.State)
+		return bad("a keep or counterparty copy is listed exactly when its deal has started; this one is %q at start %q", r.RowsState, r.Start.State)
 	case !adj && r.RowsState != RowsListed && r.RowsState != RowsNotStarted:
 		return bad("rows_state %q is not one of listed, not_started, withheld", r.RowsState)
 	}
@@ -144,6 +154,7 @@ func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 		sideOf[a.KeyID] = SideAdjudicator
 	}
 	sides := map[string]string{}
+	counterpartLog := ""
 	for _, id := range slices.Sorted(maps.Keys(x.Book.ReliedOn)) {
 		b, err := VerifyBook(x.Book.ReliedOn[id])
 		if err != nil {
@@ -165,6 +176,15 @@ func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 		case side == other && r.RestsOn.Counterparty != nil &&
 			(b.LogID != r.RestsOn.Counterparty.LogID || b.Seq > r.RestsOn.Counterparty.Counted):
 			return bad("relied_on %s is not in the counterparty's prefix the report rests on", id)
+		case side == other && r.RestsOn.Counterparty == nil && !adj:
+			return bad("relied_on %s is the counterparty's, and the report counted none of its book", id)
+		case side == other && counterpartLog != "" && b.LogID != counterpartLog:
+			// An adjudicator's copy names no counterparty prefix: its
+			// records sit in one book at least.
+			return bad("relied_on %s is in another counterparty book than %s", id, counterpartLog)
+		}
+		if side == other {
+			counterpartLog = b.LogID
 		}
 		sides[id] = side
 	}

@@ -435,9 +435,12 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   `xdealv1.StatusProvider.ReportWithBook` returns a report and its book from one snapshot.
   `xdealv1.VerifyReportBundle` reads a report with its extension (design note §9, "The payment
   legs and the bundle extension"): among its checks, each pair is signed by a party of the
-  agreement and sits in the book the report says it rests on, and, when the rows are listed, the
-  pairs are exactly the records they rely on. The vectors are in
-  `testdata/deal-v1/report-bundle/`.
+  agreement, the holder's and the counterparty's sit in the book or counted prefix the report
+  says it rests on, and, when the rows are listed, the pairs are exactly the records they rely on.
+  An adjudicator's records have no log bound, and an adjudicator's copy, which names no
+  counterparty prefix, binds the counterparty's records to one log only; in a copy that lists no
+  rows, nothing ties the pairs to rows. Rust and Python follow in evidencebook#598. The vectors
+  are in `testdata/deal-v1/report-bundle/`.
 
 ## 11. Not defined here yet
 

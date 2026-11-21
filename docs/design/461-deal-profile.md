@@ -1551,7 +1551,8 @@ PROFILE §10). It is as proposed below, with these additions and limits:
 buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=2c5ad840c8507d912bbdea4016c9b407ad8f0c2c565fdade8ce852dafa34b5fd,
 approving the three parts as filed in
 buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=90f3d38dbc96c52e2247785e8c60ba2909fb1b9c0caa1bde7cce062e3e0c3348;
-Sherlock2 confirmed the levels below). A seller's page shows the payment its own received leg
+Sherlock2 confirmed the levels below:
+buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=e866c3540a98e388cc8f3ff004c7e9b70795bc1ea460cdcc21d2f6cda36003b8). A seller's page shows the payment its own received leg
 records by reading that leg, not a new report member.
 
 - **The legs in `relied_on`.** A payment row's `relied_on` lists, after the records it lists
@@ -1559,8 +1560,9 @@ records by reading that leg, not a new report member.
   `checked_over` after the first entry (the offer's digest, a journal record). A leg the check
   excluded, and a check not run over legs (several payment rows, a refund citing the offer's terms
   leg), add none. `BuildReport` refuses a payment result whose first entry is not the offer's
-  digest, or that names a record the books given do not hold. The leg stays as sealed: a payee
-  issued `payment_hash` is not a payment id u499 withholds, since both parties hold it.
+  digest, or that names a record the books given do not hold. The leg stays as sealed: a
+  payee-issued `payment_hash` is not one of the payment ids the counterparty copy withholds
+  (u499), since both parties hold it (Steven's ruling above, ops u532).
 - **The extension.** A bundle that carries a v1 report carries the extension `x-deal-v1`:
 
   ```json
@@ -1582,15 +1584,23 @@ records by reading that leg, not a new report member.
 - **Verifying it** (`xdealv1.VerifyReportBundle`). The extension is exactly these members. The
   report passes `VerifyReport` against `book.agreement`, and `sealed_report` is its Capsule's id.
   The copy's audience and rows agree: an adjudicator's copy, and only it, is `withheld` with no
-  rows; rows appear only when `listed`, and a copy is `listed` exactly when its deal has started.
+  rows; rows appear only when `listed`, and a keep or counterparty copy is `listed` exactly when
+  its deal has started.
   Each `relied_on` pair passes `VerifyBook`, is of the report's deal, has its record id as its key,
   and is signed by a party of the agreement (the agreement's own key, its `counterparty_key`, or
   its adjudicator's key); the holder's sit in `rests_on.own`'s log at a seq no greater than its
   `size`, and, where the copy names `rests_on.counterparty`, the counterparty's sit in that log at a
-  seq no greater than its `counted`. When the rows are listed, the keys are exactly the records the
+  seq no greater than its `counted`; a keep or counterparty copy that names none carries no
+  counterparty record, and an adjudicator's copy, which names none, keeps the counterparty's in one
+  log. An adjudicator's copy, and only it, names a referee. When the rows are listed, the keys are exactly the records the
   rows name in `relied_on`, each named with the side of its pair's signer. A page shows each leg's
   settlement member as recorded, found by its `relied_on` id; it picks no leg, and `check` stays
-  the only verdict. The vectors are in `testdata/deal-v1/report-bundle/`.
+  the only verdict. In a copy whose rows are not listed (an adjudicator's, or a deal not
+  started), nothing ties the keys to rows: a pass shows only that each record is of the deal,
+  signed by a party and, for the holder's and a named counterparty prefix, within the stated
+  logs; an adjudicator's records have no log bound, and in an adjudicator's copy the
+  counterparty's are bound to one log only. Rust and Python follow in evidencebook#598. The vectors are in
+  `testdata/deal-v1/report-bundle/`.
 
 **Proposed: the v1 report.**
 
@@ -1855,7 +1865,7 @@ same vectors, each in its own pull request.
 5. **The v1 report** and its vectors (section 9). Then (evidencebook#588) the payment legs in
    `relied_on`, in Go, Rust and Python together, since all three replay the report vectors; and the
    bundle extension's `VerifyReportBundle` and `ReportWithBook` in Go, with Rust and Python
-   following in their own pull requests.
+   following in their own pull requests (evidencebook#598).
 6. **Rust `deal::v1`**, then **Python `evidencebook.deal.v1`**, to the same vectors, with a CI
    differential job like `row-status-diff`.
 
