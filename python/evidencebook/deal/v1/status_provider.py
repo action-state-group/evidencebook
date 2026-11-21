@@ -22,7 +22,8 @@ from .check import Record, StageError, digest, encode
 from .names import KIND_AGREEMENT, PROFILE, TYPE_AGREE, TYPE_PROPOSE, TYPE_RULING, TYPE_STATEMENT
 from .naming import counted, counted_with, logs_of, name_all_rulings
 from .payment import PaymentInput, payment_check
-from .report import build_report
+from .report import build_report_rows
+from .report_bundle import ReportBook
 from .sent import SENT_LOG_PREFIX, book_pair, payment_rows, verify_book, verify_sent
 from .status import build_status
 
@@ -69,16 +70,17 @@ class StatusProvider:
         got = self._status_books(inp)
         if got is None:
             return None
-        books, link, _ = got
+        books, link, _, _ = got
         return PROFILE, link, build_status(books)
 
     # -- the books -----------------------------------------------------------------------
 
-    def _status_books(self, inp: Any) -> tuple[dict, dict, dict | None] | None:
+    def _status_books(self, inp: Any) -> tuple[dict, dict, dict | None, dict[str, bytes]] | None:
         """What the status value is built from, as Go's ``StatusBooks``
         writes it, with the link value and the counterparty's counted prefix
-        a report rests on (Go ``statusBooks``); ``None`` for a book that is
-        not a v1 deal book."""
+        a report rests on and the book pair of each record read, by record id:
+        the holder's own records and every record held for the deal (Go
+        ``statusBooks``); ``None`` for a book that is not a v1 deal book."""
         own = self._own_book(inp)
         if not own:
             return None
@@ -131,7 +133,10 @@ class StatusProvider:
         cp = None
         if theirs:
             cp = {"log_id": their_log, "counted": len(theirs), "last": theirs[-1].record_id, "fork_at": prefix.fork_at}
-        return books, link, cp
+        pairs = {o.rec["record_id"]: o.pair for o in own}
+        for h in held:
+            pairs.setdefault(h.received.digest, h.record)
+        return books, link, cp, pairs
 
     def _own_book(self, inp: Any) -> list[_Own]:
         """The holder's book through its handle, ``[]`` when it is not opened
@@ -230,6 +235,15 @@ class StatusProvider:
         book's latest checkpoint, which must cover the whole book. It writes
         nothing; it takes the shelf's locks, so it is never called from a
         stamp or a receive."""
+        return self.report_with_book(log_id, copy)[0]
+
+    def report_with_book(self, log_id: str, copy: dict) -> tuple[dict, ReportBook]:
+        """:meth:`report` with the book pairs the report rests on, read in
+        the same snapshot (Go ``StatusProvider.ReportWithBook``; design §9,
+        "The bundle extension"): the holder's agreement at seq 1 and every
+        record the report's rows rely on, whether the copy lists its rows or
+        not. The host carries them as the x-deal-v1 bundle extension's book
+        (:class:`.report_bundle.ReportBundle`) beside the sealed report."""
         from .holder import _V1, _v1_payload
 
         if self.shelf is None:
@@ -247,15 +261,15 @@ class StatusProvider:
             raise ValueError("xdealv1: report: the shelf has no journal, which holds the deal's offer")
         book_id = first[0].record_id
         for _ in range(3):
-            rb = self._report_books(log_id, book_id, book, journal)
-            if rb is not None:
-                return build_report(rb, copy)
+            got = self._report_books(log_id, book_id, book, journal)
+            if got is not None:
+                return _report_with_book(*got, copy)
         raise BusyError(f"report: book {log_id} kept changing while it was read")
 
-    def _report_books(self, log_id: str, book_id: str, book: Any, journal: Any) -> dict | None:
+    def _report_books(self, log_id: str, book_id: str, book: Any, journal: Any) -> tuple[dict, dict[str, bytes]] | None:
         """One snapshot of what a report rests on, as Go's ``ReportBooks``
-        writes it; ``None`` when the book moved during the read (Go
-        ``reportBooks``)."""
+        writes it with the book pair of each record read, by record id;
+        ``None`` when the book moved during the read (Go ``reportBooks``)."""
         from ...shelf_stamp import StatusInput
 
         cps = book.checkpoints()
@@ -267,7 +281,7 @@ class StatusProvider:
         got = self._status_books(StatusInput(0, book_id, log_id, book, journal))
         if got is None:
             raise ValueError(f"xdealv1: report: book {log_id} is not an x-deal-v1 deal book")
-        books, _, counterpart = got
+        books, _, counterpart, pairs = got
         if book.size() != size:
             return None
         if len(books["own"]) != size:
@@ -276,7 +290,7 @@ class StatusProvider:
         return {"Books": books, "Stamps": None, "Counterpart": counterpart,
                 "Own": {"log_id": log_id, "size": size, "last": books["own"][-1]["record_id"]},
                 "Checkpoint": {"log_id": log_id, "mmr_size": cp.tree_size, "root": cp.root},
-                "Fact": self._fact_current(book_id, books)}
+                "Fact": self._fact_current(book_id, books)}, pairs
 
     def _fact_current(self, book_id: str, books: dict) -> dict | None:
         """The book's last status fact against the status value the books
@@ -294,6 +308,21 @@ class StatusProvider:
         except Exception as exc:  # noqa: BLE001 - a stored opening JCS refuses
             raise CorruptError(f"book {book_id}'s last status opening: {exc}") from None
         return {"current": now == was}
+
+
+def _report_with_book(rb: dict, pairs: dict[str, bytes], copy: dict) -> tuple[dict, ReportBook]:
+    """The report and its book from ``pairs``, the book pair of each record
+    the snapshot read, by record id (Go ``reportWithBook``)."""
+    r, rows = build_report_rows(rb, copy)
+
+    def pair(rid: str) -> bytes:
+        if rid not in pairs:
+            raise ValueError(f"xdealv1: report: no book pair read for record {rid}")
+        return pairs[rid]
+
+    agreement = pair(rb["Books"]["own"][0]["record_id"])
+    relied = {src["record"]: pair(src["record"]) for row in rows for src in row["relied_on"]}
+    return r, ReportBook(agreement, relied)
 
 
 def _stamp(n: int) -> Any:
