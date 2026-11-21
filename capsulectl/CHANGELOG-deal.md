@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `capsulectl-deal verify --bundle` now checks an x-deal-v1 copy's standalone report with evidencebook's report rule (`xdealv1.VerifyReportBundle`, evidencebook v0.22.0): the report against the seq 1 agreement and the records its rows rely on, which the copy's `x-deal-v1` extension carries (evidencebook#588, #597). It is registered through capsule-cli's `SetDealV1ReportVerifier` (capsule-cli#587, #596; go.mod requires capsule-cli v0.1.0-rc46, the first release that hands the hook the extension). A report that passes the rule is no longer `report_rule_not_checked`; one that fails reads `report_rule_failed` and the bundle is invalid. evidencebook-deal#233.
+
 ## v0.1.0-rc45
 
 This release pairs with capsulectl `v0.1.0-rc45` (go.mod requires it), and is the first release with the x-deal-v1 write path: `deal offer` (and `offer cancel`), `receive`, `agree` and `dispute` on the new store layout (`deal set-version x-deal-v1 --migrate`). `deal agree` cites the holder's admission decision, the x-deal-v1 `admit` that capsule-engine `admission evaluate --admit` (go/v0.5.0) emits for the host to seal, and refuses one that is ASK or NO.
