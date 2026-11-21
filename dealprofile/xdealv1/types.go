@@ -313,15 +313,24 @@ type AnswerBody struct {
 	Answer  Ref    `json:"answer"`
 }
 
-// AdmitBody is an admit record's body: an admission decision (§3.3).
+// AdmitBody is an admit record's body: an admission decision (§3.3). A
+// decision without a tier (a NO) is not sealed as one.
 type AdmitBody struct {
-	Outcome    string   `json:"outcome"`
-	Tier       string   `json:"tier"`
-	Rows       []string `json:"rows"`
-	Asks       []Ref    `json:"asks"`
-	PackDigest string   `json:"pack_digest"`
-	CardDigest string   `json:"card_digest"`
-	Answers    []Ref    `json:"answers"`
+	Outcome string `json:"outcome"`
+	// Tier is the id of the pack tier the decision admitted at.
+	Tier string `json:"tier"`
+	// Rows are the pack's row ids the decision read, as the pack names
+	// them (^[a-z][a-z0-9_-]*$, hyphens included).
+	Rows []string `json:"rows"`
+	// Asks and Answers cite the holder's own ask and answer records of the
+	// admission.
+	Asks []Ref `json:"asks"`
+	// PackDigest is the pack's definition_digest.
+	PackDigest string `json:"pack_digest"`
+	// CardDigest is the SHA-256 of the JCS bytes of the counterparty's card
+	// document the decision read.
+	CardDigest string `json:"card_digest"`
+	Answers    []Ref  `json:"answers"`
 	// Nonce is a fresh random 256-bit value (64 lowercase hex): an
 	// agreement cites the admit by digest, and without it the counterparty
 	// could test guesses at the outcome against that digest (u528).

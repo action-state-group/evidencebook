@@ -470,6 +470,27 @@ the store and originals, as received or sealed today.
 **`admit`** (journal). `outcome` (`GO` | `ASK` | `LIMIT` | `NO`), `tier`, `rows` (the pack row
 ids that decided it), `asks` (digest refs), `pack_digest`, `card_digest`, `answers` (digest refs).
 Decided: design §7, `admit`; Appendix A lines 9 and 9g.
+- **The members' meaning** (capsule-engine#303; Sherlock2's door confirmation,
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=a5114d0c48a1835b90e8e071a9fd086a3bae8c75c6f0b8ce55419e0c0c8d11e5).
+  `tier` is the pack tier admitted at; `rows` are the pack's row ids the decision read, in the
+  admission pack loader's grammar `^[a-z][a-z0-9_-]*$` (capsule-engine `go/admission/pack.go`),
+  not the profile's `row_id`, which refuses the hyphen of a baseline row such as `owner-signed`;
+  `pack_digest` is the pack's `definition_digest`; `card_digest` is the SHA-256 of the JCS bytes
+  of the card document the decision read. The widening keeps every record valid that was valid
+  (`testdata/deal-v1/records/admit-rows.json`).
+- **No `admit` for a NO.** A NO has no tier, and `tier` is required. A deal cites an `admit` that
+  admitted it (THE_LOOP step 4), and a NO admits nothing, so a holder does not seal a NO as an
+  `admit`; the local `admission_decision` keeps it.
+  The schema is unchanged: `outcome` keeps `NO` for compatibility. An agreement cites an `admit`
+  that admitted the deal: `GO`, or `LIMIT` at a tier that holds the deal, as the admission design
+  §2 maps LIMIT ("`allow` if the deal's band is within the limited tier, else `deny`"). That case
+  is real: every released admission pack has `missing: LIMIT`, so a deal in the lowest tier with an
+  input not read is LIMIT at that tier. A host refuses an `admit` that is `ASK` or `NO`
+  (evidencebook-deal#240); whether a LIMIT's tier holds the deal is the evaluator's, which reads
+  the pack's tiers (Sherlock2, #590 review,
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=67e8326b276dd78ebf4983636c6e6571516cf8be475c9c21e2961c333fc732a4).
+  A NO is never cited by a sent or deal-book record, so it needs no nonce; if that changes, the
+  rule below applies (Sherlock2, the door confirmation above).
 
 **A cited journal record carries its own secret** (decided: Sherlock2, on its twin's privacy P1,
 buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=6a07cefde698fa8db9dcafc2aa97914bb931a56995fea0736efb57bdf1e4d927;

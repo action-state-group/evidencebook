@@ -558,6 +558,11 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]{0,63}$"
     },
+    "admission_row_id": {
+      "description": "An admission pack's row id, in the grammar the admission pack loader accepts (capsule-engine go/admission/pack.go): an admit's rows name the pack's rows as the pack names them.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
     "safe_uint": {
       "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/safe_uint"
     },
@@ -1508,7 +1513,7 @@
         "rows": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/row_id"
+            "$ref": "#/$defs/admission_row_id"
           }
         },
         "asks": {

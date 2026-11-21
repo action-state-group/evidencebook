@@ -126,6 +126,22 @@ def test_deal_id_presence(case):
         assert exc.value.stage == case["stage"]
 
 
+ADMIT_ROWS = json.loads((VECTORS / "records" / "admit-rows.json").read_text())["cases"]
+
+
+@pytest.mark.parametrize("case", ADMIT_ROWS, ids=[c["name"] for c in ADMIT_ROWS])
+def test_admit_rows(case):
+    # An admit's rows are admission pack row ids, hyphens included
+    # (capsule-engine#303).
+    raw = text(case["record"])
+    if case["valid"]:
+        check(raw)
+    else:
+        with pytest.raises(StageError) as exc:
+            check(raw)
+        assert exc.value.stage == case["stage"]
+
+
 # -- Decode as Go's types read a record ------------------------------------------------
 
 
