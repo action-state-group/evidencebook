@@ -163,7 +163,7 @@
     "Witnessed by",
     "not stated in this bundle: it carries no witness receipt for its checkpoint. The checkpoint: log \"example-log\", size 86, root 8d9b03630cff….",
     "Verified by",
-    "this page's code: @action-state-group/capsule-viewer 0.19.1 at 25886484a705, verifier @action-state-group/agent-action-capsule 0.14.0 with cll 0.4.0. The bundle's own report, which this page does not check, names the tool that built it as \"evidencebook\", version not stated.",
+    "this page's code: @action-state-group/capsule-viewer 0.19.2 at 613a8a95144e, verifier @action-state-group/agent-action-capsule 0.14.0 with cll 0.4.0. The bundle's own report, which this page does not check, names the tool that built it as \"evidencebook\", version not stated.",
     "Results rule by rule",
     "How many conversations met each rule. Open a rule to read the conversations where it was not met.",
     "Counts are out of the report's 8 conversations.",

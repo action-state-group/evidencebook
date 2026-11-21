@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## v0.1.0-rc45
+
+This release pairs with capsulectl `v0.1.0-rc45` (go.mod requires it), and is the first release with the x-deal-v1 write path: `deal offer` (and `offer cancel`), `receive`, `agree` and `dispute` on the new store layout (`deal set-version x-deal-v1 --migrate`). `deal agree` cites the holder's admission decision, the x-deal-v1 `admit` that capsule-engine `admission evaluate --admit` (go/v0.5.0) emits for the host to seal, and refuses one that is ASK or NO.
+
+Every pull request merged since `v0.1.0-rc42`:
+
+- [#215](https://github.com/action-state-group/evidencebook-deal/pull/215): docs(design): the plugin's x-deal-v1 write path (#212)
+- [#219](https://github.com/action-state-group/evidencebook-deal/pull/219): fix(deal): no shared copy of a deal that holds the outcome note (u597, #218)
+- [#220](https://github.com/action-state-group/evidencebook-deal/pull/220): build(deps): cll v0.4.0 and capsule-viewer v0.19.1 (verify --bundle, no code change)
+- [#217](https://github.com/action-state-group/evidencebook-deal/pull/217): feat(deal): x-deal-v1 version setting, store move, offer and cancellation (#212, slice 1)
+- [#221](https://github.com/action-state-group/evidencebook-deal/pull/221): feat(deal): x-deal-v1 slice 2: receive, agree, the deal-book writer and the first-act gate (#212)
+- [#223](https://github.com/action-state-group/evidencebook-deal/pull/223): chore(deps): evidencebook v0.17.0, the nonce on admit, check, verdict and approval (#212)
+- [#224](https://github.com/action-state-group/evidencebook-deal/pull/224): feat(deal): deal dispute, a dispute or its withdrawal sealed in the x-deal-v1 deal book (#95)
+- [#225](https://github.com/action-state-group/evidencebook-deal/pull/225): fix(deal): the deal-book writer appends with AppendAt and rebuilds on ErrBusy (evidencebook v0.18.0)
+- [#228](https://github.com/action-state-group/evidencebook-deal/pull/228): test(deal): a v1-only bundle never selects the deal view (#214)
+- [#226](https://github.com/action-state-group/evidencebook-deal/pull/226): feat(deal): the standard_history/3 card counted from x-deal-v1 deal books (#213)
+- [#232](https://github.com/action-state-group/evidencebook-deal/pull/232): feat(deal): the seller may show an adjudicator the claims their agent made without authority
+- [#234](https://github.com/action-state-group/evidencebook-deal/pull/234): test(deal): fix the post-without-ask mutation so CI is green with jsonschema (#229)
+- [#236](https://github.com/action-state-group/evidencebook-deal/pull/236): fix(deal): keep a received offer's pair so the acceptor's payment check runs
+- [#235](https://github.com/action-state-group/evidencebook-deal/pull/235): feat(deal): the standard_history/4 card counts a deal with no witnessed time (#230)
+- [#238](https://github.com/action-state-group/evidencebook-deal/pull/238): fix(deal): the offer verb seals the terms leg so an offer with a payment row is received
+- [#241](https://github.com/action-state-group/evidencebook-deal/pull/241): feat(deal): deal agree refuses an admit that is ASK or NO
+
+- `go.mod` requires capsule-cli `v0.1.0-rc45` (was rc42: the witness fix, capsule-cli#590, and the releases between) and, with it, capsule-viewer go v0.19.2.
 - `deal agree --admit DIGEST` refuses an admission decision whose outcome is ASK or NO: an agreement cites a GO, or a LIMIT whose tier holds the deal (x-deal-v1 PROFILE.md, `admit`; evidencebook#590). Whether a LIMIT's tier holds the deal is the evaluator's (capsule-engine `admission evaluate --admit` prints `admits_deal`); the plugin holds no admission pack, so it does not decide it, and a LIMIT cited above its tier stays detectable offline by a reader holding the pack whose `definition_digest` is the admit's `pack_digest`: its tiers bound the offer's value. The body capsule-engine emits passes the profile check when sealed (a test seals capsule-engine's `admit.json` vector). evidencebook-deal#240.
 - go.mod requires evidencebook v0.21.0 (was v0.19.0): x-deal-v1 `admit` rows take admission pack row ids (evidencebook#590), so an `admit` capsule-engine emits passes the profile check, and from v0.20.0 a v1 status value carries `start.first_act` (evidencebook#583), which changes a status value's commitment.
 - `deal offer` now seals the offer's terms leg as its Capsule's settlement member when the terms have exactly one payment row (x-deal-v1 §6.3, §7), so the offer is no longer refused when the other side receives it and the acceptor's payment check runs. An offer with no payment row or several carries none, as before. Offers already sent without it stay refused; send them again. evidencebook-deal#237.
