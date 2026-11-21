@@ -2,11 +2,23 @@
 
 ## Unreleased
 
+## 0.0.24 (2026-11-21)
+
+Every pull request merged since 0.0.23:
+
+- [#590](https://github.com/action-state-group/evidencebook/pull/590): feat(dealprofile): x-deal-v1 admit rows take admission pack row ids
+- [#597](https://github.com/action-state-group/evidencebook/pull/597): feat(dealprofile): x-deal-v1 report relies on the payment legs, and the bundle extension carries them
+- [#601](https://github.com/action-state-group/evidencebook/pull/601): feat: follow Evidence Request -03 checkpoint_range (AAC go v0.24.0, evidence-request 0.8.0)
+
+The crate requires `evidence-request` 0.8.0, so a consumer that also depends on it moves to 0.8.0 with this release; a ranged checkpoints request is `{"checkpoint_range": [a, b]}` and `{"checkpoints": [a, b]}` is `request_malformed`.
+
 - `deal::v1`: an `admit`'s `rows` take admission pack row ids, hyphens included (`^[a-z][a-z0-9_-]*$`; capsule-engine#303), as Go; the vendored x-deal-v1 schema moves with it, and `admit-rows.json` is decided the same.
 
 - `deal::v1`: a payment row's `relied_on` in the v1 report lists each settle leg the payment
   check read, as Go does (evidencebook#588); `build_report` refuses a payment result that does
   not begin with the offer's digest or names a record the books do not hold.
+
+- Requires `evidence-request` 0.8.0: a ranged checkpoints request is `{"checkpoint_range": [a, b]}` (`Subject::CheckpointRange`), as Evidence Request -03 names it, and `{"checkpoints": [a, b]}` is `request_malformed` (evidencebook#595).
 
 ## 0.0.23 (2026-11-20)
 
