@@ -226,8 +226,10 @@ admitted at. `rows` are the ids of the pack's rows the decision read, as the pac
 admission pack row id is `^[a-z][a-z0-9_-]*$`, so a row such as `owner-signed` keeps its hyphen.
 `pack_digest` is the pack's `definition_digest`. `card_digest` is the SHA-256 of the JCS bytes of
 the counterparty's card document the decision read. `asks` and `answers` cite the holder's own
-`ask` and `answer` records of the admission. A decision without a tier (a NO) is not sealed as an
-`admit`: no agreement can cite it, and the holder's local admission decision keeps it.
+`ask` and `answer` records of the admission. A holder does not seal a decision without a tier
+(a NO) as an `admit`: no agreement cites it, and the holder's local admission decision keeps it.
+`outcome` still lists `NO`, so an `admit` written with a tier and `NO` stays valid and is read like
+any other.
 
 **`check`.** v0's `body_check`, plus `payment_ref` and `nonce`. Without `payment_ref` and `nonce`
 the body MUST be valid under v0's closed `body_check`.

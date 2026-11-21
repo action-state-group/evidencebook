@@ -479,7 +479,9 @@ Decided: design §7, `admit`; Appendix A lines 9 and 9g.
   of the card document the decision read. The widening keeps every record valid that was valid
   (`testdata/deal-v1/records/admit-rows.json`).
 - **No `admit` for a NO.** A NO has no tier, and `tier` is required. A deal cites a GO (THE_LOOP
-  step 4), so a NO is not sealed as an `admit`; the local `admission_decision` keeps it. A NO is
+  step 4), so a holder does not seal a NO as an `admit`; the local `admission_decision` keeps it.
+  The schema is unchanged: `outcome` still lists `NO`, and an `admit` with a tier and `NO` stays
+  valid and is read like any other. A NO is
   never cited by a sent or deal-book record, so it needs no nonce; if that changes, the rule below
   applies (Sherlock2, same message).
 
