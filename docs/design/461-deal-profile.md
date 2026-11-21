@@ -480,9 +480,14 @@ Decided: design §7, `admit`; Appendix A lines 9 and 9g.
   (`testdata/deal-v1/records/admit-rows.json`).
 - **No `admit` for a NO.** A NO has no tier, and `tier` is required. A deal cites a GO (THE_LOOP
   step 4), so a holder does not seal a NO as an `admit`; the local `admission_decision` keeps it.
-  The schema is unchanged: `outcome` keeps `NO` for compatibility. An agreement cites only an
-  `admit` whose outcome is `GO`; a host refuses to seal one citing any other (Sherlock2, #590
-  review, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=ba094d3ad20efa71e2c3dad724434c34a171942bbb9f980f7096074e869e7000).
+  The schema is unchanged: `outcome` keeps `NO` for compatibility. An agreement cites an `admit`
+  that admitted the deal: `GO`, or `LIMIT` at a tier that holds the deal, as the admission design
+  §2 maps LIMIT ("`allow` if the deal's band is within the limited tier, else `deny`"). That case
+  is real: every released admission pack has `missing: LIMIT`, so a deal in the lowest tier with an
+  input not read is LIMIT at that tier. A host refuses an `admit` that is `ASK` or `NO`
+  (evidencebook-deal#240); whether a LIMIT's tier holds the deal is the evaluator's, which reads
+  the pack's tiers (Sherlock2, #590 review,
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=67e8326b276dd78ebf4983636c6e6571516cf8be475c9c21e2961c333fc732a4).
   A NO is never cited by a sent or deal-book record, so it needs no nonce; if that changes, the
   rule below applies (Sherlock2, the door confirmation above).
 
