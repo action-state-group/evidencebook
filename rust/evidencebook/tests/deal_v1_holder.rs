@@ -1537,4 +1537,45 @@ fn deal_status_report_with_book() {
     assert_eq!(adj.1, kb, "a withheld copy carries the keep copy's book");
     let alone = status.report(&buyer_log, &copy("keep", "")).unwrap();
     assert_eq!(alone, keep, "report is the report alone");
+
+    // Each copy's book verifies with its report sealed by the holder, as Go's
+    // TestReportWithBook does for all three.
+    let seal = |r: &v1::Report| -> Vec<u8> {
+        let payload = v1::report_payload(r).unwrap();
+        let producer = evidencebook::seal::Producer {
+            operator: "buyer",
+            developer: "xdealv1-test",
+            signer: &h.buyer.signer,
+        };
+        let sealed = evidencebook::seal::seal_payload(
+            evidencebook::deal::REPORT_ACTION_ID,
+            "2026-11-21T12:00:00Z",
+            &payload,
+            &Default::default(),
+            &producer,
+        )
+        .unwrap();
+        v1::report_pair(&sealed.capsule, &sealed.envelope, &payload).unwrap()
+    };
+    for (name, (r, b)) in [
+        ("keep", (keep, kb)),
+        (
+            "counterparty",
+            status
+                .report_with_book(&buyer_log, &copy("counterparty", ""))
+                .unwrap(),
+        ),
+        ("adjudicator", adj),
+    ] {
+        let pair = seal(&r);
+        let agreement = serde_json::to_vec(b.agreement.as_ref().unwrap()).unwrap();
+        let sealed_report = v1::verify_report(&pair, &agreement).unwrap().capsule_id;
+        let ext = v1::ReportBundle {
+            sealed_report: Some(sealed_report),
+            book: Some(b),
+        };
+        let read = v1::verify_report_bundle(&pair, &serde_json::to_vec(&ext).unwrap())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(read.key_id, h.buyer.key(), "{name}");
+    }
 }

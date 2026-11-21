@@ -101,7 +101,15 @@ fn bad(m: String) -> Error {
 pub fn verify_report_bundle(report: &[u8], ext: &[u8]) -> Result<ReportRead, Error> {
     check_text(ext)?;
     let doc: Value = serde_json::from_slice(ext).map_err(|e| bad(e.to_string()))?;
-    let x: ReportBundle = serde_json::from_value(doc.clone()).map_err(|e| bad(e.to_string()))?;
+    // serde reads a list into a struct by field order; Go reads only an
+    // object (or null) into a struct, the extension and its book both.
+    let struct_like = |v: &Value| matches!(v, Value::Object(_) | Value::Null);
+    if !struct_like(&doc) || !doc.get("book").is_none_or(struct_like) {
+        return Err(bad(
+            "json: cannot unmarshal a value that is not an object into a Go struct".into(),
+        ));
+    }
+    let x = ReportBundle::deserialize(&doc).map_err(|e| bad(e.to_string()))?;
     exact_object(&doc, &EXTENSION, false, "the extension").map_err(bad)?;
     let book = x.book.unwrap_or_default();
     let (Some(agreement), Some(relied_on)) = (book.agreement, book.relied_on) else {

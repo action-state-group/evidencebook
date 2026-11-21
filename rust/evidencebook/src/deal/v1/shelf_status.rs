@@ -1080,18 +1080,17 @@ fn report_with_book(
         serde_json::from_slice(p)
             .map_err(|e| invalid(format!("xdealv1: report: the book pair of {id}: {e}")))
     };
-    let mut book = ReportBook {
-        agreement: Some(pair(&rb.books.own[0].record_id)?),
-        relied_on: Some(BTreeMap::new()),
-    };
+    let agreement = pair(&rb.books.own[0].record_id)?;
+    let mut relied_on = BTreeMap::new();
     for row in &rows {
         for src in &row.relied_on {
-            let p = pair(&src.record)?;
-            book.relied_on
-                .get_or_insert_with(BTreeMap::new)
-                .insert(src.record.clone(), p);
+            relied_on.insert(src.record.clone(), pair(&src.record)?);
         }
     }
+    let book = ReportBook {
+        agreement: Some(agreement),
+        relied_on: Some(relied_on),
+    };
     Ok((r, book))
 }
 

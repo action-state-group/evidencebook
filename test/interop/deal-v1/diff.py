@@ -215,6 +215,10 @@ def verify_reports():
     return out
 
 
+# A placeholder bundle() writes as a number that overflows a float64.
+BIG = "@@overflow@@"
+
+
 def bundle_cases():
     """The reports of testdata/deal-v1/report-bundle that verify with their
     extension, each its hex pair and its extension."""
@@ -225,6 +229,8 @@ def mutate_extension(r, ext):
     """One change to a bundle extension: mutate's, a relied_on record
     dropped, copied under another key or moved to another member, a member
     renamed to another case, or an unknown member."""
+    if not isinstance(ext, dict):
+        return ext
     op = r.random()
     book = ext.get("book")
     relied = book.get("relied_on") if isinstance(book, dict) else None
@@ -242,6 +248,17 @@ def mutate_extension(r, ext):
         o[k[:1].upper() + k[1:]] = o.pop(k)
     elif op < 0.45:
         ext[r.choice(STRINGS)] = r.choice(STRINGS)
+    elif op < 0.55 and isinstance(book, dict):
+        # A list where Go reads a struct, which a reader taking fields by
+        # position would accept.
+        if r.random() < 0.5:
+            return list(ext.values())
+        ext["book"] = list(book.values())
+    elif op < 0.65:
+        # A number no float64 holds, in a member Go does and does not read.
+        objs = [p for p in paths(ext) if isinstance(get(ext, p), dict) and get(ext, p)]
+        o = get(ext, r.choice(objs))
+        o[r.choice(list(o))] = BIG
     else:
         mutate(r, ext)
     return ext
@@ -255,7 +272,8 @@ def bundle(r, cases_):
         ext = copy.deepcopy(r.choice(cases_)[1])
     for _ in range(r.randint(0, 2)):
         ext = mutate_extension(r, ext)
-    return {"kind": "verify_report_bundle", "report": report, "extension": json.dumps(ext)}
+    text = json.dumps(ext).replace(json.dumps(BIG), r.choice(["1e400", "-1e999", "1e308", "1E+9999"]))
+    return {"kind": "verify_report_bundle", "report": report, "extension": text}
 
 
 def mutate_report(r, payload):

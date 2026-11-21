@@ -714,3 +714,45 @@ fn report_bundle_vectors() {
         );
     }
 }
+
+/// What Go's reader refuses and a field-order reader would not: an extension
+/// or a book that is a list, and a number no float64 holds, which is refused
+/// by the text check (Go's `checkText`) before the extension is read.
+#[test]
+fn report_bundle_refuses_the_shapes_go_refuses() {
+    let c = vectors("report-bundle/vectors.json")
+        .into_iter()
+        .find(|c| c["name"] == "keep-copy")
+        .expect("the case");
+    let report = hex::decode(c["report"].as_str().unwrap()).unwrap();
+    let ext = &c["extension"];
+    let (sealed, book) = (&ext["sealed_report"], &ext["book"]);
+    let list_book = serde_json::json!([book["agreement"], book["relied_on"]]);
+    let big = |n: &str| {
+        let text = serde_json::to_string(ext).unwrap();
+        text.replacen(
+            &format!("\"sealed_report\":{sealed}"),
+            &format!("\"sealed_report\":{n}"),
+            1,
+        )
+    };
+    let cases: [(&str, String, &str); 5] = [
+        (
+            "a list for the extension",
+            serde_json::json!([sealed, book]).to_string(),
+            "report",
+        ),
+        (
+            "a list for the book",
+            serde_json::json!({"sealed_report": sealed, "book": list_book}).to_string(),
+            "report",
+        ),
+        ("a number past float64", big("1e400"), "canonicalization"),
+        ("a negative one", big("-1e999"), "canonicalization"),
+        ("one that does not overflow", big("1e308"), "report"),
+    ];
+    for (name, text, stage) in cases {
+        let err = v1::verify_report_bundle(&report, text.as_bytes()).expect_err(name);
+        assert_eq!(err.stage().map(|s| s.stage), Some(stage), "{name}: {err}");
+    }
+}

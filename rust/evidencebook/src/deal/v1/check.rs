@@ -93,7 +93,7 @@ fn read(record: &[u8]) -> Result<Value, Error> {
 
 /// Refuses JSON text a decoder would read other than as written: invalid
 /// UTF-8, an escaped surrogate outside a pair, and an object member given
-/// twice (Go's `checkText`).
+/// twice, and a number that overflows a float64 (Go's `checkText`).
 pub(crate) fn check_text(raw: &[u8]) -> Result<(), Error> {
     let canon = |d: &str| stage_err(STAGE_CANONICALIZATION, d.into());
     if std::str::from_utf8(raw).is_err() {
@@ -150,7 +150,13 @@ pub(crate) fn check_text(raw: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Walks one JSON value and refuses an object member given twice.
+/// The member name serde_json (arbitrary_precision) reads a number under;
+/// [`crate::deal::check::reserved_key`] refuses it as a member name in the
+/// text.
+const NUMBER_TOKEN: &str = "$serde_json::private::Number";
+
+/// Walks one JSON value and refuses an object member given twice and a
+/// number that overflows a float64.
 struct NoRepeats;
 
 impl<'de> DeserializeSeed<'de> for NoRepeats {
@@ -192,6 +198,18 @@ impl<'de> Visitor<'de> for NoRepeatsVisitor {
     fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<(), A::Error> {
         let mut seen = BTreeSet::new();
         while let Some(k) = a.next_key::<String>()? {
+            if k == NUMBER_TOKEN {
+                // A number, read with its text (arbitrary_precision). Go's
+                // Decoder.Token reads it as a float64 and refuses one that
+                // overflows; the text is not otherwise limited.
+                let n: String = a.next_value()?;
+                if !n.parse::<f64>().is_ok_and(f64::is_finite) {
+                    return Err(serde::de::Error::custom(format!(
+                        "number {n} overflows a float64"
+                    )));
+                }
+                continue;
+            }
             if !seen.insert(k.clone()) {
                 return Err(serde::de::Error::custom(format!(
                     "member {} given twice",

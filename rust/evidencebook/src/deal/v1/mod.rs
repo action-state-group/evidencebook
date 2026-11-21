@@ -17,7 +17,7 @@
 //! is on input no checked record can carry, except the first case below,
 //! which a report can carry:
 //!
-//! - a record text, or a report pair, with a member named
+//! - a record text, a report pair, or a bundle extension, with a member named
 //!   `"$serde_json::private::Number"` or `"$serde_json::private::RawValue"`,
 //!   which serde_json would read as something else, is refused here at the
 //!   canonicalization stage; Go reads it as written. This is a limitation of
