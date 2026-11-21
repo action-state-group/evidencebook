@@ -99,7 +99,9 @@ func dealAgreeCommand() *cobra.Command {
 		Long: `Agree to an offer you sent or received (OFFER_DIGEST is the offer's record
 digest): seal your agreement as the first record of your deal book and write
 it to --out (standard output with none). --admit is the digest of your own
-admission decision in your journal, which an agreement cites; --intent is the
+admission decision in your journal, which an agreement cites: a GO, or a
+LIMIT whose tier holds the deal (capsule-engine admission evaluate --admit
+prints the body to seal and admits_deal); an ASK or a NO is refused. --intent is the
 digest of your journal's intent for the task, when you sealed one. The
 agreement takes the offer's rows, witnesses, adjudicator and forums as they
 are.
@@ -165,18 +167,21 @@ act. Needs the deal store in the new layout (deal set-version x-deal-v1
 					if want.digest == "" {
 						continue
 					}
-					typ, held, err := s.journalRecordType(ctx, want.digest)
+					rec, held, err := s.journalRecord(ctx, want.digest)
 					if err != nil {
 						return err
 					}
 					if !held {
 						return cli.InputError(want.flag + " " + want.digest + " is not a record in your journal")
 					}
-					if typ == "" {
+					if rec == nil {
 						return cli.InputError(want.flag + " " + want.digest + " is a record in your journal that is not an x-deal-v1 record, so not " + want.what)
 					}
-					if typ != want.typ {
+					if typ := rec.Block.RecordType; typ != want.typ {
 						return cli.InputError(want.flag + " " + want.digest + " is a record of type " + typ + " in your journal, not " + want.what)
+					}
+					if err := citableAdmit(want.digest, rec); err != nil {
+						return err
 					}
 				}
 				side, role := xdealv1.SideOfferer, prop.Role
@@ -326,4 +331,26 @@ func (s *dealSession) writeAgreement(ctx context.Context, c *cobra.Command, cad 
 		}
 	}
 	return cli.Output(c, map[string]any{"deal_id": d.DealID, "agreement": d.OwnAgreementDigest, "side": d.Side, "file": out, "stamp_proof": push.StampProof != nil})
+}
+
+// citableAdmit refuses an admit an agreement cannot cite (x-deal-v1
+// PROFILE.md, admit; evidencebook-deal#240): one whose outcome is ASK, whose
+// questions are still open, or NO. A GO is cited; so is a LIMIT, which
+// admits a deal whose value band is within its tier. Whether a LIMIT's tier
+// holds this deal is the evaluator's, which has the pack's tiers (capsule-engine
+// admission evaluate --admit prints admits_deal); the plugin holds no pack, so
+// it does not decide it. An over-tier LIMIT cited here is still detectable
+// offline by a reader holding the pack whose definition_digest is the admit's
+// pack_digest: its tiers bound the value the agreement's offer states. A record of any other type passes.
+func citableAdmit(digest string, rec *xdealv1.Record) error {
+	b, ok := rec.Body.(*xdealv1.AdmitBody)
+	if !ok {
+		return nil
+	}
+	switch b.Outcome {
+	case "ASK", "NO":
+		return cli.InputError("--admit " + digest + " is an admission decision of " + b.Outcome +
+			": an agreement cites a GO, or a LIMIT whose tier holds the deal")
+	}
+	return nil
 }
