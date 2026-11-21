@@ -1367,7 +1367,7 @@ func parseBookRequest(label string, raw []byte) (evidencebook.EvidenceRequest, e
 		Derivation: in.Derivation, Deadline: in.Deadline, Nonce: in.Nonce, Route: in.Route, Profile: in.Profile,
 	}
 	if len(in.Subject) != 1 {
-		return req, cli.InputError(label + ": subject is a map with exactly one member, its form: full_history, checkpoints, record, exchange, range or correlation")
+		return req, cli.InputError(label + ": subject is a map with exactly one member, its form: full_history, checkpoints, checkpoint_range, record, exchange, range or correlation")
 	}
 	for form, content := range in.Subject {
 		req.Subject.Kind = evidencebook.SubjectKind(form)
@@ -1379,7 +1379,7 @@ func parseBookRequest(label string, raw []byte) (evidencebook.EvidenceRequest, e
 			}
 		case evidencebook.SubjectRecord, evidencebook.SubjectExchange:
 			err = json.Unmarshal(content, &req.Subject.Digest)
-		case evidencebook.SubjectRange:
+		case evidencebook.SubjectRange, evidencebook.SubjectCheckpointRange:
 			var pair []uint64
 			if err = json.Unmarshal(content, &pair); err == nil && len(pair) != 2 {
 				err = errors.New("its content is two log positions")
@@ -1389,7 +1389,7 @@ func parseBookRequest(label string, raw []byte) (evidencebook.EvidenceRequest, e
 		case evidencebook.SubjectCorrelation:
 			err = json.Unmarshal(content, &req.Subject.Correlation)
 		default:
-			err = errors.New("not one of the six forms")
+			err = errors.New("not one of the seven forms")
 		}
 		if err != nil {
 			return req, cli.InputError(fmt.Sprintf("%s: subject %q: %v", label, form, err))

@@ -3,17 +3,17 @@ module github.com/action-state-group/evidencebook/report
 go 1.27.0
 
 require (
-	github.com/action-state-group/agent-action-capsule/go v0.23.0
+	github.com/action-state-group/agent-action-capsule/go v0.24.0
 	github.com/action-state-group/capsule-cli v0.1.0-rc45
 	github.com/action-state-group/capsule-viewer/go v0.19.2
-	github.com/action-state-group/evidencebook v0.13.3
+	github.com/action-state-group/evidencebook v0.23.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/net v0.59.0
 )
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/action-state-group/capsule-emit/go v0.3.0 // indirect
+	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b // indirect
 	github.com/action-state-group/checkpointed-local-log/go v0.4.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.5.1 // indirect
 	github.com/btcsuite/btcd/chainhash/v2 v2.0.0 // indirect

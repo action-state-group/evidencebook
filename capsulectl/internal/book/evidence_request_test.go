@@ -168,11 +168,11 @@ func TestFixedPinArtifactSurvivesLogGrowth(t *testing.T) {
 	require.Equal(t, string(before.Artifact), string(after.Artifact), "a fixed pin's artifact does not change as the log grows")
 }
 
-// A ranged checkpoints request (Evidence Request -03 §8.1.3), which the
-// request parser accepts since agent-action-capsule go v0.23.0, is answered
+// A checkpoint_range request (Evidence Request -03 §8.1.3), which the request
+// parser accepts since agent-action-capsule go v0.24.0, is answered
 // with the checkpoints at those positions and a consistency proof to the
 // anchor, never the whole chain.
-func TestRespondAnswersARangedCheckpointsRequest(t *testing.T) {
+func TestRespondAnswersACheckpointRangeRequest(t *testing.T) {
 	x := newEvidenceExchange(t)
 	x.ask("cut", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	require.NotNil(t, x.respond("cut").Envelope)
@@ -180,20 +180,7 @@ func TestRespondAnswersARangedCheckpointsRequest(t *testing.T) {
 	x.ask("grow", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":`+strconv.FormatUint(bookSize(t, x.b), 10)+`}}`)
 	require.NotNil(t, x.respond("grow").Envelope)
 
-	// The plugin's request input takes only the content-free form, so the
-	// ranged request goes out as a request map (--sent), made from one the
-	// book wrote.
-	x.ask("template", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
-	var wire map[string]any
-	require.NoError(t, json.Unmarshal(mustRead(t, filepath.Join(x.dir, "template.sent")), &wire))
-	wire["subject"] = map[string]any{"checkpoints": []any{0, 0}}
-	wire["nonce"] = "ranged-request"
-	raw, err := json.Marshal(wire)
-	require.NoError(t, err)
-	path := filepath.Join(x.dir, "ranged.json")
-	require.NoError(t, os.WriteFile(path, raw, 0o600))
-	out, err := invoke(t, "", "request", "--profile", "a", "--sent", "--request", path, "--responder", "b", "--output", filepath.Join(x.dir, "ranged.sent"))
-	require.NoError(t, err, out)
+	x.ask("ranged", `{"subject":{"checkpoint_range":[0,0]},"coverage":{"min_freshness":1}}`)
 	env := x.respond("ranged").Envelope
 	require.NotNil(t, env)
 	var artifact map[string]json.RawMessage
@@ -254,6 +241,8 @@ func TestBookRequestInput(t *testing.T) {
 			evidencebook.EvidenceRequest{Subject: evidencebook.Subject{Kind: evidencebook.SubjectRecord, Digest: digest}, Coverage: evidencebook.Coverage{ExpectedPin: digest}, Nonce: "n", Route: "r"}},
 		"range, by time": {`{"subject":{"range":[0,2]},"coverage":{"min_freshness":"2026-09-25T00:00:00Z"},"derivation":"history_card/1"}`,
 			evidencebook.EvidenceRequest{Subject: evidencebook.Subject{Kind: evidencebook.SubjectRange, Range: [2]uint64{0, 2}}, Coverage: evidencebook.Coverage{MinFreshness: &evidencebook.Freshness{Time: "2026-09-25T00:00:00Z"}}, Derivation: "history_card/1"}},
+		"checkpoint_range": {`{"subject":{"checkpoint_range":[1,2]},"coverage":{"min_freshness":3}}`,
+			evidencebook.EvidenceRequest{Subject: evidencebook.Subject{Kind: evidencebook.SubjectCheckpointRange, Range: [2]uint64{1, 2}}, Coverage: evidencebook.Coverage{MinFreshness: &evidencebook.Freshness{Size: &size}}}},
 		"correlation": {`{"subject":{"correlation":"deal-1"},"coverage":{"min_freshness":3},"profile":"evidence-interop/0"}`,
 			evidencebook.EvidenceRequest{Subject: evidencebook.Subject{Kind: evidencebook.SubjectCorrelation, Correlation: "deal-1"}, Coverage: evidencebook.Coverage{MinFreshness: &evidencebook.Freshness{Size: &size}}, Profile: evidencebook.ProfileID}},
 	} {
@@ -262,15 +251,16 @@ func TestBookRequestInput(t *testing.T) {
 		assert.Equal(t, tc.want, got, name)
 	}
 	for name, body := range map[string]string{
-		"old shape":          `{"subject":{"kind":"full_history"},"coverage":{"min_freshness":{"size":1}}}`,
-		"two forms":          `{"subject":{"full_history":null,"checkpoints":null},"coverage":{"min_freshness":1}}`,
-		"no subject":         `{"coverage":{"min_freshness":1}}`,
-		"unknown form":       `{"subject":{"everything":null},"coverage":{"min_freshness":1}}`,
-		"content on history": `{"subject":{"full_history":"x"},"coverage":{"min_freshness":1}}`,
-		"range not a pair":   `{"subject":{"range":[1]},"coverage":{"min_freshness":1}}`,
-		"null floor":         `{"subject":{"full_history":null},"coverage":{"min_freshness":null}}`,
-		"negative floor":     `{"subject":{"full_history":null},"coverage":{"min_freshness":-1}}`,
-		"unknown member":     `{"subject":{"full_history":null},"coverage":{"min_freshness":1},"extra":1}`,
+		"old shape":                   `{"subject":{"kind":"full_history"},"coverage":{"min_freshness":{"size":1}}}`,
+		"two forms":                   `{"subject":{"full_history":null,"checkpoints":null},"coverage":{"min_freshness":1}}`,
+		"no subject":                  `{"coverage":{"min_freshness":1}}`,
+		"unknown form":                `{"subject":{"everything":null},"coverage":{"min_freshness":1}}`,
+		"content on history":          `{"subject":{"full_history":"x"},"coverage":{"min_freshness":1}}`,
+		"range not a pair":            `{"subject":{"range":[1]},"coverage":{"min_freshness":1}}`,
+		"checkpoint_range not a pair": `{"subject":{"checkpoint_range":[1,2,3]},"coverage":{"min_freshness":1}}`,
+		"null floor":                  `{"subject":{"full_history":null},"coverage":{"min_freshness":null}}`,
+		"negative floor":              `{"subject":{"full_history":null},"coverage":{"min_freshness":-1}}`,
+		"unknown member":              `{"subject":{"full_history":null},"coverage":{"min_freshness":1},"extra":1}`,
 	} {
 		_, err := parseBookRequest("--request", []byte(body))
 		assert.ErrorIs(t, err, cli.ErrInput, name)
