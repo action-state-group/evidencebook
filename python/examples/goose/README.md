@@ -153,7 +153,8 @@ name the referee's `mailbox_key`, its `relays`, `private_relays: true` and `answ
 publishes a request to that mailbox, with a deadline of `answers_within`; its `poll_interval`
 may not be longer than `answers_within`. `loop_dispute_poll` fetches the replies once. It returns
 `received`, `pending` or, once the deadline has passed with no reply, `absent`, which it seals
-once as `goose_dispute_absent` (a reply that arrives later is still taken). Both tools take the
+once as `goose_dispute_absent` (a reply that arrives later is still taken); `transport_error` when no
+relay could be read, which seals nothing (poll again). Both tools take the
 deal file `{"buyer": {"half", "action", "terms"}, "seller": {...}}`: each party's signed half and the
 opening of its commitment.
 

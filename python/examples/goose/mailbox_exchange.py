@@ -167,7 +167,8 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
     ``status`` is ``answered`` (a reply in time, verified under the node's listed keys and recorded;
     ``outcome`` says artifact or refusal), ``pending`` (before the deadline, nothing yet), or
     ``absent`` (the deadline passed with no recorded answer: the absence is recorded against the node), or
-    ``transport_error`` (no relay could be read: nothing is recorded, ``error`` says why, poll again).
+    ``transport_error`` (no relay could be read before an outcome was recorded: nothing is recorded,
+    ``error`` says why, poll again). A recorded answer or absence is returned without reading the relays.
     ``late`` is true when a reply arrived after the deadline: it is signature-checked and kept beside
     the absence as a ``goose_mailbox_late`` record, and the absence is not rewritten."""
     asked = next((st for _, st in node.notes(ASKED) if st["request_event_id"] == request_event_id), None)
@@ -182,17 +183,19 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
     sealed = from_nanos(parse_ns(node.shelf.open(gn.NODE_BOOK).get(request_record).header.committed_at))
     deadline = max(datetime.fromtimestamp(asked["deadline"], timezone.utc), sealed + MINIMUM_ABSENCE_WINDOW)
     factory = _factory(relay_factory)
-    try:
-        replies = mb.poll_replies([factory(u) for u in asked["relays"]], request_event_id, MEDIA, asked["mailbox_key"])
-    except mb.MailboxError as exc:
-        # No relay could be read: that says nothing about the asked node, so no outcome is recorded
-        # and the next poll tries again.
-        return {"status": "transport_error", "error": str(exc), "deadline": int(deadline.timestamp())}
     book = node.shelf.open(gn.NODE_BOOK)
     keys = ResponderKeys(signer=asked["responder"], checkpoint=asked["checkpoint_key"])
     outcome = _outcome(node, request_record)
     if outcome is not None and outcome.header.record_type == RECORD_TYPE_RESPONSE:
         return {"status": "answered", "record_id": outcome.record_id, "outcome": outcome.header.statement["outcome"]}
+    try:
+        replies = mb.poll_replies([factory(u) for u in asked["relays"]], request_event_id, MEDIA, asked["mailbox_key"])
+    except mb.MailboxError as exc:
+        if outcome is None:
+            # No relay could be read: that says nothing about the asked node, so no outcome is recorded
+            # and the next poll tries again.
+            return {"status": "transport_error", "error": str(exc), "deadline": int(deadline.timestamp())}
+        replies = []  # the absence is already recorded and stands; a late reply cannot be looked for now
     if outcome is None and arrived < deadline:
         for reply in replies:
             try:

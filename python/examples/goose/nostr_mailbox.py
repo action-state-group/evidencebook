@@ -329,6 +329,7 @@ class Relay:
 
     def _query(self, flt: dict) -> list[Event]:
         events: list[Event] = []
+        complete = False
         with self._connect() as ws:
             ws.send(json.dumps(["REQ", "poll", flt]))
             deadline = time.monotonic() + self.timeout
@@ -346,12 +347,17 @@ class Relay:
                         events.append(Event.from_json(msg[2]))
                     except MailboxError:
                         continue
-                elif msg[0] in ("EOSE", "CLOSED"):
+                elif msg[0] == "EOSE":
+                    complete = True
                     break
+                elif msg[0] == "CLOSED":
+                    raise MailboxError(f"relay {self.url} refused the subscription: {msg[2:3]}")
             try:
                 ws.send(json.dumps(["CLOSE", "poll"]))
             except Exception:  # the poll is over either way
                 pass
+        if not complete:  # the window closed before the end of the stored events: the read says nothing
+            raise MailboxError(f"relay {self.url} did not finish the stored events in {self.timeout:g}s")
         return events
 
 

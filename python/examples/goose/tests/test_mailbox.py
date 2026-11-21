@@ -22,7 +22,7 @@ import goose_node as gn  # noqa: E402
 import mailbox_exchange as mx  # noqa: E402
 import nostr_mailbox as mb  # noqa: E402
 from evidencebook import MAX_REPLY_BYTES, OUTCOME_ARTIFACT, OUTCOME_REFUSAL, RECORD_TYPE_ABSENCE, RECORD_TYPE_RESPONSE  # noqa: E402
-from fake_relay import FakeRelay  # noqa: E402
+from fake_relay import FakeRelay, websockets_server  # noqa: E402
 
 AT = datetime(2026, 11, 1, 10, tzinfo=timezone.utc)
 WSS = "wss://relay.example"
@@ -410,3 +410,40 @@ def test_a_history_card_2_ask_is_answered_with_a_card_the_asker_verifies(nodes, 
     clock.advance(minutes=5)
     got = mx.poll(asker, sent["request_event_id"], factory, clock)
     assert got["status"] == "answered" and got["outcome"] == OUTCOME_ARTIFACT
+
+
+def _stub_relay(answer):
+    """A relay that answers every REQ with ``answer(ws, sub_id)``."""
+    server = websockets_server.serve(lambda ws: [answer(ws, json.loads(raw)[1]) for raw in ws], "127.0.0.1", 0)
+    import threading
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"ws://127.0.0.1:{server.socket.getsockname()[1]}"
+
+
+@pytest.mark.parametrize("answer", [lambda ws, sub: None, lambda ws, sub: ws.send(json.dumps(["CLOSED", sub, "auth-required: x"]))],
+                         ids=["no_eose_before_the_window_closes", "subscription_closed"])
+def test_a_relay_that_does_not_finish_the_stored_events_is_not_an_empty_mailbox(answer):
+    server, url = _stub_relay(answer)
+    try:
+        with pytest.raises(mb.MailboxError):
+            mb.Relay(url, timeout=0.5).query({"kinds": [mb.REPLY_KIND]})
+        with pytest.raises(mb.MailboxError):
+            mb.poll_replies([mb.Relay(url, timeout=0.5)], "0" * 64, mx.MEDIA, "1" * 64)
+    finally:
+        server.shutdown()
+
+
+def test_a_recorded_answer_or_absence_is_returned_while_every_relay_is_down(nodes, relay, factory, clock):
+    asker, asked = nodes
+    answered = mx.ask(asker, advertise(asked), "checkpoints", min_freshness=0, relay_factory=factory, now=clock)
+    mx.answer_round(asked, [WSS], factory)
+    clock.advance(minutes=5)
+    got = mx.poll(asker, answered["request_event_id"], factory, clock)
+    assert got["status"] == "answered"
+    assert mx.poll(asker, answered["request_event_id"], _down, clock) == got, "the recorded answer, not transport_error"
+    silent = mx.ask(asker, advertise(asked), "full_history", derivation="history_card/1", min_freshness=0,
+                    relay_factory=factory, now=clock)
+    clock.advance(hours=2)
+    absent = mx.poll(asker, silent["request_event_id"], factory, clock)
+    assert absent["status"] == "absent"
+    assert mx.poll(asker, silent["request_event_id"], _down, clock) == absent

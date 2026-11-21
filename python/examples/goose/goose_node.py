@@ -1088,6 +1088,8 @@ class Node:
         try:
             replies = mb.poll_replies(relays, request_event_id, MAILBOX_MEDIA, asked["mailbox_key"])
         except mb.MailboxError as exc:  # no relay could be read: it says nothing about the referee, so no absence
+            if any(st.get("request_event_id") == request_event_id for _, st in self.notes(DISPUTE_ABSENT)):
+                return {"status": "absent", "deadline": asked["deadline"]}  # sealed earlier; it stands
             return {"status": "transport_error", "error": str(exc), "deadline": asked["deadline"]}
         for reply in replies:
             raw = mb.decode(reply.content) or b""

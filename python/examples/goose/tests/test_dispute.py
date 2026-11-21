@@ -364,6 +364,9 @@ def test_every_relay_down_after_the_deadline_is_a_transport_error_not_an_absence
     assert got["status"] == "transport_error" and "could not be reached" in got["error"]
     assert _held(deal.buyer, gn.DISPUTE_ABSENT) == []
     assert deal.buyer.poll_dispute_result(rid, deal.parties(), now=lambda: now + 3601)["status"] == "absent"
+    # Sealed once, it stands while every relay is down.
+    got = deal.buyer.poll_dispute_result(rid, deal.parties(), relay_factory=down, now=lambda: now + 3601)
+    assert got["status"] == "absent" and len(_held(deal.buyer, gn.DISPUTE_ABSENT)) == 1
 
 
 def test_a_reply_not_signed_by_the_mailbox_key_is_not_a_reply(deal):
