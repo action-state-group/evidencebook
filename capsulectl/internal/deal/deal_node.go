@@ -53,7 +53,7 @@ var libraryRecordTypes = map[string]bool{
 
 func dealNodeCommands() *cobra.Command {
 	group := &cobra.Command{Use: "node", Short: "A node's own book on the deal profile's shelf: append a record, list records", Args: cli.NoArgs}
-	group.AddCommand(dealNodeAppendCommand(), dealNodeRecordsCommand(), dealNodeSealModelCallCommand(), dealNodeRefereeCommands())
+	group.AddCommand(dealNodeAppendCommand(), dealNodeRecordsCommand(), dealNodeSealModelCallCommand(), dealNodeRefereeCommands(), dealNodeRequestCommand(), dealNodeRespondCommand(), dealNodeReplyCheckCommand())
 	return group
 }
 
