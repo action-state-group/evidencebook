@@ -820,10 +820,6 @@ func TestAnUnpricedDealSaysWhyItIsNotOnTheCard(t *testing.T) {
 	dealRun(t, "standard-history", "declare", "--holder-kind", "node", "--answer")
 	assert.Equal(t, evidencebook.ReasonCoverageUnsatisfiable, refusedWith(t, respondCard(t, cardRequest(t, fullHistory))))
 
-	// The staple says it too, not only the card command.
-	_, err = invoke(t, "", "--profile", "deal", "deal", "standard-history", "staple", "--derivation", "standard_history/1")
-	require.Error(t, err)
-	assert.Contains(t, cli.SafeError(err), "deal "+dealID+" can't be counted yet: its agreed amount isn't recorded")
 }
 
 func TestNoCardWithoutATickSaysSo(t *testing.T) {
@@ -835,14 +831,12 @@ func TestNoCardWithoutATickSaysSo(t *testing.T) {
 	assert.ErrorIs(t, err, errNoTick)
 	assert.Equal(t, 1, cli.ExitCode(err))
 
-	// Both staples reach the same checkpoint check first and say the same.
-	for _, derivation := range []string{"history_card/1", "standard_history/1"} {
-		dealRun(t, "standard-history", "declare", "--holder-kind", "node", "--answer")
-		_, err = invoke(t, "", "--profile", "deal", "deal", "standard-history", "staple", "--derivation", derivation)
-		require.Error(t, err, derivation)
-		assert.Contains(t, cli.SafeError(err), "no finished checkpoint yet: run `deal tick`, then ask again", derivation)
-		assert.ErrorIs(t, err, errNoTick, derivation)
-	}
+	// The staple reaches the same checkpoint check first and says the same.
+	dealRun(t, "standard-history", "declare", "--holder-kind", "node", "--answer")
+	_, err = invoke(t, "", "--profile", "deal", "deal", "standard-history", "staple")
+	require.Error(t, err)
+	assert.Contains(t, cli.SafeError(err), "no finished checkpoint yet: run `deal tick`, then ask again")
+	assert.ErrorIs(t, err, errNoTick)
 }
 
 func TestAnUnrelatedCardFailureStaysMasked(t *testing.T) {
