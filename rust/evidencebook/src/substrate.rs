@@ -79,7 +79,8 @@ pub trait Substrate {
 /// Signs checkpoint digests. Implemented for a local Ed25519 key; a remote or
 /// hardware signer implements it too.
 pub trait Signer {
-    /// Sign `digest` (the checkpoint's hex digest, as bytes).
+    /// Sign `digest`: the octets to sign, which are the checkpoint's hex
+    /// digest as bytes for a checkpoint, or any message a caller hands it.
     fn sign(&self, digest: &[u8]) -> Result<[u8; 64], SignError>;
 
     /// The signer's key id: the raw Ed25519 public key, hex.

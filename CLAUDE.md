@@ -90,7 +90,7 @@ CI (`ci.yml`) also runs the evidence interop profile, personal-history and
 registry conformance jobs against pinned agent-action-capsule commits; read
 the job for the exact pins and steps before changing what they cover.
 `rust.yml` runs only when `rust/`, `testdata/refusal-interop/`,
-`testdata/evidence-request/`, `testdata/shelf/`, `testdata/staple/`, `testdata/history-card-2/`, `testdata/standard-history-respond/`, `testdata/row-status/`, `testdata/deal-v1/`, `rowstatus/`, `test/interop/shelf/`, `dealprofile/` (the x-deal-v0 profile the
+`testdata/evidence-request/`, `testdata/shelf/`, `testdata/card-registration/`, `testdata/staple/`, `testdata/history-card-2/`, `testdata/standard-history-respond/`, `testdata/row-status/`, `testdata/deal-v1/`, `rowstatus/`, `test/interop/shelf/`, `dealprofile/` (the x-deal-v0 profile the
 crate's `deal` feature implements: its schemas, fixtures and Go package), the
 Go and Python interop programs it compares with (`test/interop/personal-history/`, `test/interop/responder/`,
 `test/interop/python-profile/`, `test/interop/python-personal/`, and the root

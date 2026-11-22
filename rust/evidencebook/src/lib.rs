@@ -62,6 +62,7 @@
 pub mod answer;
 pub mod ask;
 pub mod canonical;
+pub mod card_registration;
 #[cfg(feature = "deal")]
 pub mod deal;
 pub mod derivation;

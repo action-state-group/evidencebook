@@ -23,8 +23,7 @@ dependencies = [
 [[package]]
 name = "agent-action-capsule"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e4ad5a4c1d7d2954570d78e7ffb2a7746a534a4dfbc6062d87cafac170a7dd6"
+source = "git+https://github.com/action-state-group/agent-action-capsule?rev=3072014ec75f08e91688efca67b7433c38d9abd4#3072014ec75f08e91688efca67b7433c38d9abd4"
 dependencies = [
  "base64",
  "checkpointed-local-log",
@@ -410,8 +409,7 @@ dependencies = [
 [[package]]
 name = "evidence-request"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efb48cc95fada13e1b10d17adcc5e0b0f717fd3f589d62b43ca16b8fa9bc09f9"
+source = "git+https://github.com/action-state-group/agent-action-capsule?rev=3072014ec75f08e91688efca67b7433c38d9abd4#3072014ec75f08e91688efca67b7433c38d9abd4"
 dependencies = [
  "base64",
  "ciborium",
