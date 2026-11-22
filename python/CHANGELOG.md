@@ -391,3 +391,5 @@ The Go shelf's hooks from #484, #490, #517, #525, #526, #528 and #530, which the
   does, replaying `testdata/deal-v1/report-bundle/vectors.json`; `StatusProvider.report_with_book`
   gives a report and its book pairs from one snapshot (evidencebook#598). The x-deal-v1
   differential check compares the verifier with Go's.
+
+- The Goose loop reference can register its `standard_history/1` card on a transparency service its host names ([#620](https://github.com/action-state-group/evidencebook/issues/620)): `loop_register_card` and `GOOSE_CARD_SERVICE` (a service file, `card-service.example.json` names this demo's choice, capsule-anchor run by Action State Group), `scripted_run.py` registers each node's card only when a service is named, and `go run ./test/interop/goose-card` takes the statement and the relying party's own policy and reports `card_registered`. Opt-in with no default service; the card is complete without it; `anchor_inclusion` stays `NOT_CHECKED`. The registration code is the demo's own (`python/examples/goose/card_registration.py`), not part of the `evidencebook` package, and needs agent-action-capsule 0.19.0.

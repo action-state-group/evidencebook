@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+## v0.26.0 (2026-11-21)
+
+Every pull request merged since v0.25.0:
+
+- [#623](https://github.com/action-state-group/evidencebook/pull/623): feat(goose): register the demo node's History card on a service the host names (#620)
+- [#655](https://github.com/action-state-group/evidencebook/pull/655): test: parity table of exported Go APIs against Rust and Python, with a CI check
+- [#658](https://github.com/action-state-group/evidencebook/pull/658): feat(capsulectl): book card register and card check for History card registration (#624)
+- [#614](https://github.com/action-state-group/evidencebook/pull/614): feat(dealprofile): rule 12 counterparty copy withholds answers, tellings, share checks and the close (#613)
+
+A minor version: `dealprofile` gains `CounterpartyWithheld` and `RequiredDisclosed`, which give
+the records a rule 12 counterparty copy of an x-deal-v0 deal withholds and must disclose. No
+record type or check of a sealed record changes. capsulectl-book gains `book card register` and
+`card check` (released under its own `capsulectl/v*` tag).
+
+### Added: what a rule 12 counterparty copy withholds, as vectors (#613)
+
+- `dealprofile`: PROFILE.md section 6 rule 12 "Copies" now lists every record a counterparty copy
+  of a seller's deal withholds so that nothing in it says which of the seller's agent claims were
+  authorized (evidencebook#613, following #607): besides the `claim_authority`, the represent
+  checks, the evaluations and the unchecked outcomes, every answer to a check (`user_approval`,
+  `card_answer`, whatever the answer), every share check (its `repeat_disclosures` and
+  `recipient_told_before` count only tellings given with authority), every telling (a
+  `disclosure`, or an `action-record/v0` with `disclosed`) and every `close` (its `unchecked_actions` counts the unchecked acts). The
+  counterparty's acceptance and platform approval observations stay. The copy says how the deal
+  ended from the outcome the close refs, or "not shared" when that outcome is an unchecked one. In a rule 12 counterparty copy of a v0 deal, the
+  buyer's "under the seller's terms, pack X" line is no longer shown, since the evaluations that
+  name the pack are withheld; the adjudicator copy keeps it. PROFILE.md states this as a known limit.
+  New `CounterpartyWithheld` and `RequiredDisclosed` give, for a deal's records, the positions such
+  a copy withholds under rule 12 and the ones it must disclose; `check_profile.py` computes the same
+  and generates `x-deal-v0/fixtures/counterparty-copy-vectors.json` (twin deals that differ only
+  in whether the ordered claim was authorized), which both are checked against. Known limit: an
+  act the gate held that the agent did anyway is not in force, so the buyer's copy lacks the steps
+  that rest on it (the offer, the buyer's acceptance, a commit) and its end outcome compares the
+  delivery with the terms without that offer, as does a later check's `material_fields_changed`
+  and a share check in a later deal with the same party (Steven accepted this limit); a buyer who
+  knows those steps happened can tell they were not authorized, never why.
+
+### Added: `capsulectl book card register` and `card check` (#624)
+
+- `capsulectl book card register` registers a Standard History card on the transparency service a `--service` file names, signs the statement under the profile's key (which must be the holder key), and writes the statement with its Receipt for the host to keep beside the card; `card check` reports `card_registered` over those statement files under the keys the same service file states. Both call `RegisterCard` and `CheckCardRegistered` (evidencebook v0.25.0, agent-action-capsule `spec/standard-history-v0.md` §13). Registration is opt-in and has no default service: without `--service` nothing is posted. The client speaks one protocol, capsule-anchor's statement registration (`POST /transparency/register-statement`), so a service must answer it. After the post the service may have logged the statement even if the Receipt fails to check; the error then says so and no statement file is written. A pass shows that the card existed by a time and nothing else: `anchor_inclusion` stays `NOT_CHECKED`, nothing shows it is the holder's only card, and the log is append-only, so a registration cannot be withdrawn. `capsulectl/go.mod` requires evidencebook `v0.25.0` (was v0.23.0).
+
 ## v0.25.0 (2026-11-21)
 
 Every pull request merged since v0.24.0:
