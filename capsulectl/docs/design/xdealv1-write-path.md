@@ -400,8 +400,11 @@ the journal lacks it.
    - `intent` (verbatim words, bounds, allowed) comes from the input, sealed as the journal `intent`
      record with its `verbatim_commitment` and `bounds_commitment` opened by the local nonces, as
      v0 keeps them (`deal_profile.go:490-508`);
-   - `who` comes from the offer's counterparty block and the `counterparty_profile` record. With no
-     counterparty layer (`to` is `null`) it is empty, as a v0 opening with no counterparty is;
+   - `who` comes from the input, in plain values, as v0's opening takes it. The offer's counterparty
+     block and the `counterparty_profile` record hold only fingerprints (`deal_profile.go:268-279`),
+     and `deal offer` writes no counterparty block (`deal_v1_offer.go:84-87`), so `who` cannot be
+     recovered from records. Left out, it is empty, and a later intent that names the merchant opens
+     the merchant leg, as in v0;
    - `terms` comes from the offer's `terms`, mapped field by field;
    - the recourse (`Rail`, `Refundable`) comes from the input as in v0. The agreement's adjudicator
      and forums are the dispute clause, which is not this recourse;
@@ -409,12 +412,21 @@ the journal lacks it.
    - the pinned materiality predicate is read from the profile then and stored on the event, as
      v0's `deal open` seals it.
 
+   - **Party role** comes from the deal's own v1 side: the offer's `role` for the offerer, and the
+     opposite for the acceptor (`deal_v1_agree.go:190-215`). An input `party_role` that disagrees is
+     refused. One left out takes the deal's role, never v0's buyer default (`deal_rules.go:128-131`).
+
    A `deal check` on a v1 deal with no intent yet is refused with "seal the user's intent first:
    `deal note --deal ID --kind intent`". The library refuses a `standing_intent` approval with no
    intent before it (`authorization.go:310`), and v0 cannot check without an opening.
-2. **Later intents narrow.** A later intent on the same deal is folded by v0's `laterIntent`
-   (`deal_rules.go:1239`), which only narrows, as the library's `limits.narrow` does
-   (`authorization.go:423`). Confirmed proposals then apply as v0 folds them.
+2. **Later intents narrow.** A later intent on the same deal is written as v0's `intent` event,
+   with its journey marker kept. So `foldDeal` takes it through the same path v0 does:
+   - `foldIntentJourney` for a journey intent, which picks an option, opens the merchant leg and
+     withdraws an item delegation (`deal_journey.go:337-367`);
+   - `laterIntent` otherwise, which only narrows, as the library's `limits.narrow` does
+     (`deal_rules.go:1239`, `authorization.go:423`).
+
+   Confirmed proposals then apply as v0 folds them.
 3. **Binding.** PROFILE §3 keeps `deal_id` off `intent`, `confirm_limits` approvals, `disclosure`,
    `counterparty_profile` and journey records sealed before the offer. Every such record sealed by
    this slice's verbs is bound to its deal at seal time, by the `--deal` of an existing v1 deal, in
@@ -425,7 +437,14 @@ the journal lacks it.
    B2 passes exactly these records to `xdealv1.CheckAuthorizations`. So the card and the
    authorization read the same subset, and another deal's intent or detail change in the same
    journal never reaches either. B2 passes the deal's earlier acts with the candidate, so the
-   library's single-use check (`authorization.go:70-72`, `118-121`) sees them.
+   library's single-use check (`authorization.go:70-72`, `118-121`) sees them. `deal check` refuses
+   when `v1DealJournal` holds a record of the deal with no local event: a record sealed outside
+   these verbs would reach the authorization but not the card.
+   - **Cross-deal memory reads both.** `counterpartyMemory` reads other deals through the index's
+     `deal_steps` query (`deal_counterparty.go:156-205`, `deal_index.go:130`), not through the event
+     list. The shared query reads `deal_v1_events` too, in one order with duplicates removed. So a
+     v1 deal's earlier disclosures count as v0's do, within one deal, across deals and across
+     versions.
 5. **`deal check` on a v1 deal** writes v0's `snapshot` and `check` events locally, and seals the
    journal `check` record: v0's body plus `payment_ref` on a pay and a fresh `nonce`, with
    `deal_id`. It then seals the `verdict` (one `checks` ref, a `nonce`). Writing the snapshot first
@@ -439,9 +458,13 @@ the journal lacks it.
      leg's check is "the passing journal check that recorded the payment reference" (design note
      461, settle's `check`). A reference the rail learns only afterwards, such as an on-chain
      transaction hash, goes on the payer leg (Sherlock2, on #699).
-6. **The rules checker sees the v0 input.** `rulesInput` (`rules_checker.go:548`) hands the
-   checker the check's v0 body as v0 builds it, from the local events. The pinned checker
-   therefore gets byte-equal input for an equal v1 deal, and a test compares the bytes.
+6. **The rules checker gets a v0-shaped record.** `rulesInput` loads the sealed v0 Capsule of the
+   checked step from artifacts (`capsuleWithInput`, `rules_checker.go:548`, `867-882`). A v1 deal
+   seals no v0 Capsule. So for a v1 deal, `rulesInput` builds the record the checker reads from the
+   local `snapshot` event, in the v0 record's shape, and never hands it the x-deal-v1 journal
+   record. The pinned rules read the v0 shape and are not forked. The test compares the members
+   the rules read, with Capsule ids, digests and times normalised, since those differ between any
+   two deals.
    `rulesHistory` (`rules_checker.go:897-911`) counts v0 `act` steps. B2 adds a v1 deal's `perform`
    and `settle` records to it, and that is a gate on making v1 the default (B5): spend and velocity
    rules must count v1 acts before v1 deals act by default.
@@ -456,9 +479,11 @@ the journal lacks it.
      - `disclosure`;
      - the agent moves `searched`, `options`, `recommended`, `chose` and `couldnt`, sealed as
        `agent_move`.
-   - A `user` or `agent_card` approval needs `--shown-card`, checked against the verdict's card.
+   - A `user` or `agent_card` approval that answers a verdict needs `--shown-card`, checked against
+     the verdict's card. A `confirm_limits` approval answers an intent, has no card, and keeps v0's
+     `--said` and limits checks (`deal.go:1542-1552`).
      v0 lets it be omitted (`deal.go:1550-1559`), but the library refuses such an approval without
-     its `card_commitment` (`authorization.go:65-69`, `346-355`), and it scans the whole journal. So
+     its `card_commitment` (`walkJournal`, `authorization.go:211`, `346-355`), and it scans the whole journal. So
      one approval sealed without it would break every later authorization of the deal.
    - These kinds have no v1 note form and refuse, naming the v1 verb: `act`, `payment_received`
      and `delivered` (`deal perform`, `deal settle`, B2); `dispute` (`deal dispute`); `ruling` (the
@@ -485,7 +510,8 @@ the journal lacks it.
   same card, the same verdict and byte-equal rules-checker input. Cases: pass, pause and deny; a
   confirmed-limits approval; a detail change; change, check, approve and check again (the second
   card lists no change); a later, wider intent that narrows rather than widens; a delegated
-  `chose`.
+  `chose`; an empty `who`, then an intent that names the merchant; a seller deal and a buyer deal;
+  a disclosure repeated within a deal, across deals and across versions.
 - **Records.** Each sealed v1 record passes `xdealv1.CheckSealed` with its context, has a fresh
   nonce, and carries `deal_id` exactly where PROFILE §3 says. Each bound record is bound to its
   deal.
@@ -494,7 +520,10 @@ the journal lacks it.
 - **Refusals.**
   - A check before any intent.
   - A pay check with no `payment_ref`.
-  - A `user` approval with no `--shown-card`.
+  - A `user` approval answering a verdict with no `--shown-card` (a `confirm_limits` approval is
+    sealed without one).
+  - An input `party_role` that disagrees with the deal's side.
+  - A check while `v1DealJournal` holds a record of the deal with no local event.
   - Each note kind with no v1 form, naming its verb.
   - Sale-thread actions.
 - **Authorization, in this slice.** `CheckAuthorizations` over `v1DealJournal` accepts a constructed
