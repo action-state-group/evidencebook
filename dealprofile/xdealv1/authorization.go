@@ -620,9 +620,9 @@ func nonceOf(r Record) string {
 // larger scale, draft-mih-agent-settlement-records-01), with amount_minor at
 // the currency's minor units (dealprofile.AssetScale). A payer leg settles
 // its amount; a payee leg settles received plus receive_fee, AAC's amount
-// rule, since received is net of the fee (with no receive_fee, received may
-// not exceed the checked amount). A member carrying the other leg's amount
-// field is refused.
+// rule, since received is net of the fee; a payee leg that states no
+// receive_fee is refused. A member carrying the other leg's amount field is
+// refused.
 func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) error {
 	if len(member) == 0 || cb == nil || (cb.AmountMinor == nil && cb.Currency == "") {
 		return nil
@@ -644,10 +644,13 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 		parts = []*legAmount{m.Received, m.ReceiveFee}
 	}
 	// A payee leg with no receive_fee settles received plus a fee it does
-	// not state, so only received above the checked amount is shown to
-	// differ. AAC's PaymentCheck reports the leg fee_unstated, and never
-	// reads a missing fee as zero unless it is shown not to apply.
-	feeUnstated := leg == LegPayee && m.ReceiveFee == nil
+	// not state, so its settled amount is unknown. AAC reads a missing fee as
+	// zero only where it is shown not to apply (an x402 exact scheme, read
+	// from wrapped objects this member does not carry), so it is refused
+	// here rather than guessed.
+	if leg == LegPayee && m.ReceiveFee == nil && m.Received != nil && cb.AmountMinor != nil {
+		return fmt.Errorf("its settlement member states no receive_fee, so the amount it settles cannot be held to the checked one: state the fee, 0 when none was taken")
+	}
 	if parts[0] == nil {
 		return nil
 	}
@@ -685,7 +688,7 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 	} else {
 		checked.Mul(checked, pow10(scale-checkScale))
 	}
-	if c := sum.Cmp(checked); c > 0 || (c < 0 && !feeUnstated) {
+	if sum.Cmp(checked) != 0 {
 		return fmt.Errorf("the settled amount differs from the checked %d %s: a new check is needed", *cb.AmountMinor, parts[0].AssetCode)
 	}
 	return nil

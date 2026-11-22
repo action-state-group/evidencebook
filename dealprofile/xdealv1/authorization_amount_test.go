@@ -80,21 +80,20 @@ func TestCheckActsHoldsARefundToItsCancelCheck(t *testing.T) {
 
 	f, payee := amountFlow(t, "cancel", &amount, "USD", LegPayee)
 	for name, member := range map[string]string{
-		"received with its fee":     `{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"30","assetCode":"USD","assetScale":2}}`,
-		"fee at another scale":      `{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"300","assetCode":"USD","assetScale":3}}`,
-		"received with a zero fee":  `{"received":{"value":"6000","assetCode":"USD","assetScale":2},"receive_fee":{"value":"0","assetCode":"USD","assetScale":2}}`,
-		"no fee stated, at checked": `{"received":{"value":"6000","assetCode":"USD","assetScale":2}}`,
-		"no fee stated, net of one": `{"received":{"value":"5970","assetCode":"USD","assetScale":2}}`,
+		"received with its fee":    `{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"30","assetCode":"USD","assetScale":2}}`,
+		"fee at another scale":     `{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"300","assetCode":"USD","assetScale":3}}`,
+		"received with a zero fee": `{"received":{"value":"6000","assetCode":"USD","assetScale":2},"receive_fee":{"value":"0","assetCode":"USD","assetScale":2}}`,
 	} {
 		assert.NoError(t, checkLeg(t, f, payee, member), name)
 	}
 	for name, c := range map[string]struct{ member, want string }{
-		"no fee stated, above checked": {`{"received":{"value":"6001","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
-		"zero fee, net below checked":  {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"0","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
-		"both fields":                  {`{"received":{"value":"6000","assetCode":"USD","assetScale":2},"amount":{"value":"6000","assetCode":"USD","assetScale":2}}`, "other leg's amount field for a payee leg"},
-		"a sum off by one":             {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"31","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
-		"a fee in another currency":    {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"30","assetCode":"EUR","assetScale":2}}`, "settled currency EUR"},
-		"the payer's field":            {`{"amount":{"value":"6000","assetCode":"USD","assetScale":2}}`, "other leg's amount field for a payee leg"},
+		"no fee stated, at checked":   {`{"received":{"value":"6000","assetCode":"USD","assetScale":2}}`, "states no receive_fee"},
+		"no fee stated, net of one":   {`{"received":{"value":"5970","assetCode":"USD","assetScale":2}}`, "states no receive_fee"},
+		"zero fee, net below checked": {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"0","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
+		"both fields":                 {`{"received":{"value":"6000","assetCode":"USD","assetScale":2},"amount":{"value":"6000","assetCode":"USD","assetScale":2}}`, "other leg's amount field for a payee leg"},
+		"a sum off by one":            {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"31","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
+		"a fee in another currency":   {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"30","assetCode":"EUR","assetScale":2}}`, "settled currency EUR"},
+		"the payer's field":           {`{"amount":{"value":"6000","assetCode":"USD","assetScale":2}}`, "other leg's amount field for a payee leg"},
 	} {
 		err := checkLeg(t, f, payee, c.member)
 		require.Error(t, err, name)

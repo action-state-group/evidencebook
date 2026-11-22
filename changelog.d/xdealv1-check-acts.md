@@ -4,6 +4,6 @@
 - `CheckAuthorizations` reads records, but a settle's leg travels in its Capsule's `settlement` member, which the record does not carry, so it could not compare them.
 - `CheckActs(journal, []ActIn{{Record, Settlement}})` runs the same check and also refuses:
   - a leg whose asset code differs from the check's `currency`;
-  - a leg whose settled amount differs from the check's `amount_minor`. A payer leg settles its `amount`, and a payee leg settles `received` plus `receive_fee`, or, with no `receive_fee`, its `received` may not exceed the checked amount.
+  - a leg whose settled amount differs from the check's `amount_minor`. A payer leg settles its `amount`, and a payee leg settles `received` plus `receive_fee`, and one that states no `receive_fee` is refused.
 - Amounts compare as integers at the larger scale, with `amount_minor` at the currency's minor units. A checked amount in a currency with no known minor units is refused.
 - `CheckAuthorizations` is unchanged and reads an act with no settlement member.
