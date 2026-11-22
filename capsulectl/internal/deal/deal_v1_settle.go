@@ -794,6 +794,11 @@ func (s *dealSession) settleSent(ctx context.Context, c *cobra.Command, a *v1Act
 	if err != nil {
 		return err
 	}
+	if cb.Action == "pay" {
+		if err := s.recheckAtSend(ctx, in.dealID, events, in.check); err != nil {
+			return err
+		}
+	}
 	// The local act event counts the amount from the send on; its record is the
 	// journal's "payment sent" evidence, which names the deal's intent and
 	// commits to what the send bound.
