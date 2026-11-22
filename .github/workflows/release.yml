@@ -12,8 +12,9 @@ name: Release · capsulectl
 #   gh attestation verify FILE --repo action-state-group/evidencebook \
 #     --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml
 # and the attestation bundle, which covers both launchers and every archive, is
-# published as capsulectl-book-<version>.sigstore.json (its name predates the
-# deal launcher joining this release and stays, so existing verify commands work).
+# published as capsulectl-book-<version>.sigstore.json, and as a copy named
+# capsulectl-deal-<version>.sigstore.json, the name evidencebook-deal's releases
+# used (its verify commands name this repository now: RELEASING.md).
 #
 # Not part of release.py and tag-release.yml: those handle manifest-versioned
 # packages and create a published release before their publisher runs, which
@@ -138,7 +139,8 @@ jobs:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: |
           cp "$BUNDLE" "dist/capsulectl-book-$VERSION.sigstore.json"
-          (cd dist && sha256sum "capsulectl-book-$VERSION.sigstore.json" >> SHA256SUMS)
+          cp "$BUNDLE" "dist/capsulectl-deal-$VERSION.sigstore.json"
+          (cd dist && sha256sum "capsulectl-book-$VERSION.sigstore.json" "capsulectl-deal-$VERSION.sigstore.json" >> SHA256SUMS)
       - name: Publish GitHub release
         # A tag with a hyphen (v0.1.0-rc4, v1.0.0-beta1) is a pre-release:
         # published as such and never marked the latest release. gh creates
@@ -162,5 +164,5 @@ jobs:
           else
             gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag "${flags[@]}" \
               --title "capsulectl-book and capsulectl-deal $VERSION" \
-              --notes "Prebuilt capsulectl-book and capsulectl-deal plugin binaries (linux/amd64, linux/arm64, darwin/arm64). Verify with: sha256sum -c SHA256SUMS. Check the build attestation with no GitHub account: gh attestation verify FILE --bundle capsulectl-book-$VERSION.sigstore.json --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release.yml"
+              --notes "Prebuilt capsulectl-book and capsulectl-deal plugin binaries (linux/amd64, linux/arm64, darwin/arm64). Both pair with capsulectl $CORE_VERSION. Unpack deal-view-$VERSION.tar.gz into the plugin directory beside capsulectl-deal, and standard-history-$VERSION.tar.gz beside capsulectl-book; deal-skill-$VERSION.tar.gz is the deal skill. Verify with: sha256sum -c SHA256SUMS. Check the build attestation with no GitHub account (capsulectl-deal-$VERSION.sigstore.json for the deal assets): gh attestation verify FILE --bundle capsulectl-book-$VERSION.sigstore.json --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release.yml"
           fi
