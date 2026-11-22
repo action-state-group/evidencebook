@@ -56,7 +56,7 @@ func TestAV1OpeningRefusesAnotherPartyRole(t *testing.T) {
 
 func TestAV1NoteKindWithNoFormNamesItsVerb(t *testing.T) {
 	h := receivedOffer(t)
-	assert.Contains(t, v1Err(t, "note", "--deal", h.dealID, "--kind", "act", "--input", writeJSON(t, `{}`)), "`deal perform` or `deal settle`")
+	assert.Contains(t, v1Err(t, "note", "--deal", h.dealID, "--kind", "act", "--input", writeJSON(t, `{}`)), "an act is recorded with `deal perform`")
 }
 
 // openedV1 is a received offer the seller has opened with its intent.

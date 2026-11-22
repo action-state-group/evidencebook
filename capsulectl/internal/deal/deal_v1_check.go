@@ -27,8 +27,24 @@ func (s *dealSession) useV1Check(ctx context.Context, dealID string) ([]sealedEv
 	}
 	s.dkey = dealprofile.DealKey(s.secret, dealID)
 	s.v1 = true
-	events, err := s.v1Events(ctx, dealID)
+	// An act a stopped run appended to the book but did not record locally is
+	// recorded first, so the card's spend so far and used approvals count it
+	// (xdealv1-write-path §13 item 8).
+	d, err := s.v1DealOf(ctx, dealID)
 	if err != nil {
+		return nil, err
+	}
+	var events []sealedEvent
+	if d != nil && d.OwnAgreementID != "" {
+		book, err := s.ownBookV1(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		events, err = s.reconcileV1Acts(ctx, dealID, book)
+		if err != nil {
+			return nil, err
+		}
+	} else if events, err = s.v1Events(ctx, dealID); err != nil {
 		return nil, err
 	}
 	if len(events) == 0 {

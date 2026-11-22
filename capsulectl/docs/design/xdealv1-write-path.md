@@ -344,7 +344,7 @@ wiring), `deal agree` and the deal-book writer, and the first-act gate on eviden
   `CheckAgreement`, and seals it as seq 1. `--admit` and `--intent` name records in the holder's own
   journal and are refused unless the journal holds them. The offerer agrees only after it holds the
   acceptor's agreement and names it in `seen`. The acceptor stamps right after and its file carries
-  the stamp proof (design §7.2); the offerer's file carries none (it stamps with its first act).
+  the stamp proof (design §7.2); the offerer's file carries none (it stamps with its first act; superseded by §13 item 7: the offerer stamps at agree too).
   Running it again writes the same record again and seals nothing. How a journal `admit` record
   is sealed is open (§10, question 2): this slice does not add a verb for it.
 - **The gate, `gateFirstAct`.** Wraps `ReceiveProfile.GateAct`: a first perform or payer settle is
@@ -765,6 +765,8 @@ and on §12's local event list.
 
 **Built in two pull requests:** `perform` and `statement` first, with items 1, 2, 6, 7, 8 and 9 as
 they apply to a perform. Then `settle`, with items 3, 4 and 5 and the rest of 8 and 9.
+Item 6's `--remedy-ruling` and `deal statement --names` wait on evidencebook#714: the plugin holds
+no rulings and no cancellation lookup yet.
 
 **Tests.**
 - **Acts.**

@@ -109,10 +109,10 @@ digest of your journal's intent for the task, when you sealed one. The
 agreement takes the offer's rows, witnesses, adjudicator and forums as they
 are.
 
-The acceptor stamps right after and the file carries its stamp proof: the
-offerer does not act until it holds that proof. The offerer agrees only once
-it holds the acceptor's agreement (deal receive), and stamps with its first
-act. Needs the deal store in the new layout (deal set-version x-deal-v1
+Each side stamps right after its agreement and the file carries its stamp
+proof: neither side's first act is sealed until it holds the other's. The
+offerer agrees only once it holds the acceptor's agreement (deal receive).
+Needs the deal store in the new layout (deal set-version x-deal-v1
 --migrate).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -281,9 +281,11 @@ func (s *dealSession) repairIfStopped(ctx context.Context, d *v1Deal) error {
 	return s.repairOpening(ctx, d, book)
 }
 
-// writeAgreement writes the holder's agreement as the file to send: the
-// acceptor's carries its stamp proof, taken right after the agreement (design
-// §7.2); the offerer stamps after its first act.
+// writeAgreement writes the holder's agreement as the file to send, with its
+// stamp proof, taken right after the agreement (design §7.2). The offerer
+// stamps here too: PROFILE §8 has it stamp at once when its first act waits on
+// the acceptor's, and stamping always means a buyer acceptor who pays first
+// never waits on an offerer that has not acted (xdealv1-write-path §13 item 7).
 func (s *dealSession) writeAgreement(ctx context.Context, c *cobra.Command, cad *evidencebook.Cadence, d *v1Deal, out string) error {
 	book, err := s.shelf.Open(ctx, d.OwnLogID)
 	if err != nil {
@@ -302,7 +304,7 @@ func (s *dealSession) writeAgreement(ctx context.Context, c *cobra.Command, cad 
 		return err
 	}
 	push := v1Push{Record: pair}
-	if d.Side == xdealv1.SideAcceptor {
+	{
 		// The stamp is taken once, right after the agreement: a re-run reuses the
 		// newest proof that covers it and stamps only when none exists yet.
 		proof, err := cad.StampProof(ctx, d.OwnAgreementID, 0, evidencebook.AudienceCounterparty)
@@ -331,6 +333,14 @@ func (s *dealSession) writeAgreement(ctx context.Context, c *cobra.Command, cad 
 		var was v1Push
 		if rerr != nil || json.Unmarshal(prev, &was) != nil || string(was.Record) != string(pair) {
 			return err
+		}
+		// An earlier version wrote the offerer's file with no stamp proof: the
+		// same record with no proof is completed with it, so the file the
+		// output describes is the file on disk.
+		if was.StampProof == nil && push.StampProof != nil {
+			if err := cli.AtomicFile(out, data, true); err != nil {
+				return err
+			}
 		}
 	}
 	return cli.Output(c, map[string]any{"deal_id": d.DealID, "agreement": d.OwnAgreementDigest, "side": d.Side, "file": out, "stamp_proof": push.StampProof != nil})
