@@ -259,3 +259,36 @@ func TestANewDecisionReplacesOneNeverSealed(t *testing.T) {
 	assert.NotEqual(t, stale, res["admit"])
 	dealRun(t, "agree", h.offer, "--out", filepath.Join(t.TempDir(), "a.json"))
 }
+
+// TestDealAdmitFindsAnAgreementAStoppedRunAppended forgets what `deal agree`
+// recorded after appending, as a stopped run leaves it: `deal admit` must
+// still see the agreement and refuse, since it cites another admit.
+func TestDealAdmitFindsAnAgreementAStoppedRunAppended(t *testing.T) {
+	h := newHandshakeV1(t)
+	_, err := openWritableDB(t).Exec(`UPDATE deal_v1 SET own_agreement_id='', own_agreement_digest='' WHERE deal_id=?`, h.dealID)
+	require.NoError(t, err)
+	assert.Contains(t, v1Err(t, "admit", "--deal", h.dealID, "--input", engineOutput(t, "GO", true, nil)), "is already agreed")
+}
+
+// TestDealAdmitRefusesWhenTheJournalCannotBeRead loses an earlier admit's
+// original: `deal admit` must refuse and bind nothing, rather than miss that
+// admit's nonce and risk sealing it twice. Opening the journal checks its
+// integrity and fails first today; admitWithNonce also returns any read
+// error but an unavailable (withheld or deleted) payload, in case a read
+// fails after the open.
+func TestDealAdmitRefusesWhenTheJournalCannotBeRead(t *testing.T) {
+	h := receivedOffer(t)
+	other := sealAdmit(t, "GO")
+	res, err := openWritableDB(t).Exec(`DELETE FROM capsule_store_artifacts WHERE content_sha256=?`, other)
+	require.NoError(t, err)
+	n, err := res.RowsAffected()
+	require.NoError(t, err)
+	require.Equal(t, int64(1), n, "the earlier admit's original is gone")
+	err = dealRunErr(t, "admit", "--deal", h.dealID, "--input", engineOutput(t, "GO", true, nil))
+	require.Error(t, err)
+	withSession(t, func(s *dealSession) {
+		own, err := s.dealAdmit(t.Context(), h.dealID)
+		require.NoError(t, err)
+		assert.Empty(t, own, "nothing was bound")
+	})
+}

@@ -106,6 +106,16 @@ func dealAdmitCommand() *cobra.Command {
 				if d.State == "cancelled" || d.State == "declined" {
 					return cli.InputError("this deal's offer is " + d.State + ": there is no deal to admit")
 				}
+				// An agreement a stopped `deal agree` appended but did not
+				// record is found first: it cites its own admit.
+				if d.OwnLogID != "" {
+					if err := s.repairIfStopped(ctx, d); err != nil {
+						return err
+					}
+					if d, err = s.v1DealOf(ctx, dealID); err != nil {
+						return err
+					}
+				}
 				if d.OwnAgreementID != "" {
 					return cli.InputError("deal " + dealID + " is already agreed, and its agreement cites the admission decision it was agreed on: a deal's decision cannot change after it")
 				}
@@ -293,8 +303,15 @@ func (s *dealSession) admitWithNonce(ctx context.Context, nonce string) (string,
 	for _, r := range read.Records {
 		for _, c := range r.Header.PayloadCommitments {
 			payload, err := j.ResolvePayload(ctx, r.RecordID, c)
-			if err != nil {
+			var gone *evidencebook.UnavailableError
+			if errors.As(err, &gone) {
+				// A withheld or deleted payload cannot be read and holds no
+				// nonce this check can see; any other error is a failed read,
+				// which must not pass the check.
 				continue
+			}
+			if err != nil {
+				return "", err
 			}
 			if rec, err := xdealv1.Decode(payload); err == nil {
 				if b, ok := rec.Body.(*xdealv1.AdmitBody); ok && b.Nonce == nonce {
