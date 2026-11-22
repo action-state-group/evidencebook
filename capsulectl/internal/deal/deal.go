@@ -933,7 +933,11 @@ func (s *dealSession) milestone(ctx context.Context) (map[string]any, error) {
 
 func dealCommands() *cobra.Command {
 	deal := &cobra.Command{Use: "deal", Short: "Seal a deal's baseline and check every point of no return against it", Long: "Seal a deal's baseline and check every point of no return against it.\n\n`deal close` and `deal terms-result` are for x-deal-v0 deals; an x-deal-v1 deal (deal set-version x-deal-v1) has neither."}
+<<<<<<< HEAD
 	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand(), dealAdmitCommand(), dealAgreeCommand(), dealReceiveCommand(), dealDisputeCommand())
+=======
+	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand(), dealAgreeCommand(), dealReceiveCommand(), dealDisputeCommand(), dealNodeCommands())
+>>>>>>> 7ee22cf4 (feat(capsulectl): deal node append and records, a node's own book on the deal shelf (#624))
 	// A deal profile's copies: asked for, answered, composed.
 	deal.AddCommand(dealEvidenceCommands()...)
 	// A scheduled demo deal and the watcher that alarms when it stops.
