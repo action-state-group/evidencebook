@@ -7,10 +7,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	evidencebook "github.com/action-state-group/evidencebook"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,8 +32,10 @@ import (
 // copy on a read session; --out also seals the report Capsule (standalone,
 // appended to no book) and writes it. A shared copy (--share) is a disclose
 // act: it opens the writable store, passes the share gate, is put on record
-// with the digest of the exact file, and only then is written. The bundle
-// (--bundle) is a later part of B4.
+// with the digest of the exact file, and only then is written. --bundle FILE
+// writes, instead of the pair, the holder's deal-book Evidence Bundle at the
+// report's checkpoint with the report beside it (v1ReportBundle), built
+// without writing anything to the book.
 
 // v1ReportFlagRefusal refuses the v0 flags `deal report` takes that a v1 deal
 // has no form for, each with why.
@@ -38,7 +44,7 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	readOnly, _ := f.GetBool("read-only")
 	switch {
 	case f.Changed("html"):
-		return cli.InputError("--html renders an x-deal-v0 deal's page; an x-deal-v1 report has no page yet: deal report prints it, and --out seals it to a file")
+		return cli.InputError("--html renders an x-deal-v0 deal's page; an x-deal-v1 report has no page yet: deal report prints it, --out seals it to a file, and --bundle writes it with your deal book")
 	case f.Changed("email"):
 		return cli.InputError("--email writes an x-deal-v0 deal's receipt email; it does not apply to an x-deal-v1 report")
 	case f.Changed("from-bundle") || f.Changed("directory"):
@@ -49,13 +55,15 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 			given = includeUnauthorizedFlag
 		}
 		return cli.InputError("--" + given + " chooses what an x-deal-v0 adjudicator's copy carries; it does not apply to an x-deal-v1 report")
-	case f.Changed("bundle"):
-		return cli.InputError("the Evidence Bundle of an x-deal-v1 report is not served yet: deal report --out writes the sealed report")
-	case readOnly && (f.Changed("out") || f.Changed("share") || f.Changed("to")):
-		return cli.InputError("--read-only writes nothing: it takes no --out, --share or --to")
+	case f.Changed("out") && f.Changed("bundle"):
+		return cli.InputError("--out writes the sealed report and --bundle the Evidence Bundle that carries it: choose one")
+	case readOnly && (f.Changed("out") || f.Changed("bundle") || f.Changed("share") || f.Changed("to")):
+		return cli.InputError("--read-only writes nothing: it takes no --out, --bundle, --share or --to")
 	}
-	if out, _ := f.GetString("out"); f.Changed("out") && strings.TrimSpace(out) == "" {
-		return cli.InputError("--out names the file to write; it cannot be empty")
+	for _, name := range []string{"out", "bundle"} {
+		if v, _ := f.GetString(name); f.Changed(name) && strings.TrimSpace(v) == "" {
+			return cli.InputError("--" + name + " names the file to write; it cannot be empty")
+		}
 	}
 	share, _ := f.GetString("share")
 	to, _ := f.GetString("to")
@@ -66,8 +74,9 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 		}
 	case dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator:
 		out, _ := f.GetString("out")
-		if strings.TrimSpace(out) == "" || strings.TrimSpace(to) == "" {
-			return cli.InputError("--share writes a copy for someone else: it needs --out FILE and --to (who it is for; for an adjudicator, the referee's name)")
+		bundle, _ := f.GetString("bundle")
+		if strings.TrimSpace(out)+strings.TrimSpace(bundle) == "" || strings.TrimSpace(to) == "" {
+			return cli.InputError("--share writes a copy for someone else: it needs --out FILE or --bundle FILE, and --to (who it is for; for an adjudicator, the referee's name)")
 		}
 	default:
 		return cli.InputError("--share must be keep, counterparty or adjudicator")
@@ -106,6 +115,10 @@ func runV1Report(c *cobra.Command) (err error) {
 	}
 	dealID, _ := c.Flags().GetString("deal")
 	out, _ := c.Flags().GetString("out")
+	asBundle := false
+	if b, _ := c.Flags().GetString("bundle"); b != "" {
+		out, asBundle = b, true
+	}
 	p, err := cli.Selected(c)
 	if err != nil {
 		return err
@@ -202,6 +215,14 @@ func runV1Report(c *cobra.Command) (err error) {
 		if _, err := xdealv1.VerifyReport(pair, snap.Book.Agreement); err != nil {
 			return cli.InputError("the report sealed with this profile's signing key does not verify against your agreement (" + err.Error() + "): the key that signed the agreement must sign the report; run it with the profile you agreed with (--profile)")
 		}
+		kind := "report"
+		if asBundle {
+			bundle, err := s.v1ReportBundle(ctx, d.OwnLogID, snap, pair, digest)
+			if err != nil {
+				return err
+			}
+			file, kind = append(bundle, '\n'), "bundle"
+		}
 		var record func() error
 		if shared {
 			// The exact bytes are checked to contain none of the deal's own
@@ -216,7 +237,7 @@ func runV1Report(c *cobra.Command) (err error) {
 				return err
 			}
 			record = func() error {
-				rec, err := s.recordV1Share(ctx, p, dealID, share, to, adjKey, file)
+				rec, err := s.recordV1Share(ctx, p, dealID, kind, share, to, adjKey, file, snap.Book)
 				if err != nil {
 					return err
 				}
@@ -232,6 +253,9 @@ func runV1Report(c *cobra.Command) (err error) {
 			return err
 		}
 		result["sealed_report"], result["file"] = digest, out
+		if asBundle {
+			result["bundle"] = out
+		}
 	}
 	return cli.Output(c, result)
 }
@@ -377,16 +401,18 @@ var v1ShareGate = dealShareGate
 
 // recordV1Share puts a shared copy of an x-deal-v1 report on record before
 // it is written (persistShare): the deal, the audience, the recipient, the
-// digest of the exact bytes, the time and a fresh nonce. It carries none of
-// an x-deal-v0 copy's receipt-page fields: a report pair is no bundle page.
-func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, audience, recipient, adjudicatorKey string, data []byte) (map[string]any, error) {
+// digest of the exact bytes, the time and a fresh nonce; kind is report (the
+// pair) or bundle, and a bundle's record also names the records it carries
+// beside the deal book (the agreement and every record the rows rely on).
+// It carries none of an x-deal-v0 copy's receipt-page fields.
+func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, kind, audience, recipient, adjudicatorKey string, data []byte, book xdealv1.ReportBook) (map[string]any, error) {
 	nonce := make([]byte, 32)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
 	sum := sha256.Sum256(data)
 	record := map[string]interface{}{
-		"profile": xdealv1.Profile, "kind": "report", "deal_id": dealID, "audience": audience, "recipient": recipient,
+		"profile": xdealv1.Profile, "kind": kind, "deal_id": dealID, "audience": audience, "recipient": recipient,
 		"receipt_sha256": hex.EncodeToString(sum[:]),
 		"at":             cli.DealClock().UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z"),
 		"nonce":          hex.EncodeToString(nonce),
@@ -394,7 +420,89 @@ func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, 
 	if adjudicatorKey != "" {
 		record["adjudicator_key_id"] = adjudicatorKey
 	}
+	if kind == "bundle" {
+		ids := make([]interface{}, 0, len(book.ReliedOn))
+		for _, id := range slices.Sorted(maps.Keys(book.ReliedOn)) {
+			ids = append(ids, id)
+		}
+		record["relied_on"] = ids
+	}
 	s.dp = p
 	s.dp.LogID = cli.DealLogID(dealID)
 	return s.persistShare(ctx, dealID, record, audience, recipient)
+}
+
+// v1ReportBundle is the holder's deal-book Evidence Bundle at the
+// checkpoint the report rests on, in capsule-cli's shape for a v1 report
+// (verify_bundle.go, dealV1ReportEntry): every record of the book up to that
+// checkpoint with its payload, the report Capsule in x-deal-report/v0 as
+// {record, agent_input}, and x-deal-v1 as {sealed_report, book}. The book
+// is not written to: the checkpoint is one it has and no disclosure record
+// is appended (DisclosureRecordedElsewhere), since a non-x-deal-v1 record
+// in it would make every later report refuse it. The bundle is checked as a
+// reader checks it before it is returned.
+func (s *dealSession) v1ReportBundle(ctx context.Context, logID string, snap xdealv1.ReportSnapshot, pair []byte, sealed string) ([]byte, error) {
+	book, err := s.shelf.Open(ctx, logID)
+	if err != nil {
+		return nil, err
+	}
+	at := snap.Report.DealCheckpoint
+	cps, err := book.Checkpoints(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var anchor *evidencebook.Checkpoint
+	for i := range cps {
+		if cps[i].Root == at.Root {
+			anchor = &cps[i]
+		}
+	}
+	if anchor == nil {
+		return nil, cli.Hint(cli.ErrConflict, "the checkpoint the report rests on is not one of the deal book's: run deal report again")
+	}
+	records, err := book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: anchor.Entries})
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, cli.Hint(cli.ErrConflict, "the deal book holds no record at the report's checkpoint")
+	}
+	ids := make([]string, 0, len(records))
+	for _, r := range records {
+		ids = append(ids, r.RecordID)
+	}
+	var carried struct {
+		Record     json.RawMessage `json:"record"`
+		AgentInput json.RawMessage `json:"agent_input"`
+	}
+	if err := json.Unmarshal(pair, &carried); err != nil {
+		return nil, err
+	}
+	reportExt, err := json.Marshal(map[string]json.RawMessage{"record": carried.Record, "agent_input": carried.AgentInput})
+	if err != nil {
+		return nil, err
+	}
+	v1Ext, err := json.Marshal(xdealv1.ReportBundle{SealedReport: sealed, Book: snap.Book})
+	if err != nil {
+		return nil, err
+	}
+	b, err := book.Bundle(ctx, evidencebook.BundleRequest{
+		Root: ids[len(ids)-1], Include: ids, Payloads: evidencebook.PayloadsAll,
+		At: anchor, DisclosureRecordedElsewhere: true,
+		Extensions: map[string]json.RawMessage{xdealv1.Profile: v1Ext, dealprofile.ReportExtension: reportExt},
+	})
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := cli.DecodeBundleJSON(b.JSON)
+	if err != nil {
+		return nil, err
+	}
+	if err := cli.VerifyProducedBundle(decoded, true); err != nil {
+		return nil, err
+	}
+	if err := checkProducedReport(decoded); err != nil {
+		return nil, err
+	}
+	return b.JSON, nil
 }

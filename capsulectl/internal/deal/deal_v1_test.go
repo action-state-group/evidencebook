@@ -239,6 +239,7 @@ func TestAV1DealHasNoCloseAndNoV0Verb(t *testing.T) {
 	assert.Contains(t, v1Err(t, "report", "--deal", id), "has no agreement of yours recorded yet", "a v1 deal's report waits for its book")
 	other := v1Err(t, "export", "--deal", id, "--output", filepath.Join(t.TempDir(), "e.json"))
 	assert.Contains(t, other, "x-deal-v1 deal")
+	assert.Contains(t, other, "--bundle FILE", "export points at the bundle")
 	assert.NotContains(t, other, "unknown deal")
 }
 
