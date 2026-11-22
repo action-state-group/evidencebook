@@ -514,7 +514,10 @@ func forkedFinals(held []evidencebook.HeldRecord, adjudicator, logID string) ([]
 }
 
 // payments runs each payment row's check over both books, when the host
-// gives the offer's sent pair (design §6.3).
+// gives the offer's sent pair (design §6.3). It returns nil only when no
+// check could run at all (no pair, or no payment rows), and a map, empty or
+// not, otherwise, with a row left out when no acceptor key is known yet:
+// paymentsNotRun tells the two apart by exactly that.
 func (p *StatusProvider) payments(ctx context.Context, offer Record, ag AgreeBody, own []ownRecord, theirs []heldBookRecord) (map[string]PaymentResult, error) {
 	of, _ := asPropose(offer.Body)
 	rows := PaymentRows(of.TermsRows)
