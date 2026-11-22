@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# Demo-only stand-in for capsulectl card registration; deleted by evidencebook-skills#185.
 """Registering a Standard History card on a SCITT transparency service, for the Goose demo
 (a module of the demo, not of the ``evidencebook`` package; agent-action-capsule ``spec/standard-history-v0.md`` §13, cited as SH), byte
 for byte with Go's ``card_registration.go``.
@@ -34,11 +35,26 @@ from typing import Any, Protocol
 import cbor2
 from agent_action_capsule import witness as _witness
 
-from evidencebook.errors import InvalidError
-from evidencebook.signer import Signer, key_id
+
+class InvalidError(ValueError):
+    """The statement, the Receipt or the call is not what SH §13 allows."""
+
+
+class Signer(Protocol):
+    """The holder's key: ``public_key()`` (the raw 32-byte Ed25519 key) and ``sign(message)``."""
+
+    def public_key(self) -> bytes: ...
+
+    def sign(self, message: bytes) -> bytes: ...
+
+
+def key_id(signer: Signer) -> str:
+    """The lowercase hex of the signer's raw public key, the holder key identifier."""
+    return signer.public_key().hex()
+
 
 __all__ = [
-    "CardStatementRegistrar", "build_card_statement", "attach_card_receipt", "register_card",
+    "CardStatementRegistrar", "InvalidError", "Signer", "key_id", "build_card_statement", "attach_card_receipt", "register_card",
     "check_card_registered", "MAX_CARD_RECEIPTS", "MAX_CARD_STATEMENT_BYTES",
 ]
 

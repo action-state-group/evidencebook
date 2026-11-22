@@ -65,7 +65,6 @@ from evidencebook.staple import DERIVATION_STANDARD_HISTORY, Staple, check_stapl
 from evidencebook._time import profile_time
 from agent_action_capsule.evidence_request import sign_envelope
 from evidencebook.cadence import CADENCE_EXTENSION, CadenceConfig
-from evidencebook.errors import InvalidError
 from evidencebook.shelf import Shelf
 
 import card_registration as cr
@@ -1292,7 +1291,7 @@ class Node:
         envelope = _Holder(self.key_id, anchor.anchor)
         try:
             statement = cr.register_card(self.signer, card, envelope, registrar, policy)
-        except InvalidError as exc:
+        except cr.InvalidError as exc:
             raise Refused(f"the card was not registered: {exc}") from None
         return {"card": built["card"], "tick": anchor.tick.n, "anchor": anchor.anchor, "responder": self.key_id,
                 "statement": statement.hex()}

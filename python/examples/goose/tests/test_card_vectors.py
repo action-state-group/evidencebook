@@ -16,13 +16,13 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from evidencebook import Ed25519Signer, InvalidError
-from evidencebook.signer import key_id
+from evidencebook import Ed25519Signer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from card_registration import (  # noqa: E402
-    MAX_CARD_RECEIPTS, attach_card_receipt, build_card_statement, check_card_registered, register_card,
+    MAX_CARD_RECEIPTS, InvalidError, attach_card_receipt, build_card_statement, check_card_registered, key_id,
+    register_card,
 )
 
 DATA = Path(__file__).resolve().parents[4] / "testdata" / "card-registration"
@@ -77,6 +77,14 @@ def test_build_matches_the_vector_byte_for_byte():
     built = build_card_statement(signer, card, case["anchor"])
     assert built == bare
     assert attach_card_receipt(card, case["holder"], case["anchor"], built, receipts[0], policy_of(case)) == vector
+
+
+def test_build_gives_the_bytes_Go_builds():
+    """Go's BuildCardStatement over the same vector card, holder key and anchor wrote this golden
+    file (card_registration_test.go TestBuildCardStatementMatchesGolden): the demo's bytes are Go's."""
+    case = CASES["pass-eddsa-time"]
+    golden = bytes.fromhex((DATA / "built-pass-eddsa-time.hex").read_text().strip())
+    assert build_card_statement(holder_signer(), bytes.fromhex(case["card"]), case["anchor"]) == golden
 
 
 def test_build_errors():
