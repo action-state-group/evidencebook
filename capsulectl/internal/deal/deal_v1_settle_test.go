@@ -550,7 +550,11 @@ func TestAPayeeChainDoesNotFork(t *testing.T) {
 	h := agreedBoth(t, offerTo)
 	cancel := sellerCancelChecks(t, h)
 	p := payeeLeg(t, h, "pending")
-	s := payeeLeg(t, h, "settled", "--supersedes", p)
+	sFile := filepath.Join(t.TempDir(), "s.json")
+	sArgs := []string{"settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
+		"--received", "4500", "--receive-fee", "0", "--status", "settled", "--supersedes", p, "--out", sFile}
+	s := dealRun(t, sArgs...)["digest"].(string)
+	assert.Equal(t, s, dealRun(t, sArgs...)["digest"], "a later observation's re-run rewrites its file")
 	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
 		"--received", "4500", "--receive-fee", "0", "--status", "failed", "--supersedes", p, "--out", filepath.Join(t.TempDir(), "fork.json")), "already superseded")
 	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel(), "--reverses", s, "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32), "--sent")

@@ -1131,11 +1131,6 @@ func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, a *v1Ac
 		return cli.InputError("you owe this row: a payment you make rests on your pay check (--check), sent with --sent first")
 	}
 	if in.supersedes != "" {
-		for _, r := range a.book {
-			if b, isSettle := settleOf(r); isSettle && b.Supersedes != nil && b.Supersedes.Digest == in.supersedes {
-				return cli.InputError("leg " + in.supersedes + " is already superseded: a later observation names the latest one of its payment")
-			}
-		}
 		ok := false
 		for _, r := range a.book {
 			if b, isSettle := settleOf(r); isSettle && b.Leg == xdealv1.LegPayee {
@@ -1176,6 +1171,16 @@ func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, a *v1Ac
 	if in.reverses != "" && in.supersedes == "" {
 		if err := s.refundTaken(ctx, a, in.reverses, false); err != nil {
 			return err
+		}
+	}
+	// A new observation names the latest one of its payment: a leg already
+	// superseded is not superseded again (asked only after a re-run of the
+	// same observation has been found).
+	if in.supersedes != "" {
+		for _, r := range a.book {
+			if b, isSettle := settleOf(r); isSettle && b.Supersedes != nil && b.Supersedes.Digest == in.supersedes {
+				return cli.InputError("leg " + in.supersedes + " is already superseded: a later observation names the latest one of its payment")
+			}
 		}
 	}
 	if err := refuseExistingOut(in.out); err != nil {
