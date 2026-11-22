@@ -102,7 +102,9 @@ it to --out (standard output with none). --admit is the digest of your own
 admission decision in your journal, which an agreement cites: a GO, or a
 LIMIT whose tier holds the deal; an ASK or a NO is refused. ` + "`deal admit`" + `
 seals capsule-engine's decision for the deal, and with no --admit the
-agreement cites that one; --admit naming another is refused. --intent is the
+agreement cites that one. --admit naming an admit ` + "`deal admit`" + ` sealed for
+another deal is refused, and so is one other than the deal's own when it has
+one. --intent is the
 digest of your journal's intent for the task, when you sealed one. The
 agreement takes the offer's rows, witnesses, adjudicator and forums as they
 are.

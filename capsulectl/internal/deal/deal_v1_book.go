@@ -42,6 +42,7 @@ func v1ReceiveContext(c *cobra.Command) {
 // it, and the sent pair as received, for the status provider's payment
 // check). The holder's own deal book is read back from the book itself.
 var dealV1Tables = []string{
+	dealV1AdmitTable,
 	`CREATE TABLE IF NOT EXISTS deal_v1 (
 	deal_id TEXT PRIMARY KEY,
 	side TEXT NOT NULL,

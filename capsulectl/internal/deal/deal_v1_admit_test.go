@@ -25,7 +25,7 @@ func engineOutput(t *testing.T, verdict string, admitsDeal bool, edit func(out m
 	pack := strings.Repeat("a", 64)
 	out := map[string]any{
 		"verdict": verdict, "source": "pack", "tier": "standard", "band": nil,
-		"rows": []any{}, "asks": []any{}, "pack": map[string]any{"id": "baseline", "digest": pack},
+		"rows": []any{map[string]any{"row": "paid_as_agreed", "result": "met", "effect": "go"}}, "asks": []any{}, "pack": map[string]any{"id": "baseline", "digest": pack},
 		"block": "{}", "block_sha256": strings.Repeat("c", 64),
 		"admit": map[string]any{
 			"outcome": verdict, "tier": "standard", "rows": []string{"paid_as_agreed"}, "asks": []any{},
@@ -137,6 +137,7 @@ func TestADealHasOneAdmissionDecision(t *testing.T) {
 	// Another decision (a fresh nonce, so another body) for the same deal.
 	msg := v1Err(t, "admit", "--deal", h.dealID, "--input", engineOutput(t, "GO", true, nil))
 	assert.Contains(t, msg, "already has an admission decision, "+first)
+	assert.Contains(t, msg, "start a new deal")
 
 	// --admit may name the deal's own admit, but no other.
 	other := sealAdmit(t, "GO")
@@ -206,5 +207,55 @@ func TestDealAdmitFinishesARunThatStopped(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, held)
 	})
+	dealRun(t, "agree", h.offer, "--out", filepath.Join(t.TempDir(), "a.json"))
+}
+
+func TestOneEngineOutputIsSealedForOneDealOnly(t *testing.T) {
+	h := receivedOffer(t)
+	own := dealRun(t, "offer", "--input", writeJSON(t, offerTo(h.buyer.party.signer)), "--out", filepath.Join(t.TempDir(), "own.json"))
+	input := engineOutput(t, "GO", true, nil)
+	first := dealRun(t, "admit", "--deal", h.dealID, "--input", input)["admit"].(string)
+	// The same output for another deal would put a second record with the
+	// same nonce in the journal (PROFILE §5), which CheckAuthorizations refuses.
+	msg := v1Err(t, "admit", "--deal", own["deal_id"].(string), "--input", input)
+	assert.Contains(t, msg, "already sealed, as admit "+first)
+}
+
+func TestDealAdmitRefusesADealAlreadyAgreed(t *testing.T) {
+	h := receivedOffer(t)
+	// Agreed through --admit with an admit sealed some other way: a later
+	// `deal admit` must not bind a decision the agreement does not cite.
+	dealRun(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json"))
+	assert.Contains(t, v1Err(t, "admit", "--deal", h.dealID, "--input", engineOutput(t, "GO", true, nil)), "is already agreed")
+}
+
+func TestDealAdmitRefusesATierOrRowsTheDecisionDidNotHave(t *testing.T) {
+	h := receivedOffer(t)
+	for name, edit := range map[string]func(map[string]any){
+		"another tier":     func(o map[string]any) { o["admit"].(map[string]any)["tier"] = "premium" },
+		"another row":      func(o map[string]any) { o["admit"].(map[string]any)["rows"] = []string{"other_row"} },
+		"no outer tier":    func(o map[string]any) { o["tier"] = nil },
+		"other outer rows": func(o map[string]any) { o["rows"] = []any{map[string]any{"row": "x"}} },
+	} {
+		assert.Contains(t, v1Err(t, "admit", "--deal", h.dealID, "--input", engineOutput(t, "GO", true, edit)), "does not match the decision", name)
+	}
+}
+
+// TestANewDecisionReplacesOneNeverSealed is a run that stopped after storing
+// its binding, followed by a fresh capsule-engine run (a new nonce): nothing
+// left the holder, so the new decision replaces the stored one.
+func TestANewDecisionReplacesOneNeverSealed(t *testing.T) {
+	h := receivedOffer(t)
+	payload, err := admitPayloadOf(mustRead(t, engineOutput(t, "GO", true, nil)))
+	require.NoError(t, err)
+	_, stale, err := xdealv1.Encode(payload)
+	require.NoError(t, err)
+	withSession(t, func(s *dealSession) {
+		require.NoError(t, s.ensureV1Tables(t.Context()))
+		_, err := s.db.ExecContext(t.Context(), `INSERT INTO deal_v1_admits (deal_id, admit_digest, payload) VALUES (?, ?, ?)`, h.dealID, stale, payload)
+		require.NoError(t, err)
+	})
+	res := dealRun(t, "admit", "--deal", h.dealID, "--input", engineOutput(t, "GO", true, nil))
+	assert.NotEqual(t, stale, res["admit"])
 	dealRun(t, "agree", h.offer, "--out", filepath.Join(t.TempDir(), "a.json"))
 }

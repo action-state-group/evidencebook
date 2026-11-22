@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -31,8 +32,12 @@ const dealV1AdmitTable = `CREATE TABLE IF NOT EXISTS deal_v1_admits (
 // output that `deal admit` reads (capsule-engine go/cmd/capsule-engine/main.go,
 // output). The rest of that object is the engine's and is not read here.
 type engineDecision struct {
-	Verdict string `json:"verdict"`
-	Pack    *struct {
+	Verdict string  `json:"verdict"`
+	Tier    *string `json:"tier"`
+	Rows    []struct {
+		Row string `json:"row"`
+	} `json:"rows"`
+	Pack *struct {
 		Digest string `json:"digest"`
 	} `json:"pack"`
 	Admit      json.RawMessage `json:"admit"`
@@ -47,10 +52,15 @@ the decision is capsule-engine's, and this command evaluates nothing.
 It refuses a decision capsule-engine says does not admit the deal
 ("admits_deal": false: an ASK still waiting for answers, a NO, or a LIMIT
 whose tier does not hold the deal), an output without an admit body, and an
-admit body that is not exactly the one capsule-engine prints. Each deal has
-one admission decision: a second ` + "`deal admit`" + ` for the same deal is refused,
-and ` + "`deal agree`" + ` cites the deal's own decision. Running the same command
-again after it succeeded prints the same digest and seals nothing.
+admit body that is not exactly the one capsule-engine prints. It cannot tell
+which counterparty or amount the decision was made for: pass the output of the
+run on this deal's own counterparty and amount.
+
+Each deal has one admission decision, and ` + "`deal agree`" + ` cites it. A second
+decision for the same deal is refused, and so is a deal already agreed; to
+decide again, start a new deal. Running it again with the same --input prints
+the same digest and seals nothing. One capsule-engine output is sealed for one
+deal only: its admit's nonce is drawn for one record.
 
 The admit record stays in your journal; only its digest leaves you, in your
 agreement. Needs a profile on x-deal-v1 (deal set-version x-deal-v1 --migrate)
@@ -96,6 +106,9 @@ func dealAdmitCommand() *cobra.Command {
 				if d.State == "cancelled" || d.State == "declined" {
 					return cli.InputError("this deal's offer is " + d.State + ": there is no deal to admit")
 				}
+				if d.OwnAgreementID != "" {
+					return cli.InputError("deal " + dealID + " is already agreed, and its agreement cites the admission decision it was agreed on: a deal's decision cannot change after it")
+				}
 				digest, err := s.sealAdmit(ctx, dealID, payload)
 				if err != nil {
 					return err
@@ -129,7 +142,7 @@ func admitPayloadOf(raw []byte) ([]byte, error) {
 		return nil, cli.InputError("capsule-engine's decision has no tier (a NO), so it is not sealed and no agreement can cite it: this deal is not admitted")
 	}
 	if !*out.AdmitsDeal {
-		return nil, cli.InputError(fmt.Sprintf("capsule-engine says this decision (%s) does not admit the deal: an agreement cites only one that does. If it asks for answers, answer them and run `capsule-engine admission evaluate --admit FILE` again with them; then run `deal admit` with the new output", out.Verdict))
+		return nil, cli.InputError(fmt.Sprintf("capsule-engine says this decision (%s) does not admit the deal: an agreement cites only one that does. If it asks for answers, answer them and run `capsule-engine admission evaluate --admit FILE` again with them; then run `deal admit` with the new output. A LIMIT whose tier does not hold the deal admits a smaller deal only", out.Verdict))
 	}
 	// The body is sealed exactly as the engine printed it: Decode refuses a
 	// member the profile does not name, and Check runs the profile's schema
@@ -146,8 +159,15 @@ func admitPayloadOf(raw []byte) ([]byte, error) {
 	}
 	// The engine's verdict and pack are the body's own outcome and pack: a
 	// body that disagrees with the output it came in was not printed with it.
-	if body.Outcome != out.Verdict || out.Pack == nil || body.PackDigest != out.Pack.Digest {
-		return nil, cli.InputError("--input's admit body does not match the decision it came with (verdict or pack differ): pass capsule-engine's output unchanged")
+	// So are its tier and its rows, which the engine copies from the same
+	// decision (capsule-engine go/admission/admit.go, Admit).
+	rows := make([]string, len(out.Rows))
+	for i, r := range out.Rows {
+		rows[i] = r.Row
+	}
+	if body.Outcome != out.Verdict || out.Pack == nil || body.PackDigest != out.Pack.Digest ||
+		out.Tier == nil || body.Tier != *out.Tier || !slices.Equal(body.Rows, rows) {
+		return nil, cli.InputError("--input's admit body does not match the decision it came with (its verdict, tier, rows or pack differ): pass capsule-engine's output unchanged")
 	}
 	payload, _, err := xdealv1.Encode(doc)
 	if err != nil {
@@ -159,13 +179,15 @@ func admitPayloadOf(raw []byte) ([]byte, error) {
 // sealAdmit seals the admit for dealID once. The binding is stored before
 // the record is sealed, so a run that stops between the two is finished by
 // the next run, which seals the stored payload (same time, same digest) when
-// the journal does not hold it. The same body again returns the digest
-// already sealed; another body for a deal that has one is refused, so
-// `deal agree` never has two to choose from.
+// the journal does not hold it; a binding whose record the journal never
+// took has left nothing with anyone, so a new decision replaces it. The same
+// body again returns the digest already sealed; another body for a deal
+// whose admit is sealed is refused, so `deal agree` never has two to choose
+// from. A body whose nonce an admit in the journal already carries is
+// refused: one engine output is one record (PROFILE §5, a nonce is drawn
+// for each record), and a journal holding two would fail
+// xdealv1.CheckAuthorizations for good.
 func (s *dealSession) sealAdmit(ctx context.Context, dealID string, payload []byte) (string, error) {
-	if _, err := s.db.ExecContext(ctx, dealV1AdmitTable); err != nil {
-		return "", err
-	}
 	var (
 		digest string
 		stored []byte
@@ -173,15 +195,22 @@ func (s *dealSession) sealAdmit(ctx context.Context, dealID string, payload []by
 	err := s.db.QueryRowContext(ctx, `SELECT admit_digest, payload FROM deal_v1_admits WHERE deal_id=?`, dealID).Scan(&digest, &stored)
 	switch {
 	case err == nil:
-		if !sameAdmitBody(stored, payload) {
-			return "", fmt.Errorf("%w: deal %s already has an admission decision, %s, and `deal agree` cites that one; a deal has one", cli.ErrConflict, dealID, digest)
-		}
-		payload = stored
-	case errors.Is(err, sql.ErrNoRows):
-		if _, digest, err = xdealv1.Encode(payload); err != nil {
+		held, err := s.journalHolds(ctx, digest)
+		if err != nil {
 			return "", err
 		}
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO deal_v1_admits (deal_id, admit_digest, payload) VALUES (?, ?, ?)`, dealID, digest, payload); err != nil {
+		switch {
+		case sameAdmitBody(stored, payload):
+			payload = stored
+		case held:
+			return "", fmt.Errorf("%w: deal %s already has an admission decision, %s, and `deal agree` cites that one: a deal has one, so to decide again, start a new deal", cli.ErrConflict, dealID, digest)
+		default:
+			if digest, err = s.bindAdmit(ctx, dealID, payload, true); err != nil {
+				return "", err
+			}
+		}
+	case errors.Is(err, sql.ErrNoRows):
+		if digest, err = s.bindAdmit(ctx, dealID, payload, false); err != nil {
 			return "", err
 		}
 	default:
@@ -196,6 +225,85 @@ func (s *dealSession) sealAdmit(ctx context.Context, dealID string, payload []by
 		return "", err
 	}
 	return digest, err
+}
+
+// bindAdmit stores the binding of payload to dealID (replacing the deal's
+// unsealed one when replace is set), after refusing a nonce another admit
+// already carries.
+func (s *dealSession) bindAdmit(ctx context.Context, dealID string, payload []byte, replace bool) (string, error) {
+	rec, err := xdealv1.Decode(payload)
+	if err != nil {
+		return "", err
+	}
+	nonce := rec.Body.(*xdealv1.AdmitBody).Nonce
+	if other, err := s.admitWithNonce(ctx, nonce); err != nil {
+		return "", err
+	} else if other != "" {
+		return "", fmt.Errorf("%w: this capsule-engine output is already sealed, as admit %s: one output is one record, so run `capsule-engine admission evaluate --admit FILE` again for this deal", cli.ErrConflict, other)
+	}
+	_, digest, err := xdealv1.Encode(payload)
+	if err != nil {
+		return "", err
+	}
+	if replace {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM deal_v1_admits WHERE deal_id=?`, dealID); err != nil {
+			return "", err
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO deal_v1_admits (deal_id, admit_digest, payload) VALUES (?, ?, ?)`, dealID, digest, payload); err != nil {
+		return "", err
+	}
+	return digest, nil
+}
+
+// admitWithNonce is the digest of an admit that carries nonce: one in the
+// journal (however it was sealed), or one bound by `deal admit` and not yet
+// sealed; "" when there is none.
+func (s *dealSession) admitWithNonce(ctx context.Context, nonce string) (string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT admit_digest, payload FROM deal_v1_admits`)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			digest  string
+			payload []byte
+		)
+		if err := rows.Scan(&digest, &payload); err != nil {
+			return "", err
+		}
+		if r, err := xdealv1.Decode(payload); err == nil {
+			if b, ok := r.Body.(*xdealv1.AdmitBody); ok && b.Nonce == nonce {
+				return digest, nil
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	j, err := s.shelf.Journal(ctx)
+	if err != nil {
+		return "", err
+	}
+	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range read.Records {
+		for _, c := range r.Header.PayloadCommitments {
+			payload, err := j.ResolvePayload(ctx, r.RecordID, c)
+			if err != nil {
+				continue
+			}
+			if rec, err := xdealv1.Decode(payload); err == nil {
+				if b, ok := rec.Body.(*xdealv1.AdmitBody); ok && b.Nonce == nonce {
+					return c, nil
+				}
+			}
+		}
+	}
+	return "", nil
 }
 
 // sameAdmitBody reports whether two admit payloads hold the same body: a
@@ -218,12 +326,9 @@ func sameAdmitBody(a, b []byte) bool {
 	return err == nil && bytes.Equal(ja, jb)
 }
 
-// dealAdmit is the admit `deal admit` sealed for dealID, or "" when it sealed
-// none (a store that never ran it has no table).
+// dealAdmit is the admit `deal admit` bound to dealID, or "" when it bound
+// none.
 func (s *dealSession) dealAdmit(ctx context.Context, dealID string) (string, error) {
-	if _, err := s.db.ExecContext(ctx, dealV1AdmitTable); err != nil {
-		return "", err
-	}
 	var digest string
 	err := s.db.QueryRowContext(ctx, `SELECT admit_digest FROM deal_v1_admits WHERE deal_id=?`, dealID).Scan(&digest)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -234,9 +339,6 @@ func (s *dealSession) dealAdmit(ctx context.Context, dealID string) (string, err
 
 // admitDealOf is the deal an admit was sealed for by `deal admit`, or "".
 func (s *dealSession) admitDealOf(ctx context.Context, digest string) (string, error) {
-	if _, err := s.db.ExecContext(ctx, dealV1AdmitTable); err != nil {
-		return "", err
-	}
 	var dealID string
 	err := s.db.QueryRowContext(ctx, `SELECT deal_id FROM deal_v1_admits WHERE admit_digest=?`, digest).Scan(&dealID)
 	if errors.Is(err, sql.ErrNoRows) {
