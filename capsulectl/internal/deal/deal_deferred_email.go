@@ -261,6 +261,11 @@ func (s *dealSession) sealDeferredEmail(ctx context.Context, d deferredEmail) (m
 	} else if err != nil {
 		return nil, err
 	}
+	// A claim a stopped command left without its verdict is finished before
+	// this step goes after it.
+	if events, err = s.finishWritable(ctx, d.dealID, events); err != nil {
+		return nil, err
+	}
 	digest := emailDigest(d.raw)
 	for _, se := range events {
 		if e := se.Event.Evidence; e != nil && e.Email != nil && emailDigest(e.Email.Raw) == digest {

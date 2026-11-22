@@ -808,6 +808,17 @@ type dealEvent struct {
 	// OutcomeNote is an outcome_note step: the holder's own note that the deal
 	// did not hold (deal_outcome_note.go; TEMPORARY, evidencebook#462).
 	OutcomeNote *dealOutcomeNote `json:"outcome_note,omitempty"`
+	// ClaimAuthority is a claim_authority step: the seller's verdict on the
+	// agent claim before it, sealed right after that claim so a copy can
+	// withhold it apart from the claim's words (deal_claim_authority.go,
+	// evidencebook#607, evidencebook-deal#244).
+	ClaimAuthority *dealClaimAuthority `json:"claim_authority,omitempty"`
+	// ClaimShape (dealClaimShapeVersion) marks an agent claim sealed without
+	// its verdict, which its claim_authority step carries. The claim's local
+	// event still holds the verdict (AuthorizedBy, Unchecked, Rule) that the
+	// authority step is encoded from; a claim sealed before has no marker and
+	// re-derives with the verdict on it, unchanged.
+	ClaimShape string `json:"claim_shape,omitempty"`
 }
 
 // dealCounterpartyProfile names a check by capsule id and its payee's
@@ -2201,6 +2212,8 @@ func trailLine(e dealEvent) string {
 			line = "⚠️ " + line + " without your approval (" + e.Disclosure.Reason + ")"
 		}
 		return line
+	case "claim_authority":
+		return e.ClaimAuthority.line()
 	case "outcome_note":
 		return "your own note sealed: this deal did not hold (" + strings.ReplaceAll(e.OutcomeNote.Reason, "_", " ") + ")"
 	case "rules_verdict":

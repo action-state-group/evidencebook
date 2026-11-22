@@ -788,7 +788,7 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 	if e = dealShareGate(artifact, events, dealCopyAudience); e != nil {
 		return e
 	}
-	share, e := s.recordShare(ctx, dealID, b, dealCopyAudience, requester, dealRole(events), artifact, digest)
+	share, e := s.recordShare(ctx, dealID, b, dealCopyAudience, requester, events, artifact, digest)
 	if e != nil {
 		return e
 	}

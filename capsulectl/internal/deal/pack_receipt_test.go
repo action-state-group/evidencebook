@@ -76,13 +76,14 @@ func TestTheOwnReceiptNamesThePackThatJudgedTheCheck(t *testing.T) {
 	}
 }
 
-// The seller's copy goes to the buyer, so the buyer's receipt reads the digest from the seller's
-// half and names it as the seller's terms, never as a check the buyer ran.
+// A seller's copy goes to the buyer, and a sale under rule 12 withholds every check (evidencebook#607),
+// so the pack line, which lives in the check record, is not in it (evidencebook-deal#244). A buyer's
+// own deal terms are not a rule 12 sale and are still named.
 func TestAPartysDealTermsReachTheCounterpartyAsTheirTerms(t *testing.T) {
 	copyText := receiptText(t, packChecked(t, "deal", dealRoleSeller), true)
-	assert.Contains(t, copyText, "under the seller's terms, pack "+packShown)
-	assert.NotContains(t, copyText, "under "+packID, "the ruleset id is the owner's own wording")
-	assert.NotContains(t, copyText, packDigest, "only the shown prefix")
+	for _, leak := range []string{packID, packShown, packDigest, "terms, pack"} {
+		assert.NotContains(t, copyText, leak, "a rule 12 sale withholds the check, and the pack line with it")
+	}
 
 	buyer := receiptText(t, packChecked(t, "deal", dealRoleBuyer), true)
 	assert.Contains(t, buyer, "under the buyer's terms, pack "+packShown)
@@ -149,7 +150,7 @@ func TestAPackPinnedPerRoleIsNamedOnlyForThatRole(t *testing.T) {
 		pin["kind"], pin["definition_digest"] = "deal", flat
 		pin["roles"] = map[string]any{"seller": map[string]any{"pack": packID, "definition_digest": packDigest}}
 	})
-	assert.Contains(t, receiptText(t, id, true), "under the seller's terms, pack "+packShown)
+	assert.NotContains(t, receiptText(t, id, true), "terms, pack", "a rule 12 sale withholds the check, and the pack line with it")
 
 	other := strings.Repeat("c", 64)
 	out := `printf '%s' '{"schema":"external-check-result/v0","ruleset_id":"` + packID + `","definition_digest":"` + other + `","verdict":"allow","findings":[]}'`
@@ -173,7 +174,7 @@ func TestACopyReadsTheKindTheCheckSealedNotTheCurrentPin(t *testing.T) {
 
 	sold := packChecked(t, "deal", dealRoleSeller)
 	repin("conduct")
-	assert.Contains(t, receiptText(t, sold, true), "under the seller's terms, pack "+packShown, "sealed deal stays shared after a re-pin to conduct")
+	assert.NotContains(t, receiptText(t, sold, true), "terms, pack", "a rule 12 sale withholds the check, and the pack line with it, whatever the pin says now")
 
 	private := packChecked(t, "conduct", dealRoleSeller)
 	repin("deal")
@@ -194,7 +195,7 @@ func TestARolePinnedCheckSealsTheCheckerPinsKind(t *testing.T) {
 		pin["kind"] = "deal"
 		pin["roles"] = map[string]any{"seller": map[string]any{"pack": packID, "definition_digest": packDigest}}
 	})
-	assert.Contains(t, receiptText(t, id, true), "under the seller's terms, pack "+packShown)
+	assert.NotContains(t, receiptText(t, id, true), "terms, pack", "a rule 12 sale withholds the check, and the pack line with it")
 
 	id = packCheckedUnder(t, dealRoleSeller, func(pin map[string]any) {
 		pin["kind"] = "conduct"

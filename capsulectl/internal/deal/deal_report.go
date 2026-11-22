@@ -321,9 +321,9 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 		"card_openings": cardOpenings(events),
 		// The openings of the claims' words and source notes, committed in
 		// the records (text_commitment, source_ref_commitment).
-		"claim_openings": claimOpenings(events, func(dealClaim) bool { return true }),
+		"claim_openings": claimOpenings(events, nil, func(dealClaim) bool { return true }),
 		// Where the user sells: what their agent told the buyer.
-		"representations": representations(events, func(dealClaim) bool { return true }),
+		"representations": representations(events, nil, func(dealClaim) bool { return true }),
 		// The openings of the user's floor (bounds_commitment): the
 		// commercial-bounds/v0 document and its nonce, in this copy only.
 		"bounds_openings": boundsOpenings(events),

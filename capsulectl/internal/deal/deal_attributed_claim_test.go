@@ -132,7 +132,7 @@ func TestAnAttributedClaimAsksAndOnlyTheUsersWordsAuthorizeIt(t *testing.T) {
 			require.NoError(t, err)
 			claim := claimWith(t, id, ck["check_id"].(string), writeJSON(t, attributedClaim(attributedText)))
 			assert.Equal(t, false, claim["unchecked"])
-			r := claimRecord(t, id, "authenticity")
+			r := authorityOf(t, id, claimRecord(t, id, "authenticity"))
 			basis := basisOf(r)
 			require.Len(t, basis, 2, "the task authority, then the user's approval")
 			assert.Equal(t, "user_approval", basis[1].(map[string]any)["type"])

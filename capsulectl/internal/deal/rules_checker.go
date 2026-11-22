@@ -740,11 +740,27 @@ func (s *dealSession) dealClaimsInput(ctx context.Context, checked string, event
 			"source_kind": body["source_kind"], "at": block["at"], "text_commitment": commitment,
 		}
 		// Under the representation rules: what authorized it, as sealed, or
-		// that nothing did.
-		if basis, ok := body["authority_basis"]; ok {
+		// that nothing did. A claim sealed in the new shape carries it in its
+		// claim_authority step (none yet: pending, so it counts for nothing);
+		// an older claim carries it itself.
+		verdict := body
+		if se.Event.ClaimShape != "" {
+			verdict = nil
+			for _, later := range events {
+				if a := later.Event.ClaimAuthority; later.Event.Kind == "claim_authority" && a != nil && a.Claim == se.CapsuleID {
+					authority, err := s.capsuleWithInput(ctx, later.CapsuleID)
+					if err != nil || authority == nil {
+						return nil, err
+					}
+					record, _ := authority["agent_input"].(map[string]interface{})
+					verdict, _ = record["body"].(map[string]interface{})
+				}
+			}
+		}
+		if basis, ok := verdict["authority_basis"]; ok {
 			entry["authority_basis"] = basis
 		}
-		if body["unchecked"] == true {
+		if verdict["unchecked"] == true {
 			entry["unchecked"] = true
 		}
 		out = append(out, entry)

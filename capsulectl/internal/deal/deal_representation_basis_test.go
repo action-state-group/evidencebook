@@ -95,6 +95,19 @@ func digestOfType(t *testing.T, dealID, typ string) string {
 	return recordDigest(t, rs[len(rs)-1])
 }
 
+// authorityOf is the claim_authority record that judges the claim record r:
+// the seller's verdict is its own record, right after the claim (#244).
+func authorityOf(t *testing.T, dealID string, r map[string]any) map[string]any {
+	t.Helper()
+	for _, a := range recordsOfType(t, dealID, "claim_authority") {
+		if relDigest(a, "about") == recordDigest(t, r) {
+			return a
+		}
+	}
+	t.Fatalf("no claim_authority judges the claim")
+	return nil
+}
+
 func basisOf(r map[string]any) []any {
 	b, _ := r["body"].(map[string]any)["authority_basis"].([]any)
 	return b
@@ -134,7 +147,9 @@ func TestAnOrderedRepresentationNeedsNoApproval(t *testing.T) {
 		assert.Equal(t, false, claim["unchecked"])
 
 		assert.Len(t, recordsOfType(t, thread, dealprofile.TypeActionApproval), before, "no approval event is manufactured for an ordered representation")
-		r := claimRecord(t, thread, "condition")
+		claimRec := claimRecord(t, thread, "condition")
+		assert.NotContains(t, claimRec["body"], "authority_basis", "the verdict is its own record")
+		r := authorityOf(t, thread, claimRec)
 		basis := basisOf(r)
 		require.Len(t, basis, 1, "the task authority alone")
 		entry := basis[0].(map[string]any)
@@ -145,7 +160,7 @@ func TestAnOrderedRepresentationNeedsNoApproval(t *testing.T) {
 		assert.NotContains(t, r["body"], "unchecked")
 		checked := recordsOfType(t, thread, dealprofile.TypeProposedAction)
 		representing := checked[len(checked)-1]["body"].(map[string]any)["representing"].(map[string]any)
-		assert.Equal(t, representing["text_commitment"], r["body"].(map[string]any)["text_commitment"], "sealed under the check's nonce: the words said are the words checked")
+		assert.Equal(t, representing["text_commitment"], claimRec["body"].(map[string]any)["text_commitment"], "sealed under the check's nonce: the words said are the words checked")
 		_, export := exportRecords(t, thread)
 		checkProfile(t, export)
 	}
@@ -167,7 +182,7 @@ func TestARepresentationOutsideTheAuthorityNeedsTheUsersApproval(t *testing.T) {
 	claim := claimWith(t, a, ck["check_id"].(string), repFile("claim-warranty.json"))
 	require.Equal(t, false, claim["unchecked"])
 
-	r := claimRecord(t, a, "warranty")
+	r := authorityOf(t, a, claimRecord(t, a, "warranty"))
 	basis := basisOf(r)
 	require.Len(t, basis, 2, "the task authority, then the user's approval")
 	assert.Equal(t, "task_authority", basis[0].(map[string]any)["type"])
@@ -225,7 +240,8 @@ func TestAnUnauthorizedRepresentationIsSealedUnchecked(t *testing.T) {
 			assert.Contains(t, out["next"], "represent")
 			claims := recordsOfType(t, a, "claim")
 			require.Len(t, claims, before+1, "sealed: the words may already have been said")
-			body := claims[len(claims)-1]["body"].(map[string]any)
+			assert.NotContains(t, claims[len(claims)-1]["body"], "unchecked", "the verdict is its own record")
+			body := authorityOf(t, a, claims[len(claims)-1])["body"].(map[string]any)
 			assert.Equal(t, true, body["unchecked"])
 			assert.Equal(t, tc.rule, body["rule"])
 			assert.NotContains(t, body, "authority_basis")
@@ -302,7 +318,7 @@ func TestOrderedRepresentationsChangeOnlyOnTheUsersConfirmation(t *testing.T) {
 	ta := input["task_authority_record"].(map[string]any)
 	assert.Equal(t, []any{"condition", "warranty"}, ta["body"].(map[string]any)["ordered_representations"], "the checker gets the confirmed task authority")
 	claimWith(t, id, ck["check_id"].(string), repFile("claim-warranty.json"))
-	assert.Equal(t, taskAuthorityDigest(t, id), basisOf(claimRecord(t, id, "warranty"))[0].(map[string]any)["ref"].(map[string]any)["digest"], "the confirmed task authority")
+	assert.Equal(t, taskAuthorityDigest(t, id), basisOf(authorityOf(t, id, claimRecord(t, id, "warranty")))[0].(map[string]any)["ref"].(map[string]any)["digest"], "the confirmed task authority")
 
 	// A condition check under this order, then the user drops condition: the
 	// check no longer covers a claim.
@@ -512,7 +528,9 @@ func TestTheRepresentationRulesFollowTheOpening(t *testing.T) {
 }
 
 // checkProfileRejects runs the profile checker on records and wants it to
-// fail with want in its output.
+// fail with want in its output. want may list alternatives separated by " | ":
+// where the checker runs its schema stage (jsonschema installed) a malformed
+// record is refused there, with the schema's words, before the rule runs.
 func checkProfileRejects(t *testing.T, records []map[string]any, want string) {
 	t.Helper()
 	python := profilePython(t)
@@ -525,7 +543,11 @@ func checkProfileRejects(t *testing.T, records []map[string]any, want string) {
 	require.NoError(t, os.WriteFile(path, raw, 0o600))
 	out, err := exec.Command(python, dealProfileDir+"/check_profile.py", path).CombinedOutput()
 	require.Error(t, err, string(out))
-	assert.Contains(t, string(out), want)
+	found := false
+	for _, alt := range strings.Split(want, " | ") {
+		found = found || strings.Contains(string(out), alt)
+	}
+	assert.True(t, found, "want one of %q in %s", want, out)
 }
 
 // The profile checker holds a representation's basis to the chain: each
@@ -537,32 +559,47 @@ func TestTheProfileCheckerHoldsTheRepresentationRules(t *testing.T) {
 	claimWith(t, a, ck["check_id"].(string), repFile("claim-condition.json"))
 	records, export := exportRecords(t, a)
 	checkProfile(t, export)
-	last := func(edit func(body map[string]any, block map[string]any)) []map[string]any {
+	// at edits the record `back` places from the end: 1 is the claim's
+	// claim_authority (the seller's verdict), 2 the claim (its words).
+	at := func(back int, edit func(body map[string]any, block map[string]any)) []map[string]any {
 		var copied []map[string]any
 		raw, err := json.Marshal(records)
 		require.NoError(t, err)
 		require.NoError(t, json.Unmarshal(raw, &copied))
-		r := copied[len(copied)-1]
+		r := copied[len(copied)-back]
 		edit(r["body"].(map[string]any), r["x-deal-v0"].(map[string]any))
+		if back == 2 {
+			// The claim's digest moved: its claim_authority follows it, so only
+			// the rule under test fails.
+			d := recordDigest(t, r)
+			next := copied[len(copied)-1]["x-deal-v0"].(map[string]any)
+			next["prev"].(map[string]any)["digest"] = d
+			for _, ref := range next["refs"].([]any) {
+				if ref.(map[string]any)["rel"] == "about" {
+					ref.(map[string]any)["digest"] = d
+				}
+			}
+		}
 		return copied
 	}
+	last := func(edit func(body map[string]any, block map[string]any)) []map[string]any { return at(1, edit) }
 	checkProfileRejects(t, last(func(body, _ map[string]any) {
 		delete(body, "authority_basis")
 		delete(body, "evaluation_ref")
-	}), "exactly one of authority_basis or unchecked")
+	}), "exactly one of authority_basis or unchecked | is not valid under any of the given schemas")
 	checkProfileRejects(t, last(func(body, _ map[string]any) {
 		body["unchecked"], body["rule"] = true, "no_check"
 	}), "authority")
 	checkProfileRejects(t, last(func(body, _ map[string]any) {
 		body["authority_basis"].([]any)[0].(map[string]any)["ref"].(map[string]any)["digest"] = recordDigest(t, records[0])
 	}), "task_authority is not the evaluation's task_authority_ref")
-	checkProfileRejects(t, last(func(body, _ map[string]any) {
+	checkProfileRejects(t, at(2, func(body, _ map[string]any) {
 		body["class"] = "warranty"
 	}), "class differs from the one checked")
 	checkProfileRejects(t, last(func(body, block map[string]any) {
 		delete(block, "refs")
-	}), "exactly one 'authorized_by' ref")
-	checkProfileRejects(t, last(func(body, _ map[string]any) {
+	}), "exactly one | 'refs' is a required property")
+	checkProfileRejects(t, at(2, func(body, _ map[string]any) {
 		body["text_commitment"] = strings.Repeat("ab", 32)
 	}), "the representation's words differ from the ones checked")
 
@@ -571,7 +608,7 @@ func TestTheProfileCheckerHoldsTheRepresentationRules(t *testing.T) {
 	records, export = exportRecords(t, a)
 	checkProfile(t, export)
 	checkProfileRejects(t, last(func(_, block map[string]any) {
-		block["refs"] = []any{map[string]any{"rel": "authorized_by", "type": "deal-record", "digest_alg": "SHA-256", "digest": recordDigest(t, records[len(records)-2])}}
+		block["refs"] = append(block["refs"].([]any), map[string]any{"rel": "authorized_by", "type": "deal-record", "digest_alg": "SHA-256", "digest": recordDigest(t, records[len(records)-2])})
 	}), "names nothing that authorized it")
 }
 

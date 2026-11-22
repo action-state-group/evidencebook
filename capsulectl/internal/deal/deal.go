@@ -984,6 +984,11 @@ func runDeal(c *cobra.Command, needDeal bool, fn func(ctx context.Context, s *de
 		if events, err = s.load(ctx, dealID); err != nil {
 			return err
 		}
+		// A step that stopped between an agent claim and its verdict is
+		// finished before anything else is sealed or read from it.
+		if events, err = s.finishPendingClaim(ctx, c, dealID, events); err != nil {
+			return err
+		}
 	}
 	return fn(ctx, s, dealID, events)
 }
@@ -1638,6 +1643,7 @@ func dealNoteCommand() *cobra.Command {
 					cl := ev.Claim
 					cl.AuthorizedBy, cl.Reason, cl.Rule = authorizeClaim(events, *cl, cli.DealClock().UTC())
 					cl.Unchecked = cl.AuthorizedBy == ""
+					ev.ClaimShape = dealClaimShapeVersion
 				}
 			case "intent":
 				if open.Sale != "" {
@@ -1837,6 +1843,14 @@ func dealNoteCommand() *cobra.Command {
 			se, err := s.seal(ctx, dealID, events, ev)
 			if err != nil {
 				return err
+			}
+			// An agent claim's verdict is its own step, sealed right after it
+			// (a crash between the two is finished by the next command that
+			// loads the deal: finishClaimPair).
+			if ev.ClaimShape != "" {
+				if _, err = s.sealClaimAuthority(ctx, dealID, append(slices.Clone(events), se), se); err != nil {
+					return err
+				}
 			}
 			out := stepOutput(dealID, se)
 			switch kind {
@@ -2782,7 +2796,7 @@ func dealReportCommand() *cobra.Command {
 				// Sharing is a disclose act: it is on record before the file
 				// exists, and the output carries none of the local report's
 				// raw text.
-				share, err := s.recordShare(ctx, dealID, b, audience, recipient, dealRole(events), []byte(page), "")
+				share, err := s.recordShare(ctx, dealID, b, audience, recipient, events, []byte(page), "")
 				if err != nil {
 					return err
 				}
