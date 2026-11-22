@@ -5,6 +5,7 @@ package xdealv1
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"slices"
 	"time"
 
@@ -63,6 +64,32 @@ type ActAuthorization struct {
 // none is not gated (a payer settle always cites one, which the schema
 // requires).
 func CheckAuthorizations(journal, acts []Record) ([]ActAuthorization, error) {
+	in := make([]ActIn, len(acts))
+	for i, a := range acts {
+		in[i] = ActIn{Record: a}
+	}
+	return CheckActs(journal, in)
+}
+
+// ActIn is an act as CheckActs reads it: its record and, for a settle, the
+// Capsule's settlement member the leg travels in (PROFILE §5), which the
+// record itself does not carry.
+type ActIn struct {
+	Record     Record
+	Settlement json.RawMessage
+}
+
+// CheckActs is CheckAuthorizations, and also x-deal-v0's rule 5 on the
+// amount (PROFILE §8 keeps rules 5 and 6 unchanged): where both the act's
+// settlement member and its check carry them, the settled amount and its
+// currency equal the checked amount_minor and currency, in the currency's
+// minor units (dealprofile.AssetScale). An act given no settlement member is
+// read as CheckAuthorizations reads it.
+func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
+	acts := make([]Record, len(ins))
+	for i, in := range ins {
+		acts[i] = in.Record
+	}
 	w, err := walkJournal(journal)
 	if err != nil {
 		return nil, err
@@ -92,6 +119,9 @@ func CheckAuthorizations(journal, acts []Record) ([]ActAuthorization, error) {
 			return nil, bad("its check serves another deal")
 		}
 		cb := w.check[ci]
+		if err := settledAmountMatches(ins[i].Settlement, settleLeg(act), cb); err != nil {
+			return nil, bad("%v", err)
+		}
 		if want := kind.checkAction(); cb.Action != want {
 			return nil, bad("the act differs from the one checked: a %s rests on a %q check, not %q", kind, want, cb.Action)
 		}
@@ -579,6 +609,113 @@ func nonceOf(r Record) string {
 	}
 	if b, ok := bodyOf[ApprovalBody](r.Body); ok {
 		return b.Nonce
+	}
+	return ""
+}
+
+// settledAmountMatches is rule 5's amount condition for one act, where both
+// the leg and the check carry the field. The leg's asset code equals the
+// check's currency. The amount the leg settles equals the check's
+// amount_minor, compared exactly as AAC compares amounts (in integers at the
+// larger scale, draft-mih-agent-settlement-records-01), with amount_minor at
+// the currency's minor units (dealprofile.AssetScale). A payer leg settles
+// its amount; a payee leg settles received plus receive_fee, AAC's amount
+// rule, since received is net of the fee; a payee leg that states no
+// receive_fee is refused. A member carrying the other leg's amount field is
+// refused.
+func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) error {
+	if len(member) == 0 || cb == nil || (cb.AmountMinor == nil && cb.Currency == "") {
+		return nil
+	}
+	var m struct {
+		Amount     *legAmount `json:"amount"`
+		Received   *legAmount `json:"received"`
+		ReceiveFee *legAmount `json:"receive_fee"`
+	}
+	if err := json.Unmarshal(member, &m); err != nil {
+		return fmt.Errorf("its settlement member: %v", err)
+	}
+	parts := []*legAmount{m.Amount}
+	switch {
+	case leg == LegPayer && (m.Received != nil || m.ReceiveFee != nil),
+		leg == LegPayee && m.Amount != nil:
+		return fmt.Errorf("its settlement member carries the other leg's amount field for a %s leg", leg)
+	case leg == LegPayee:
+		parts = []*legAmount{m.Received, m.ReceiveFee}
+	}
+	// A payee leg with no receive_fee settles received plus a fee it does
+	// not state, so its settled amount is unknown. AAC reads a missing fee as
+	// zero only where it is shown not to apply (an x402 exact scheme, read
+	// from wrapped objects this member does not carry), so it is refused
+	// here rather than guessed.
+	if leg == LegPayee && m.ReceiveFee == nil && m.Received != nil && cb.AmountMinor != nil {
+		return fmt.Errorf("its settlement member states no receive_fee, so the amount it settles cannot be held to the checked one: state the fee, 0 when none was taken")
+	}
+	if parts[0] == nil {
+		return nil
+	}
+	sum, scale := new(big.Int), 0
+	for _, a := range parts {
+		if a == nil {
+			continue
+		}
+		if cb.Currency != "" && a.AssetCode != cb.Currency {
+			return fmt.Errorf("the settled currency %s differs from the checked %s: a new check is needed", a.AssetCode, cb.Currency)
+		}
+		if a.AssetCode != parts[0].AssetCode {
+			return fmt.Errorf("its settlement member mixes %s and %s", parts[0].AssetCode, a.AssetCode)
+		}
+		v, ok := a.scaled(max(scale, a.AssetScale))
+		if !ok {
+			return fmt.Errorf("its settlement member's amount %q is not a whole number", a.Value)
+		}
+		if a.AssetScale > scale {
+			sum.Mul(sum, pow10(a.AssetScale-scale))
+			scale = a.AssetScale
+		}
+		sum.Add(sum, v)
+	}
+	if cb.AmountMinor == nil {
+		return nil
+	}
+	checkScale, ok := dealprofile.AssetScale(parts[0].AssetCode)
+	if !ok {
+		return fmt.Errorf("the checked amount's currency %s has no known minor units, so the settled amount cannot be held to it", parts[0].AssetCode)
+	}
+	checked := new(big.Int).SetInt64(*cb.AmountMinor)
+	if checkScale > scale {
+		sum.Mul(sum, pow10(checkScale-scale))
+	} else {
+		checked.Mul(checked, pow10(scale-checkScale))
+	}
+	if sum.Cmp(checked) != 0 {
+		return fmt.Errorf("the settled amount differs from the checked %d %s: a new check is needed", *cb.AmountMinor, parts[0].AssetCode)
+	}
+	return nil
+}
+
+// legAmount is a settlement leg's amount (draft-mih-agent-settlement-records-01).
+type legAmount struct {
+	Value      string `json:"value"`
+	AssetCode  string `json:"assetCode"`
+	AssetScale int    `json:"assetScale"`
+}
+
+// scaled is the amount as an integer at scale, which is at least its own.
+func (a *legAmount) scaled(scale int) (*big.Int, bool) {
+	v, ok := new(big.Int).SetString(a.Value, 10)
+	if !ok || v.Sign() < 0 || a.AssetScale < 0 || a.AssetScale > 255 {
+		return nil, false
+	}
+	return v.Mul(v, pow10(scale-a.AssetScale)), true
+}
+
+func pow10(n int) *big.Int { return new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(n)), nil) }
+
+// settleLeg is a settle record's leg; empty for any other record.
+func settleLeg(r Record) string {
+	if b, ok := bodyOf[SettleBody](r.Body); ok {
+		return b.Leg
 	}
 	return ""
 }

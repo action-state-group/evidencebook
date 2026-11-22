@@ -313,7 +313,15 @@ journal order. The journal is read in order and its `at` never decreases: a jour
 `at` is earlier than the record before it is refused.
 
 `xdealv1.CheckAuthorizations(journal, acts)` checks them, refusing at the `authorization` stage,
-and returns per act the record digests the person signs:
+and returns per act the record digests the person signs. A settle's leg travels in its Capsule's
+`settlement` member, which the record does not carry, so rule 5's amount condition needs
+`xdealv1.CheckActs`, which is the same check given each act's settlement member as well. A caller
+holding the Capsules uses it. Where both the leg and the check carry them, the leg's asset code
+equals the check's `currency`, and its settled amount equals the check's `amount_minor`. A payer leg
+settles its `amount`, and a payee leg settles `received` plus `receive_fee`; a payee leg that states no `receive_fee` is refused (0
+when none was taken). Amounts compare as
+integers at the larger scale, with `amount_minor` read at the currency's minor units. A checked
+amount in a currency with no known minor units is refused. The record digests the person signs:
 
 - the approval, when it is the person's own (approver `user` or `agent_card`): the person's
   signature over the approval's record digest. The record's Capsule is signed by the holder's
