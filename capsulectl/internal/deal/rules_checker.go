@@ -957,10 +957,16 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 		if a.v1 {
 			evs, ok := v1Events[a.deal]
 			if !ok {
+				// A deal whose events cannot be read is left out, as an
+				// unreadable record is: the history is then incomplete.
 				if evs, err = s.v1Events(ctx, a.deal); err != nil {
-					return nil, nil, err
+					evs = nil
 				}
 				v1Events[a.deal] = evs
+			}
+			if evs == nil {
+				scope.Complete = false
+				continue
 			}
 			record, err := s.v1CapsuleWithInput(a.id, evs)
 			if err != nil || record == nil {
@@ -1155,7 +1161,7 @@ func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, bool, erro
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='deal_v1_events'`).Scan(&exists); err != nil || exists == 0 {
 		return nil, false, err
 	}
-	incomplete, err := s.reconcileAllV1(ctx)
+	failed, err := s.reconcileAllV1(ctx)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1172,7 +1178,7 @@ func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, bool, erro
 			return nil, false, err
 		}
 		var ev dealEvent
-		if json.Unmarshal([]byte(local), &ev) != nil || ev.Act == nil || ev.Act.AuthorizedBy == "" {
+		if failed[deal] || json.Unmarshal([]byte(local), &ev) != nil || ev.Act == nil || ev.Act.AuthorizedBy == "" {
 			continue
 		}
 		at, err := time.Parse(time.RFC3339, ev.At)
@@ -1181,34 +1187,35 @@ func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, bool, erro
 		}
 		out = append(out, v1RulesAct{deal, v1EventID(deal, n), at})
 	}
-	return out, incomplete, rows.Err()
+	return out, len(failed) > 0, rows.Err()
 }
 
 // reconcileAllV1 reconciles every x-deal-v1 deal whose book this profile holds
 // (reconcileV1Acts). A deal that cannot be reconciled does not stop the
-// others or the check that asked: the history is then marked incomplete, as
-// for a record it cannot read.
-func (s *dealSession) reconcileAllV1(ctx context.Context) (incomplete bool, err error) {
+// others or the check that asked: its acts are left out and the history is
+// marked incomplete, as for a record it cannot read.
+func (s *dealSession) reconcileAllV1(ctx context.Context) (failed map[string]bool, err error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT deal_id FROM deal_v1 WHERE own_agreement_id != ''`)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return false, err
+			return nil, err
 		}
 		ids = append(ids, id)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return false, err
+		return nil, err
 	}
+	failed = map[string]bool{}
 	for _, id := range ids {
 		d, err := s.v1DealOf(ctx, id)
 		if err != nil {
-			incomplete = true
+			failed[id] = true
 			continue
 		}
 		if d == nil {
@@ -1219,8 +1226,8 @@ func (s *dealSession) reconcileAllV1(ctx context.Context) (incomplete bool, err 
 			_, err = s.reconcileV1Acts(ctx, id, book)
 		}
 		if err != nil {
-			incomplete = true
+			failed[id] = true
 		}
 	}
-	return incomplete, nil
+	return failed, nil
 }

@@ -311,13 +311,12 @@ func (s *dealSession) legFor(ctx context.Context, a *v1ActDeal, row *xdealv1.Row
 		return "", cli.InputError("--reverses must name a settle record of your own deal book: " + reverses + " is not one")
 	}
 	// A payee leg may be superseded by a later observation of the same
-	// payment: the latest one says whether money moved.
-	latest := latestInChain(a.book, reverses)
-	status, err := s.legStatusAt(ctx, a.d, latest)
+	// payment: the latest ones say whether money moved.
+	failed, err := s.chainFailed(ctx, a.d, a.book, reverses)
 	if err != nil {
 		return "", err
 	}
-	if status == legFailed {
+	if failed {
 		return "", cli.InputError("leg " + reverses + " failed: no money moved, so there is nothing to refund")
 	}
 	if target.Leg == xdealv1.LegPayer {
@@ -387,7 +386,7 @@ func (s *dealSession) refundTaken(ctx context.Context, a *v1ActDeal, target stri
 		}
 		return nil
 	}
-	for i, r := range a.book {
+	for _, r := range a.book {
 		b, ok := settleOf(r)
 		if !ok || b.Leg != xdealv1.LegPayee || b.Reverses == nil || !chain[b.Reverses.Digest] {
 			continue
@@ -396,12 +395,9 @@ func (s *dealSession) refundTaken(ctx context.Context, a *v1ActDeal, target stri
 		if err != nil {
 			return err
 		}
-		if latestInChain(a.book, d) != i+1 {
-			continue
-		}
-		if st, err := s.legStatusAt(ctx, a.d, i+1); err != nil {
+		if failed, err := s.chainFailed(ctx, a.d, a.book, d); err != nil {
 			return err
-		} else if st != legFailed {
+		} else if !failed {
 			return taken
 		}
 	}
@@ -431,17 +427,39 @@ func legChain(book []xdealv1.Record, digest string) map[string]bool {
 	return chain
 }
 
-// latestInChain is the place (seq) of the latest settle record of digest's
-// chain: the one no later record supersedes.
-func latestInChain(book []xdealv1.Record, digest string) int {
+// chainTips are the places (seq) of the settle records of digest's chain that
+// no record supersedes: its latest observations. A chain normally has one;
+// a fork (two records superseding one) has several, each still standing.
+func chainTips(book []xdealv1.Record, digest string) []int {
 	chain := legChain(book, digest)
-	latest := 0
-	for i, r := range book {
-		if d, err := xdealv1.Digest(r); err == nil && chain[d] {
-			latest = i + 1
+	superseded := map[string]bool{}
+	for _, r := range book {
+		if b, ok := settleOf(r); ok && b.Supersedes != nil {
+			superseded[b.Supersedes.Digest] = true
 		}
 	}
-	return latest
+	var tips []int
+	for i, r := range book {
+		if d, err := xdealv1.Digest(r); err == nil && chain[d] && !superseded[d] {
+			tips = append(tips, i+1)
+		}
+	}
+	return tips
+}
+
+// chainFailed says every latest observation of digest's chain failed.
+func (s *dealSession) chainFailed(ctx context.Context, d *v1Deal, book []xdealv1.Record, digest string) (bool, error) {
+	tips := chainTips(book, digest)
+	for _, seq := range tips {
+		st, err := s.legStatusAt(ctx, d, seq)
+		if err != nil {
+			return false, err
+		}
+		if st != legFailed {
+			return false, nil
+		}
+	}
+	return len(tips) > 0, nil
 }
 
 // checkRecord is the deal's journal check of digest, with its body.
@@ -482,20 +500,24 @@ type settleIn struct {
 	remedyRow                                             string
 }
 
-const settleLong = `Seal a payment leg in your deal book of an x-deal-v1 deal: what you paid, a
+const settleLong = `Seal a payment leg of an x-deal-v1 deal in your deal book: what you paid, a
 refund you paid, or what you received, and write the file to send to --out.
 The other side counts it with deal receive. The leg (payer or payee), its terms
 and its amount come from the deal and your check, never from free input.
 
 A payment you make takes two calls. Before you hand it to the rail, run
 deal settle --sent --check DIGEST (your passing pay check, or your cancel check
-for a refund): the first-act rule, the check's approval and your limits are
-checked first, so a payment they would refuse never leaves. From then the
+for a refund): your first act waits on the other side's stamp proof, and the
+check's approval and your limits are checked first, so a payment they would
+refuse never leaves. From then the
 amount counts toward your limits, and no record that changes the deal's
 details can be sealed until the payment is settled or failed. When the rail
 answers, run deal settle --check DIGEST --status settled (or failed) --out FILE.
-While the rail still says pending, run nothing more: the payment stays in
-flight, and a second --sent on the check names it.
+While the rail still says pending, run nothing more for this payment: it stays
+in flight, and a second --sent on the check names it. If you no longer have the
+rail's answer, look the payment up on the rail by the reference --sent printed,
+then run --status. A failed payment uses up its check: to try again, run deal
+check for a new one.
 
 --payment-ref-type names the rail's reference type and --payment-ref its value.
 On ln.payment_hash, bolt12.invoice_payment_hash, acp.order_id and ucp.order_id
@@ -507,12 +529,14 @@ a verifier reads the transaction's AuthorizationUsed nonce on chain.
 What you received is a payee leg: --received and --receive-fee (0 when none was
 taken) in minor units, --status pending, settled or failed, and the payment's
 reference. A later observation of it names the earlier one with --supersedes.
---reverses names a leg of your own book that this leg refunds. A refund's legs
-are shown, and the payment row's check is not run for them.
+--reverses names a leg of your own book that this leg refunds. Once a refund
+leg is in a book, the report no longer matches that row's payment legs against
+each other, the payment's included: a refund needs its own terms, which are not
+defined yet, and the report says so.
 
 --statement row=value says how a row went; --mark and --remedy-row are as for
-deal perform. Run again with the same flags, it rewrites the same file and
-seals nothing new.`
+deal perform. Run again with the same flags, --status rewrites the same file and
+seals nothing new; a second --sent on a check is refused.`
 
 func dealSettleCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -739,7 +763,7 @@ func (s *dealSession) settleSent(ctx context.Context, c *cobra.Command, a *v1Act
 	}
 	for _, r := range v1Acts(a.book) {
 		if b, ok := settleOf(r); ok && b.Check != nil && b.Check.Digest == in.check {
-			return cli.InputError("check " + in.check + " already rests a payer leg: a check authorizes one payment")
+			return cli.InputError("check " + in.check + " already has a payer leg: a check authorizes one payment")
 		}
 	}
 	p, err := sendRef(in, cb)
@@ -821,7 +845,7 @@ func statusHint(dealID, check, reverses, refType string) string {
 	h += " --status settled|failed --out FILE"
 	switch {
 	case equalRefTypes[refType]:
-	case reverses == "":
+	case reverses == "" || refType == "x402.transaction":
 		h += " --payment-ref THE_RAILS_REFERENCE"
 	default:
 		h += " [--payment-ref THE_RAILS_REFERENCE]"
@@ -888,6 +912,13 @@ func (s *dealSession) storeSend(ctx context.Context, dealID string, n int64, loc
 	}
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	if afterSendStoredHook != nil {
+		// A process that dies here leaves the send and its payload stored;
+		// the next read appends the evidence (v1Events).
+		if err := afterSendStoredHook(); err != nil {
+			return err
+		}
 	}
 	if err := s.appendV1Journal(ctx, payload); err != nil {
 		held, herr := s.journalHolds(ctx, digest)
@@ -999,6 +1030,10 @@ func (s *dealSession) settleAnswered(ctx context.Context, c *cobra.Command, a *v
 	return writePush(c, sealed.Pair, in.out, result)
 }
 
+// afterSendStoredHook lets a test stop a run as a dying process would, after a
+// send is stored and before its evidence is appended.
+var afterSendStoredHook func() error
+
 // afterLegSealedHook lets a test stop a run between sealing a payer leg and
 // closing its send.
 var afterLegSealedHook func() error
@@ -1032,8 +1067,8 @@ func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]a
 	case equalRefTypes[send.RefType]:
 	case in.ref.Value != "":
 		bound["value"] = in.ref.Value
-	case cb.Action == "pay":
-		return nil, cli.InputError("--payment-ref is required: on " + send.RefType + " the leg carries the rail's own reference (the transaction on x402), not the " + send.Ref + " the check recorded before paying")
+	case cb.Action == "pay" || send.RefType == "x402.transaction":
+		return nil, cli.InputError("--payment-ref is required: on " + send.RefType + " the leg carries the rail's own reference (the transaction on x402), which comes back with the rail's answer, not the " + send.Ref + " known before paying")
 	}
 	return bound, nil
 }
@@ -1096,6 +1131,11 @@ func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, a *v1Ac
 		return cli.InputError("you owe this row: a payment you make rests on your pay check (--check), sent with --sent first")
 	}
 	if in.supersedes != "" {
+		for _, r := range a.book {
+			if b, isSettle := settleOf(r); isSettle && b.Supersedes != nil && b.Supersedes.Digest == in.supersedes {
+				return cli.InputError("leg " + in.supersedes + " is already superseded: a later observation names the latest one of its payment")
+			}
+		}
 		ok := false
 		for _, r := range a.book {
 			if b, isSettle := settleOf(r); isSettle && b.Leg == xdealv1.LegPayee {

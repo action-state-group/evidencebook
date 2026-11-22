@@ -488,6 +488,8 @@ func TestQualifiersAndAnX402Refund(t *testing.T) {
 	c := cancel()
 	dealRun(t, "settle", "--deal", h.dealID, "--check", c, "--reverses", received, "--payment-ref-type", "x402.transaction", "--payment-ref", "pending-authorization", "--payment-ref-network", "base", "--sent")
 	file := filepath.Join(t.TempDir(), "refund.json")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", c, "--reverses", received, "--status", "settled", "--out", file), "--payment-ref is required",
+		"an x402 refund's transaction comes back with the rail's answer")
 	refundTx := "0x" + strings.Repeat("5b", 32)
 	dealRun(t, "settle", "--deal", h.dealID, "--check", c, "--reverses", received, "--status", "settled", "--payment-ref", refundTx, "--out", file)
 	assert.Equal(t, map[string]any{"type": "x402.transaction", "value": refundTx, "network": "base"}, settlementOf(t, file)["payment_ref"])
@@ -537,6 +539,74 @@ func TestTheRulesHistoryReconcilesEveryDeal(t *testing.T) {
 		require.NoError(t, err)
 		_, scope, err = s.rulesHistory(t.Context())
 		require.NoError(t, err, "one broken deal does not fail the history")
+		assert.False(t, scope.Complete)
+	})
+}
+
+// A later observation names the latest one of its payment: a fork is refused,
+// and a payment whose latest observations include one that did not fail
+// stays taken.
+func TestAPayeeChainDoesNotFork(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	cancel := sellerCancelChecks(t, h)
+	p := payeeLeg(t, h, "pending")
+	s := payeeLeg(t, h, "settled", "--supersedes", p)
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
+		"--received", "4500", "--receive-fee", "0", "--status", "failed", "--supersedes", p, "--out", filepath.Join(t.TempDir(), "fork.json")), "already superseded")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel(), "--reverses", s, "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32), "--sent")
+}
+
+// A run that died after storing its send and before appending the evidence is
+// finished by the next command: the same evidence, appended once, and the
+// payment counted once.
+func TestASendStoppedBeforeItsAppendIsFinished(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	afterSendStoredHook = func() error { return fmt.Errorf("the process died") }
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "the process died")
+	afterSendStoredHook = nil
+	send := sendRow(t, h.dealID, check)
+	require.NotNil(t, send, "the send stays stored")
+	evidence := func() int {
+		n := 0
+		withSession(t, func(s *dealSession) {
+			all, err := s.v1JournalRecords(t.Context())
+			require.NoError(t, err)
+			for _, jr := range all {
+				if jr.rec.Block.RecordType == xdealv1.TypeEvidence && jr.rec.Block.DealID == h.dealID {
+					n++
+				}
+			}
+		})
+		return n
+	}
+	assert.Equal(t, 0, evidence(), "not yet in the journal")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "is in flight")
+	assert.Equal(t, 1, evidence(), "the next command appended it")
+	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("cd", 32)+`"`)))
+	assert.Equal(t, 1, evidence(), "once")
+	acts := v1ActEvents(t, h.dealID)
+	require.Len(t, acts, 1)
+	assert.Equal(t, acts[0].Digest, sendEvidenceDigest(t, h.dealID, send))
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "leg.json"))
+}
+
+func sendEvidenceDigest(t *testing.T, dealID string, send *v1Send) string {
+	t.Helper()
+	var d string
+	require.NoError(t, v1DB(t).QueryRow(`SELECT record_digest FROM deal_v1_events WHERE deal_id=? AND n=?`, dealID, send.N).Scan(&d))
+	return d
+}
+
+// A deal whose local events cannot be read is left out of the rules history,
+// which is then incomplete, and another deal's check still runs.
+func TestACorruptDealDoesNotStopTheHistory(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	withSession(t, func(s *dealSession) {
+		_, err := s.db.ExecContext(t.Context(), `UPDATE deal_v1_events SET local='{' WHERE deal_id=? AND n=1`, h.dealID)
+		require.NoError(t, err)
+		_, scope, err := s.rulesHistory(t.Context())
+		require.NoError(t, err)
 		assert.False(t, scope.Complete)
 	})
 }
