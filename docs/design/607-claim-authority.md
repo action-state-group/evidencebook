@@ -135,13 +135,35 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
     any step, whatever its disposition) and every outcome whose `status` is `unchecked_action`, so
     the `required_representation_missing` finding (leak 4) is in no disclosed record. Withholding
     only the records that carry that finding would single them out;
+  - where the deal follows rule 12, also withholds (evidencebook#613, found in
+    evidencebook-deal#244's plan review), by kind and whatever each record's result or answer:
+    - every answer to a check (`action-approval/v0` of authority `user_approval` or
+      `card_answer`), since a `hold` on a gated check shows the gate where an authorized twin has
+      no answer at all. The `counterparty_acceptance` and `platform_approval` observations answer
+      no check and stay;
+    - every telling (every `disclosure`, and every `action-record/v0` with `disclosed`): a share
+      the gate holds is sealed with `authority: none` and `rule: required_representation_missing`
+      (evidencebook-deal `deal_profile.go:1279-1294`), and withholding only those would branch on
+      the verdict (Sherlock's condition 1); the buyer knows from its own side what it was told;
+    - every `close`: its `unchecked_actions` counts the unchecked acts (evidencebook-deal
+      `deal.go:2550`). The report says how the deal ended from the outcome the close refs, which
+      the copy discloses unless it is an `unchecked_action` outcome; a close on an unchecked
+      outcome leaves the end "not shared". A late `evidence` or `rules_verdict` that `confirms` the
+      withheld close still verifies (its ref is a digest). The counterparty's section 10 admission
+      of this party's half then has no payload to read, so it no longer sees that the half is a
+      final close; the half's opening still verifies;
   - says nothing derived from a record this section withholds: its report (`steps`, `did`,
-    `anomalies` and every other section) names such a record by no kind, line, result or count of
-    its own beyond its place in the log (as a shared copy already treats the counterparty-profile
-    step), carries no "Check: no differences" or difference count for it, and no "unapproved" or
-    "without authority" item. evidencebook-deal#244 tests it by comparing the counterparty copies
-    of two deals that differ only in whether an ordered claim was authorized: their report text
-    and disclosed records differ in nothing but digests, capsule ids, commitments and the number and places of withheld steps;
+    `told`, `anomalies` and every other section) names such a record by no kind, line, result or
+    count of its own beyond its place in the log (as a shared copy already treats the
+    counterparty-profile step), carries no "Check: no differences" or difference count for it, no
+    count of unchecked acts, and no "unapproved" or "without authority" item. evidencebook-deal#244
+    tests it by comparing the counterparty copies of two deals that differ only in whether an
+    ordered claim was authorized: their report text and disclosed records differ in nothing but
+    digests, capsule ids, commitments, the number and places of withheld steps, and the steps
+    section 7's second limit names. `x-deal-v0/fixtures/counterparty-copy-vectors.json` holds
+    such twins with the exact set a counterparty copy withholds under this section and the set it
+    must disclose; Go's `dealprofile.CounterpartyWithheld` and `RequiredDisclosed` and
+    `check_profile.py` compute both, and evidencebook-deal#244 compares its copies with them;
   - withholds every agent claim sealed in the old shape (carrying a verdict), all of them,
     authorized or not, and opens none of their words (there is no disclosed record to check them
     against). Section 6 says why.
@@ -170,7 +192,7 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
   the same deal are shown. Copies already shared before this change still carry the verdict
   fields and cannot be recalled; the CHANGELOG says so.
 
-## 7. Known limit: positions
+## 7. Known limits: positions, and steps resting on a held act
 
 A withheld record keeps its place in the log; that is what lets a copy verify. An authorized claim
 follows its withheld check (and approval); an agent claim made with no check at all (`no_check`)
@@ -183,6 +205,18 @@ Closing it would mean hiding log positions, which every copy's verification rest
 residual was kept, stated, as a reviewer's finding in evidencebook-deal#231's plan review (not a
 ruling). Steven accepted this limit on the condition that PROFILE.md and the CHANGELOG state it
 (section 9).
+
+**Steps resting on a held act (evidencebook#613).** An act the representation gate held that the
+agent did anyway is sealed unchecked and is not in force: only an approved proceed adopts an
+offer's terms (evidencebook-deal `deal_rules.go:1178`), and an acceptance is recorded only for an
+offer act that was authorized (`deal.go:623-634`). So the unauthorized twin has no recorded
+acceptance, no commit or address share resting on one, and an end outcome that compares the
+delivery with the terms in force without that offer (`mismatch` where the authorized twin says
+`completed`). Its counterparty copy lacks steps the buyer may know happened. A buyer who knows they
+happened can tell they were not authorized, never why. Unlike the position hint, this can prove that a step was not
+authorized. Closing it would mean withholding every act and outcome, including the offers rule 10
+gives the buyer in full. Sherlock routed it to Steven with the recommendation to accept it as a
+stated limit (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dc33a5bc87d97eefbfca7fc7e858f7837d9ddaa2f57749752a296f695f9590c2&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
 
 ## 8. Work in evidencebook
 
@@ -235,6 +269,14 @@ it runs the reference checker, the same tag's `check_profile.py`.
   branching inside such a deal; and evidencebook-deal#244 tests that on the probe deal (an ordered
   claim with no check, then an offer) the string `required_representation_missing` is in no
   disclosed record of the counterparty copy and the copy still verifies.
+- evidencebook#613's additions (every answer to a check, every telling, every close): inside
+  u615, no new product meaning (Sherlock,
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=69334be4443defcbd62abab6c808751efffd19ef2be2a413ddbcec1d7dc06e7a&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260),
+  narrowed to answers to a check, and widened to every telling in place of only the unauthorized
+  ones, on the Sherlock twin's point that the latter branches on the verdict; the report says
+  "not shared" where no end outcome is disclosed
+  (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dc33a5bc87d97eefbfca7fc7e858f7837d9ddaa2f57749752a296f695f9590c2&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
+  The second limit of section 7 is Steven's call, asked in the same message.
 
 ## 10. Test plan
 

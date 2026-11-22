@@ -500,7 +500,8 @@ typed record, in its header), next to the fingerprints' `fp_alg`. What it states
   includes them, section 6 rule 12). A counterparty's copy carries none, except where the user
   sells: there it opens the agent's own claims (its representations to the buyer) whose words
   and source note hold none of the user's private details, and no other claim, and never one
-  that carries its own verdict (rule 12, Copies).
+  that carries its own verdict (section 6 rule 12, Copies, which also lists the records such a
+  copy withholds).
 
 **Claims.** A claim's words and its source note are sealed as commitments; only whose it is,
 `source_kind`, is in the clear.
@@ -773,17 +774,49 @@ A verifier holding one deal's records in `seq` order checks:
     - **Copies.** A counterparty copy of a deal under this rule carries each agent claim's
       words (the claim record, and its opening as `representations` and `claim_openings`, section
       4), so the buyer can check the words it was told, and nothing that says whether a claim was
-      authorized (evidencebook#607). It withholds every `claim_authority`; the represent trail
-      (every `check` with `action: "represent"`, its evaluation, and every approval of it); every
-      `action-evaluation/v0` and every outcome with `status: "unchecked_action"`, since the gate
-      below names `required_representation_missing` there; and every agent claim that carries its
-      own verdict (sealed before this change), whose words it opens nowhere. Its report names a
-      record it withholds this way by no kind, line, result or count beyond its place in the log.
+      authorized (evidencebook#607, evidencebook#613). It withholds these records by kind, across
+      the whole deal, whatever each one's result or answer:
+      - every `claim_authority`;
+      - every `check` with `action: "represent"`;
+      - every evaluation (`action-evaluation/v0`), since the gate below names
+        `required_representation_missing` there;
+      - every answer to a check (an `action-approval/v0` of authority `user_approval` or
+        `card_answer`), since a `hold` on a gated check shows the gate. The counterparty's own
+        acceptance and a platform approval observation answer no check, and stay;
+      - every outcome with `status: "unchecked_action"`;
+      - every telling: every `disclosure`, and every `action-record/v0` that carries `disclosed`
+        (a share the gate held is sealed with `rule: "required_representation_missing"`). The buyer
+        knows from its own side what it was told;
+      - every `close`, since its `unchecked_actions` counts the unchecked acts;
+      - every agent claim that carries its own verdict (sealed before evidencebook#607), whose
+        words it opens nowhere.
+
+      Its report names a record it withholds this way by no kind, line, result or count beyond its
+      place in the log: no `told` item, no count of unchecked acts. It says how the deal ended from
+      the outcome the close refs, which it discloses when that outcome's status is not
+      `unchecked_action`; a close that refs an unchecked outcome directly leaves the end "not shared".
+      A late record that `confirms` the withheld close still verifies. With the close withheld, the
+      counterparty's admission of this party's half (section 10) has no payload to read, so it no
+      longer sees that the half is a final close; the half's opening still verifies.
+      `counterparty-copy-vectors.json` beside this document gives, for twin deals that differ only
+      in whether the ordered claim was authorized, the records a counterparty copy withholds under
+      this rule and the records it must disclose.
+
       An adjudicator's copy, by default, withholds every agent claim, every `claim_authority` and
-      the represent trail; with the seller's own choice it carries all of them. **Known limit:** a withheld record
-      keeps its place in the log, which a copy's verification rests on; counting the withheld
-      records before a claim can suggest, but never prove, that it had no check. Copies made before
+      the represent trail; with the seller's own choice it carries all of them. Copies made before
       this change still carry the verdicts they carried.
+
+      **Known limits.**
+      - A withheld record keeps its place in the log, which a copy's verification rests on;
+        counting the withheld records before a claim can suggest, but never prove, that it had no
+        check.
+      - An act the gate held (below) that the agent did anyway is sealed unchecked and is not in
+        force, so nothing that rests on it follows: no acceptance of that offer is recorded, and no
+        commit or share that rests on one. The buyer's copy then lacks those steps, which the buyer
+        may know happened, and its end outcome compares the delivery with the terms in force
+        without that offer (`mismatch` where an authorized deal says `completed`). A buyer who knows
+        the steps happened can tell they were not authorized, never why. Closing this would mean
+        withholding every act and outcome, including the offers rule 10 gives the buyer in full.
     - While an ordered class has no authorized claim in this deal (on a sale, in this thread), a
       check of `offer`, `commit`, `sign`, `pay`, `share_contact` or `share_credentials` asks, with
       finding `required_representation_missing` and no `proceed` option. No transaction approval
