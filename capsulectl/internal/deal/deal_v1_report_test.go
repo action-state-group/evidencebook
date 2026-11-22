@@ -4,7 +4,10 @@ package deal
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -63,7 +66,7 @@ func TestAV1ReportRefusals(t *testing.T) {
 	h.buyer.act(t)
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID), "the next cadence tick covers it")
-	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "not served yet", "--bundle": "not served yet",
+	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "needs --out FILE and --to", "--bundle": "not served yet",
 		"--email": "receipt email", "--from-bundle": "countersignatures", "--directory": "countersignatures"} {
 		arg := filepath.Join(t.TempDir(), "x")
 		if flag == "--share" {
@@ -126,4 +129,168 @@ func TestAV1ReportAfterADueTick(t *testing.T) {
 	assert.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	out := dealRun(t, "report", "--deal", h.dealID)
 	assert.NotNil(t, out["report"], "%v", out)
+}
+
+// A shared copy is put on record before it is written: the disclosure record
+// names the audience, the recipient and the digest of the exact file; an
+// adjudicator's copy names its referee. A failed share gate writes and
+// records nothing.
+func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
+	h := agreedBoth(t, oneForum)
+	h.buyer.act(t)
+	disclosures := func() []map[string]any {
+		var out []map[string]any
+		rows, err := v1DB(t).Query(`SELECT record FROM deal_disclosures WHERE deal_id=? ORDER BY n`, h.dealID)
+		require.NoError(t, err)
+		defer rows.Close()
+		for rows.Next() {
+			var raw string
+			require.NoError(t, rows.Scan(&raw))
+			var m map[string]any
+			require.NoError(t, json.Unmarshal([]byte(raw), &m))
+			out = append(out, m)
+		}
+		require.NoError(t, rows.Err())
+		return out
+	}
+	file := filepath.Join(t.TempDir(), "cp.json")
+	out := dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--out", file)
+	data, err := os.ReadFile(file)
+	require.NoError(t, err)
+	read, err := xdealv1.VerifyReport(data, readPush(t, h.buyerAgr).Record)
+	require.NoError(t, err)
+	assert.Equal(t, out["sealed_report"], read.CapsuleID)
+	recs := disclosures()
+	require.Len(t, recs, 1)
+	assert.Equal(t, "counterparty", recs[0]["audience"])
+	assert.Equal(t, "Kettle Shop", recs[0]["recipient"])
+	sum := sha256.Sum256(data)
+	assert.Equal(t, hex.EncodeToString(sum[:]), recs[0]["receipt_sha256"], "the digest of the exact copy written")
+
+	adj := filepath.Join(t.TempDir(), "adj.json")
+	got := dealRun(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", adj)
+	report := got["report"].(map[string]any)
+	assert.Equal(t, "Lamp Court", report["referee"])
+	recs = disclosures()
+	require.Len(t, recs, 2)
+	assert.Equal(t, "adjudicator", recs[1]["audience"])
+	assert.Equal(t, "Lamp Court", recs[1]["recipient"])
+	assert.Equal(t, "adjudicator-key", recs[1]["adjudicator_key_id"], "the agreement's adjudicator, by key")
+	assert.Nil(t, recs[0]["adjudicator_key_id"])
+
+	taken := filepath.Join(t.TempDir(), "taken.json")
+	require.NoError(t, os.WriteFile(taken, []byte("x"), 0o600))
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--out", taken), "exists")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", ""), "cannot be empty")
+	assert.Len(t, disclosures(), 2, "an existing or empty --out records nothing")
+
+	v1ShareGate = func([]byte, []sealedEvent, string) error {
+		return cli.InputError("the copy would spell out a private value")
+	}
+	t.Cleanup(func() { v1ShareGate = dealShareGate })
+	refused := filepath.Join(t.TempDir(), "refused.json")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--out", refused), "private value")
+	_, err = os.Lstat(refused)
+	assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
+	assert.Len(t, disclosures(), 2, "nothing recorded")
+
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--out", filepath.Join(t.TempDir(), "x.json")), "needs --out FILE and --to")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--to", "Kettle Shop"), "use it with --share counterparty or adjudicator")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--read-only", "--share", "counterparty", "--to", "x"), "writes nothing")
+}
+
+// The real share gate runs on a v1 shared copy with the deal's own local
+// events, the opening and its plain counterparty values among them, and the
+// copy's audience, over the exact bytes then written.
+func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
+	h := agreedBoth(t, oneForum)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	var gotEvents []sealedEvent
+	var gotAudience string
+	var gotBytes []byte
+	v1ShareGate = func(data []byte, events []sealedEvent, audience string) error {
+		gotEvents, gotAudience, gotBytes = events, audience, data
+		return dealShareGate(data, events, audience)
+	}
+	t.Cleanup(func() { v1ShareGate = dealShareGate })
+	file := filepath.Join(t.TempDir(), "adj.json")
+	dealRun(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", file)
+	assert.Equal(t, "adjudicator", gotAudience)
+	require.NotEmpty(t, gotEvents)
+	require.NotNil(t, gotEvents[0].Event.Open, "the opening, which holds the plain counterparty values")
+	assert.Equal(t, "Kettle Shop", gotEvents[0].Event.Open.Who.Name)
+	written, err := os.ReadFile(file)
+	require.NoError(t, err)
+	assert.Equal(t, written, gotBytes, "the gate read the exact bytes written")
+}
+
+// An adjudicator's copy goes only to a deal whose agreement chose one.
+func TestAV1AdjudicatorCopyNeedsTheAgreementsAdjudicator(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	file := filepath.Join(t.TempDir(), "adj.json")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", file), "names no adjudicator")
+	_, err := os.Lstat(file)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// The bytes are staged before the record: a failed record leaves no file
+// (and no staging file); an unwritable directory or an existing file runs no
+// record; a file that appears at the path after the record is never
+// replaced and the error says the copy is on record; a failed folder sync
+// says the copy is written and recorded.
+func TestWriteNewFileAfterStagesBeforeTheRecord(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "c.json")
+	assert.Error(t, writeNewFileAfter(out, []byte("x\n"), func() error { return errors.New("no record") }))
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "no file, no staging file")
+
+	ro := filepath.Join(dir, "ro")
+	require.NoError(t, os.Mkdir(ro, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(ro, 0o700) })
+	ran := false
+	assert.Error(t, writeNewFileAfter(filepath.Join(ro, "c.json"), []byte("x\n"), func() error { ran = true; return nil }))
+	assert.False(t, ran, "an unwritable directory fails before the record")
+
+	require.NoError(t, os.WriteFile(out, []byte("theirs"), 0o600))
+	assert.ErrorContains(t, writeNewFileAfter(out, []byte("mine\n"), func() error { ran = true; return nil }), "exists")
+	assert.False(t, ran, "an existing file fails before the record")
+	require.NoError(t, os.Remove(out))
+
+	// Another writer takes the path while the record is made: its file is
+	// never replaced.
+	err = writeNewFileAfter(out, []byte("mine\n"), func() error { return os.WriteFile(out, []byte("theirs"), 0o600) })
+	assert.ErrorContains(t, err, "on record, but")
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Equal(t, "theirs", string(got), "never replaced")
+	require.NoError(t, os.Remove(out))
+
+	v1SyncDir = func(string) error { return errors.New("sync failed") }
+	t.Cleanup(func() { v1SyncDir = syncDir })
+	err = writeNewFileAfter(out, []byte("mine\n"), func() error { return nil })
+	assert.ErrorContains(t, err, "on record and written to")
+	got, err = os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Equal(t, "mine\n", string(got))
+	v1SyncDir = syncDir
+
+	fresh := filepath.Join(dir, "d.json")
+	require.NoError(t, writeNewFileAfter(fresh, []byte("y\n"), func() error { return nil }))
+	got, err = os.ReadFile(fresh)
+	require.NoError(t, err)
+	assert.Equal(t, "y\n", string(got))
+	info, err := os.Stat(fresh)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	entries, err = os.ReadDir(dir)
+	require.NoError(t, err)
+	names := []string{}
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	assert.ElementsMatch(t, []string{"c.json", "d.json", "ro"}, names, "no staging or probe file left")
 }

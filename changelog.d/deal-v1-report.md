@@ -4,5 +4,5 @@
 - Beside the report, `settled_note` says that no act on the deal carries the person's own signature yet (the format is still being defined: agent-action-capsule#627), so "settled" is computed from the agent's records, which the person has not signed. evidencebook#729 replaces this with a check per act.
 - `--out FILE` also seals the report, standalone and appended to no book, and writes it with its signature to that new file. The sealed report verifies against the deal's agreement, and it must be made with the profile you agreed with.
 - A book with records after its last checkpoint has no report yet: the next cadence tick covers it (about every cadence interval, 5 minutes by default; `deal tick` runs one once it is due), then run `deal report` again. A deal with no agreement of yours recorded yet names `deal agree`.
-- `--html`, `--email`, `--from-bundle`, `--directory` and `--include-agent-claims` do not apply. A shared copy (`--share`) and the bundle (`--bundle`) are not served yet.
+- `--html`, `--email`, `--from-bundle`, `--directory` and `--include-agent-claims` do not apply. The bundle (`--bundle`) is not served yet.
 - `deal close` and `deal terms-result` on an x-deal-v1 deal now add "See `deal report`".

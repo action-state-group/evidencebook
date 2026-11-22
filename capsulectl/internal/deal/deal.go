@@ -3036,7 +3036,7 @@ func dealReportCommand() *cobra.Command {
 	cmd.Flags().String("email", "", "Write the receipt as a ready-to-send email (.eml, no sender or recipient) to this new file, for the agent host's own email tool to send")
 	cmd.Flags().String("bundle", "", "Write the deal's Evidence Bundle (for `capsulectl verify --bundle`) to this new file")
 	cmd.Flags().String("share", cli.DealAudienceKeep, "Who the page is for: keep (your own copy, nothing withheld), counterparty or adjudicator (a shared copy, put on record first)")
-	cmd.Flags().String("to", "", "With --share: who the shared copy is for, as sealed in the disclosure record")
+	cmd.Flags().String("to", "", "With --share: who the shared copy is for, as sealed in the disclosure record. On an x-deal-v1 adjudicator's copy it is a label for who it is for; the copy is recorded for the adjudicator key the agreement names")
 	addIncludeAgentClaimsFlag(cmd.Flags())
 	cmd.Flags().String("from-bundle", "", "Render from this deal's earlier bundle file instead of a new one, with any countersignatures it carries (see `deal countersign`)")
 	cmd.Flags().String("directory", "", "With --from-bundle: the countersigner directory (HTTPS URL or file) that resolves who countersigned; default: the profile's countersign.directory")

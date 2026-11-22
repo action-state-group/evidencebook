@@ -1669,6 +1669,15 @@ func (s *dealSession) recordShare(ctx context.Context, dealID string, b map[stri
 	if requestDigest != "" {
 		record["request_digest"] = requestDigest
 	}
+	return s.persistShare(ctx, dealID, record, audience, recipient)
+}
+
+// persistShare puts a disclosure record on record: kept in the local store,
+// its digest appended to the deal's own disclosure log under a fresh signed
+// checkpoint, and the store row withdrawn if the append fails. Both an
+// x-deal-v0 copy (recordShare) and an x-deal-v1 report copy
+// (recordV1Share) go through it.
+func (s *dealSession) persistShare(ctx context.Context, dealID string, record map[string]interface{}, audience, recipient string) (map[string]any, error) {
 	digest, err := canonical.JSONDigest(record)
 	if err != nil {
 		return nil, err
