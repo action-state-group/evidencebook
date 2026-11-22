@@ -486,3 +486,43 @@ func TestDecodeJSONRefusesTrailingData(t *testing.T) {
 		t.Fatalf("trailing whitespace: %v", err)
 	}
 }
+
+// A bundle whose disclosure the host records elsewhere is built at the given
+// anchor and leaves the book unchanged: no disclosure record, no checkpoint.
+// Without an anchor it is refused, since it must write nothing.
+func TestBundleWithItsDisclosureRecordedElsewhereWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	book, records := linkedBook(t)
+	anchor, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := book.Size()
+	cps, err := book.Checkpoints(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := book.Bundle(ctx, BundleRequest{Root: records[1].RecordID, At: &anchor, DisclosureRecordedElsewhere: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := strictVerdict(t, bundle.JSON); result.Verdict != aacbundle.VerdictValid {
+		t.Fatalf("strict verdict %s", result.Verdict)
+	}
+	if bundle.Disclosure.RecordID != "" {
+		t.Fatalf("a disclosure record was returned: %s", bundle.Disclosure.RecordID)
+	}
+	if got := book.Size(); got != size {
+		t.Fatalf("the book grew from %d to %d", size, got)
+	}
+	after, err := book.Checkpoints(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(cps) {
+		t.Fatalf("a checkpoint was added: %d, then %d", len(cps), len(after))
+	}
+	if _, err := book.Bundle(ctx, BundleRequest{Root: records[1].RecordID, DisclosureRecordedElsewhere: true}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("no anchor: %v, want ErrInvalid", err)
+	}
+}
