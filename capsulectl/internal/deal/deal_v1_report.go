@@ -32,13 +32,17 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	readOnly, _ := f.GetBool("read-only")
 	switch {
 	case f.Changed("html"):
-		return cli.InputError("--html renders an x-deal-v0 deal's page; an x-deal-v1 report has no page yet: use --out for the sealed report")
+		return cli.InputError("--html renders an x-deal-v0 deal's page; an x-deal-v1 report has no page yet: deal report prints it, and --out seals it to a file")
 	case f.Changed("email"):
 		return cli.InputError("--email writes an x-deal-v0 deal's receipt email; it does not apply to an x-deal-v1 report")
 	case f.Changed("from-bundle") || f.Changed("directory"):
 		return cli.InputError("--from-bundle and --directory render an x-deal-v0 bundle with its countersignatures; they do not apply to an x-deal-v1 report")
 	case f.Changed(includeAgentClaimsFlag) || f.Changed(includeUnauthorizedFlag):
-		return cli.InputError("--" + includeAgentClaimsFlag + " chooses what an x-deal-v0 adjudicator's copy carries; it does not apply to an x-deal-v1 report")
+		given := includeAgentClaimsFlag
+		if f.Changed(includeUnauthorizedFlag) {
+			given = includeUnauthorizedFlag
+		}
+		return cli.InputError("--" + given + " chooses what an x-deal-v0 adjudicator's copy carries; it does not apply to an x-deal-v1 report")
 	case f.Changed("share") || f.Changed("to"):
 		return cli.InputError("a shared copy of an x-deal-v1 report is not served yet: deal report --out writes your own copy")
 	case f.Changed("bundle"):
@@ -108,9 +112,12 @@ func runV1Report(c *cobra.Command) (err error) {
 	prov := &xdealv1.StatusProvider{Shelf: s.shelf, OfferPair: s.sentOfferPair}
 	snap, err := prov.ReportSnapshot(ctx, d.OwnLogID, xdealv1.ReportCopy{Audience: dealprofile.AudienceKeep, Nonce: hex.EncodeToString(nonce), AsOf: at.Format("2006-01-02T15:04:05Z")})
 	if err != nil {
-		return v1ReportError(dealID, err)
+		return v1ReportError(dealID, p, err)
 	}
-	result := map[string]any{"deal_id": dealID, "report": snap.Report}
+	// Until the person's signature has a carrier (agent-action-capsule#627,
+	// evidencebook#729), no v1 act carries one, so every act is one PROFILE
+	// §8 says must not be relied on: the report says so beside settled.
+	result := map[string]any{"deal_id": dealID, "report": snap.Report, "settled_note": personSignatureNote}
 	if out != "" {
 		pair, digest, err := s.sealV1Report(p, snap.Report, at)
 		if err != nil {
@@ -119,7 +126,7 @@ func runV1Report(c *cobra.Command) (err error) {
 		// A report a reader cannot verify is never written: it is signed by
 		// the key that signed the deal's agreement, or refused.
 		if _, err := xdealv1.VerifyReport(pair, snap.Book.Agreement); err != nil {
-			return cli.InputError("the report sealed with this profile's signing key does not verify against your agreement (" + err.Error() + "): the key that signed the agreement must sign the report")
+			return cli.InputError("the report sealed with this profile's signing key does not verify against your agreement (" + err.Error() + "): the key that signed the agreement must sign the report; run it with the profile you agreed with (--profile)")
 		}
 		if err := writeNewFile(out, pair); err != nil {
 			return err
@@ -129,12 +136,21 @@ func runV1Report(c *cobra.Command) (err error) {
 	return cli.Output(c, result)
 }
 
+// personSignatureNote is the report's fixed interim line beside settled
+// (Sherlock2, evidencebook#727): no act carries the person's own signature
+// until its format exists. evidencebook#729 replaces it with the check per act.
+const personSignatureNote = "No act on this deal carries the person's own signature yet (the format is still being defined: agent-action-capsule#627). \"Settled\" here is computed from the agent's records, which the person has not signed."
+
 // v1ReportError says in plain words why a report could not be computed.
-func v1ReportError(dealID string, err error) error {
+func v1ReportError(dealID string, p cli.Profile, err error) error {
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "has no checkpoint at its size"):
-		return cli.InputError("your deal book of " + dealID + " has records after its last checkpoint, and a report rests on a checkpoint: the next `deal tick` covers it")
+		every := "about every 5m"
+		if cfg, cerr := p.DealCadence(); cerr == nil {
+			every = "about every " + cli.ShortDuration(cfg.Interval)
+		}
+		return cli.InputError("your deal book of " + dealID + " has records after its last checkpoint, and a report rests on a checkpoint: the next cadence tick covers it (" + every + "; deal tick runs one once it is due), then run deal report again")
 	case strings.Contains(msg, "after as_of"):
 		return cli.InputError("a record of deal " + dealID + " is timed after now, so no report can be computed: this computer's clock or the time the other side's witness gave is off")
 	}

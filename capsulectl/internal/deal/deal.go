@@ -3040,7 +3040,7 @@ func dealReportCommand() *cobra.Command {
 	addIncludeAgentClaimsFlag(cmd.Flags())
 	cmd.Flags().String("from-bundle", "", "Render from this deal's earlier bundle file instead of a new one, with any countersignatures it carries (see `deal countersign`)")
 	cmd.Flags().String("directory", "", "With --from-bundle: the countersigner directory (HTTPS URL or file) that resolves who countersigned; default: the profile's countersign.directory")
-	cmd.Flags().String("out", "", "On an x-deal-v1 deal: also seal the report and write its pair to this new file")
+	cmd.Flags().String("out", "", "On an x-deal-v1 deal: also seal the report and write it with its signature to this new file. It counts the other side's records you have received; the other side may hold different records and see a different status. No act on this deal carries the person's own signature yet (the format is still being defined: agent-action-capsule#627), so \"settled\" is computed from the agent's records, which the person has not signed")
 	cmd.Flags().Bool("read-only", false, "Read the deal as it stands and write nothing: no checkpoint cut, nothing sealed, no file (for a History built over many deals)")
 	return cmd
 }

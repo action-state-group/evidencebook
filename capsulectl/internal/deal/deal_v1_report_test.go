@@ -3,10 +3,14 @@
 package deal
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,6 +39,7 @@ func TestAV1ReportPrintsAndSealsOnOut(t *testing.T) {
 	require.True(t, ok, "%v", out)
 	assert.Equal(t, "keep", report["audience"])
 	assert.Nil(t, out["sealed_report"], "printing seals nothing")
+	assert.Contains(t, out["settled_note"], "No act on this deal carries the person's own signature yet")
 
 	file := filepath.Join(t.TempDir(), "report.json")
 	sealed := dealRun(t, "report", "--deal", h.dealID, "--read-only=false", "--out", file)
@@ -57,7 +62,7 @@ func TestAV1ReportRefusals(t *testing.T) {
 	h := agreedBoth(t, offerTo)
 	h.buyer.act(t)
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
-	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID), "the next `deal tick` covers it")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID), "the next cadence tick covers it")
 	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "not served yet", "--bundle": "not served yet",
 		"--email": "receipt email", "--from-bundle": "countersignatures", "--directory": "countersignatures"} {
 		arg := filepath.Join(t.TempDir(), "x")
@@ -80,4 +85,45 @@ func TestAV0ReportRefusesOut(t *testing.T) {
 	dealFixture(t)
 	id := dealRun(t, "open", "--input", writeJSON(t, v0BuyerOpen))["deal_id"].(string)
 	assert.Contains(t, v1Err(t, "report", "--deal", id, "--out", filepath.Join(t.TempDir(), "r.json")), "an x-deal-v0 deal's report goes to --html or --bundle")
+}
+
+// A report is signed by the key that signed the agreement: after the profile
+// rotates its signing key (the old one kept trusted), --out is refused and no
+// file is written; a profile with no signing key is refused too.
+func TestAV1ReportOutNeedsTheAgreementsKey(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	p := dealProfile(t)
+	public, private, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	seed := filepath.Join(t.TempDir(), "rotated.seed")
+	require.NoError(t, os.WriteFile(seed, []byte(hex.EncodeToString(private.Seed())), 0o600))
+	rotated := p
+	rotated.Signing = cli.Secret{File: seed}
+	rotated.TrustedKeys = append(append([]string{}, p.TrustedKeys...), hex.EncodeToString(public))
+	require.NoError(t, cli.SaveProfile(rotated, true))
+	file := filepath.Join(t.TempDir(), "report.json")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--out", file), "does not verify against your agreement")
+	_, err = os.Lstat(file)
+	assert.ErrorIs(t, err, os.ErrNotExist, "no file is written")
+
+	unsigned := p
+	unsigned.Signing = cli.Secret{}
+	require.NoError(t, cli.SaveProfile(unsigned, true))
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--out", file), "has none")
+	_, err = os.Lstat(file)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// The refusal's promise holds: once a cadence tick is due and deal tick runs
+// it, the book is checkpointed and the report is computed.
+func TestAV1ReportAfterADueTick(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
+	require.Contains(t, v1Err(t, "report", "--deal", h.dealID), "the next cadence tick covers it (about every 5m;")
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	assert.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	out := dealRun(t, "report", "--deal", h.dealID)
+	assert.NotNil(t, out["report"], "%v", out)
 }
