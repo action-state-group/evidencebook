@@ -222,7 +222,12 @@ it runs the reference checker, the same tag's `check_profile.py`.
   them (Sherlock2's rule in 2abeb751), and the positional limit (section 7). Built as recommended;
   the PR merges only after his reply.
 - Withholding every evaluation and every unchecked act's outcome from a rule 12 deal's
-  counterparty copy (leak 4) is put to Sherlock in the same thread.
+  counterparty copy (leak 4): inside u615, no Steven call (Sherlock,
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=ebc66c63feee9b572ae7f483687ab8d375cce8d25f6f41a2ff84457fd93160e6&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260),
+  on two conditions: the rule is scoped by deal ("this deal follows rule 12"), with no per-record
+  branching inside such a deal; and evidencebook-deal#244 tests that on the probe deal (an ordered
+  claim with no check, then an offer) the string `required_representation_missing` is in no
+  disclosed record of the counterparty copy and the copy still verifies.
 
 ## 10. Test plan
 
