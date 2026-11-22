@@ -143,14 +143,24 @@ func (a *v1ActDeal) parseMarks(flags []string) ([]string, error) {
 
 // sealedLike finds the record of the holder's book a re-run of the same
 // command already sealed: one of the same type whose body and marks are the
-// command's, byte for byte. Its place (seq) is 0 when there is none.
-func sealedLike(book []xdealv1.Record, recordType string, body xdealv1.Body, marks []string) (int, error) {
+// command's, byte for byte. Its place (seq) is 0 when there is none. With
+// newestOnly, only the newest record of the type counts: a statement that
+// repeats an older one after a different one in between is a new statement,
+// since a row reads the side's latest (status_rows.go). A perform needs no
+// such rule: its check's approval authorizes one act only.
+func sealedLike(book []xdealv1.Record, recordType string, body xdealv1.Body, marks []string, newestOnly bool) (int, error) {
 	want, err := json.Marshal(body)
 	if err != nil {
 		return 0, err
 	}
+	newest := -1
 	for i, r := range book {
-		if r.Block.RecordType != recordType || !slices.Equal(r.Block.Marks, marks) {
+		if r.Block.RecordType == recordType {
+			newest = i
+		}
+	}
+	for i, r := range book {
+		if r.Block.RecordType != recordType || !slices.Equal(r.Block.Marks, marks) || (newestOnly && i != newest) {
 			continue
 		}
 		got, err := json.Marshal(r.Body)
@@ -206,7 +216,7 @@ func (s *dealSession) authorizeV1Act(ctx context.Context, dealID string, earlier
 	ins = append(ins, xdealv1.ActIn{Record: act})
 	auths, err := xdealv1.CheckActs(journal, ins)
 	if err != nil {
-		return nil, cli.InputError("the act is not authorized: " + err.Error())
+		return nil, notAuthorizedError{err}
 	}
 	for i := range auths {
 		if auths[i].Act.Block.Seq == act.Block.Seq {
@@ -215,6 +225,13 @@ func (s *dealSession) authorizeV1Act(ctx context.Context, dealID string, earlier
 	}
 	return nil, nil
 }
+
+// notAuthorizedError is the library's refusal of an act's authorization, told
+// apart from a failure to read the journal.
+type notAuthorizedError struct{ err error }
+
+func (e notAuthorizedError) Error() string { return "the act is not authorized: " + e.err.Error() }
+func (e notAuthorizedError) Unwrap() error { return cli.InputError(e.Error()) }
 
 // v1EventByDigest is the local event id of the event whose record has digest.
 func v1EventByDigest(events []sealedEvent, digest string) string {
@@ -294,8 +311,12 @@ func (s *dealSession) reconcileV1Acts(ctx context.Context, dealID string, book [
 			return nil, fmt.Errorf("%w: deal %s's book holds a settle record (%s) this version cannot count yet", cli.ErrConflict, dealID, digest)
 		}
 		auth, err := s.authorizeV1Act(ctx, dealID, acts[:i], act)
+		var refused notAuthorizedError
+		if errors.As(err, &refused) {
+			return nil, fmt.Errorf("%w: deal %s's act %s, sealed by an earlier run, no longer passes its authorization: %v", cli.ErrConflict, dealID, digest, refused.err)
+		}
 		if err != nil {
-			return nil, fmt.Errorf("%w: deal %s's act %s, sealed by an earlier run, no longer passes its authorization: %v", cli.ErrConflict, dealID, digest, err)
+			return nil, err
 		}
 		p, err := s.storeV1Act(dealID, events, act, digest, auth)
 		if err != nil {
@@ -336,7 +357,9 @@ func actResult(result map[string]any, gate *xdealv1.ActGate, auth *xdealv1.ActAu
 
 const performLong = `Seal a perform record in your deal book of an x-deal-v1 deal: delivery or
 another act you did, with what you observed, and write the file to send to
---out (standard output with none). The other side counts it with deal receive.
+--out. The other side counts it with deal receive. The output lists the record
+digests the person signs: the act must not be relied on until those
+signatures are held.
 
 The act rests on your passing commit check (--check, from deal check): it is
 sealed only when that check's verdict has its approval, no detail changed
@@ -375,6 +398,12 @@ func dealPerformCommand() *cobra.Command {
 			if strings.TrimSpace(act) == "" || strings.TrimSpace(observed) == "" {
 				return cli.InputError("--act and --observed are required: what you did (deliver, ship, ...) and how it was observed (carrier_scan, ...)")
 			}
+			// The output says which signatures of the person the act still
+			// waits on, so the file to send goes to --out, never standard
+			// output, where the push would be all that is printed.
+			if out == "" {
+				return cli.InputError("--out is required: the file to send, so the output can say which of the person's signatures the act still waits on")
+			}
 			v1ReceiveContext(c)
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
 				a, err := s.loadV1ActDeal(ctx, dealID)
@@ -402,10 +431,23 @@ func dealPerformCommand() *cobra.Command {
 					return err
 				}
 				result := map[string]any{"deal_id": dealID, "record": xdealv1.TypePerform}
-				if seq, err := sealedLike(a.book, xdealv1.TypePerform, body, mk); err != nil {
+				if seq, err := sealedLike(a.book, xdealv1.TypePerform, body, mk, false); err != nil {
 					return err
 				} else if seq > 0 {
-					return s.writeSealedAt(ctx, c, a.d, seq, a.book[seq-1], out, result)
+					// A re-run says again which signatures the act waits on.
+					rec := a.book[seq-1]
+					var before []xdealv1.Record
+					for _, r := range v1Acts(a.book) {
+						if r.Block.Seq < rec.Block.Seq {
+							before = append(before, r)
+						}
+					}
+					auth, err := s.authorizeV1Act(ctx, dealID, before, rec)
+					if err != nil {
+						return err
+					}
+					actResult(result, nil, auth)
+					return s.writeSealedAt(ctx, c, a.d, seq, rec, out, result)
 				}
 				if err := refuseExistingOut(out); err != nil {
 					return err
@@ -456,7 +498,7 @@ func dealPerformCommand() *cobra.Command {
 	cmd.Flags().StringArray("statement", nil, "row=value[:remedy], how a row went (repeatable)")
 	cmd.Flags().StringArray("mark", nil, "A named record of the offer that this act is (repeatable)")
 	cmd.Flags().String("remedy-row", "", "Make the act a remedy for this row")
-	cmd.Flags().String("out", "", "Where to write the file to send (default: standard output)")
+	cmd.Flags().String("out", "", "Where to write the file to send (required)")
 	return cmd
 }
 
@@ -497,7 +539,7 @@ func dealStatementCommand() *cobra.Command {
 				}
 				body := xdealv1.StatementBody{Statements: stmts}
 				result := map[string]any{"deal_id": dealID, "record": xdealv1.TypeStatement}
-				if seq, err := sealedLike(a.book, xdealv1.TypeStatement, body, nil); err != nil {
+				if seq, err := sealedLike(a.book, xdealv1.TypeStatement, body, nil, true); err != nil {
 					return err
 				} else if seq > 0 {
 					return s.writeSealedAt(ctx, c, a.d, seq, a.book[seq-1], out, result)

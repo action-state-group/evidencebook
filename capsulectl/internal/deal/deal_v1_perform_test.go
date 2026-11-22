@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
@@ -99,6 +100,8 @@ func TestAPerformRerunSealsOnceAndTheApprovalIsUsed(t *testing.T) {
 	again := dealRun(t, args...)
 	assert.Equal(t, first["digest"], again["digest"])
 	assert.Equal(t, first["seq"], again["seq"])
+	assert.Equal(t, first["person_signs"], again["person_signs"], "a re-run says again which signatures the act waits on")
+	assert.Equal(t, "missing", again["person_signature"])
 	assert.Len(t, v1ActEvents(t, h.dealID), 1)
 
 	other := filepath.Join(t.TempDir(), "other.json")
@@ -113,13 +116,15 @@ func TestAPerformRerunSealsOnceAndTheApprovalIsUsed(t *testing.T) {
 func TestAPerformIsRefusedWithoutItsAuthorization(t *testing.T) {
 	h, check := sellerChecked(t)
 	bogus := "cd" + check[2:]
-	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", bogus, "--act", "deliver", "--observed", "self"), "not authorized")
+	out := func() string { return filepath.Join(t.TempDir(), "p.json") }
+	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", bogus, "--act", "deliver", "--observed", "self", "--out", out()), "not authorized")
+	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self"), "--out is required")
 	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--act", "deliver", "--observed", "self"), "--check is required")
 	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--observed", "self"), "--act and --observed are required")
-	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--statement", "no_such_row=met"), "has no row no_such_row")
-	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--statement", "paid_as_agreed=fine"), "met, not_met or cannot_tell")
-	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--mark", "delivered"), "names no record delivered")
-	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--remedy-row", "nope"), "has no row nope")
+	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--statement", "no_such_row=met", "--out", out()), "has no row no_such_row")
+	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--statement", "paid_as_agreed=fine", "--out", out()), "met, not_met or cannot_tell")
+	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--mark", "delivered", "--out", out()), "names no record delivered")
+	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--remedy-row", "nope", "--out", out()), "has no row nope")
 	assert.Empty(t, v1ActEvents(t, h.dealID))
 }
 
@@ -212,4 +217,67 @@ func TestAStatementIsSealedAndNeverGated(t *testing.T) {
 	newFile := filepath.Join(t.TempDir(), "taken.json")
 	require.NoError(t, os.WriteFile(newFile, []byte("x"), 0o600))
 	assert.Contains(t, v1Err(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", newFile), "exists")
+}
+
+// A statement that repeats an older one after a different one in between is a
+// new statement: the row reads the side's latest.
+func TestAStatementRestatedAfterAnotherIsSealedAgain(t *testing.T) {
+	h := newHandshakeV1(t)
+	h.buyer.act(t)
+	dealRun(t, "receive", h.sellerAgree)
+	dealRun(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "b.json"))
+	state := func(v string) map[string]any {
+		return dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed="+v, "--out", filepath.Join(t.TempDir(), v+".json"))
+	}
+	met, notMet, metAgain := state("met"), state("not_met"), state("met")
+	assert.NotEqual(t, met["digest"], notMet["digest"])
+	assert.NotEqual(t, met["seq"], metAgain["seq"], "a new record, not the first one rewritten")
+	assert.Equal(t, metAgain["digest"], state("met")["digest"], "the newest one run again seals nothing")
+}
+
+// --mark puts a named record of the offer that the holder's side writes on the
+// act, and refuses the other side's; --remedy-row makes the act a remedy.
+func TestAPerformCarriesItsMarkAndRemedyRow(t *testing.T) {
+	named := func(key string) string {
+		return strings.Replace(offerTo(key), `"named": {}`, `"named": {"delivered": {"side": "seller", "latest": "2099-12-01T00:00:00Z"}, "paid": {"side": "buyer", "latest": "2099-12-01T00:00:00Z"}}`, 1)
+	}
+	h := agreedBoth(t, named)
+	h.seller.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
+	require.Equal(t, "pass", dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, v1SellerCommit))["verdict"])
+	var check string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		check = checkDigest(t, journal)
+	})
+	base := []string{"perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "carrier_scan"}
+	assert.Contains(t, v1Err(t, append(base, "--mark", "paid", "--out", filepath.Join(t.TempDir(), "x.json"))...), "the buyer writes it")
+	file := filepath.Join(t.TempDir(), "p.json")
+	dealRun(t, append(base, "--mark", "delivered", "--remedy-row", "paid_as_agreed", "--out", file)...)
+	read, err := xdealv1.VerifyBook(readPush(t, file).Record)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"delivered"}, read.Record.Block.Marks)
+	body := read.Record.Body.(*xdealv1.PerformBody)
+	require.NotNil(t, body.RemedyFor)
+	assert.Equal(t, "paid_as_agreed", body.RemedyFor.Row)
+}
+
+// An offerer's agreement file an earlier version wrote with no stamp proof is
+// completed on a re-run, so the file holds what the output says.
+func TestAnOfferersOldAgreementFileGetsItsProof(t *testing.T) {
+	h := newHandshakeV1(t)
+	h.buyer.act(t)
+	dealRun(t, "receive", h.sellerAgree)
+	file := filepath.Join(t.TempDir(), "b.json")
+	dealRun(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", file)
+	push := readPush(t, file)
+	require.NotNil(t, push.StampProof)
+	old, err := json.Marshal(v1Push{Record: push.Record})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, old, 0o600))
+
+	out := dealRun(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", file)
+	assert.Equal(t, true, out["stamp_proof"])
+	assert.NotNil(t, readPush(t, file).StampProof, "the file now carries the proof")
 }

@@ -334,6 +334,14 @@ func (s *dealSession) writeAgreement(ctx context.Context, c *cobra.Command, cad 
 		if rerr != nil || json.Unmarshal(prev, &was) != nil || string(was.Record) != string(pair) {
 			return err
 		}
+		// An earlier version wrote the offerer's file with no stamp proof: the
+		// same record with no proof is completed with it, so the file the
+		// output describes is the file on disk.
+		if was.StampProof == nil && push.StampProof != nil {
+			if err := cli.AtomicFile(out, data, true); err != nil {
+				return err
+			}
+		}
 	}
 	return cli.Output(c, map[string]any{"deal_id": d.DealID, "agreement": d.OwnAgreementDigest, "side": d.Side, "file": out, "stamp_proof": push.StampProof != nil})
 }

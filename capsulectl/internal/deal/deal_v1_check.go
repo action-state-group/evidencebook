@@ -27,23 +27,25 @@ func (s *dealSession) useV1Check(ctx context.Context, dealID string) ([]sealedEv
 	}
 	s.dkey = dealprofile.DealKey(s.secret, dealID)
 	s.v1 = true
-	events, err := s.v1Events(ctx, dealID)
-	if err != nil {
-		return nil, err
-	}
 	// An act a stopped run appended to the book but did not record locally is
 	// recorded first, so the card's spend so far and used approvals count it
 	// (xdealv1-write-path §13 item 8).
-	if d, err := s.v1DealOf(ctx, dealID); err != nil {
+	d, err := s.v1DealOf(ctx, dealID)
+	if err != nil {
 		return nil, err
-	} else if d != nil && d.OwnAgreementID != "" {
+	}
+	var events []sealedEvent
+	if d != nil && d.OwnAgreementID != "" {
 		book, err := s.ownBookV1(ctx, d)
 		if err != nil {
 			return nil, err
 		}
-		if events, err = s.reconcileV1Acts(ctx, dealID, book); err != nil {
+		events, err = s.reconcileV1Acts(ctx, dealID, book)
+		if err != nil {
 			return nil, err
 		}
+	} else if events, err = s.v1Events(ctx, dealID); err != nil {
+		return nil, err
 	}
 	if len(events) == 0 {
 		return nil, cli.InputError("deal " + dealID + " has no intent yet: seal the user's intent first, with `deal note --deal " + dealID + " --kind intent --input FILE --opening FILE`")
