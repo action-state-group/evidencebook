@@ -257,7 +257,7 @@ func dealNodeRefereeCommands() *cobra.Command {
 func dealNodeRefereeReceiveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "receive",
-		Short: "Check a referee's Result against both parties' halves and seal it into a node book as received, or seal why it was refused (signs)",
+		Short: "Check a referee's Result against both parties' signed half Capsules and seal it into a node book as received, or seal why it was refused (signs)",
 		Long: `Check a referee's Result and seal it into the node book --book names as received.
 
 --result is a JSON file {"capsule": <the referee's sealed Result Capsule>, "document": <the base64 of the Result
@@ -265,17 +265,17 @@ document exactly as the referee wrote it, its JCS bytes>}. --parties is a JSON f
 {"buyer": {"half", "action", "terms"}, "seller": {...}}: each party's signed half Capsule and the opening of its
 commitment, the action and the terms its action_digest commits to.
 
-The Result is received only when each half verifies and its opening recomputes the half's action_digest, the halves
-are signed by two keys and this node's key signed one of them, the Result verifies, is signed by the referee both
-parties' terms name, names exactly these two halves, and is the document it commits to. Anything else is refused:
+The Result is received only when each half verifies and its opening recomputes the half's action_digest, the two half
+Capsules are signed by two keys and this node's key signed one of them, the Result verifies, is signed by the referee both
+parties' terms name, names exactly these two half Capsules, and is the document it commits to. Anything else is refused:
 the refusal is sealed as a record that holds the Result's digest and the refusal code, nothing else, and the
 verb exits with the code. Every Result delivered to this node leaves a permanent record in the node book, a
 refused one too, even when it is junk or about a deal this node is not in. Receiving is safe to repeat: a Result already received, and a half already held, seal
 nothing again.
 
-What the check shows is what the Result and the halves say; it does not show the referee's judgment is right, and
+What the check shows is what the Result and the two half Capsules say; it does not show the referee's judgment is right, and
 received means checked and held, not that this node accepts the ruling. The record of a received Result holds the
-Result's digest, its Capsule id and the referee's key, not the Result document. Both halves, the other party's
+Result's digest, its Capsule id and the referee's key, not the Result document. Both half Capsules, the other party's
 included, are kept in full in this book and go with it to anyone you share or export it to.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
@@ -352,7 +352,7 @@ included, are kept in full in this book and go with it to anyone you share or ex
 	}
 	cmd.Flags().String("book", "", "The node's book on the shelf (required)")
 	cmd.Flags().String("result", "", "The delivery: {\"capsule\", \"document\" (base64)} (required)")
-	cmd.Flags().String("parties", "", "Both parties' halves and openings: {\"buyer\": {half, action, terms}, \"seller\": {...}} (required)")
+	cmd.Flags().String("parties", "", "Both parties' half Capsules and openings: {\"buyer\": {half, action, terms}, \"seller\": {...}} (required)")
 	cmd.Flags().String("received-type", "", "The node's name for the record of a received Result (required)")
 	cmd.Flags().String("refused-type", "", "The node's name for the record of a refused Result (required)")
 	cmd.Flags().String("half-type", "", "The node's name for the record that holds a judged half (required)")
