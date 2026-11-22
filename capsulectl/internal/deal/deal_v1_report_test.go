@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"os"
 	"path/filepath"
 	"testing"
@@ -293,4 +295,122 @@ func TestWriteNewFileAfterStagesBeforeTheRecord(t *testing.T) {
 		names = append(names, e.Name())
 	}
 	assert.ElementsMatch(t, []string{"c.json", "d.json", "ro"}, names, "no staging or probe file left")
+}
+
+// v1BundleOf reads a written bundle file and checks it as a reader does: the
+// core's standalone-report check with the profile's rule registered, and
+// xdealv1.VerifyReportBundle on its report and extension.
+func v1BundleOf(t *testing.T, file string) map[string]interface{} {
+	t.Helper()
+	raw, err := os.ReadFile(file)
+	require.NoError(t, err)
+	value, err := cli.DecodeBundleJSON(raw)
+	require.NoError(t, err)
+	cli.SetDealV1ReportVerifier(verifyV1Report)
+	t.Cleanup(func() { cli.SetDealV1ReportVerifier(nil) })
+	entry := cli.DealReportEntry(value, aacbundle.VerificationResult{})
+	assert.Equal(t, "pass", entry["status"], entry)
+	require.NoError(t, cli.CheckDealStandaloneReport(value))
+	exts := value["extensions"].(map[string]interface{})
+	carried := exts[dealprofile.ReportExtension].(map[string]interface{})
+	report, err := json.Marshal(carried)
+	require.NoError(t, err)
+	ext, err := json.Marshal(exts[xdealv1.Profile])
+	require.NoError(t, err)
+	_, err = xdealv1.VerifyReportBundle(report, ext)
+	require.NoError(t, err)
+	return value
+}
+
+// --bundle writes the deal book's Evidence Bundle with the report beside it,
+// which verifies as a reader checks it, and writes nothing to the store: a
+// report after it still computes, on the same book.
+func TestAV1ReportBundleVerifiesAndWritesNothing(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	db := v1Profile(t).Connection.Database
+	files := func() map[string][]byte {
+		got := map[string][]byte{}
+		for _, f := range []string{db, db + "-wal"} {
+			if b, err := os.ReadFile(f); err == nil {
+				got[f] = b
+			}
+		}
+		return got
+	}
+	before := files()
+	file := filepath.Join(t.TempDir(), "bundle.json")
+	out := dealRun(t, "report", "--deal", h.dealID, "--bundle", file)
+	assert.Equal(t, file, out["bundle"])
+	assert.Equal(t, before, files(), "a bundle of your own copy writes nothing to the store or its log")
+	value := v1BundleOf(t, file)
+	assert.Equal(t, out["sealed_report"], value["extensions"].(map[string]interface{})[xdealv1.Profile].(map[string]interface{})["sealed_report"])
+	assert.NotNil(t, dealRun(t, "report", "--deal", h.dealID)["report"], "a later report still computes")
+
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--bundle", file), "exists")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--bundle", file+"2", "--out", file+"3"), "choose one")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--read-only", "--bundle", file+"2"), "writes nothing")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--bundle", ""), "cannot be empty")
+}
+
+// Every audience's bundle carries the same relied-on records, an
+// adjudicator's lists no rows, a shared bundle is on record (kind bundle,
+// the records it carries, the digest of the exact file), and none of the
+// deal's local plain values (the intent's words, the opening's who) appears
+// in any bundle's bytes.
+func TestAV1ReportBundleAudiencesAndMarkers(t *testing.T) {
+	h := agreedBoth(t, oneForum)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	dir := t.TempDir()
+	paths := map[string]string{"keep": filepath.Join(dir, "keep.json"), "counterparty": filepath.Join(dir, "cp.json"), "adjudicator": filepath.Join(dir, "adj.json")}
+	dealRun(t, "report", "--deal", h.dealID, "--bundle", paths["keep"])
+	dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", paths["counterparty"])
+	dealRun(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--bundle", paths["adjudicator"])
+	var reliedOn []interface{}
+	for audience, path := range paths {
+		value := v1BundleOf(t, path)
+		book := value["extensions"].(map[string]interface{})[xdealv1.Profile].(map[string]interface{})["book"].(map[string]interface{})
+		ids := []interface{}{}
+		for id := range book["relied_on"].(map[string]interface{}) {
+			ids = append(ids, id)
+		}
+		if reliedOn == nil {
+			reliedOn = ids
+		}
+		assert.ElementsMatch(t, reliedOn, ids, audience)
+		input := value["extensions"].(map[string]interface{})[dealprofile.ReportExtension].(map[string]interface{})["agent_input"].(map[string]interface{})
+		assert.Equal(t, audience, input["audience"])
+		if audience == "adjudicator" {
+			assert.Equal(t, "withheld", input["rows_state"])
+			assert.Empty(t, input["rows"])
+		}
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		for _, marker := range []string{"buy the lamp", "Kettle Shop", "kettle.example"} {
+			assert.NotContains(t, string(raw), marker, "%s carries %q", audience, marker)
+		}
+	}
+	rows, err := v1DB(t).Query(`SELECT record FROM deal_disclosures WHERE deal_id=? ORDER BY n`, h.dealID)
+	require.NoError(t, err)
+	defer rows.Close()
+	var recs []map[string]any
+	for rows.Next() {
+		var raw string
+		require.NoError(t, rows.Scan(&raw))
+		var m map[string]any
+		require.NoError(t, json.Unmarshal([]byte(raw), &m))
+		recs = append(recs, m)
+	}
+	require.NoError(t, rows.Err())
+	require.Len(t, recs, 2, "the shared bundles only")
+	for i, audience := range []string{"counterparty", "adjudicator"} {
+		assert.Equal(t, "bundle", recs[i]["kind"])
+		assert.Equal(t, audience, recs[i]["audience"])
+		assert.ElementsMatch(t, reliedOn, recs[i]["relied_on"])
+		raw, err := os.ReadFile(paths[audience])
+		require.NoError(t, err)
+		sum := sha256.Sum256(raw)
+		assert.Equal(t, hex.EncodeToString(sum[:]), recs[i]["receipt_sha256"])
+	}
 }
