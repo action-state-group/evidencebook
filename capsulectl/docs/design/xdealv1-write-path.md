@@ -422,19 +422,22 @@ change.
    offer follows. This is the pattern `deal admit` uses (`deal_v1_admits`): an intent is bound once,
    and `deal agree --intent` defaults to it.
 
-**What is not decided here, and who decides.**
-- **The person's signature** (x-deal-v1 §8). An act must not be relied on until the person's
-  signature over the approval digest is held, and that signature travels beside the approval
-  (Steven, evidencebook#500 option b; the plugin's door is evidencebook-deal#98, which carries over
-  to evidencebook). B1b seals the approval. How the person signs, and where the plugin keeps the
-  signature, is #98's.
-  - Until #98 is decided, B2 seals an act whose authorization the library accepts. It reports
-    which digests still need the person's signature (`CheckAuthorizations`'s per-act digests) and
-    marks the act as not to be relied on yet.
-  - This is a product question. It goes to Sherlock2, and to Steven if Sherlock2 routes it there.
-- **The `payment_ref` member** of the check input: its name and form. The record member exists
-  (PROFILE §5, check). Only the input file's member is new, and it is a wording question for
-  Sherlock2.
+**Settled by Sherlock2 on #699 (no door for Steven), and what is left.**
+- **The person's signature** (x-deal-v1 §8). It is ruled, and the ruling is in PROFILE §8. An act
+  must not be relied on until the person's signatures are held, and each travels beside its
+  record:
+  - the approval, signed with the person's own key, a device passkey (Steven, 2026-11-17, on
+    evidencebook#670, where evidencebook-deal#98 now lives);
+  - the first intent a `standing_intent` approval rests on (Steven, evidencebook#500 option b).
+
+  What is left is how the plugin carries the signature, gated on AAC defining the member
+  (agent-action-capsule#627). Until then, B2 seals an act whose authorization the library
+  accepts, reports the digests that still need the person's signature (`CheckAuthorizations`'s
+  per-act digests), and never counts the act as authorized. A receipt or report for such an act
+  says the person's own key's signature is missing.
+- **The `payment_ref` member** of the check input keeps the record's name (PROFILE §5, check). It
+  is an opaque string: the reference the payment will be made under on its rail, such as a
+  Lightning payment hash or an x402 payment id. It is not a secret (Sherlock2, on #699).
 
 **Tests.**
 - **One input, two versions:** the same check input on a v0 deal and on an equivalent v1 deal
