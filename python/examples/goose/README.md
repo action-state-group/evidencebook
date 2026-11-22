@@ -258,6 +258,9 @@ card no later than a time. This is off until you name a service: there is no def
 `GOOSE_CARD_SERVICE` unset `loop_register_card` refuses and nothing is sent. The card is complete without it, and a
 registration that fails changes nothing about the card.
 
+Registration needs `pip install "agent-action-capsule>=0.19.0"` on top of the install above (the package's own pin is
+older); without it `loop_register_card` refuses before sending anything.
+
 `card-service.example.json` names the service this demo uses: capsule-anchor at
 `https://witness.agentactioncapsule.org`, **run by Action State Group**. That is this demo's choice, not a default of the
 library or a recommendation. When we run this demo the node is ours too, so our runs show no check by an independent

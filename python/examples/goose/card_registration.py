@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Demo-only stand-in for capsulectl card registration; deleted by evidencebook-skills#185.
+# Demo-only stand-in for capsulectl card registration; deleted by evidencebook#624.
 """Registering a Standard History card on a SCITT transparency service, for the Goose demo
 (a module of the demo, not of the ``evidencebook`` package; agent-action-capsule ``spec/standard-history-v0.md`` §13, cited as SH), byte
 for byte with Go's ``card_registration.go``.
@@ -160,6 +160,10 @@ def register_card(signer: Signer, card: bytes, envelope: Any, registrar: CardSta
     octets beside the card (SH §13.3)."""
     if registrar is None:
         raise InvalidError("no transparency service is configured; registration is opt-in and has no default")
+    # Before anything is posted: a registration is permanent, so never post what cannot be checked after.
+    if not (hasattr(_witness, "check_card_statement") and hasattr(_witness, "check_card_registered")):
+        raise InvalidError("card registration needs agent-action-capsule 0.19.0 or later "
+                           "(witness.check_card_statement); nothing was sent")
     if signer is None or key_id(signer) != envelope.responder:
         raise InvalidError("the signer is not the envelope's responder, the holder key")
     statement = build_card_statement(signer, card, envelope.anchor_digest)

@@ -89,7 +89,7 @@ def test_a_service_file_must_say_who_runs_it_and_its_keys(tmp_path):
         cs.load_service(tmp_path / "missing.json")
 
 
-@pytest.mark.parametrize("mode", ["redirect", "junk"])
+@pytest.mark.parametrize("mode", ["redirect", "junk", "huge"])
 def test_a_service_that_misbehaves_leaves_the_card_as_it_was(nodes, clock, tmp_path, mode):
     buyer = ticked(nodes, clock)
     service_misbehaving = FakeAnchor(mode=mode)
@@ -101,6 +101,53 @@ def test_a_service_that_misbehaves_leaves_the_card_as_it_was(nodes, clock, tmp_p
         assert buyer.standard_history()["card"] == before
     finally:
         service_misbehaving.close()
+
+
+def test_a_service_that_trickles_its_answer_is_cut_off(nodes, clock, tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "TOTAL_SECONDS", 1)
+    buyer = ticked(nodes, clock)
+    slow = FakeAnchor(mode="slow")
+    try:
+        service = cs.load_service(service_file(tmp_path, slow))
+        with pytest.raises(cs.ServiceError, match="no complete answer"):
+            buyer.register_card(cs.AnchorRegistrar(service), service.policy)
+    finally:
+        slow.close()
+
+
+def test_nothing_is_posted_when_the_receipt_cannot_be_checked(nodes, clock, anchor, tmp_path, monkeypatch):
+    """With an agent-action-capsule that lacks the card checks, registration refuses before the
+    permanent post, not after it."""
+    import card_registration as cr
+
+    buyer = ticked(nodes, clock)
+    service = cs.load_service(service_file(tmp_path, anchor))
+    monkeypatch.delattr(cr._witness, "check_card_statement")
+    with pytest.raises(gn.Refused, match="0.19.0"):
+        buyer.register_card(cs.AnchorRegistrar(service), service.policy)
+    assert anchor.posted == []
+
+
+def test_the_tool_checks_where_it_writes_before_it_posts(nodes, clock, anchor, tmp_path, monkeypatch):
+    """A registration is permanent, so an out_path that cannot be written, or that already holds a
+    statement, is refused before anything is sent (the Receipt would otherwise be lost and a retry
+    would add a second entry)."""
+    import loop_server
+
+    buyer = ticked(nodes, clock)
+    monkeypatch.setattr(loop_server, "_node", buyer)
+    monkeypatch.setenv("GOOSE_CARD_SERVICE", str(service_file(tmp_path, anchor)))
+    taken = tmp_path / "taken.json"
+    taken.write_text("an earlier statement")
+    for bad in (tmp_path / "missing-dir" / "card.json", taken):
+        refused = json.loads(loop_server.loop_register_card(out_path=str(bad)))
+        assert refused["ok"] is False
+        assert anchor.posted == []
+    assert taken.read_text() == "an earlier statement"
+    good = tmp_path / "card.json"
+    done = json.loads(loop_server.loop_register_card(out_path=str(good)))
+    assert done["ok"] is True and len(anchor.posted) == 1
+    assert json.loads(good.read_text())["statement"]
 
 
 def test_a_service_that_is_down_leaves_the_card_as_it_was(nodes, clock, tmp_path):
@@ -128,7 +175,7 @@ def test_a_receipt_that_does_not_cover_the_statement_is_refused(nodes, clock, tm
 
 def test_a_receipt_of_a_service_the_policy_does_not_list_is_refused(nodes, clock, anchor, tmp_path):
     buyer = ticked(nodes, clock)
-    service = cs.load_service(service_file(tmp_path, anchor, keys=[FakeAnchor(seed=12).public_spki_hex]))
+    service = cs.load_service(service_file(tmp_path, anchor, keys=[FakeAnchor.spki_for(12)]))
     with pytest.raises(gn.Refused, match="not registered"):
         buyer.register_card(cs.AnchorRegistrar(service), service.policy)
 
@@ -171,3 +218,19 @@ def test_the_scripted_run_registers_each_card_only_when_a_service_is_named(tmp_p
                                    cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
             assert check.returncode == 0, check.stdout + check.stderr
             assert json.loads(check.stdout)["card_registered"]["status"] == "PASS"
+
+
+def test_the_scripted_run_goes_on_when_a_registration_fails(tmp_path):
+    """The card is complete without registration: a service that is down does not stop the run, and
+    every card and half is still written."""
+    down = FakeAnchor()
+    path = service_file(tmp_path, down)
+    down.close()
+    run = subprocess.run([sys.executable, str(HERE / "scripted_run.py"), str(tmp_path / "out")],
+                         capture_output=True, text=True, timeout=600, env={**os.environ, "GOOSE_CARD_SERVICE": str(path)})
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "NOT DONE (the run continues)" in run.stdout
+    out = tmp_path / "out"
+    for node in ("buyer", "seller"):
+        assert (out / f"{node}-card.json").exists() and (out / f"{node}-history-card.json").exists()
+        assert not (out / f"{node}-card-statement.json").exists()

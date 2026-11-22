@@ -630,7 +630,8 @@ def loop_register_card(out_path: str, tick: int = 0) -> str:
     """Register this node's ``standard_history/1`` card (as of a cadence tick, the newest when 0) on
     the transparency service named in ``GOOSE_CARD_SERVICE``, and write the card statement with its
     Receipt to ``out_path``. Opt-in: with ``GOOSE_CARD_SERVICE`` unset nothing is sent and the tool
-    refuses; the card is complete without it, and a failed registration changes nothing.
+    refuses; the card is complete without it, and a failed registration changes nothing. ``out_path``
+    must be a new file in an existing directory, checked before anything is sent.
 
     Call it only when the user has asked to register this card, and tell them first that it is
     permanent and that the service learns which of their keys registered a card for which anchor,
@@ -648,10 +649,17 @@ def loop_register_card(out_path: str, tick: int = 0) -> str:
         raise gn.Refused("no transparency service is configured: set GOOSE_CARD_SERVICE to a service "
                          "file (card_service.py); registration is opt-in and has no default")
     service = cs.load_service(path)
+    out = cs.check_out_file(out_path)  # before the post: a registration cannot be taken back
     result = node().register_card(cs.AnchorRegistrar(service), service.policy, tick)
     result["service"] = {"name": service.name, "operator": service.operator, "url": service.url,
                          "keys": list(service.keys)}
-    _write(out_path, json.dumps(result, sort_keys=True, indent=2).encode())
+    document = json.dumps(result, sort_keys=True, indent=2).encode()
+    try:
+        out.write_bytes(document)
+    except OSError as exc:
+        # The service already has the statement: never drop its only copy.
+        raise gn.Refused(f"the card was registered but {out} could not be written ({exc}); "
+                         f"keep this statement: {result['statement']}") from None
     return _out(ok=True, tick=result["tick"], anchor=result["anchor"], service=service.name,
                 operator=service.operator, file=out_path)
 

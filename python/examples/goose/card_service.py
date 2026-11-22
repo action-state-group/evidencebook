@@ -28,6 +28,8 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,7 +39,9 @@ from typing import Any
 
 #: A bound on what a service may send back for one registration.
 MAX_RESPONSE_BYTES = 1 << 20
+#: Each socket read, and the whole registration (a service that trickles bytes still ends).
 TIMEOUT_SECONDS = 30
+TOTAL_SECONDS = 60
 
 
 class ServiceError(ValueError):
@@ -94,9 +98,17 @@ class AnchorRegistrar:
         request = urllib.request.Request(
             self._service.url + "/transparency/register-statement", data=body, method="POST",
             headers={"Content-Type": "application/json", "Accept": "application/json"})
+        deadline = time.monotonic() + TOTAL_SECONDS
         try:
             with self._opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-                raw = response.read(MAX_RESPONSE_BYTES + 1)
+                raw = b""
+                while len(raw) <= MAX_RESPONSE_BYTES:
+                    chunk = response.read(8192)
+                    if not chunk:
+                        break
+                    raw += chunk
+                    if time.monotonic() > deadline:
+                        raise ServiceError(f"{self._service.url}: no complete answer in {TOTAL_SECONDS} seconds")
         except (urllib.error.URLError, OSError) as exc:
             raise ServiceError(f"{self._service.url}: {exc}") from None
         if len(raw) > MAX_RESPONSE_BYTES:
@@ -105,3 +117,15 @@ class AnchorRegistrar:
             return base64.b64decode(json.loads(raw)["receipt_b64"], validate=True)
         except (ValueError, KeyError, TypeError, binascii.Error):
             raise ServiceError("the service's answer holds no receipt_b64") from None
+
+
+def check_out_file(path: str | Path) -> Path:
+    """Where the card statement will be written, checked *before* anything is posted: a registration
+    is permanent, so a file that cannot be written (a missing directory, no permission) or that
+    already holds a statement (its Receipt would be lost) is refused up front, not after the post."""
+    out = Path(path).expanduser()
+    if out.exists():
+        raise ServiceError(f"{out} already exists; a registered statement is never overwritten")
+    if not out.parent.is_dir() or not os.access(out.parent, os.W_OK):
+        raise ServiceError(f"{out} cannot be written: its directory is missing or not writable")
+    return out

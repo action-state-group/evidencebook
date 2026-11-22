@@ -9,6 +9,7 @@ import base64
 import hashlib
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import cbor2
@@ -21,7 +22,7 @@ IAT = 1_795_000_000
 class FakeAnchor:
     def __init__(self, seed: int = 11, mode: str = "ok"):
         self.key = Ed25519PrivateKey.from_private_bytes(bytes([seed]) * 32)
-        self.mode = mode  # "ok", "redirect", "junk" or "bad-receipt"
+        self.mode = mode  # "ok", "redirect", "junk", "huge", "slow" or "bad-receipt"
         self.posted: list[bytes] = []
         outer = self
 
@@ -41,7 +42,22 @@ class FakeAnchor:
                     self.send_header("Location", "http://127.0.0.1:1/elsewhere")
                     self.end_headers()
                     return
-                if outer.mode == "junk":
+                if outer.mode == "slow":
+                    # headers promise a body, then one byte at a time, longer than the total deadline
+                    self.send_response(200)
+                    self.send_header("Content-Length", "100000")
+                    self.end_headers()
+                    try:
+                        for _ in range(200):
+                            self.wfile.write(b"x")
+                            self.wfile.flush()
+                            time.sleep(0.1)
+                    except OSError:
+                        pass
+                    return
+                if outer.mode == "huge":
+                    payload = b" " * (2 << 20)
+                elif outer.mode == "junk":
                     payload = b"not json"
                 else:
                     receipt = outer.receipt_for(outer.entry_of(outer.posted[-1]))
@@ -63,9 +79,19 @@ class FakeAnchor:
         self._server.shutdown()
         self._server.server_close()
 
+    @staticmethod
+    def spki_for(seed: int) -> str:
+        """The hex DER public key of the service ``FakeAnchor(seed)`` is, without starting one."""
+        key = Ed25519PrivateKey.from_private_bytes(bytes([seed]) * 32)
+        return "302a300506032b6570032100" + key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+
     @property
     def public_spki_hex(self) -> str:
-        return "302a300506032b6570032100" + self.key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+        return self.spki_for_key(self.key)
+
+    @staticmethod
+    def spki_for_key(key: Ed25519PrivateKey) -> str:
+        return "302a300506032b6570032100" + key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
 
     @staticmethod
     def entry_of(statement: bytes) -> bytes:

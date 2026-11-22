@@ -51,6 +51,20 @@ class Goose:
         return out
 
 
+async def _try_call(self, tool: str, **arguments) -> dict | None:
+    """Like :meth:`Goose.call`, but a refusal is printed and returns None instead of ending the run."""
+    result = await self.session.call_tool(tool, arguments)
+    out = json.loads("".join(c.text for c in result.content if getattr(c, "type", "") == "text"))
+    if not out.get("ok"):
+        print(f"{self.name:6} {tool:22} NOT DONE (the run continues): {out.get('error')}")
+        return None
+    print(f"{self.name:6} {tool:22} {json.dumps({k: v for k, v in out.items() if k != 'ok'}, sort_keys=True)[:160]}")
+    return out
+
+
+Goose.try_call = _try_call
+
+
 async def run(out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
 
@@ -125,8 +139,9 @@ async def run(out: Path) -> None:
                 await node.call("loop_probe")
                 await node.call("loop_standard_history", out_path=str(out / f"{node.name}-card.json"))
                 if os.environ.get("GOOSE_CARD_SERVICE"):
-                    # Opt-in: only a host that named a service registers its card.
-                    await node.call("loop_register_card", out_path=str(out / f"{node.name}-card-statement.json"))
+                    # Opt-in: only a host that named a service registers its card. A registration that
+                    # fails is reported and never stops the run: the card is complete without it.
+                    await node.try_call("loop_register_card", out_path=str(out / f"{node.name}-card-statement.json"))
                 await node.call("loop_history_card", book_id=f"deal/{deal_id}",
                                 out_path=str(out / f"{node.name}-history-card.json"))
                 (out / f"{node.name}.key").write_text(key["key_id"])
