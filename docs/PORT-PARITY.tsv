@@ -295,6 +295,7 @@ dealprofile	func	Check	x-deal-v0	ported	ported
 dealprofile	func	CheckChain	x-deal-v0	ported	frozen #651
 dealprofile	func	CheckDigest	x-deal-v0	ported	ported
 dealprofile	func	CommitText	x-deal-v0	ported	ported
+dealprofile	func	CounterpartyWithheld	x-deal-v0	frozen #652	frozen #651
 dealprofile	func	DealKey	x-deal-v0	ported	ported
 dealprofile	func	Decode	x-deal-v0	ported	ported
 dealprofile	func	Digest	x-deal-v0	ported	ported
@@ -313,6 +314,7 @@ dealprofile	func	RecordTypes	x-deal-v0	ported	ported
 dealprofile	func	ReportCapsule	x-deal-v0	ported	ported
 dealprofile	func	ReportPayload	x-deal-v0	ported	ported
 dealprofile	func	ReportReferee	x-deal-v0	frozen #652	ported
+dealprofile	func	RequiredDisclosed	x-deal-v0	frozen #652	frozen #651
 dealprofile	func	SharedReferee	x-deal-v0	frozen #652	ported
 dealprofile	func	StandardHistoryDeal	x-deal-v0	ported	ported
 dealprofile	func	StepCapsule	x-deal-v0	ported	ported
