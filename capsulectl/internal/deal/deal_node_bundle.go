@@ -132,7 +132,10 @@ func dealNodeBundleCommand() *cobra.Command {
 		Short: "An Evidence Bundle proving one record of a node book under a checkpoint, verified before it is written (records what it disclosed)",
 		Long: `Write an Evidence Bundle (evidence-bundle/v2) that proves --record is in the node book --book under a checkpoint
 (--at names one by its id; by default the book's newest, cut now if the book grew), and verify it before writing it to a
-new file --out. It carries the record, its inclusion proof and the interval from the earliest record the bundle selects to that checkpoint.
+new file --out. It carries the record, its inclusion proof and the interval from the earliest record the bundle selects to that checkpoint:
+the capsules of every record in that interval travel with it, the later records' included (their headers and payloads
+stay withheld by digest unless --disclose reveals them), so a bundle of an old record shows that the book went on to the
+checkpoint.
 
 By default the bundle carries the record and what it commits, and withholds the headers and payloads of the records it
 discloses, each by its digest. With --disclose it reveals the header of the record and of the records it links to (one
