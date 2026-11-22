@@ -49,7 +49,7 @@ func installedCapsulectl(t *testing.T) string {
 		}
 		for path, pkg := range map[string]string{
 			filepath.Join(installed.dir, "capsulectl"): "github.com/action-state-group/capsule-cli/cmd/capsulectl",
-			filepath.Join(plugins, "capsulectl-deal"):  "github.com/action-state-group/evidencebook-deal/cmd/capsulectl-deal",
+			filepath.Join(plugins, "capsulectl-deal"):  "github.com/action-state-group/evidencebook/capsulectl/cmd/capsulectl-deal",
 		} {
 			out, err := exec.Command("go", "build", "-o", path, pkg).CombinedOutput()
 			if err != nil {

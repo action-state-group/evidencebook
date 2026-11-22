@@ -1,14 +1,19 @@
-name: Release · capsulectl-book
+name: Release · capsulectl
 
-# Builds capsulectl-book (the nested module capsulectl/) for linux/amd64,
-# linux/arm64 and darwin/arm64 when a capsulectl/v* tag is pushed, and
-# attaches the binaries plus SHA256SUMS to the GitHub release for that tag.
+# Builds both launchers of the nested module capsulectl/, capsulectl-book and
+# capsulectl-deal, for linux/amd64, linux/arm64 and darwin/arm64 when a
+# capsulectl/v* tag is pushed, and attaches the binaries, the archives the
+# plugins unpack beside their launchers (History card, deal view, deal skill)
+# and SHA256SUMS to the GitHub release for that tag. One tag, one release for
+# both (evidencebook#610); capsulectl-deal used to release from evidencebook-deal.
 # The build is capsulectl/scripts/release-build.sh, so a tag can be rebuilt
 # with the same Go version and compared against SHA256SUMS. The binaries get a
 # GitHub build provenance attestation, verifiable with
 #   gh attestation verify FILE --repo action-state-group/evidencebook \
 #     --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml
-# and the attestation bundle is published as capsulectl-book-<version>.sigstore.json.
+# and the attestation bundle, which covers both launchers and every archive, is
+# published as capsulectl-book-<version>.sigstore.json (its name predates the
+# deal launcher joining this release and stays, so existing verify commands work).
 #
 # Not part of release.py and tag-release.yml: those handle manifest-versioned
 # packages and create a published release before their publisher runs, which
@@ -76,6 +81,12 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           printf '%s\n' "$VERSION" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?' \
             || { echo "tag $VERSION does not follow the release tag policy"; exit 1; }
+      - name: Check the tag is a version a shared copy keeps
+        # capsulectl-deal seals its release as the producer of each record it
+        # writes, and a shared copy keeps a producer only in a fixed shape.
+        run: |
+          printf '%s\n' "$VERSION" | grep -Eqx 'v[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(-(rc|alpha|beta|dev)[0-9]{0,3})?' \
+            || { echo "tag $VERSION is not a version a shared copy keeps (vN.N.N, up to four digits each, optionally followed by -rc, -alpha, -beta or -dev and up to three digits)"; exit 1; }
       - name: The core this plugin pairs with is a published capsule-cli release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,7 +100,7 @@ jobs:
           # A release takes the version of the capsulectl release it pairs
           # with (capsulectl/RELEASING.md).
           test "$VERSION" = "$core" \
-            || { echo "tag $TAG is not capsulectl/$core, for the capsule-cli release go.mod requires: a capsulectl-book release takes its core's version"; exit 1; }
+            || { echo "tag $TAG is not capsulectl/$core, for the capsule-cli release go.mod requires: a capsulectl release takes its core's version"; exit 1; }
           draft=$(gh release view "$core" --repo action-state-group/capsule-cli --json isDraft --jq .isDraft) \
             || { echo "capsule-cli has no release $core"; exit 1; }
           test "$draft" = false || { echo "capsule-cli $core is not published"; exit 1; }
@@ -102,18 +113,26 @@ jobs:
         run: scripts/release-build.sh "$VERSION" "$COMMIT" dist
       - name: Check the History card archive against the handshake
         run: scripts/check-standard-history-archive.sh "dist/capsulectl-book-$VERSION-linux-amd64" "dist/standard-history-$VERSION.tar.gz"
-      - name: Check the versions the plugin reports
+      - name: Check the deal view archive against the handshake
+        run: scripts/check-deal-view-archive.sh "dist/capsulectl-deal-$VERSION-linux-amd64" "dist/deal-view-$VERSION.tar.gz"
+      - name: Check the versions the plugins report
         run: |
-          meta="$(dist/capsulectl-book-"$VERSION"-linux-amd64 cli-plugin-metadata)"
-          test "$(jq -r .version <<<"$meta")" = "$VERSION" || { echo "unexpected version: $meta"; exit 1; }
-          test "$(jq -r .core_version <<<"$meta")" = "$CORE_VERSION" || { echo "unexpected core_version: $meta"; exit 1; }
+          for launcher in capsulectl-book capsulectl-deal; do
+            meta="$(dist/"$launcher-$VERSION"-linux-amd64 cli-plugin-metadata)"
+            test "$(jq -r .name <<<"$meta")" = "${launcher#capsulectl-}" || { echo "unexpected name: $meta"; exit 1; }
+            test "$(jq -r .version <<<"$meta")" = "$VERSION" || { echo "unexpected version: $meta"; exit 1; }
+            test "$(jq -r .core_version <<<"$meta")" = "$CORE_VERSION" || { echo "unexpected core_version: $meta"; exit 1; }
+          done
       - name: Attest build provenance of the assets
         id: attest
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: |
             capsulectl/dist/capsulectl-book-*
+            capsulectl/dist/capsulectl-deal-*
             capsulectl/dist/standard-history-*
+            capsulectl/dist/deal-view-*
+            capsulectl/dist/deal-skill-*
       - name: Attach the attestation bundle
         env:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
@@ -142,6 +161,6 @@ jobs:
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${flags[@]}"
           else
             gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag "${flags[@]}" \
-              --title "capsulectl-book $VERSION" \
-              --notes "Prebuilt capsulectl-book plugin binaries (linux/amd64, linux/arm64, darwin/arm64). Verify with: sha256sum -c SHA256SUMS. Check the build attestation with no GitHub account: gh attestation verify FILE --bundle capsulectl-book-$VERSION.sigstore.json --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release.yml"
+              --title "capsulectl-book and capsulectl-deal $VERSION" \
+              --notes "Prebuilt capsulectl-book and capsulectl-deal plugin binaries (linux/amd64, linux/arm64, darwin/arm64). Verify with: sha256sum -c SHA256SUMS. Check the build attestation with no GitHub account: gh attestation verify FILE --bundle capsulectl-book-$VERSION.sigstore.json --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release.yml"
           fi

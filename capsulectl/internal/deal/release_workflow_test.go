@@ -14,7 +14,7 @@ import (
 // producer's version: a release's sealed records name the tag, and a shared
 // copy refuses a producer outside producerVersion's shape (evidencebook-deal#3).
 func TestReleaseTagPolicyIsTheProducerShape(t *testing.T) {
-	workflow, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
+	workflow, err := os.ReadFile(filepath.Join("..", "..", "..", ".github", "workflows", "release.yml"))
 	require.NoError(t, err)
 	m := regexp.MustCompile(`(?s)name: Check the tag is a version a shared copy keeps.*?grep -Eqx '([^']+)'`).FindSubmatch(workflow)
 	require.NotNil(t, m, "the release workflow checks the tag")

@@ -9,14 +9,14 @@
 # the evidencebook module this go.mod resolves, compiled with this module's graph:
 # the evidencebook code capsulectl links, with the dependencies capsulectl links.
 #
-#   scripts/interop-resolved.sh EVIDENCEBOOK_SRC
+#   scripts/deal/interop-resolved.sh EVIDENCEBOOK_SRC
 #
 # EVIDENCEBOOK_SRC is a checkout of evidencebook at the version this module
 # resolves (for its Python verifier scripts). Needs Python with checkpointed-local-log,
 # agent-action-capsule and capsule-emit installed, as evidencebook's CI installs them.
 set -euo pipefail
 
-src=${1:?usage: scripts/interop-resolved.sh EVIDENCEBOOK_SRC}
+src=${1:?usage: scripts/deal/interop-resolved.sh EVIDENCEBOOK_SRC}
 py=$src/test/interop
 eb=github.com/action-state-group/evidencebook
 

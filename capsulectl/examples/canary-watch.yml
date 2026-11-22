@@ -38,7 +38,7 @@ jobs:
           restore-keys: canary-state-
       - name: Install capsulectl-deal
         run: |
-          base=https://github.com/action-state-group/evidencebook-deal/releases/download/$CAPSULECTL_DEAL_VERSION
+          base=https://github.com/action-state-group/evidencebook/releases/download/capsulectl/$CAPSULECTL_DEAL_VERSION
           curl -fsSLO "$base/capsulectl-deal-$CAPSULECTL_DEAL_VERSION-linux-amd64"
           curl -fsSLO "$base/SHA256SUMS"
           sha256sum --ignore-missing -c SHA256SUMS

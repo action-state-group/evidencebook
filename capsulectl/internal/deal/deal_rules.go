@@ -908,7 +908,7 @@ func dealReleaseNotes() string {
 	if cli.PluginVersion == "" {
 		return ""
 	}
-	return "https://github.com/action-state-group/evidencebook-deal/releases/tag/" + cli.PluginVersion
+	return "https://github.com/action-state-group/evidencebook/releases/tag/capsulectl/" + cli.PluginVersion
 }
 
 func (p *dealProducer) String() string {

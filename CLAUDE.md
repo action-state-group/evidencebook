@@ -15,7 +15,7 @@ go test -race ./...
 (cd report && test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum)
 (cd report && go vet ./... && go test ./... && go test -race ./...)
 
-# capsulectl-book (capsulectl/, a nested module; CI: .github/workflows/capsulectl.yml)
+# capsulectl-book and capsulectl-deal (capsulectl/, a nested module; CI: .github/workflows/capsulectl.yml)
 (cd capsulectl && test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum)
 (cd capsulectl && go vet ./... && go test ./...)
 
@@ -107,7 +107,7 @@ text.
 | `adapter/` | Go adapters for foreign evidence (`acp`, `ucp`, `x402`) |
 | `report/` | the nested module `github.com/action-state-group/evidencebook/report`: package `report`, which renders a verified Result-rooted bundle into an offline page and seals the page's digest (what `capsulectl book report` runs); its own module so the root's graph gains no CLI (`report/v*` tags) |
 | `cmd/evidencebook/` | the `evidencebook` command, which runs the adapters |
-| `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: `capsulectl-book`, the capsulectl plugin over books (its own CI workflow and `capsulectl/v*` releases) |
+| `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: two capsulectl plugins, the launchers `capsulectl-book` (`cmd/capsulectl-book`, `internal/book`, over books) and `capsulectl-deal` (`cmd/capsulectl-deal`, `internal/deal`, `skills/deal`, over deals; moved from evidencebook-deal with its history, evidencebook#610); neither links the other's package; its own CI workflow and one `capsulectl/v*` release for both |
 | `rust/evidencebook/` | crate `evidencebook`, a Rust implementation of the same semantics |
 | `rust/interop/` | `evidencebook-interop` (not published): the crate's Personal-Agent History and interop-profile runs, which the Rust CI `interop` job checks against the vectors and the Go runs, and the Rust side of the shelf storage interlock (bin `shelf`, `shelf-interlock` in ci.yml) |
 | `python/` | the Python package `capsule-evidencebook` (import `evidencebook`): the book, the shelf and its cadence, the evidence request interaction, `evidencebook.deal` (x-deal-v0) and `evidencebook.deal.v1` (x-deal-v1), byte for byte with Go; not yet published |
@@ -139,7 +139,7 @@ Use their canonicalization and verification rather than reimplementing them.
 Follow [RELEASING.md](RELEASING.md). In short: for the crate, run **Release ·
 Prepare**, merge its pull request, and the Release · Tag workflow tags and
 publishes. For the Go module, merge the CHANGELOG pull request and an admin
-pushes `v<version>`. For capsulectl-book, a maintainer pushes
+pushes `v<version>`. For capsulectl-book and capsulectl-deal (one release), a maintainer pushes
 `capsulectl/v<version>` ([capsulectl/RELEASING.md](capsulectl/RELEASING.md)).
 Never create release tags by hand, except `v*`, which an admin pushes, and
 `capsulectl/v*` and `report/v*`, which a maintainer pushes. Do not rename `publish-rust.yml`: crates.io's trusted publisher

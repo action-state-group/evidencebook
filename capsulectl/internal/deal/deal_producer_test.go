@@ -110,6 +110,15 @@ func TestShareableProducerShapes(t *testing.T) {
 	assert.True(t, ok("capsulectl", "0.1.0-dev", "unknown"), "a development build is shareable as such")
 	assert.True(t, ok("capsulectl", "v1.2.3", "abc1234"))
 	assert.True(t, ok("capsulectl-deal", "v0.1.0", "d3c6a9bbf4eeaeedef67d1e3fe0d0f53e7164a70"), "this plugin's release stamp")
+	// The last evidencebook-deal release and the first capsulectl/v* release of
+	// this repository (evidencebook#610) are both shareable, and so is every
+	// version release.yml accepts: its shape check is this one's.
+	for _, version := range []string{"v0.1.0-rc45", "v0.1.0-rc46", "v9999.9999.9999-rc999", "v0.1.0-alpha", "v0.1.0-beta1", "v0.1.0-dev7"} {
+		assert.True(t, ok("capsulectl-deal", version, "d3c6a9bbf4eeaeedef67d1e3fe0d0f53e7164a70"), version)
+	}
+	for _, version := range []string{"v0.1.0-rc1000", "v10000.0.0", "v0.1.0-rc46.1", "v0.1.0+build"} {
+		assert.False(t, ok("capsulectl-deal", version, "d3c6a9bbf4eeaeedef67d1e3fe0d0f53e7164a70"), version)
+	}
 	assert.False(t, ok("capsulectl", "v0.1.0-482913", "abc1234"), "a code cannot ride in the version")
 	assert.False(t, ok("capsulectl", "v0.1.0", "jane@example.com"))
 	assert.False(t, ok("Jane Doe", "v0.1.0", "abc1234"))
@@ -206,7 +215,7 @@ func TestDealPageComparesBuildsByName(t *testing.T) {
 		require.Empty(t, v.Refusal)
 		return v
 	}
-	const notes = "https://github.com/action-state-group/evidencebook-deal/releases/tag/"
+	const notes = "https://github.com/action-state-group/evidencebook/releases/tag/capsulectl/"
 
 	dealFixture(t)
 	buildAs(t, "v0.1.0-rc23", "abc1234")
