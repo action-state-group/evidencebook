@@ -181,8 +181,8 @@ can follow any of them, and `not_approved`, `differs_from_check`, `changed_after
 `authority_changed` and `check_expired` claims follow a check exactly as authorized ones do.
 Closing it would mean hiding log positions, which every copy's verification rests on. The same
 residual was kept, stated, as a reviewer's finding in evidencebook-deal#231's plan review (not a
-ruling). Sherlock put this limit to Steven with the recommendation to accept it and state it in
-PROFILE.md and the CHANGELOG (section 9).
+ruling). Steven accepted this limit on the condition that PROFILE.md and the CHANGELOG state it
+(section 9).
 
 ## 8. Work in evidencebook
 
@@ -221,10 +221,13 @@ it runs the reference checker, the same tag's `check_profile.py`.
   buyer sees (today it sees the seller's checks and approvals of representations). It is needed for
   u615 (section 2, leaks 2 and 3), and it is part of the same door confirmation.
 - Sherlock confirmed the first two (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=0597a2f1589b5578d4ff3f083c97e4f482f480aa344bbcbf1cfaa1714bb8579e&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
-- Two calls are Steven's, each with Sherlock's recommendation "yes" (same thread): the old-shape
+- Two calls were Steven's, each with Sherlock's recommendation "yes" (same thread): the old-shape
   claims a buyer no longer sees on existing deals (section 6), since no format change can reach
-  them (Sherlock2's rule in 2abeb751), and the positional limit (section 7). Built as recommended;
-  the PR merges only after his reply.
+  them (Sherlock2's rule in 2abeb751), and the positional limit (section 7). Steven: "607 yes"
+  (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=c0fa0900a46e53bdd791f7179cbc8b555064113ca118608b6cfaecc6e179a993),
+  recorded by Sherlock as (1) old-shape claims withheld uniformly with no flag and (2) the
+  position hint accepted, its limit stated in PROFILE.md and the CHANGELOG (ops 58970b48;
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=f1bfdf6cd0d1548052f4e4cc08e8f20610571c18231eae9ab07d5ec7d3b8b3e5).
 - Withholding every evaluation and every unchecked act's outcome from a rule 12 deal's
   counterparty copy (leak 4): inside u615, no Steven call (Sherlock,
   buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=ebc66c63feee9b572ae7f483687ab8d375cce8d25f6f41a2ff84457fd93160e6&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260),
