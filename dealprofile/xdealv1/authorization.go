@@ -5,8 +5,8 @@ package xdealv1
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -119,7 +119,7 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 			return nil, bad("its check serves another deal")
 		}
 		cb := w.check[ci]
-		if err := settledAmountMatches(ins[i].Settlement, cb); err != nil {
+		if err := settledAmountMatches(ins[i].Settlement, settleLeg(act), cb); err != nil {
 			return nil, bad("%v", err)
 		}
 		if want := kind.checkAction(); cb.Action != want {
@@ -613,35 +613,74 @@ func nonceOf(r Record) string {
 	return ""
 }
 
-// settledAmountMatches is rule 5's amount condition for one act: the leg's
-// amount (a payer leg's amount, a payee leg's received) and its asset code
-// equal the check's amount_minor and currency, where both carry them.
-func settledAmountMatches(member json.RawMessage, cb *CheckBody) error {
-	if len(member) == 0 || cb == nil || cb.AmountMinor == nil {
+// settledAmountMatches is rule 5's amount condition for one act, where both
+// the leg and the check carry the field. The leg's asset code equals the
+// check's currency. The amount the leg settles equals the check's
+// amount_minor, compared exactly as AAC compares amounts (in integers at the
+// larger scale, draft-mih-agent-settlement-records-01), with amount_minor at
+// the currency's minor units (dealprofile.AssetScale). A payer leg settles
+// its amount; a payee leg settles received plus receive_fee, AAC's amount
+// rule, since received is net of the fee. A member whose amount field is not
+// its leg's is refused.
+func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) error {
+	if len(member) == 0 || cb == nil || (cb.AmountMinor == nil && cb.Currency == "") {
 		return nil
 	}
-	var leg struct {
-		Amount   *legAmount `json:"amount"`
-		Received *legAmount `json:"received"`
+	var m struct {
+		Amount     *legAmount `json:"amount"`
+		Received   *legAmount `json:"received"`
+		ReceiveFee *legAmount `json:"receive_fee"`
 	}
-	if err := json.Unmarshal(member, &leg); err != nil {
+	if err := json.Unmarshal(member, &m); err != nil {
 		return fmt.Errorf("its settlement member: %v", err)
 	}
-	a := leg.Amount
-	if a == nil {
-		a = leg.Received
+	parts := []*legAmount{m.Amount}
+	switch {
+	case leg == LegPayer && m.Amount == nil && m.Received != nil,
+		leg == LegPayee && m.Received == nil && m.Amount != nil:
+		return fmt.Errorf("its settlement member carries the other leg's amount field for a %s leg", leg)
+	case leg == LegPayee:
+		parts = []*legAmount{m.Received, m.ReceiveFee}
 	}
-	if a == nil {
+	if parts[0] == nil {
 		return nil
 	}
-	if cb.Currency != "" && a.AssetCode != cb.Currency {
-		return fmt.Errorf("the settled currency %s differs from the checked %s: a new check is needed", a.AssetCode, cb.Currency)
+	sum, scale := new(big.Int), 0
+	for _, a := range parts {
+		if a == nil {
+			continue
+		}
+		if cb.Currency != "" && a.AssetCode != cb.Currency {
+			return fmt.Errorf("the settled currency %s differs from the checked %s: a new check is needed", a.AssetCode, cb.Currency)
+		}
+		if a.AssetCode != parts[0].AssetCode {
+			return fmt.Errorf("its settlement member mixes %s and %s", parts[0].AssetCode, a.AssetCode)
+		}
+		v, ok := a.scaled(max(scale, a.AssetScale))
+		if !ok {
+			return fmt.Errorf("its settlement member's amount %q is not a whole number", a.Value)
+		}
+		if a.AssetScale > scale {
+			sum.Mul(sum, pow10(a.AssetScale-scale))
+			scale = a.AssetScale
+		}
+		sum.Add(sum, v)
 	}
-	if scale, ok := dealprofile.AssetScale(a.AssetCode); ok && a.AssetScale != scale {
-		return fmt.Errorf("the settled amount's scale %d is not %s's %d", a.AssetScale, a.AssetCode, scale)
+	if cb.AmountMinor == nil {
+		return nil
 	}
-	if a.Value != strconv.FormatInt(*cb.AmountMinor, 10) {
-		return fmt.Errorf("the settled amount %s differs from the checked %d: a new check is needed", a.Value, *cb.AmountMinor)
+	checkScale, ok := dealprofile.AssetScale(parts[0].AssetCode)
+	if !ok {
+		return fmt.Errorf("the checked amount's currency %s has no known minor units, so the settled amount cannot be held to it", parts[0].AssetCode)
+	}
+	checked := new(big.Int).SetInt64(*cb.AmountMinor)
+	if checkScale > scale {
+		sum.Mul(sum, pow10(checkScale-scale))
+	} else {
+		checked.Mul(checked, pow10(scale-checkScale))
+	}
+	if sum.Cmp(checked) != 0 {
+		return fmt.Errorf("the settled amount differs from the checked %d %s: a new check is needed", *cb.AmountMinor, parts[0].AssetCode)
 	}
 	return nil
 }
@@ -651,4 +690,23 @@ type legAmount struct {
 	Value      string `json:"value"`
 	AssetCode  string `json:"assetCode"`
 	AssetScale int    `json:"assetScale"`
+}
+
+// scaled is the amount as an integer at scale, which is at least its own.
+func (a *legAmount) scaled(scale int) (*big.Int, bool) {
+	v, ok := new(big.Int).SetString(a.Value, 10)
+	if !ok || v.Sign() < 0 || a.AssetScale < 0 || a.AssetScale > 255 {
+		return nil, false
+	}
+	return v.Mul(v, pow10(scale-a.AssetScale)), true
+}
+
+func pow10(n int) *big.Int { return new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(n)), nil) }
+
+// settleLeg is a settle record's leg; empty for any other record.
+func settleLeg(r Record) string {
+	if b, ok := bodyOf[SettleBody](r.Body); ok {
+		return b.Leg
+	}
+	return ""
 }
