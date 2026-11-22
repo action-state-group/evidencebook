@@ -395,7 +395,9 @@ func (d *statementDest) commit(data []byte) error {
 	if _, err := d.tmp.Write(data); err != nil {
 		return err
 	}
-	if err := d.tmp.Close(); err != nil {
+	// Sync before the link: the statement is permanent on the service and cannot be re-registered,
+	// so a crash after the link must not leave an empty or partial file at --out.
+	if err := errors.Join(d.tmp.Sync(), d.tmp.Close()); err != nil {
 		return err
 	}
 	return os.Link(d.tmp.Name(), d.path)
