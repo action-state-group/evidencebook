@@ -130,7 +130,7 @@ func v1Refusal(verb, dealID string) error {
 			what = "terms result"
 		}
 		return cli.InputError("deal " + dealID + " is an x-deal-v1 deal and has no " + what +
-			". Each row is decided by statements, dates and disputes, and the deal is settled once every row is agreed, uncontested, or ruled with its remedy done. Record a row with `deal statement`.")
+			". Each row is decided by statements, dates and disputes, and the deal is settled once every row is agreed, uncontested, or ruled with its remedy done. Record a row with `deal statement`. See `deal report`.")
 	}
 	return cli.InputError("deal " + dealID + " is an x-deal-v1 deal: `deal " + verb + "` is not served for x-deal-v1 deals yet")
 }

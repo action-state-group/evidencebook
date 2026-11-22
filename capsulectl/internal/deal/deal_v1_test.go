@@ -234,9 +234,10 @@ func TestAV1DealHasNoCloseAndNoV0Verb(t *testing.T) {
 	id := res["deal_id"].(string)
 
 	closeMsg := v1Err(t, "close", "--deal", id, "--input", writeJSON(t, `{"status":"received"}`))
-	assert.Equal(t, "deal "+id+" is an x-deal-v1 deal and has no close. Each row is decided by statements, dates and disputes, and the deal is settled once every row is agreed, uncontested, or ruled with its remedy done. Record a row with `deal statement`.", closeMsg)
+	assert.Equal(t, "deal "+id+" is an x-deal-v1 deal and has no close. Each row is decided by statements, dates and disputes, and the deal is settled once every row is agreed, uncontested, or ruled with its remedy done. Record a row with `deal statement`. See `deal report`.", closeMsg)
 	assert.Contains(t, v1Err(t, "terms-result", "--deal", id, "--response", writeJSON(t, "{}"), "--openings", writeJSON(t, "{}"), "--out", filepath.Join(t.TempDir(), "res.json")), "has no terms result")
-	other := v1Err(t, "report", "--deal", id)
+	assert.Contains(t, v1Err(t, "report", "--deal", id), "has no deal book yet", "a v1 deal's report waits for its book")
+	other := v1Err(t, "export", "--deal", id, "--output", filepath.Join(t.TempDir(), "e.json"))
 	assert.Contains(t, other, "x-deal-v1 deal")
 	assert.NotContains(t, other, "unknown deal")
 }
@@ -424,6 +425,8 @@ func TestAnOfferWithNoOutGoesToStandardOutput(t *testing.T) {
 	var state string
 	require.NoError(t, v1DB(t).QueryRow(`SELECT state FROM deal_sent WHERE record_digest=?`, sent.Digest).Scan(&state))
 	assert.Equal(t, sentWritten, state)
-	// A v1 deal's checkpoint status says it is a v1 deal, not that it is unknown.
-	assert.Contains(t, v1Err(t, "report", "--deal", sent.Record.Block.DealID, "--read-only"), "x-deal-v1 deal")
+	// A v1 deal's report says it has no book yet, not that the deal is unknown.
+	msg := v1Err(t, "report", "--deal", sent.Record.Block.DealID, "--read-only")
+	assert.Contains(t, msg, "has no deal book yet")
+	assert.NotContains(t, msg, "unknown deal")
 }

@@ -2795,6 +2795,16 @@ func dealCloseCommand() *cobra.Command {
 
 func dealReportCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "report", Short: "Report the deal in three parts (what you asked, what the agent did, anomalies); --html writes one local page", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		// An x-deal-v1 deal has its own report (deal_v1_report.go), read
+		// before any of the x-deal-v0 flag rules below.
+		if v1, err := v1DealOfFlag(c); err != nil {
+			return err
+		} else if v1 {
+			return runV1Report(c)
+		}
+		if c.Flags().Changed("out") {
+			return cli.InputError("--out writes an x-deal-v1 deal's sealed report; an x-deal-v0 deal's report goes to --html or --bundle")
+		}
 		htmlPath, _ := c.Flags().GetString("html")
 		emailPath, _ := c.Flags().GetString("email")
 		bundlePath, _ := c.Flags().GetString("bundle")
@@ -3030,6 +3040,7 @@ func dealReportCommand() *cobra.Command {
 	addIncludeAgentClaimsFlag(cmd.Flags())
 	cmd.Flags().String("from-bundle", "", "Render from this deal's earlier bundle file instead of a new one, with any countersignatures it carries (see `deal countersign`)")
 	cmd.Flags().String("directory", "", "With --from-bundle: the countersigner directory (HTTPS URL or file) that resolves who countersigned; default: the profile's countersign.directory")
+	cmd.Flags().String("out", "", "On an x-deal-v1 deal: also seal the report and write its pair to this new file")
 	cmd.Flags().Bool("read-only", false, "Read the deal as it stands and write nothing: no checkpoint cut, nothing sealed, no file (for a History built over many deals)")
 	return cmd
 }
