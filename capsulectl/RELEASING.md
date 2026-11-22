@@ -66,6 +66,14 @@ in a fixed shape, so the workflow refuses any other version:
    `gh attestation verify` on each binary and each archive with
    `--bundle capsulectl-book-vX.Y.Z.sigstore.json --repo action-state-group/evidencebook
    --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml`.
+   The bundle is published under two names, `capsulectl-book-vX.Y.Z.sigstore.json`
+   and `capsulectl-deal-vX.Y.Z.sigstore.json`; they are the same file, and the
+   deal one keeps the name evidencebook-deal's releases used.
+5. The install pages pin the deal plugin asset, the deal skill archive
+   (`deal-skill-vX.Y.Z.tar.gz`) with its `skills/deal/SKILL.md`, and the deal
+   view archive (`deal-view-vX.Y.Z.tar.gz`), which is unpacked into the plugin
+   directory beside `capsulectl-deal`; the pins move to this release (the
+   follow-up issues on evidencebook#610 name each page).
 
 ## Repository settings
 

@@ -185,7 +185,7 @@ func canaryRunCommand() *cobra.Command {
 		return cli.Output(c, out)
 	}}
 	cmd.Flags().String("skill", "", "The SKILL.md the agent loads; its sha256 is sealed in the run, and a missing file stops the run")
-	cmd.Flags().String("expect-version", "", "Stop before sealing unless this binary (capsulectl-deal) reports exactly this version, its release tag")
+	cmd.Flags().String("expect-version", "", "Stop before sealing unless this binary (capsulectl-deal) reports exactly this version, the release version (the capsulectl/vX.Y.Z tag without its capsulectl/ prefix)")
 	cmd.Flags().String("expect-skill-sha256", "", "Stop before sealing unless --skill has exactly this sha256")
 	return cmd
 }

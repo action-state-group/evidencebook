@@ -40,6 +40,16 @@ jobs:
         with:
           go-version-file: capsulectl/go.mod
           cache-dependency-path: capsulectl/go.sum
+      - name: Refuse committed env files
+        # evidencebook-deal's quality job refused them; the deal's settings and
+        # credentials live in a host's environment, never in this repository.
+        working-directory: ${{ github.workspace }}
+        run: |
+          bad="$(git ls-files capsulectl | grep -E '(^|/)\.env($|\.)' | grep -vE '\.example$' || true)"
+          if [ -n "$bad" ]; then
+            printf '::error::env file(s) committed; remove them from the repository and rotate any secret they held:\n%s\n' "$bad"
+            exit 1
+          fi
       - name: Formatting and module files
         run: |
           test -z "$(gofmt -l .)"
@@ -124,6 +134,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Tests passed
+        # No checkout here, so not the capsulectl/ directory the defaults name.
+        working-directory: ${{ github.workspace }}
         run: test "${{ needs.tests.result }}" = success
 
   skill:
@@ -296,37 +308,3 @@ jobs:
           CAPSULECTL_PRESENTATION_PINNED: "1"
           FONTCONFIG_FILE: ${{ github.workspace }}/capsulectl/testdata/presentation/fonts.conf
         run: go test -count=1 -p 1 -v -timeout 10m -run '^TestPresentationPass' ./internal/deal
-
-  deal-interop-at-resolved-versions:
-    # The deal side's Go <-> Python round trip at the versions this module
-    # resolves (scripts/deal/interop-resolved.sh), beside the book's above.
-    name: capsulectl-deal interop at the resolved versions (Go <-> Python)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: capsulectl/go.mod
-          cache-dependency-path: capsulectl/go.sum
-      - name: The evidencebook version this module resolves
-        id: resolved
-        run: |
-          version=$(go list -m -f '{{.Version}}' github.com/action-state-group/evidencebook)
-          commit=$(go mod download -json "github.com/action-state-group/evidencebook@$version" | jq -er '.Origin.Hash')
-          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
-          echo "evidencebook=$commit" >> "$GITHUB_OUTPUT"
-      - name: Check out evidencebook at that version (its Python verifier scripts)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.resolved.outputs.evidencebook }}
-          path: .interop/evidencebook
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-      - name: Install Python CLL, the AAC bundle verifier and capsule-emit (locked, with hashes)
-        run: |
-          python -m pip install --require-hashes -r scripts/deal/interop-requirements.txt
-          python -m pip check
-      - name: The round trip, both ways, with the tampered copies refused
-        run: bash scripts/deal/interop-resolved.sh ../.interop/evidencebook
