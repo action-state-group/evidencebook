@@ -156,21 +156,30 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 	out := dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--out", file)
 	data, err := os.ReadFile(file)
 	require.NoError(t, err)
-	read, err := xdealv1.VerifyReport(data[:len(data)-1], readPush(t, h.buyerAgr).Record)
+	read, err := xdealv1.VerifyReport(data, readPush(t, h.buyerAgr).Record)
 	require.NoError(t, err)
 	assert.Equal(t, out["sealed_report"], read.CapsuleID)
 	recs := disclosures()
 	require.Len(t, recs, 1)
 	assert.Equal(t, "counterparty", recs[0]["audience"])
 	assert.Equal(t, "Kettle Shop", recs[0]["recipient"])
-	sum := sha256.Sum256(data[:len(data)-1])
+	sum := sha256.Sum256(data)
 	assert.Equal(t, hex.EncodeToString(sum[:]), recs[0]["receipt_sha256"], "the digest of the exact copy written")
 
 	adj := filepath.Join(t.TempDir(), "adj.json")
 	got := dealRun(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", adj)
 	report := got["report"].(map[string]any)
 	assert.Equal(t, "Lamp Court", report["referee"])
-	assert.Len(t, disclosures(), 2)
+	recs = disclosures()
+	require.Len(t, recs, 2)
+	assert.Equal(t, "adjudicator", recs[1]["audience"])
+	assert.Equal(t, "Lamp Court", recs[1]["recipient"])
+
+	taken := filepath.Join(t.TempDir(), "taken.json")
+	require.NoError(t, os.WriteFile(taken, []byte("x"), 0o600))
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--out", taken), "exists")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", ""), "cannot be empty")
+	assert.Len(t, disclosures(), 2, "an existing or empty --out records nothing")
 
 	v1ShareGate = func([]byte, []sealedEvent, string) error {
 		return cli.InputError("the copy would spell out a private value")
@@ -185,4 +194,30 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--out", filepath.Join(t.TempDir(), "x.json")), "needs --out FILE and --to")
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--to", "Kettle Shop"), "use it with --share counterparty or adjudicator")
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--read-only", "--share", "counterparty", "--to", "x"), "writes nothing")
+}
+
+// The real share gate runs on a v1 shared copy with the deal's own local
+// events, the opening and its plain counterparty values among them, and the
+// copy's audience, over the exact bytes then written.
+func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	var gotEvents []sealedEvent
+	var gotAudience string
+	var gotBytes []byte
+	v1ShareGate = func(data []byte, events []sealedEvent, audience string) error {
+		gotEvents, gotAudience, gotBytes = events, audience, data
+		return dealShareGate(data, events, audience)
+	}
+	t.Cleanup(func() { v1ShareGate = dealShareGate })
+	file := filepath.Join(t.TempDir(), "adj.json")
+	dealRun(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", file)
+	assert.Equal(t, "adjudicator", gotAudience)
+	require.NotEmpty(t, gotEvents)
+	require.NotNil(t, gotEvents[0].Event.Open, "the opening, which holds the plain counterparty values")
+	assert.Equal(t, "Kettle Shop", gotEvents[0].Event.Open.Who.Name)
+	written, err := os.ReadFile(file)
+	require.NoError(t, err)
+	assert.Equal(t, written, gotBytes, "the gate read the exact bytes written")
 }

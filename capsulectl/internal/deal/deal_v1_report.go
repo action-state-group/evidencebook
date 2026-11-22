@@ -21,11 +21,13 @@ import (
 // `deal report` on an x-deal-v1 deal (evidencebook#626 B4b; PROFILE §10). A v1
 // deal seals no Evidence Result: its report is a snapshot of each row's
 // status the holder computes now, from what it holds, through
-// xdealv1.StatusProvider.ReportSnapshot. The command runs on a read session:
-// computing a report writes nothing, the store and the journal included. By
-// default it prints the holder's own copy; --out also seals the report
-// Capsule (standalone, appended to no book) and writes its pair. A shared
-// copy (--share) and the bundle (--bundle) are later parts of B4.
+// xdealv1.StatusProvider.ReportSnapshot. Computing a report writes nothing,
+// the store and the journal included. By default it prints the holder's own
+// copy on a read session; --out also seals the report Capsule (standalone,
+// appended to no book) and writes it. A shared copy (--share) is a disclose
+// act: it opens the writable store, passes the share gate, is put on record
+// with the digest of the exact file, and only then is written. The bundle
+// (--bundle) is a later part of B4.
 
 // v1ReportFlagRefusal refuses the v0 flags `deal report` takes that a v1 deal
 // has no form for, each with why.
@@ -50,6 +52,9 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	case readOnly && (f.Changed("out") || f.Changed("share") || f.Changed("to")):
 		return cli.InputError("--read-only writes nothing: it takes no --out, --share or --to")
 	}
+	if out, _ := f.GetString("out"); f.Changed("out") && strings.TrimSpace(out) == "" {
+		return cli.InputError("--out names the file to write; it cannot be empty")
+	}
 	share, _ := f.GetString("share")
 	to, _ := f.GetString("to")
 	switch share {
@@ -58,7 +63,8 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 			return cli.InputError("--to names who a shared copy is for; use it with --share counterparty or adjudicator")
 		}
 	case dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator:
-		if !f.Changed("out") || strings.TrimSpace(to) == "" {
+		out, _ := f.GetString("out")
+		if strings.TrimSpace(out) == "" || strings.TrimSpace(to) == "" {
 			return cli.InputError("--share writes a copy for someone else: it needs --out FILE and --to (who it is for; for an adjudicator, the referee's name)")
 		}
 	default:
@@ -105,6 +111,19 @@ func runV1Report(c *cobra.Command) (err error) {
 	share, _ := c.Flags().GetString("share")
 	to, _ := c.Flags().GetString("to")
 	to = strings.TrimSpace(to)
+	if share == dealprofile.AudienceAdjudicator {
+		// The referee is sealed and recorded spelled one way.
+		to = dealprofile.NormalizeReferee(to)
+	}
+	// A file already at --out is refused before anything is sealed or
+	// recorded: a shared copy put on record is never left without its file.
+	if out != "" {
+		if _, err := os.Lstat(out); err == nil {
+			return cli.InputError(out + " exists: --out names a new file")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
 	shared := share != dealprofile.AudienceKeep
 	ctx := c.Context()
 	// A shared copy is a disclose act, put on record before the file is
@@ -136,7 +155,7 @@ func runV1Report(c *cobra.Command) (err error) {
 	prov := &xdealv1.StatusProvider{Shelf: s.shelf, OfferPair: s.sentOfferPair}
 	rc := xdealv1.ReportCopy{Audience: share, Nonce: hex.EncodeToString(nonce), AsOf: at.Format("2006-01-02T15:04:05Z")}
 	if share == dealprofile.AudienceAdjudicator {
-		rc.Referee = dealprofile.NormalizeReferee(to)
+		rc.Referee = to
 	}
 	snap, err := prov.ReportSnapshot(ctx, d.OwnLogID, rc)
 	if err != nil {
@@ -153,6 +172,9 @@ func runV1Report(c *cobra.Command) (err error) {
 		}
 		// A report a reader cannot verify is never written: it is signed by
 		// the key that signed the deal's agreement, or refused.
+		// The file's exact bytes: what the gate reads, the record digests and
+		// the file holds.
+		file := append(append([]byte{}, pair...), '\n')
 		if _, err := xdealv1.VerifyReport(pair, snap.Book.Agreement); err != nil {
 			return cli.InputError("the report sealed with this profile's signing key does not verify against your agreement (" + err.Error() + "): the key that signed the agreement must sign the report; run it with the profile you agreed with (--profile)")
 		}
@@ -165,16 +187,16 @@ func runV1Report(c *cobra.Command) (err error) {
 			if err != nil {
 				return err
 			}
-			if err := v1ShareGate(pair, events, share); err != nil {
+			if err := v1ShareGate(file, events, share); err != nil {
 				return err
 			}
-			rec, err := s.recordV1Share(ctx, p, dealID, share, to, pair)
+			rec, err := s.recordV1Share(ctx, p, dealID, share, to, file)
 			if err != nil {
 				return err
 			}
 			result["share"] = rec
 		}
-		if err := writeNewFile(out, pair); err != nil {
+		if err := writeNewFile(out, file); err != nil {
 			return err
 		}
 		result["sealed_report"], result["file"] = digest, out
@@ -232,14 +254,14 @@ func (s *dealSession) sealV1Report(p cli.Profile, r xdealv1.Report, at time.Time
 	return pair, record.CapsuleID, nil
 }
 
-// writeNewFile writes data to a file that must not exist yet.
+// writeNewFile writes data, exactly, to a file that must not exist yet.
 func writeNewFile(path string, data []byte) error {
 	if _, err := os.Lstat(path); err == nil {
 		return cli.InputError(path + " exists: --out names a new file")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return cli.AtomicFile(path, append(append([]byte{}, data...), '\n'), false)
+	return cli.AtomicFile(path, data, false)
 }
 
 // v1ShareGate is dealShareGate, a seam for tests.
