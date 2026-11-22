@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -465,4 +466,22 @@ func TestRegisteringACardChangesNothingAboutTheAnswer(t *testing.T) {
 	// A statement over this card does not pass for another card.
 	other := CheckCardRegistered([]byte(`{"another":"card"}`), env, [][]byte{statement}, service.policy())
 	assert.Equal(t, aacwitness.AnchorFail, other.Status)
+}
+
+// TestBuildCardStatementMatchesGolden pins the statement BuildCardStatement
+// signs over the vectors' card to a golden file the Goose demo's own builder
+// (python/examples/goose/card_registration.py) is tested against, so the
+// demo's bytes are Go's. EB_WRITE_CARD_GOLDEN=1 rewrites it for an intended change.
+func TestBuildCardStatementMatchesGolden(t *testing.T) {
+	v := loadCardRegistrationVectors(t)
+	c := v.find(t, "pass-eddsa-time")
+	built, err := BuildCardStatement(t.Context(), vectorHolderSigner(t), mustHex(t, c.Card), c.Anchor)
+	require.NoError(t, err)
+	path := "testdata/card-registration/built-pass-eddsa-time.hex"
+	if os.Getenv("EB_WRITE_CARD_GOLDEN") != "" {
+		require.NoError(t, os.WriteFile(path, []byte(hex.EncodeToString(built)+"\n"), 0o644))
+	}
+	golden, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, hex.EncodeToString(built), strings.TrimSpace(string(golden)))
 }
