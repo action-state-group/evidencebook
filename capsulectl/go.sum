@@ -12,8 +12,8 @@ github.com/action-state-group/capsule-cli v0.1.0-rc46 h1:frrBW0hjf4p0QEFSUnHoLZV
 github.com/action-state-group/capsule-cli v0.1.0-rc46/go.mod h1:eWqkwe0zef85DlAxKMDX0IqRCt+3tTa9B/jyQmrghU0=
 github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b h1:GGYqlFX1dZmLl7lNDBVynOjx0z2CAsAMWrChVyDYtsk=
 github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b/go.mod h1:TKXiVniDy7RlksGjEAF6k9rj5NcwvwdQ6EGajzhghuo=
-github.com/action-state-group/capsule-engine/go v0.3.0 h1:nrRT2GOj+zPLF5lohWlYVR9sJ6fQJWUJuvHXIUap0go=
-github.com/action-state-group/capsule-engine/go v0.3.0/go.mod h1:RUUfr+8kEmYFT3Qelv7aZynN49rtaRkx7HhkWmu6AVw=
+github.com/action-state-group/capsule-engine/go v0.6.0 h1:v8w0nKR/EDDJG3JLMqSCMCeEk3ys6TLI2QzoovlycGw=
+github.com/action-state-group/capsule-engine/go v0.6.0/go.mod h1:31hBPRuqgoXMFtNb76nEs7X4ZegyNCWnyZmldbUax/w=
 github.com/action-state-group/capsule-viewer/go v0.19.2 h1:Rqz5HKRSDRQRoiEDoHjJQeWX3aq7IFytFTuug+WJub4=
 github.com/action-state-group/capsule-viewer/go v0.19.2/go.mod h1:D6U6Q9b4cEFb8McPyqInxANbVPCaoDFCM0KJk3CTwG4=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0 h1:AcIdYJq6vkhzBMQGsXm/AmfAqGLNAVLaNHXfambPVf0=
