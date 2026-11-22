@@ -15,7 +15,7 @@ import (
 // v1Opening is the first intent note's input on a v1 deal: v0's opening
 // without terms, which come from the offer.
 const (
-	v1Opening = `{"type": "purchase", "who": {"name": "Kettle Shop"}, "recourse": {"rail": "card", "refundable": true}}`
+	v1Opening = `{"type": "purchase", "who": {"name": "Kettle Shop", "domain": "kettle.example"}, "recourse": {"rail": "card", "refundable": true}}`
 	v1Intent  = `{"verbatim": "sell the kettle, at least 40 dollars"}`
 )
 
@@ -75,7 +75,7 @@ func journalTypes(t *testing.T, dealID string) (types []string, withDeal []bool)
 		events, err := s.v1Events(t.Context(), dealID)
 		require.NoError(t, err)
 		for _, se := range events {
-			if se.Event.Kind == "open" {
+			if se.Event.Kind == "open" || se.Event.Kind == "counterparty_profile" {
 				continue
 			}
 			rec, held, err := s.journalRecord(t.Context(), se.Digest)

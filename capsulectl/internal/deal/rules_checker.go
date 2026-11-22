@@ -545,7 +545,15 @@ func findingField(id string) string {
 // absent when the task authority in force is not a task-authority record
 // (an x-deal-v0 deal), and in a deal with none.
 func (s *dealSession) rulesInput(ctx context.Context, capsuleID string, events []sealedEvent) ([]byte, *dealRulesHistory, error) {
-	record, err := s.capsuleWithInput(ctx, capsuleID)
+	var record map[string]interface{}
+	var err error
+	if s.v1 {
+		// A v1 deal seals no v0 Capsule: the checker gets the v0-shaped
+		// record built from the local snapshot (xdealv1-write-path §12 item 6).
+		record, err = s.v1CapsuleWithInput(capsuleID, events)
+	} else {
+		record, err = s.capsuleWithInput(ctx, capsuleID)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -724,7 +732,13 @@ func (s *dealSession) dealClaimsInput(ctx context.Context, checked string, event
 		if se.Event.Kind != "claim" || c == nil || c.SourceKind != "agent" || c.Class == "" || (before > 0 && se.Event.N >= before) {
 			continue
 		}
-		sealed, err := s.capsuleWithInput(ctx, se.CapsuleID)
+		var sealed map[string]interface{}
+		var err error
+		if s.v1 {
+			sealed, err = s.v1CapsuleWithInput(se.CapsuleID, events)
+		} else {
+			sealed, err = s.capsuleWithInput(ctx, se.CapsuleID)
+		}
 		if err != nil || sealed == nil {
 			return nil, err
 		}

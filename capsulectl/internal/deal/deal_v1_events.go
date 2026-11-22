@@ -54,7 +54,7 @@ var v1NonceTypes = map[string]bool{"check": true, "verdict": true, "approval": t
 // v1NoteKinds are the `deal note --kind` values a v1 deal takes; the rest name
 // their v1 verb (v1NoteRefusal).
 var v1NoteKinds = map[string]bool{
-	"intent": true, "message": true, "claim": true, "evidence": true, "change": true, "disclosure": true,
+	"intent": true, "approval": true, "message": true, "claim": true, "evidence": true, "change": true, "disclosure": true,
 	"searched": true, "options": true, "recommended": true, "chose": true, "couldnt": true,
 }
 
@@ -75,8 +75,6 @@ func v1NoteRefusal(kind, dealID string) error {
 		return cli.InputError(head + "has no x-deal-v1 form; a ruling is the adjudicator's own record, in its case book")
 	case "acceptance", "platform_approval":
 		return cli.InputError(head + "has no x-deal-v1 form; a sale is recorded with `deal sale ...`")
-	case "approval":
-		return cli.InputError(head + "is not available yet: an approval answers a check, and `deal check` does not serve x-deal-v1 deals yet (evidencebook#626, part 2)")
 	}
 	return cli.InputError(head + "has no x-deal-v1 form and is not recorded on this deal")
 }
@@ -133,7 +131,11 @@ func (s *dealSession) v1Events(ctx context.Context, dealID string) ([]sealedEven
 
 // v1EventID is a local event's id, which the v0 record builder uses to find
 // the event a later one refers to (a verdict's check, an approval's verdict).
-func v1EventID(dealID string, n int64) string { return fmt.Sprintf("%s/v1/%d", dealID, n) }
+// It is 64 lowercase hex, the form of a Capsule id, since the rules checker's
+// v0-shaped record chains on it (v1CapsuleWithInput).
+func v1EventID(dealID string, n int64) string {
+	return digestBytesHex([]byte(fmt.Sprintf("%s/v1/%d", dealID, n)))
+}
 
 // sealV1Step is s.seal for a v1 deal: the event is fixed as v0 fixes a step,
 // its v0 record is built and rewrapped as the x-deal-v1 journal record of the
@@ -182,10 +184,14 @@ func (s *dealSession) prepareV1(dealID string, events []sealedEvent, ev dealEven
 	}
 	var payload []byte
 	var digest string
-	if ev.Kind == "open" {
+	if ev.Kind == "open" || ev.Kind == "counterparty_profile" {
 		// The opening has no record. It gets a local digest so the v0
 		// record builder's references to it are well formed; v1Record maps
-		// any reference to it onto the deal's first journal record.
+		// any reference to it onto the deal's first journal record. A check's
+		// companion (the payee's fingerprint) stays local too: an x-deal-v1
+		// counterparty_profile record has no member to carry the fingerprint
+		// (PROFILE §2 block, v0's empty body), and only the checker and the
+		// cross-deal memory read it.
 		digest = digestBytesHex(local)
 	} else if payload, digest, err = s.v1Record(events, ev); err != nil {
 		return preparedV1{}, err
@@ -313,6 +319,9 @@ func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) ([]byte, stri
 	nb := make(map[string]interface{}, len(body)+1)
 	for k, v := range body {
 		nb[k] = v
+	}
+	if rtype == "check" && ev.Snapshot != nil && ev.Snapshot.PaymentRef != "" {
+		nb["payment_ref"] = ev.Snapshot.PaymentRef
 	}
 	if v1NonceTypes[rtype] {
 		nonce, err := xdealv1.NewNonce()

@@ -278,7 +278,13 @@ type dealSnapshot struct {
 	// ItemRef is the sale's item reference, on a check of a sale's thread:
 	// set by `deal check` from the thread, never from the input file, and
 	// sealed only as item_ref_commitment.
-	ItemRef     string        `json:"item_ref,omitempty"`
+	ItemRef string `json:"item_ref,omitempty"`
+	// PaymentRef is, on an x-deal-v1 deal's pay check, the reference fixed
+	// before paying that the payment will be made under (a Lightning payment
+	// hash, an ACP order id, the x402 authorization nonce): the payer leg's
+	// check is the one that recorded it (xdealv1-write-path §12 item 5).
+	// x-deal-v0 has no such member.
+	PaymentRef  string        `json:"payment_ref,omitempty"`
 	Action      string        `json:"action"`
 	Description string        `json:"description,omitempty"`
 	AmountMinor *int64        `json:"amount_minor,omitempty"`
