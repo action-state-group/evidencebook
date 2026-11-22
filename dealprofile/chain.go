@@ -552,17 +552,20 @@ type dealChain struct {
 	verdictForChk map[int]bool
 	profileForChk map[int]bool
 	rulesVerdict  bool
-	outcomeNote   bool
-	reversed      map[int]bool
-	firstAnswer   map[int]int
-	lastOutcome   int
-	unchecked     int64
-	latestOffer   int
-	accepted      int
-	closedFinal   int
-	b, body       obj
-	t             string
-	byRel         map[string][]int
+	// termsPacks are the pack digests each check's terms_pack records name,
+	// by the check's index.
+	termsPacks  map[int][]string
+	outcomeNote bool
+	reversed    map[int]bool
+	firstAnswer map[int]int
+	lastOutcome int
+	unchecked   int64
+	latestOffer int
+	accepted    int
+	closedFinal int
+	b, body     obj
+	t           string
+	byRel       map[string][]int
 
 	// evidencebook#607: pendingClaim is a representation sealed without its
 	// verdict, waiting for the claim_authority that directly follows it (-1
@@ -579,7 +582,7 @@ var allowedRels = map[string][]string{
 	"task_authority": {"source", "approves", "registration"}, "platform_approval": {}, "policy_change": {},
 	"check": {"supersedes", "source"}, "counterparty_acceptance": {},
 	"counterparty_profile": {"about"}, "rules_verdict": {"confirms"}, "outcome_note": {"confirms"},
-	"claim_authority": {"about", "authorized_by"},
+	"claim_authority": {"about", "authorized_by"}, "terms_pack": {"checks"},
 }
 
 func (c *dealChain) fail(format string, args ...any) { failAt(c.i, format, args...) }
@@ -841,7 +844,7 @@ func checkDealChain(raw []obj) {
 		taskAtVerdict: map[int]int{}, platformFor: map[int][]int{}, confirmed: map[int]bool{}, usedApprovals: map[int]bool{},
 		verdictForChk: map[int]bool{}, profileForChk: map[int]bool{}, reversed: map[int]bool{}, firstAnswer: map[int]int{},
 		stated: map[string]bool{}, pendingClaim: -1, lastOutcome: -1, latestOffer: -1, accepted: -1, closedFinal: -1, boundsKnown: true,
-		byDig: map[string]int{},
+		byDig: map[string]int{}, termsPacks: map[int][]string{},
 	}
 	for i, r := range raw {
 		d := digestOf(r)

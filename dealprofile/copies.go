@@ -51,8 +51,9 @@ func CounterpartyWithheld(records []any) ([]int, error) {
 // "Copies" requires a counterparty copy of a deal under that rule to
 // disclose: every agent claim sealed in the new shape (no verdict of its
 // own), whose words the copy opens where they hold none of the user's
-// private details, and the outcome each close refs when its status is not
-// unchecked_action, from which the copy's report says how the deal ended.
+// private details; the outcome each close refs when its status is not
+// unchecked_action, from which the copy's report says how the deal ended;
+// and every terms_pack, from which it names the terms that bind.
 // Empty for a deal not under rule 12.
 func RequiredDisclosed(records []any) ([]int, error) {
 	docs, err := readableDocs(records)
@@ -75,6 +76,8 @@ func RequiredDisclosed(records []any) ([]int, error) {
 			if body["source_kind"] == "agent" && !claimCarriesVerdict(body) {
 				need[i] = true
 			}
+		case TypeTermsPack:
+			need[i] = true
 		case TypeClose:
 			for _, r := range sl(b["refs"]) {
 				if rm := mp(r); rm["rel"] == "outcome" {

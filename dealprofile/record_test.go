@@ -105,6 +105,12 @@ func TestRecordRoundTrip(t *testing.T) {
 			samples = append(samples, sample{dir + "/" + filepath.Base(f), fx.Record, store, false})
 		}
 	}
+	// The rule 12 copy vectors' own deals (evidencebook#613).
+	for _, c := range loadCopyVectors(t).Cases {
+		for i, r := range c.Records {
+			samples = append(samples, sample{fmt.Sprintf("copy vector %s %d", c.Name, i), r, store, false})
+		}
+	}
 	for _, d := range loadBaseline(t).Deals {
 		for _, s := range d.Steps {
 			samples = append(samples, sample{fmt.Sprintf("baseline %s step %d", d.Flow, s.N), []byte(s.Payload), nil, false})

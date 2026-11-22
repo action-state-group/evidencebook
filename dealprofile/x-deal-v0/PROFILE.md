@@ -170,7 +170,7 @@ when or how often the deal was shared:
 | `profile` | `"x-deal-v0"` | REQUIRED | Profile and version. |
 | `canonicalization` | `"jcs"` | REQUIRED | Pinned: RFC 8785. Any other value fails closed (section 5). |
 | `deal_id` | string `^deal-[0-9a-f]{16,64}$` | REQUIRED | Random, opaque, and the same on every record of the deal. Never derived from any identifier. |
-| `record_type` | enum (section 3) | REQUIRED | One of the 24 record types. |
+| `record_type` | enum (section 3) | REQUIRED | One of the 25 record types. |
 | `seq` | integer ≥ 1 | REQUIRED | Position in the deal: 1, 2, 3, … with no gaps (section 6). |
 | `at` | string `YYYY-MM-DDThh:mm:ssZ` | REQUIRED | The seal time in UTC, whole seconds. |
 | `prev` | digest ref | REQUIRED iff `seq` > 1 | The record digest of record `seq − 1`. |
@@ -192,7 +192,7 @@ never against a later change.
 
 ## 3. Record types (action-type conventions)
 
-Twenty-four record types. The set is closed: an unknown `record_type` fails the schema.
+Twenty-five record types. The set is closed: an unknown `record_type` fails the schema.
 
 | record_type | What it records | Required body fields | Required refs / block fields |
 |---|---|---|---|
@@ -219,6 +219,7 @@ Twenty-four record types. The set is closed: an unknown `record_type` fails the 
 | `counterparty_profile` | The payee of the `check` just before it, fingerprinted under this profile's own key, for the user's own history: one merchant has one value across the profile's deals. Sealed right after its check, before any rules checker runs; never in a shared copy. | `counterparty_profile` in the header: `{fp_alg: "hmac-sha256-profile-key", ids: {payee}}`; an empty body | exactly one `about` → the `check` it follows. No `counterparty` block. |
 | `rules_verdict` | The party's own overall rules word for the deal, under the pack its digest names, so a counterparty copy can say whether that side's own check agreed (evidencebook-deal#191; Steven's ruling, Buzz 8b6aaecf). One word, derived once by the party's own check and never re-run, counted or combined; never a field of a report and never on a History card. | `word` (`met`\|`not_met`\|`unknown`\|`out_of_scope`), `pack_digest` (the pack's definition digest, 64 hex), optional `pack_id` (`publisher/name/semver`, only for a published pack; a private or forked pack carries the digest alone); no `counterparty` block. | At most one per deal, sealed only after the final `close` (the verdict is on the finished deal): a late record like `evidence` (Late records, section 3), with exactly one `confirms` ref → the final `close`, chained `confirms` as a Capsule, so a reconcile admission that reads every later step as confirming that close still holds. |
 | `claim_authority` | Where the user sells, the seller's own verdict on its agent's claim (section 6 rule 12): what authorized it, or that nothing did. Sealed apart from the claim so a copy can carry the claim's words without it (evidencebook#607). | Exactly one of: `authority_basis` + `evaluation_ref`, or `unchecked: true` + `rule` (one of rule 12's: `no_check`, `not_approved`, `denied`, `approval_used`, `differs_from_check`, `changed_after_check`, `authority_changed`, `check_expired`); no other member; no `counterparty` or `channel`. | Exactly one `about` ref → the claim it judges, which is the record right before it; with `authority_basis`, exactly one `authorized_by` ref → the evaluation (DO) or the user's approval (ASK); no other ref. |
+| `terms_pack` | The deal-terms pack a check ran under (a pack of kind `deal` the profile pins for the party's role), named apart from the check's evaluation so a copy that withholds the evaluation still names the terms that bind (evidencebook#613). Never a pack of another kind, or one pinned with no kind: those are the party's private policy. | `pack_digest` (the pack's definition digest, 64 hex); no other member; no `counterparty` or `channel`. | Exactly one `checks` ref → the check the pack ran on, never a `represent` check. It directly follows that check's evaluation (or another `terms_pack` of that check), and `pack_digest` is one of the definition digests the evaluation ran (a verdict's `rules.definition_digest`, of kind `deal` where a kind is sealed; an `action-evaluation/v0`'s `rules_checks`). One per pack: a check that ran two deal packs has two. |
 | `outcome_note` | TEMPORARY (evidencebook#462; evidencebook#461's computed row status supersedes it; this bridge fits today's layout only, which has a final `close`, and #461's target has none). The book owner's own note that the deal did not hold, against the owner: each `reason` is the owner's own failure (`dispute_lost`: it lost a dispute; `settled_against`: a dispute settled against it; `not_delivered`: it did not deliver; `other`: any other way the deal did not hold for the owner). A buyer whose seller failed does not write it, since the History card counts it on the writer's own card. It is the owner's own statement, not checked against any ruling or the other side, and no card or UI wording calls it a ruling. Written only by the owner into its own book, never a counterparty's signature appended to it. evidencebook-deal's share path leaves it out of every shared copy (the holder's own record, no share policy applies; a producer rule with its own test, not a check of this profile). Migration: a deal book that holds an `outcome_note` stays readable under this profile version, which keeps the type read-only forever (old logs are never rewritten); #461's new layout either maps a held note to its did-not-hold line or ignores it, and names which when it lands. | `outcome` (`did_not_hold`), `reason` (`dispute_lost`\|`settled_against`\|`not_delivered`\|`other`); no `counterparty` block. | At most one per deal, sealed only after the final `close`, like a `rules_verdict`: exactly one `confirms` ref → the final `close`. The History deal entry's `outcome` is `did_not_hold` for a deal whose log holds one (section 11). |
 
 ### Action classes
@@ -791,6 +792,10 @@ A verifier holding one deal's records in `seq` order checks:
       - every agent claim that carries its own verdict (sealed before evidencebook#607), whose
         words it opens nowhere.
 
+      It discloses every `terms_pack` (section 3), from which its report names the seller's terms
+      ("under the seller's terms, pack X") where it would have named them from the withheld
+      evaluation: a `terms_pack` follows every check that ran the pack, whatever the verdict.
+
       Its report names a record it withholds this way by no kind, line, result or count beyond its
       place in the log: no `told` item, no count of unchecked acts. It says how the deal ended from
       the outcome the close refs, which it discloses when that outcome's status is not
@@ -1172,6 +1177,17 @@ rules not checked, cause `unreadable`, and its reason says it could not be seale
 
 No words the checker wrote are sealed in the clear: its reasons and its stderr reach the card and
 the approval text, and the card is committed to.
+
+**The terms pack, apart from the check (evidencebook#613).** When the checker evaluated a check
+under a pack of kind `deal` that the profile pins for the acting party's role, the producer seals
+a `terms_pack` right after the check's evaluation, one per such pack, naming the check and the
+pack's definition digest, and nothing else: no ruleset id, verdict or finding. It seals none for
+a `represent` check, a pack of any other kind, or one pinned with no kind, which are the party's
+private policy. A copy names the pack to a counterparty from the `terms_pack` alone, exactly where
+it names it today (a pack pinned per role, only for that role), so a copy that withholds the
+evaluation (section 6 rule 12, Copies) still names the terms. A typed evaluation seals no kind,
+so the checks here hold the `terms_pack` to the evaluation's definition digests and the producer
+to the kind. A deal sealed before this has none.
 
 ## 9. Typed action records and the check contract
 

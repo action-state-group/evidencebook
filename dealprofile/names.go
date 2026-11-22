@@ -52,6 +52,9 @@ const (
 	// TypeClaimAuthority is the seller's verdict on its agent's
 	// representation, sealed apart from the claim (evidencebook#607).
 	TypeClaimAuthority = "claim_authority"
+	// TypeTermsPack names the deal-terms pack a check ran under, apart
+	// from the check's evaluation (evidencebook#613).
+	TypeTermsPack = "terms_pack"
 )
 
 // RecordTypes are the x-deal-v0 record types, in the schema's order.
@@ -61,7 +64,7 @@ var recordTypes = []string{
 	TypeIntent, TypeBaseline, TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeCheck,
 	TypeVerdict, TypeApproval, TypeAction, TypeOutcome, TypeClose, TypeDisclosure, TypeSale,
 	TypeCounterpartyProfile, TypeThread, TypeThreadOpened, TypeSaleCut, TypeSaleClose, TypeSaleUnpost, TypeAgentMove,
-	TypeRulesVerdict, TypeOutcomeNote, TypeClaimAuthority,
+	TypeRulesVerdict, TypeOutcomeNote, TypeClaimAuthority, TypeTermsPack,
 }
 
 // The typed action records and contract types (PROFILE.md §9).

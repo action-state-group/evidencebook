@@ -1,0 +1,37 @@
+{
+  "fixture": "20-terms-pack-share-pickup-area.json",
+  "expect": "valid",
+  "story": "The seller's deal-terms pack the share's check ran under, named apart from the evaluation, so a counterparty copy that withholds the evaluation still names the terms.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "terms_pack",
+      "seq": 20,
+      "at": "2026-10-08T09:38:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "0385098ccb20127f14403ecf6efff337f10284949b0de2491be27283cfea8082"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      },
+      "refs": [
+        {
+          "rel": "checks",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "e98b71ebb84c041b764074d7a8571468e8b5bb7b493be4fbf6a245c90f873c00"
+        }
+      ]
+    },
+    "body": {
+      "pack_digest": "a81f3c9d2e105c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c"
+    }
+  },
+  "expected_digest": "94bf7527a08f87492a39531c74900faf9d735e52925c8ee12bf134e3f737a492"
+}

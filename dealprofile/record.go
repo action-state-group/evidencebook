@@ -38,6 +38,7 @@ func (ThreadBody) RecordType() string              { return TypeThread }
 func (RulesVerdictBody) RecordType() string        { return TypeRulesVerdict }
 func (OutcomeNoteBody) RecordType() string         { return TypeOutcomeNote }
 func (ClaimAuthorityBody) RecordType() string      { return TypeClaimAuthority }
+func (TermsPackBody) RecordType() string           { return TypeTermsPack }
 func (ThreadOpenedBody) RecordType() string        { return TypeThreadOpened }
 func (SaleCutBody) RecordType() string             { return TypeSaleCut }
 func (SaleCloseBody) RecordType() string           { return TypeSaleClose }
@@ -63,6 +64,7 @@ func (ThreadBody) isBody()              {}
 func (RulesVerdictBody) isBody()        {}
 func (OutcomeNoteBody) isBody()         {}
 func (ClaimAuthorityBody) isBody()      {}
+func (TermsPackBody) isBody()           {}
 func (ThreadOpenedBody) isBody()        {}
 func (SaleCutBody) isBody()             {}
 func (SaleCloseBody) isBody()           {}
@@ -108,6 +110,8 @@ func newBody(recordType string) Body {
 		return &RulesVerdictBody{}
 	case TypeClaimAuthority:
 		return &ClaimAuthorityBody{}
+	case TypeTermsPack:
+		return &TermsPackBody{}
 	case TypeThreadOpened:
 		return &ThreadOpenedBody{}
 	case TypeSaleCut:

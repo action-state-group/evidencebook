@@ -936,8 +936,8 @@ def counterparty_withheld(records):
 def required_disclosed(records):
     """Section 6 rule 12 "Copies": the positions of the records a counterparty
     copy of a deal under rule 12 discloses: every agent claim sealed in the new
-    shape (no verdict of its own), and the outcome each close refs when its
-    status is not unchecked_action. Empty for any other deal."""
+    shape (no verdict of its own), the outcome each close refs when its status
+    is not unchecked_action, and every terms_pack. Empty for any other deal."""
     views = [typed_view(r) if is_typed(r) else r for r in records]
     if not _under_rule12(views):
         return []
@@ -945,7 +945,8 @@ def required_disclosed(records):
     need = set()
     for i, v in enumerate(views):
         b, body = v["x-deal-v0"], v.get("body") or {}
-        if b.get("record_type") == "claim" and body.get("source_kind") == "agent" and not _claim_carries_verdict(body):
+        if (b.get("record_type") == "claim" and body.get("source_kind") == "agent" and not _claim_carries_verdict(body)) \
+                or b.get("record_type") == "terms_pack":
             need.add(i)
         elif b.get("record_type") == "close":
             for r in b.get("refs") or []:
@@ -970,6 +971,7 @@ def check_chain(records):
     # the user's task authority; its authority steps are typed records.
     typed_chain = len(records) > 1 and records[1]["x-deal-v0"].get("typed") == "task-authority/v0"
     task_idx = 1 if typed_chain else 0
+    terms_packs = {}
     task_at_verdict, platform_for_verdict = {}, {}
     blk0 = records[0]["x-deal-v0"]
     if blk0["record_type"] != "baseline":
@@ -980,7 +982,7 @@ def check_chain(records):
                     "task_authority": {"source", "approves", "registration"}, "platform_approval": set(), "policy_change": set(),
                     "check": {"supersedes", "source"}, "counterparty_acceptance": set(),
                     "counterparty_profile": {"about"}, "rules_verdict": {"confirms"}, "outcome_note": {"confirms"},
-                    "claim_authority": {"about", "authorized_by"}}
+                    "claim_authority": {"about", "authorized_by"}, "terms_pack": {"checks"}}
     # The user's limits in force. Absent allowed = no restriction; present and
     # empty = nothing allowed. An intent may narrow them; only the user's
     # confirm_limits answer to an intent that asks for more puts a new version
@@ -1460,6 +1462,33 @@ def check_chain(records):
                 fail(i, "a claim_authority directly follows the seller's representation it judges")
             pending_claim, claim_authority_seen = None, True
             represented(i, body, records[j]["body"], by_rel, records[j]["x-deal-v0"]["at"])
+        elif t == "terms_pack":
+            # The deal-terms pack a check ran under, apart from its evaluation
+            # (evidencebook#613): right after that evaluation (or another
+            # terms_pack of that check), never of a represent check, one of the
+            # evaluation's definition digests, one per pack.
+            j = one("checks", ("check",))
+
+            def names(k):
+                return by_digest.get(records[k]["x-deal-v0"]["refs"][0]["digest"])
+            k = i - 1
+            while k > j and records[k]["x-deal-v0"]["record_type"] == "terms_pack" and names(k) == j:
+                k -= 1
+            if k <= j or records[k]["x-deal-v0"]["record_type"] != "verdict" or names(k) != j:
+                fail(i, "a terms_pack directly follows the evaluation of the check it names, or another terms_pack of that check")
+            if records[j]["body"].get("action") == "represent":
+                fail(i, "a terms_pack names no represent check")
+            ev = records[k]["body"]
+            ran = []
+            r = ev.get("rules")
+            if isinstance(r, dict) and r.get("status") == "evaluated" and r.get("kind", "deal") == "deal":
+                ran.append(r.get("definition_digest"))
+            ran += [rc.get("definition_digest") for rc in ev.get("rules_checks") or []]
+            if body["pack_digest"] not in ran:
+                fail(i, "pack_digest is not a definition digest of a deal pack the check's evaluation ran")
+            if body["pack_digest"] in terms_packs.setdefault(j, []):
+                fail(i, "a check has one terms_pack per pack")
+            terms_packs[j].append(body["pack_digest"])
         elif t == "detail_change":
             one("source", ("message", "evidence"), required=False)
             kinds = set(b.get("counterparty", {}).get("ids", {}))
@@ -1937,11 +1966,13 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
     records confirming it; one closing on an unchecked outcome; and the
     existing chains. Each case gives the positions a counterparty copy
     withholds under rule 12 and the positions it must disclose."""
+    TERMS_PACK = "a81f3c9d2e10" + "4b" * 26
     texts = {"cc-intent": "Sell my example bicycle; ask 1900. Tell them about the scratch.",
              "cc-condition": "The frame has one small scratch by the seat",
              "cc-accept": "Deal, 1850 works for me",
              "cc-phone": "+1 512 555 0142",
-             "cc-hold": "not yet"}
+             "cc-hold": "not yet",
+             "cc-card": "Make the offer of 1850 to Example Buyer? Tell them about the condition first. [Hold]"}
 
     def build(chain_id, authorized, close_on_unchecked=False):
         records, clock = [], iter([f"2026-10-09T10:{m:02d}:00Z" for m in range(0, 60, 2)])
@@ -1983,13 +2014,21 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
                                          "ordered_representations": ["condition"]}, refs=[("source", 0)])
 
         def evaluation(check, disposition, findings, options):
-            return typed("action-evaluation/v0", {
-                "disposition": disposition, "findings": findings, "options": options, "judge": {"kind": "rules"},
-                "proposed_action_digest": record_digest(records[check]), "task_authority_ref": tref(ta),
-                "ruleset_digest": record_digest(rules), "materiality": "predicate", "materiality_digest": materiality,
-                "valid_until": "2026-10-09T11:30:00Z", "authority_basis": [{"type": "task_authority", "ref": tref(ta)}]},
-                refs=[("checks", check)])
+            card = {"rendering_commitment": com("cc-card")} if disposition == "ASK" and check == oc_at[0] else {}
+            body = {**card, "disposition": disposition, "findings": findings, "options": options, "judge": {"kind": "rules"},
+                    "proposed_action_digest": record_digest(records[check]), "task_authority_ref": tref(ta),
+                    "ruleset_digest": record_digest(rules), "materiality": "predicate", "materiality_digest": materiality,
+                    "valid_until": "2026-10-09T11:30:00Z", "authority_basis": [{"type": "task_authority", "ref": tref(ta)}]}
+            represent = records[check]["body"]["action"] == "represent"
+            # The seller's deal-terms pack runs on every check; its terms_pack
+            # follows every evaluation but a represent check's.
+            body["rules_checks"] = [{"ruleset_id": "example/bicycle-seller", "definition_digest": TERMS_PACK, "verdict": "allow"}]
+            k = typed("action-evaluation/v0", body, refs=[("checks", check)])
+            if not represent:
+                v0("terms_pack", {"pack_digest": TERMS_PACK}, refs=[("checks", check)])
+            return k
 
+        oc_at = [None]
         basis = [{"type": "task_authority", "ref": tref(ta)}]
         gate = [{"question": "what", "rule": "required_representation_missing", "field": "condition"}]
         if authorized:
@@ -2005,11 +2044,13 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
         offer = {"action": "offer", "amount_minor": 185000, "currency": "USD",
                  "terms": {"item": "example bicycle", "quantity": 1, "price_minor": 185000}}
         oc = typed("proposed-action/v0", dict(offer, no_proposal=True))
+        oc_at[0] = oc
+        act = {"action": "offer", "amount_minor": 185000, "currency": "USD"}
         share = {"action": "share_contact", "disclosing": ["phone"], "disclosing_to": "counterparty",
-                 "recipient_role": "counterparty", "repeat_disclosures": [], "recipient_told_before": False}
+                 "recipient_role": "buyer", "repeat_disclosures": [], "recipient_told_before": False}
         if authorized:
             ov = evaluation(oc, "DO", [], [])
-            typed("action-record/v0", dict(offer, evaluation_ref=tref(ov), authority_basis=basis), refs=[("authorized_by", ov)])
+            typed("action-record/v0", dict(act, evaluation_ref=tref(ov), authority_basis=basis), refs=[("authorized_by", ov)])
             typed("action-approval/v0", {"authority": "counterparty_acceptance", "kind": "counterparty-acceptance-observation",
                                          "proposed_action_ref": tref(oc), "observed_at": records[-1]["at"],
                                          "content_commitment": com("cc-accept")})
@@ -2024,10 +2065,11 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
         else:
             ov = evaluation(oc, "ASK", gate, ["hold"])
             typed("action-approval/v0", {"authority": "user_approval", "choice": "hold", "proceed": False,
-                                         "said_commitment": com("cc-hold")}, refs=[("approves", ov)])
+                                         "said_commitment": com("cc-hold"), "rendering_commitment": com("cc-card")},
+                  refs=[("approves", ov)])
             unchecked = typed("action-outcome/v0", {"status": "unchecked_action", "outcome": "mismatch",
                                                     "findings": [{"question": "asked", "rule": "required_representation_missing"}],
-                                                    "attempted": offer})
+                                                    "attempted": act})
             if close_on_unchecked:
                 end = unchecked
                 close = {"outcome": "mismatch", "unchecked_actions": 1}
@@ -2909,6 +2951,11 @@ def regen():
         "action": "share_contact", "disclosing": ["pickup_area"], "disclosing_to": "platform",
         "recipient_role": "platform", "repeat_disclosures": [], "recipient_told_before": False})
     sv3 = evaluation3(sk3, "DO", [], [])
+    # The seller's deal-terms pack ran on the share: its terms_pack names it
+    # apart from the evaluation (evidencebook#613).
+    pack3 = "a81f3c9d2e10" + "5c" * 26
+    records3[sv3]["body"]["rules_checks"] = [{"ruleset_id": "example/bicycle-seller", "definition_digest": pack3, "verdict": "allow"}]
+    tp3 = add_v0_3("terms-pack-share-pickup-area", "terms_pack", {"pack_digest": pack3}, refs=[("checks", sk3)])
     share_body3 = {"action": "share_contact",
                    "disclosed": {"to": "platform", "fields": [{"class": "pickup_area", "value_commitment": com3["rep-area"]}]},
                    "counterparty": {"fp_alg": "hmac-sha256-chain-key", "ids": {"domain": platform3}},
@@ -2938,6 +2985,8 @@ def regen():
         names3[rrca]: "Its verdict: unchecked, rule no_check, naming nothing that authorized it.",
         names3[sk3]: "The agent is about to give the listing platform the public pickup area.",
         names3[sv3]: "The check passes (DO): the ordered condition statement is authorized, so the gate is open.",
+        names3[tp3]: "The seller's deal-terms pack the share's check ran under, named apart from the evaluation, so a "
+                     "counterparty copy that withholds the evaluation still names the terms.",
         names3[sa3]: "The pickup area shared: a gated step, after the ordered statement's authorized claim_authority.",
         names3[rpc]: "A pickup note just sealed: the deal may end here until its claim_authority follows.",
     }
@@ -3058,6 +3107,21 @@ def regen():
     neg3("neg-claim-authority-details-changed-after-the-check", "details changed after the check",
          "A detail change sealed between the represent check and the claim: the claim_authority cannot rest on that check.",
          rcv + 1, about(follow(cp3(rca), claim_after), claim_after), between=[change, claim_after])
+    # terms_pack (evidencebook#613): not right after its check's evaluation, of a
+    # represent check, a digest the evaluation did not run, twice for one pack.
+    neg3("neg-terms-pack-not-after-the-evaluation", "directly follows the evaluation of the check it names",
+         "A terms_pack right after its check, before the evaluation.", sk3 + 1, follow(cp3(tp3), records3[sk3]))
+    r = follow(cp3(tp3), records3[rcv])
+    r["x-deal-v0"]["refs"][0]["digest"] = record_digest(records3[rc])
+    neg3("neg-terms-pack-of-a-represent-check", "names no represent check",
+         "A terms_pack after a represent check's evaluation: the represent trail is withheld from a counterparty copy.",
+         rcv + 1, r)
+    r = cp3(tp3)
+    r["body"]["pack_digest"] = "ee" * 32
+    neg3("neg-terms-pack-another-pack", "is not a definition digest of a deal pack",
+         "A terms_pack naming a pack the check's evaluation did not run.", tp3, r)
+    neg3("neg-terms-pack-twice", "one terms_pack per pack", "A second terms_pack of the same pack for one check.",
+         tp3 + 1, follow(cp3(tp3), records3[tp3]))
     # A second claim_authority about the same claim.
     neg3("neg-claim-authority-twice", "directly follows the seller's representation it judges",
          "A second claim_authority about the condition claim, right after its first.", rca + 1,

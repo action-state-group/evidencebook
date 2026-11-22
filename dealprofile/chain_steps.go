@@ -277,6 +277,8 @@ func (c *dealChain) step(typed bool) {
 		}
 		c.pendingClaim, c.claimAuthoritySeen = -1, true
 		c.represented(body, c.bodyOf(j), str(block(records[j])["at"]))
+	case t == TypeTermsPack:
+		c.termsPack(asOne("checks", TypeCheck), str(body["pack_digest"]))
 	case t == TypeDetailChange:
 		asOpt("source", TypeMessage, TypeEvidence)
 		kinds := map[string]bool{}
@@ -651,4 +653,37 @@ func (c *dealChain) action(typed bool) {
 		// nothing to name.
 		c.fail("an action with direction in names the pay it reverses (reverses)")
 	}
+}
+
+// termsPack is a terms_pack naming check j (evidencebook#613): it directly
+// follows that check's evaluation, or another terms_pack of that check; it
+// never names a represent check; its pack_digest is a definition digest the
+// evaluation ran its rules under (a verdict's rules, of kind deal when a kind
+// is sealed; an evaluation's rules_checks); and a check has one per pack.
+func (c *dealChain) termsPack(j int, digest string) {
+	k := c.i - 1
+	for k > j && c.rt(k) == TypeTermsPack && c.byDig[str(mp(sl(block(c.docs[k])["refs"])[0])["digest"])] == j {
+		k--
+	}
+	if k <= j || c.rt(k) != TypeVerdict || c.byDig[str(mp(sl(block(c.docs[k])["refs"])[0])["digest"])] != j {
+		c.fail("a terms_pack directly follows the evaluation of the check it names, or another terms_pack of that check")
+	}
+	if c.bodyOf(j)["action"] == "represent" {
+		c.fail("a terms_pack names no represent check")
+	}
+	ev := c.bodyOf(k)
+	var ran []string
+	if r := mp(ev["rules"]); r != nil && r["status"] == "evaluated" && (!has(r, "kind") || r["kind"] == "deal") {
+		ran = append(ran, str(r["definition_digest"]))
+	}
+	for _, rc := range sl(ev["rules_checks"]) {
+		ran = append(ran, str(mp(rc)["definition_digest"]))
+	}
+	if !slices.Contains(ran, digest) {
+		c.fail("pack_digest is not a definition digest of a deal pack the check's evaluation ran")
+	}
+	if slices.Contains(c.termsPacks[j], digest) {
+		c.fail("a check has one terms_pack per pack")
+	}
+	c.termsPacks[j] = append(c.termsPacks[j], digest)
 }

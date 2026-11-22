@@ -52,8 +52,15 @@
             "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
           }
         }
+      ],
+      "rules_checks": [
+        {
+          "ruleset_id": "example/bicycle-seller",
+          "definition_digest": "a81f3c9d2e105c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+          "verdict": "allow"
+        }
       ]
     }
   },
-  "expected_digest": "301408f0a4f705c79eca47a283fcf345c06b7801312650cdb15435b2a32f1f4c"
+  "expected_digest": "0385098ccb20127f14403ecf6efff337f10284949b0de2491be27283cfea8082"
 }

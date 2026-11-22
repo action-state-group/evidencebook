@@ -1,5 +1,5 @@
 {
-  "fixture": "21-claim-pickup.json",
+  "fixture": "22-claim-pickup.json",
   "expect": "valid",
   "story": "A pickup note just sealed: the deal may end here until its claim_authority follows.",
   "record": {
@@ -8,12 +8,12 @@
       "canonicalization": "jcs",
       "deal_id": "deal-7e41b9c02d5a8f36",
       "record_type": "claim",
-      "seq": 21,
-      "at": "2026-10-08T09:40:00Z",
+      "seq": 22,
+      "at": "2026-10-08T09:42:00Z",
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "b194854ffdd5e9642e85f3d5770b18420bee4a027250f777db62dce7b135d62c"
+        "digest": "330b47ac3add519d226947e1d4cb97b6b567aa121afd0c2db15194df1d789e8d"
       },
       "baseline_ref": {
         "type": "deal-record",
@@ -27,5 +27,5 @@
       "class": "pickup"
     }
   },
-  "expected_digest": "a5b9fbe449c83aee51ef4d89bf4eee5717cf182b032c624de5af17fd42830f5a"
+  "expected_digest": "7d18302487cace1ab0819864aeda28d4eaa07ebc57bb51566850198777e85e85"
 }
