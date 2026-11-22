@@ -732,7 +732,13 @@ func (s *dealSession) dealClaimsInput(ctx context.Context, checked string, event
 		if se.Event.Kind != "claim" || c == nil || c.SourceKind != "agent" || c.Class == "" || (before > 0 && se.Event.N >= before) {
 			continue
 		}
-		sealed, err := s.capsuleWithInput(ctx, se.CapsuleID)
+		var sealed map[string]interface{}
+		var err error
+		if s.v1 {
+			sealed, err = s.v1CapsuleWithInput(se.CapsuleID, events)
+		} else {
+			sealed, err = s.capsuleWithInput(ctx, se.CapsuleID)
+		}
 		if err != nil || sealed == nil {
 			return nil, err
 		}

@@ -166,6 +166,66 @@ func TestAV1ApprovalNeedsItsShownCard(t *testing.T) {
 	require.NoError(t, err)
 	types, _ := journalTypes(t, h.dealID)
 	assert.Equal(t, "approval", types[len(types)-1])
+	// The library's authorization reads the approval's card commitment and
+	// accepts a payer leg on it.
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		_, err = xdealv1.CheckAuthorizations(journal, []xdealv1.Record{payAct(h.dealID, checkDigest(t, journal))})
+		require.NoError(t, err)
+	})
+}
+
+// An agent_card answer (no --said) also needs its card on a v1 deal.
+func TestAV1AgentCardApprovalNeedsItsShownCard(t *testing.T) {
+	h := buyerOpenedV1(t)
+	over := `{"action":"pay","amount_minor":6000,"authorized_max_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"},"payment_ref":"` + strings.Repeat("ab", 32) + `"}`
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, over))
+	require.Equal(t, "pause", out["verdict"], "%v", out)
+	_, err := answer(t, h.dealID, out["check_id"].(string), "", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--shown-card")
+}
+
+// A confirm_limits approval answers an intent, carries no card and seals on a
+// v1 deal; the confirmed limits are then in force.
+func TestAV1ConfirmLimitsSeals(t *testing.T) {
+	h := buyerOpenedV1(t)
+	res := note(t, h.dealID, "intent", `{"verbatim":"up to 70 dollars is fine","max_total_minor":7000}`)
+	require.NotNil(t, res["proposed"], "%v", res)
+	confirmed := dealRun(t, "note", "--deal", h.dealID, "--kind", "approval", "--check", res["capsule_id"].(string), "--choice", "confirm_limits", "--said", "yes, up to 70")
+	require.NotEmpty(t, confirmed["capsule_id"])
+	types, withDeal := journalTypes(t, h.dealID)
+	assert.Equal(t, "approval", types[len(types)-1])
+	assert.False(t, withDeal[len(withDeal)-1], "a confirm_limits approval spans deals")
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"pay","amount_minor":6500,"authorized_max_minor":6500,"terms":{"item":"lamp","price_minor":6500,"currency":"USD"},"payment_ref":"`+strings.Repeat("cd", 32)+`"}`))
+	assert.Equal(t, "pass", out["verdict"], "the confirmed limit is in force: %v", out)
+}
+
+// A v1 check refuses an offer check and a payment_ref on a check that is not
+// a pay check.
+func TestAV1CheckRefusesAnOfferAndAStrayPaymentRef(t *testing.T) {
+	h := buyerOpenedV1(t)
+	assert.Contains(t, v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"offer","terms":{"item":"lamp","price_minor":4500,"currency":"USD"}}`)), "sealed with `deal offer`")
+	assert.Contains(t, v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"share_contact","disclosing_to":"counterparty","disclosing":["email"],"payment_ref":"`+strings.Repeat("ab", 32)+`"}`)), "payment_ref goes on a pay check only")
+	types, _ := journalTypes(t, h.dealID)
+	assert.Equal(t, []string{"intent"}, types, "nothing was sealed")
+}
+
+// A seller's check after its agent's classified claim hands the pinned
+// checker the claim, rebuilt from the local step as the check is.
+func TestAV1SellerCheckReadsItsAgentsClaims(t *testing.T) {
+	h := openedV1(t)
+	note(t, h.dealID, "claim", `{"text":"the lamp is new","source_kind":"agent","class":"condition"}`)
+	checker := stubChecker(t, "rules-pass", checkerPrints("pass", passFinding))
+	pinChecker(t, map[string]any{"command": []string{checker}})
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"commit","terms":{"item":"lamp","price_minor":6000,"currency":"USD"}}`))
+	require.NotEmpty(t, out["verdict"])
+	var input map[string]any
+	require.NoError(t, json.Unmarshal(mustRead(t, checker+".input"), &input))
+	record, _ := input["record"].(map[string]any)
+	claims, _ := record["deal_claims"].([]any)
+	assert.Len(t, claims, 1, "the agent's claim reaches the checker")
 }
 
 // A disclosure on a v1 deal counts in the cross-deal memory as a v0 one does:
@@ -198,4 +258,29 @@ func TestAV1CheckRefusesAJournalRecordWithNoLocalEvent(t *testing.T) {
 		require.NoError(t, s.appendV1Journal(t.Context(), p.payload))
 	})
 	assert.Contains(t, v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("ab", 32)+`"`))), "sealed outside these verbs")
+}
+
+// A check's companion (the payee's fingerprint) stays a local step on a v1
+// deal: an x-deal-v1 counterparty_profile record has no member to carry it.
+func TestAV1CheckCompanionStaysLocal(t *testing.T) {
+	h := buyerOpenedV1(t)
+	over := `{"action":"pay","amount_minor":6000,"authorized_max_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"},"payment_ref":"` + strings.Repeat("ab", 32) + `"}`
+	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, over))
+	withSession(t, func(s *dealSession) {
+		events, err := s.v1Events(t.Context(), h.dealID)
+		require.NoError(t, err)
+		var companions int
+		for _, se := range events {
+			if se.Event.Kind != "counterparty_profile" {
+				continue
+			}
+			companions++
+			held, err := s.journalHolds(t.Context(), se.Digest)
+			require.NoError(t, err)
+			assert.False(t, held, "the companion is not in the journal")
+			require.NotNil(t, se.Event.CounterpartyProfile)
+			assert.NotEmpty(t, se.Event.CounterpartyProfile.Payee, "the local step keeps the fingerprint the checker reads")
+		}
+		assert.Equal(t, 1, companions)
+	})
 }

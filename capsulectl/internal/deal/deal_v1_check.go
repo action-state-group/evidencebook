@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/action-state-group/capsule-cli/cli"
@@ -39,10 +40,17 @@ func (s *dealSession) useV1Check(ctx context.Context, dealID string) ([]sealedEv
 	return events, nil
 }
 
-// v1PayCheckRef refuses a v1 pay check without its payment reference.
-func v1PayCheckRef(snap dealSnapshot) error {
-	if snap.Action == "pay" && snap.PaymentRef == "" {
-		return cli.InputError("a pay check on an x-deal-v1 deal records payment_ref, the reference fixed before paying that the payment will be made under (a Lightning payment hash, an ACP order id, the x402 authorization nonce): the payer leg cites the check that recorded it")
+// v1CheckInput refuses what a v1 check cannot take: a pay check without its
+// payment reference, a payment reference on any other check, and an offer
+// check (offers on a v1 deal are `deal offer`; a seller's sale flow is B3).
+func v1CheckInput(snap dealSnapshot) error {
+	switch {
+	case snap.Action == offerAction:
+		return cli.InputError("an offer on an x-deal-v1 deal is sealed with `deal offer`, not checked with `deal check --input` action offer")
+	case snap.Action == "pay" && snap.PaymentRef == "":
+		return cli.InputError("a pay check on an x-deal-v1 deal records payment_ref, the reference fixed before paying that the payment will be made under (a Lightning payment hash, an ACP order id, the x402 authorization nonce): the payer leg cites the check that recorded it. Add payment_ref to the check input")
+	case snap.Action != "pay" && snap.PaymentRef != "":
+		return cli.InputError("payment_ref goes on a pay check only: nothing cites it on a " + snap.Action + " check")
 	}
 	return nil
 }
@@ -109,31 +117,21 @@ func (s *dealSession) v1DealJournal(ctx context.Context, dealID string) ([]xdeal
 		}
 		bound[d] = true
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	j, err := s.shelf.Journal(ctx)
-	if err != nil {
-		return nil, err
-	}
-	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
+	all, err := s.v1JournalRecords(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var out []xdealv1.Record
-	for _, r := range read.Records {
-		for _, c := range r.Header.PayloadCommitments {
-			payload, err := j.ResolvePayload(ctx, r.RecordID, c)
-			if err != nil {
-				continue
-			}
-			rec, err := xdealv1.Decode(payload)
-			if err != nil {
-				continue
-			}
-			if rec.Block.DealID == dealID || bound[c] {
-				out = append(out, rec)
-			}
+	for _, jr := range all {
+		if jr.rec.Block.DealID == dealID || bound[jr.digest] {
+			out = append(out, jr.rec)
 		}
 	}
 	return out, nil
@@ -149,28 +147,57 @@ func (s *dealSession) v1JournalMatchesEvents(ctx context.Context, dealID string,
 	for _, se := range events {
 		local[se.Digest] = true
 	}
-	j, err := s.shelf.Journal(ctx)
+	all, err := s.v1JournalRecords(ctx)
 	if err != nil {
 		return err
 	}
-	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
-	if err != nil {
-		return err
-	}
-	for _, r := range read.Records {
-		for _, c := range r.Header.PayloadCommitments {
-			payload, err := j.ResolvePayload(ctx, r.RecordID, c)
-			if err != nil {
-				continue
-			}
-			rec, err := xdealv1.Decode(payload)
-			if err != nil || rec.Block.DealID != dealID {
-				continue
-			}
-			if v1JournalTypes[rec.Block.RecordType] && rec.Block.RecordType != "counterparty_profile" && !local[c] {
-				return fmt.Errorf("%w: deal %s's journal holds a %s record (%s) this profile's deal list does not: it was sealed outside these verbs, so the card cannot read it", cli.ErrConflict, dealID, rec.Block.RecordType, c)
-			}
+	for _, jr := range all {
+		if jr.rec.Block.DealID != dealID {
+			continue
+		}
+		if v1JournalTypes[jr.rec.Block.RecordType] && !local[jr.digest] {
+			return fmt.Errorf("%w: deal %s's journal holds a %s record (%s) that none of this profile's local steps for the deal names: it was sealed outside these verbs, so the card cannot read it. This deal can no longer be checked: start a new deal; the record stays in the journal", cli.ErrConflict, dealID, jr.rec.Block.RecordType, jr.digest)
 		}
 	}
 	return nil
+}
+
+// journalRecordV1 is one x-deal-v1 record of the journal and its digest.
+type journalRecordV1 struct {
+	digest string
+	rec    xdealv1.Record
+}
+
+// v1JournalRecords reads the journal's x-deal-v1 records in order, the one
+// reader v1DealJournal and the outside-record check share, so the card and
+// the authorization never read different subsets. A withheld or deleted
+// payload is skipped; any other read error is returned.
+func (s *dealSession) v1JournalRecords(ctx context.Context) ([]journalRecordV1, error) {
+	j, err := s.shelf.Journal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
+	if err != nil {
+		return nil, err
+	}
+	var out []journalRecordV1
+	for _, r := range read.Records {
+		for _, c := range r.Header.PayloadCommitments {
+			payload, err := j.ResolvePayload(ctx, r.RecordID, c)
+			var gone *evidencebook.UnavailableError
+			if errors.As(err, &gone) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			rec, err := xdealv1.Decode(payload)
+			if err != nil {
+				continue
+			}
+			out = append(out, journalRecordV1{digest: c, rec: rec})
+		}
+	}
+	return out, nil
 }

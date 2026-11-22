@@ -184,10 +184,14 @@ func (s *dealSession) prepareV1(dealID string, events []sealedEvent, ev dealEven
 	}
 	var payload []byte
 	var digest string
-	if ev.Kind == "open" {
+	if ev.Kind == "open" || ev.Kind == "counterparty_profile" {
 		// The opening has no record. It gets a local digest so the v0
 		// record builder's references to it are well formed; v1Record maps
-		// any reference to it onto the deal's first journal record.
+		// any reference to it onto the deal's first journal record. A check's
+		// companion (the payee's fingerprint) stays local too: an x-deal-v1
+		// counterparty_profile record has no member to carry the fingerprint
+		// (PROFILE §2 block, v0's empty body), and only the checker and the
+		// cross-deal memory read it.
 		digest = digestBytesHex(local)
 	} else if payload, digest, err = s.v1Record(events, ev); err != nil {
 		return preparedV1{}, err

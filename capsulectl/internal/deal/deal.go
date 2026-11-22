@@ -1825,7 +1825,9 @@ func dealNoteCommand() *cobra.Command {
 				// with no card_commitment, and reads the whole journal, so one
 				// sealed without its card would break every later
 				// authorization of the deal (xdealv1-write-path §12 item 7).
-				if s.v1 && (ev.Approval.Approver == "user" || ev.Approval.Approver == "agent_card") && ev.Approval.ShownCard == "" {
+				// A confirm_limits approval answers an intent, has no card, and
+				// keeps its --said (the library skips its card check).
+				if s.v1 && (ev.Approval.Approver == "user" || ev.Approval.Approver == "agent_card") && ev.Approval.Choice != "confirm_limits" && ev.Approval.ShownCard == "" {
 					return cli.InputError("on an x-deal-v1 deal the user's answer to a check is bound to the card it was given on: pass that card with --shown-card")
 				}
 				// Typed records: the user's answer to an ask is bound to what
@@ -2018,10 +2020,6 @@ func dealNoteCommand() *cobra.Command {
 					out["next"] = "this note asks for a higher limit or a new action: it is recorded as a proposal and not applied. " +
 						"Ask the user; only on their explicit yes, seal deal note --kind approval --check " + se.CapsuleID +
 						" --choice confirm_limits --said \"<their words>\""
-					if s.v1 {
-						out["next"] = "this note asks for a higher limit or a new action: it is recorded as a proposal and not applied. " +
-							"Confirming it (deal note --kind approval --choice confirm_limits) is not available on an x-deal-v1 deal yet (evidencebook#626, part 2)"
-					}
 				}
 			case "acceptance":
 				out["accepts"] = ev.Acceptance.Offer
@@ -2277,7 +2275,7 @@ func dealCheckCommand() *cobra.Command {
 				return s.checkPost(ctx, c, dealID, events, snap, staleAfter)
 			}
 			if s.v1 {
-				if err := v1PayCheckRef(snap); err != nil {
+				if err := v1CheckInput(snap); err != nil {
 					return err
 				}
 			} else if snap.PaymentRef != "" {
