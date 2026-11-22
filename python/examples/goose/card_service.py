@@ -19,7 +19,10 @@ service are both ours must say so.
 
 The post is capsule-anchor's ``POST /transparency/register-statement``, a JSON
 body ``{"signed_statement_b64"}`` answered with ``{"receipt_b64", ...}`` (not
-SCRAPI's ``POST /entries``). The service's Receipt is checked by
+SCRAPI's ``POST /entries``). The post is synchronous and every operation (connect, send, each read) is
+bounded by a timeout, the answer by 1 MiB; the total is not bounded, so a service that drips bytes slowly can
+take longer than 60 seconds overall. That is a known limit, acceptable for a demo stand-in that
+evidencebook#624 deletes. The service's Receipt is checked by
 :func:`card_registration.attach_card_receipt` before it is kept,
 whatever the service says about its own entry hash.
 """
@@ -30,8 +33,6 @@ import binascii
 import http.client
 import json
 import os
-import socket
-import threading
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,9 +40,8 @@ from typing import Any
 
 #: A bound on what a service may send back for one registration.
 MAX_RESPONSE_BYTES = 1 << 20
-#: Each socket read, and the whole registration (a service that trickles bytes still ends).
+#: Each operation: connect, send and every read. The total is not bounded (see AnchorRegistrar).
 TIMEOUT_SECONDS = 30
-TOTAL_SECONDS = 60
 
 
 class ServiceError(ValueError):
@@ -82,7 +82,13 @@ def load_service(path: str | Path) -> Service:
 
 class AnchorRegistrar:
     """A :class:`card_registration.CardStatementRegistrar` for a
-    capsule-anchor service."""
+    capsule-anchor service.
+
+    The post is synchronous: nothing runs after the call returns, so a registration can never be made
+    behind the caller's back. Every operation (connect, send, each read) is bounded by
+    ``TIMEOUT_SECONDS``, the answer by ``MAX_RESPONSE_BYTES``. Known limit: the total is not bounded, so a
+    service that drips bytes slowly can take longer than 60 seconds overall (each read is under the
+    timeout). That is acceptable for a demo stand-in that evidencebook#624 deletes."""
 
     def __init__(self, service: Service):
         self._service = service
@@ -93,60 +99,17 @@ class AnchorRegistrar:
         conn = make(url.netloc, timeout=TIMEOUT_SECONDS)
         path = (url.path.rstrip("/") or "") + "/transparency/register-statement"
         body = json.dumps({"signed_statement_b64": base64.b64encode(statement).decode()}).encode()
-        outcome: list[Any] = []
-        sockets: list[socket.socket] = []  # http.client lets go of conn.sock once a response owns it
-        cancelled = threading.Event()  # set at the deadline: a worker still connecting then must not post
-
-        def post() -> None:
-            try:
-                conn.connect()
-                sockets.append(conn.sock)
-                if cancelled.is_set():
-                    raise ServiceError("cancelled at the deadline, before anything was sent")
-                conn.request("POST", path, body=body,
-                             headers={"Content-Type": "application/json", "Accept": "application/json"})
-                response = conn.getresponse()
-                if response.status != 200:  # a redirect is not followed: the one URL the host named
-                    raise ServiceError(f"{self._service.url}: HTTP {response.status}")
-                raw = b""
-                while len(raw) <= MAX_RESPONSE_BYTES:
-                    chunk = response.read(8192)
-                    if not chunk:
-                        break
-                    raw += chunk
-                outcome.append(raw)
-            except BaseException as exc:  # handed to the caller below
-                outcome.append(exc)
-
-        # The whole registration, connect to last byte, ends at TOTAL_SECONDS: a socket timeout bounds one
-        # read, not a service that drips bytes. At the deadline the connection is shut down, which ends the
-        # worker's blocked read, and the worker is joined.
-        worker = threading.Thread(target=post, name="card-registration", daemon=True)
-        worker.start()
-        worker.join(TOTAL_SECONDS)
-        if worker.is_alive():
-            cancelled.set()
-            for sock in sockets:
-                try:
-                    sock.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
+        try:
+            conn.request("POST", path, body=body,
+                         headers={"Content-Type": "application/json", "Accept": "application/json"})
+            response = conn.getresponse()
+            if response.status != 200:  # a redirect is not followed: the one URL the host named
+                raise ServiceError(f"{self._service.url}: HTTP {response.status}")
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+        except (http.client.HTTPException, OSError) as exc:
+            raise ServiceError(f"{self._service.url}: {exc}") from None
+        finally:
             conn.close()
-            worker.join(5)
-            for sock in sockets:  # a connect that finished while the deadline passed
-                try:
-                    sock.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
-            raise ServiceError(f"{self._service.url}: no complete answer in {TOTAL_SECONDS} seconds")
-        conn.close()
-        raw = outcome[0]
-        if isinstance(raw, ServiceError):
-            raise raw
-        if isinstance(raw, (http.client.HTTPException, OSError)):
-            raise ServiceError(f"{self._service.url}: {raw}") from None
-        if isinstance(raw, BaseException):
-            raise raw
         if len(raw) > MAX_RESPONSE_BYTES:
             raise ServiceError("the service's answer is over 1 MiB")
         try:

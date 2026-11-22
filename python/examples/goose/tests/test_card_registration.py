@@ -103,24 +103,21 @@ def test_a_service_that_misbehaves_leaves_the_card_as_it_was(nodes, clock, tmp_p
         service_misbehaving.close()
 
 
-@pytest.mark.parametrize("mode", ["slow", "slow-headers"])
-def test_a_service_that_drips_is_cut_off_at_the_total_deadline(nodes, clock, tmp_path, monkeypatch, mode):
-    """A socket timeout bounds one read; the total deadline ends the whole call, headers or body."""
-    import threading
+def test_a_service_that_stalls_is_cut_off_by_the_operation_timeout(nodes, clock, tmp_path, monkeypatch):
+    """Every operation is bounded: a service that never answers ends the call at the timeout."""
     import time
 
-    monkeypatch.setattr(cs, "TOTAL_SECONDS", 1)
+    monkeypatch.setattr(cs, "TIMEOUT_SECONDS", 1)
     buyer = ticked(nodes, clock)
-    slow = FakeAnchor(mode=mode)
+    stalled = FakeAnchor(mode="slow-headers")
     try:
-        service = cs.load_service(service_file(tmp_path, slow))
+        service = cs.load_service(service_file(tmp_path, stalled))
         started = time.monotonic()
-        with pytest.raises(cs.ServiceError, match="no complete answer"):
+        with pytest.raises(cs.ServiceError):
             buyer.register_card(cs.AnchorRegistrar(service), service.policy)
         assert time.monotonic() - started < 4
-        assert not [t for t in threading.enumerate() if t.name == "card-registration"], "the worker ended"
     finally:
-        slow.close()
+        stalled.close()
 
 
 @pytest.mark.parametrize("missing", ["check_card_statement", "check_card_registered"])
@@ -318,27 +315,3 @@ def _attached(sent, receipt):
 
     protected, _, payload, signature = cbor2.loads(sent).value
     return cbor2.dumps(cbor2.CBORTag(18, [protected, {394: [receipt]}, payload, signature]), canonical=True).hex()
-
-
-def test_a_connect_that_outlasts_the_deadline_never_posts(nodes, clock, anchor, tmp_path, monkeypatch):
-    """If connecting takes longer than the total deadline, the caller has given up: the worker, once its
-    connect finally returns, must not send the permanent post (nothing would receive the Receipt)."""
-    import http.client
-    import threading
-    import time
-
-    real_connect = http.client.HTTPConnection.connect
-
-    def slow_connect(self):
-        time.sleep(2.5)
-        real_connect(self)
-
-    monkeypatch.setattr(http.client.HTTPConnection, "connect", slow_connect)
-    monkeypatch.setattr(cs, "TOTAL_SECONDS", 1)
-    buyer = ticked(nodes, clock)
-    service = cs.load_service(service_file(tmp_path, anchor))
-    with pytest.raises(cs.ServiceError, match="no complete answer"):
-        buyer.register_card(cs.AnchorRegistrar(service), service.policy)
-    time.sleep(3)
-    assert anchor.posted == []
-    assert not [t for t in threading.enumerate() if t.name == "card-registration"], "the worker ended"

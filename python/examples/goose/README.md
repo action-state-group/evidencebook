@@ -275,7 +275,7 @@ export GOOSE_CARD_SERVICE=python/examples/goose/card-service.example.json
 ```
 
 `loop_register_card` writes the card statement, with the service's Receipt, to `out_path`; keep it beside the card.
-A registration is permanent: the service's log is append-only, and it learns which of your keys registered a card for
+The post is synchronous and every operation (connect, send, each read) times out after 30 seconds with the answer capped at 1 MiB; a service that drips bytes slowly can still take longer than that overall, which is accepted for this demo stand-in. A registration is permanent: the service's log is append-only, and it learns which of your keys registered a card for
 which anchor, and when. The statement carries the card's digest, not the card, but a digest does not hide a small card from
 a party that can guess its counts.
 
