@@ -141,6 +141,10 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
       `card_answer`), since a `hold` on a gated check shows the gate where an authorized twin has
       no answer at all. The `counterparty_acceptance` and `platform_approval` observations answer
       no check and stay;
+    - every share check (`share_contact`, `share_credentials`): its `repeat_disclosures` and
+      `recipient_told_before` count only tellings given with authority (PROFILE.md section 8, rule
+      inputs), so a second share to the same buyer would show whether the first telling was
+      authorized (found in #614's review);
     - every telling (every `disclosure`, and every `action-record/v0` with `disclosed`): a share
       the gate holds is sealed with `authority: none` and `rule: required_representation_missing`
       (evidencebook-deal `deal_profile.go:1279-1294`), and withholding only those would branch on
@@ -222,7 +226,7 @@ offer's terms (evidencebook-deal `deal_rules.go:1178`), and an acceptance is rec
 offer act that was authorized (`deal.go:623-634`). So the unauthorized twin has no recorded
 acceptance, no commit or address share resting on one, and an end outcome that compares the
 delivery with the terms in force without that offer (`mismatch` where the authorized twin says
-`completed`). Its counterparty copy lacks steps the buyer may know happened. A buyer who knows they
+`completed`), as does a later check's `material_fields_changed`. Its counterparty copy lacks steps the buyer may know happened. A buyer who knows they
 happened can tell they were not authorized, never why. Unlike the position hint, this can prove that a step was not
 authorized. Closing it would mean withholding every act and outcome, including the offers rule 10
 gives the buyer in full. Sherlock routed it to Steven with the recommendation to accept it as a
