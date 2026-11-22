@@ -13,13 +13,12 @@ import (
 
 // A staple is the holder's own History card attached to its message, so a
 // counterparty that cannot ask back can still read it (evidencebook#275).
-// Offer staples always carry history_card/2 (Steven u539, ops
-// proprietary/inbox.md:907): a sampled chain of the profile's cadence
-// checkpoints with no deal counts, at any length. It replaces the
-// history_card/1 staple and its standard_history/1 fallback (u517, u536,
-// evidencebook#354). The card a counterparty gets on a signed ask is
-// unchanged (`deal respond`, u536). evidencebook.CheckStaple accepts the
-// staple unchanged. The caller decides when to staple.
+// Offer staples always carry history_card/2: a sampled chain of the
+// profile's cadence checkpoints with no deal counts, at any length. It
+// replaces the history_card/1 staple and its standard_history/1 fallback
+// (evidencebook#354). The card a counterparty gets on a signed ask is
+// unchanged (`deal respond`). evidencebook.CheckStaple accepts the staple
+// unchanged. The caller decides when to staple.
 
 // stapleOutput is the verb's stdout: request and reply are the staple's JSON
 // objects, embedded.
@@ -48,9 +47,8 @@ func shStapleCommand() *cobra.Command {
 		// probes the help for it finds the staple builder and a caller still
 		// asking for /1 is refused with the reason, not silently given /2.
 		derivation, _ := c.Flags().GetString("derivation")
-		if derivation != evidencebook.DerivationHistoryCard2 {
-			return cli.InputError("a staple carries " + evidencebook.DerivationHistoryCard2 + " only, not " + derivation +
-				": history_card/1 and standard_history/1 are no longer stapled, and the standard card stays behind a signed ask (`deal respond`)")
+		if err := stapleDerivation(derivation); err != nil {
+			return err
 		}
 		p, err := cli.Selected(c)
 		if err != nil {
@@ -87,4 +85,17 @@ func (s *dealSession) stapleHistoryCard2(ctx context.Context) (stapleMessages, e
 		return stapleMessages{}, err
 	}
 	return stapleMessages{Request: st.Request.Octets, Reply: st.Reply.Octets}, nil
+}
+
+// stapleDerivation refuses any --derivation but history_card/2, with the
+// reason for the two a staple used to carry.
+func stapleDerivation(derivation string) error {
+	switch derivation {
+	case evidencebook.DerivationHistoryCard2:
+		return nil
+	case evidencebook.DerivationHistoryCard, evidencebook.DerivationStandardHistory:
+		return cli.InputError("a staple carries " + evidencebook.DerivationHistoryCard2 + " only: " + derivation +
+			" is no longer stapled, and the standard card stays behind a signed ask (`deal respond`)")
+	}
+	return cli.InputError(fmt.Sprintf("--derivation %q is not a derivation a staple carries: a staple carries %s only", derivation, evidencebook.DerivationHistoryCard2))
 }

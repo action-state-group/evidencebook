@@ -819,7 +819,6 @@ func TestAnUnpricedDealSaysWhyItIsNotOnTheCard(t *testing.T) {
 	// A deal respond serves the same refusal, as before.
 	dealRun(t, "standard-history", "declare", "--holder-kind", "node", "--answer")
 	assert.Equal(t, evidencebook.ReasonCoverageUnsatisfiable, refusedWith(t, respondCard(t, cardRequest(t, fullHistory))))
-
 }
 
 func TestNoCardWithoutATickSaysSo(t *testing.T) {

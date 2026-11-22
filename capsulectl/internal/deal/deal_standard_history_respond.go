@@ -38,8 +38,7 @@ func (s *dealSession) respondStandardHistory(c *cobra.Command, check evidencereq
 }
 
 // answerStandardHistory is the reply's octets and the holder's answered
-// record, not yet sealed or written: `respond` writes both, and `staple`
-// (deal_standard_history_staple.go) seals the record for the deal it names.
+// record, not yet sealed or written: `respond` writes both.
 func (s *dealSession) answerStandardHistory(ctx context.Context, check evidencerequest.RequestCheck, raw []byte, requester string, signer evidencebook.Signer) ([]byte, map[string]interface{}, error) {
 	req := check.Request
 	digest := evidencerequest.Digest(raw)

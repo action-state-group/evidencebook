@@ -19,35 +19,26 @@ func stapleRun(t *testing.T, args ...string) (string, error) {
 	return invoke(t, "", append([]string{"--profile", "deal", "deal", "standard-history", "staple"}, args...)...)
 }
 
-// stapleFixture is a person who answers the card, with one deal and a tick.
-func stapleFixture(t *testing.T) string {
-	t.Helper()
-	dealFixture(t)
-	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
-	id := retailDeal(t)
-	dealRun(t, "standard-history", "declare", "--holder-kind", "person", "--answer")
-	*now = now.Add(2 * time.Minute)
-	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
-	return id
-}
-
-// Offer staples carry history_card/2 only (Steven u539): --derivation
-// accepts nothing else and says why, and --deal is gone. Refusals are exit 2
-// with nothing on stdout.
+// Offer staples carry history_card/2 only: --derivation accepts nothing
+// else, with the reason for the two a staple used to carry, and --deal is
+// gone. Refusals are exit 2 with nothing on stdout.
 func TestStapleRefusesWhatIsNoLongerStapled(t *testing.T) {
-	stapleFixture(t)
-	for name, args := range map[string][]string{
-		"history_card/1":     {"--derivation", "history_card/1"},
-		"standard_history/1": {"--derivation", "standard_history/1"},
-		"a third":            {"--derivation", "deal_ledger/1"},
-		"the empty string":   {"--derivation", ""},
-	} {
-		out, err := stapleRun(t, args...)
-		require.Error(t, err, name)
-		assert.Equal(t, 2, cli.ExitCode(err), name)
-		assert.Contains(t, err.Error(), "a staple carries history_card/2 only", name)
-		assert.Contains(t, err.Error(), "deal respond", name)
-		assert.Empty(t, out, name)
+	dealFixture(t)
+	for _, d := range []string{"history_card/1", "standard_history/1"} {
+		out, err := stapleRun(t, "--derivation", d)
+		require.Error(t, err, d)
+		assert.Equal(t, 2, cli.ExitCode(err), d)
+		assert.Contains(t, err.Error(), "a staple carries history_card/2 only: "+d+" is no longer stapled", d)
+		assert.Contains(t, err.Error(), "deal respond", d)
+		assert.Empty(t, out, d)
+	}
+	for _, d := range []string{"history_card/3", ""} {
+		out, err := stapleRun(t, "--derivation", d)
+		require.Error(t, err, d)
+		assert.Equal(t, 2, cli.ExitCode(err), d)
+		assert.Contains(t, err.Error(), "--derivation \""+d+"\" is not a derivation a staple carries", d)
+		assert.NotContains(t, err.Error(), "no longer stapled", "the reason only for the two it used to carry")
+		assert.Empty(t, out, d)
 	}
 	out, err := stapleRun(t, "--deal", "deal-0123456789abcdef")
 	require.Error(t, err, "--deal is gone")
@@ -122,7 +113,8 @@ func TestStapleIsHistoryCard2(t *testing.T) {
 		require.NoError(t, err, "signed by the profile's own key")
 		assert.Equal(t, evidencebook.DerivationHistoryCard2, check.Derivation)
 	}
-	assert.Equal(t, 0, answeredRows(t, id), "a staple seals nothing")
+	assert.Equal(t, 0, answeredRows(t, id), "a staple seals nothing for the deal")
+	assert.Equal(t, 0, allAnsweredRows(t), "nor any answered record at all")
 }
 
 // A store moved to the new layout staples the same card: ticks after the
@@ -152,6 +144,19 @@ func rawKeys(m map[string]json.RawMessage) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// allAnsweredRows is every sealed answered row in the store, whatever its deal.
+func allAnsweredRows(t *testing.T) int {
+	t.Helper()
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	db, err := sql.Open("sqlite", "file:"+p.Connection.Database+"?mode=ro")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+	var n int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM deal_requests WHERE kind=?`, dealExchangeAnswered).Scan(&n))
+	return n
 }
 
 // answeredRows is the deal's sealed exchange rows in the store.
