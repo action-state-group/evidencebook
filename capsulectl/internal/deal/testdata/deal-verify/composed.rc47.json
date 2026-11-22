@@ -1,0 +1,237 @@
+{
+  "verdict": "VALID",
+  "page_gate_no_directory": "pass",
+  "extensions": [
+    {
+      "composed": {
+        "composed_digest": {
+          "declared": "5fd249da79b05cd30ccad683010374180312b915a00a32587471310fe8dbd7a8",
+          "matches": true,
+          "recomputed": "5fd249da79b05cd30ccad683010374180312b915a00a32587471310fe8dbd7a8"
+        },
+        "composition_closure": {
+          "findings": [],
+          "missing": [],
+          "status": "pass"
+        },
+        "corroboration": [
+          {
+            "members": [
+              "6f5cde6a02e7147ce63fc026138b61a9983ed59c4c504b5601cc62f9aae8800d",
+              "e048d788f6534d0b2f2e512c618ed77fd4337f6d15dd3e581ffb0da870082ed8"
+            ],
+            "qualifier": "custody_declared",
+            "result": "corroborating"
+          }
+        ],
+        "findings": [],
+        "joins": [
+          {
+            "basis": "pre_agreed_identifier",
+            "declared": "agree",
+            "derived": "agree",
+            "members": [
+              "6f5cde6a02e7147ce63fc026138b61a9983ed59c4c504b5601cc62f9aae8800d",
+              "e048d788f6534d0b2f2e512c618ed77fd4337f6d15dd3e581ffb0da870082ed8"
+            ],
+            "result": "derived_matches"
+          }
+        ],
+        "members": [
+          {
+            "body": "carried",
+            "bundle": {
+              "bundle_digest": "d16361c0a36abe515782a5f9bd3edd7f6f6b76efada153a9a124483e77980cb9",
+              "checked_against": {
+                "bundle_draft": "draft-mih-zhang-agent-disclosure-bundle-01",
+                "checks": "aac-strict"
+              },
+              "checkpoint": {
+                "findings": [],
+                "status": "pass"
+              },
+              "countersignatures": [],
+              "disclosures": [
+                {
+                  "capsule_id": "cb07ad3079ba5a89f7729dae07716d63611c69031e5c154b0299b4206b4f7f10",
+                  "member": "agent_input",
+                  "status": "withheld"
+                }
+              ],
+              "extensions": [
+                {
+                  "kind": "x-cadence-witness/v0",
+                  "status": "uninterpreted"
+                },
+                {
+                  "kind": "x-deal-report/v0",
+                  "status": "uninterpreted"
+                },
+                {
+                  "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed",
+                  "kind": "x-deal-v0",
+                  "report": "standalone",
+                  "sealed_report": "d2c166c3541492891e9e389f9208b31b34eb0d3cdc0d721aacab9a0c056187f0",
+                  "status": "pass"
+                }
+              ],
+              "graph_closure": {
+                "findings": [],
+                "status": "pass"
+              },
+              "interval_coverage": {
+                "findings": [],
+                "status": "pass"
+              },
+              "per_record_membership": {
+                "findings": [],
+                "status": "pass"
+              },
+              "producer_signatures": {
+                "findings": [],
+                "status": "pass"
+              },
+              "record_identity": {
+                "cb07ad3079ba5a89f7729dae07716d63611c69031e5c154b0299b4206b4f7f10": "passed"
+              },
+              "record_signatures": {
+                "cb07ad3079ba5a89f7729dae07716d63611c69031e5c154b0299b4206b4f7f10": "authored"
+              },
+              "verdict": "VALID",
+              "witnesses": {
+                "findings": [
+                  "witness_receipt_absent"
+                ],
+                "receipts": [],
+                "status": "withheld"
+              }
+            },
+            "digest": "reproduced",
+            "findings": [],
+            "id": "6f5cde6a02e7147ce63fc026138b61a9983ed59c4c504b5601cc62f9aae8800d",
+            "observer": "456981d035f9e8bc2ff0140a2e4cfd3ce93e589cd471c8b5079ab242a71f0a7e",
+            "outcome": "artifact",
+            "response_signature": {
+              "profile": "evidencebook-artifact-response",
+              "status": "verified"
+            }
+          },
+          {
+            "body": "carried",
+            "bundle": {
+              "bundle_digest": "eb2fbaa387a7bb034d66451c5a98d75965c99942817421e7503fc8bced14f509",
+              "checked_against": {
+                "bundle_draft": "draft-mih-zhang-agent-disclosure-bundle-01",
+                "checks": "aac-strict"
+              },
+              "checkpoint": {
+                "findings": [],
+                "status": "pass"
+              },
+              "countersignatures": [],
+              "disclosures": [
+                {
+                  "capsule_id": "ab6e992bd8130cbb98825137114f10455161af19f07067ad064d2a585a190fe6",
+                  "member": "agent_input",
+                  "status": "disclosure_match"
+                },
+                {
+                  "capsule_id": "c2f28a3a6a8188c86a0626848be504a63b361c78555f352b7105fa6d36c54f1b",
+                  "member": "agent_input",
+                  "status": "disclosure_match"
+                },
+                {
+                  "capsule_id": "de6ef5ed722081ab852762663fffe4ddc099d306549093824a620e3ccb3abedb",
+                  "member": "agent_input",
+                  "status": "withheld"
+                },
+                {
+                  "capsule_id": "e2ec038e2767788698c4e19cee9fae1706d6a75477a378b1e2ce3509bba968c0",
+                  "member": "agent_input",
+                  "status": "disclosure_match"
+                }
+              ],
+              "extensions": [
+                {
+                  "kind": "x-cadence-witness/v0",
+                  "status": "uninterpreted"
+                },
+                {
+                  "kind": "x-deal-report/v0",
+                  "status": "uninterpreted"
+                },
+                {
+                  "kind": "x-deal-seller/v0",
+                  "status": "uninterpreted"
+                },
+                {
+                  "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed",
+                  "kind": "x-deal-v0",
+                  "report": "standalone",
+                  "sealed_report": "36995ced1d327f5e8bbaa80151b6d92087130d2e1d0182f6178ac8539ff11af3",
+                  "status": "pass"
+                }
+              ],
+              "graph_closure": {
+                "findings": [],
+                "status": "pass"
+              },
+              "interval_coverage": {
+                "findings": [],
+                "status": "pass"
+              },
+              "per_record_membership": {
+                "findings": [],
+                "status": "pass"
+              },
+              "producer_signatures": {
+                "findings": [],
+                "status": "pass"
+              },
+              "record_identity": {
+                "ab6e992bd8130cbb98825137114f10455161af19f07067ad064d2a585a190fe6": "passed",
+                "c2f28a3a6a8188c86a0626848be504a63b361c78555f352b7105fa6d36c54f1b": "passed",
+                "de6ef5ed722081ab852762663fffe4ddc099d306549093824a620e3ccb3abedb": "passed",
+                "e2ec038e2767788698c4e19cee9fae1706d6a75477a378b1e2ce3509bba968c0": "passed"
+              },
+              "record_signatures": {
+                "ab6e992bd8130cbb98825137114f10455161af19f07067ad064d2a585a190fe6": "authored",
+                "c2f28a3a6a8188c86a0626848be504a63b361c78555f352b7105fa6d36c54f1b": "authored",
+                "de6ef5ed722081ab852762663fffe4ddc099d306549093824a620e3ccb3abedb": "authored",
+                "e2ec038e2767788698c4e19cee9fae1706d6a75477a378b1e2ce3509bba968c0": "authored"
+              },
+              "verdict": "VALID",
+              "witnesses": {
+                "findings": [
+                  "witness_receipt_absent"
+                ],
+                "receipts": [],
+                "status": "withheld"
+              }
+            },
+            "digest": "reproduced",
+            "findings": [],
+            "id": "e048d788f6534d0b2f2e512c618ed77fd4337f6d15dd3e581ffb0da870082ed8",
+            "observer": "fdca7cb4c6630f13404ca4895977eb7a59953167f222eacb59ecaaf9fa38ff12",
+            "outcome": "artifact",
+            "response_signature": {
+              "profile": "evidencebook-artifact-response",
+              "status": "verified"
+            }
+          }
+        ],
+        "scope": "composition closure covers the declared members only; it is not completeness of participation",
+        "status": "pass"
+      },
+      "kind": "composed/v1",
+      "status": "pass"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}

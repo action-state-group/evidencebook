@@ -1,0 +1,64 @@
+{
+  "verdict": "INCOMPLETE",
+  "page_gate_no_directory": "refused: no page written: `verify --bundle` calls this bundle INCOMPLETE (verification incomplete: a record or disclosure did not check out), and a page must never claim more than that; write the bundle with --out and check it with `capsulectl verify --bundle`",
+  "extensions": [
+    {
+      "composed": {
+        "composed_digest": {
+          "declared": "dfedabec5966a79481877137e57b5656dfe5aa98c545aad7836a535d6735ecd2",
+          "matches": true,
+          "recomputed": "dfedabec5966a79481877137e57b5656dfe5aa98c545aad7836a535d6735ecd2"
+        },
+        "composition_closure": {
+          "findings": [],
+          "missing": [],
+          "status": "pass"
+        },
+        "corroboration": [],
+        "findings": [
+          "refusal_signature_unverified:6d8454da0e7a462a6096814dd7251d9c37954efb8c421714d2ec1a7c2b95b9f3"
+        ],
+        "joins": [],
+        "members": [
+          {
+            "body": "carried",
+            "digest": "reproduced",
+            "findings": [],
+            "id": "6d8454da0e7a462a6096814dd7251d9c37954efb8c421714d2ec1a7c2b95b9f3",
+            "observer": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+            "outcome": "refusal",
+            "reads_as": "INCOMPLETE",
+            "refusal_signature": {
+              "profile": "ed25519-jcs",
+              "status": "signature_unverified"
+            }
+          },
+          {
+            "body": "carried",
+            "digest": "reproduced",
+            "findings": [],
+            "id": "a9fcd021a0918ec5f144d8221b237e8107c810c9d4b90fbebf4f703c52fe992c",
+            "observer": "6ed07e3a9b8602810d5a51923bef8d1bc52c5a56961b11dbdc4fa6312f0053bc",
+            "outcome": "absence"
+          }
+        ],
+        "scope": "composition closure covers the declared members only; it is not completeness of participation",
+        "status": "withheld"
+      },
+      "kind": "composed/v1",
+      "status": "withheld"
+    },
+    {
+      "kind": "x-deal-v0",
+      "sealed_report": "2cd740b5f188b658d04e17e0fd4fbaaab25c47119723887e4fe29e697680ccc3",
+      "status": "pass"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}

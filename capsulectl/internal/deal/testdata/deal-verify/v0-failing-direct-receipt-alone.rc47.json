@@ -1,0 +1,35 @@
+{
+  "verdict": "INVALID",
+  "page_gate_no_directory": "pass",
+  "extensions": [
+    {
+      "kind": "x-deal-report/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); its witness claim failed",
+      "kind": "x-deal-v0",
+      "report": "standalone",
+      "sealed_report": "3dac305d0cdfb01c6711306aa5b8197afdcc20c7933ad7d8256f471d14ba8ddd",
+      "status": "pass"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_invalid:https://127.0.0.1:53761"
+    ],
+    "receipts": [
+      {
+        "binding": "cll",
+        "key_id": null,
+        "reason": "witness.entry_hash does not match this checkpoint's digest -- stamp is not bound to this checkpoint",
+        "registration_time": null,
+        "registration_time_reason": "receipt_not_passed",
+        "registration_time_text": "no signed time (receipt_not_passed)",
+        "status": "fail",
+        "ts_url": "https://127.0.0.1:53761"
+      }
+    ],
+    "status": "fail"
+  }
+}
