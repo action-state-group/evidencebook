@@ -233,6 +233,12 @@ func v1Acts(book []xdealv1.Record) []xdealv1.Record {
 // x-deal-v0's rule 5 on a settled amount) over the deal's journal records and
 // its acts, the candidate last, and returns the candidate's.
 func (s *dealSession) authorizeV1Act(ctx context.Context, dealID string, earlier []xdealv1.Record, act xdealv1.Record) (*xdealv1.ActAuthorization, error) {
+	return s.authorizeV1ActWith(ctx, dealID, earlier, act, nil)
+}
+
+// authorizeV1ActWith is authorizeV1Act for an act whose Capsule carries the
+// settlement member given, which rule 5 holds to the checked amount.
+func (s *dealSession) authorizeV1ActWith(ctx context.Context, dealID string, earlier []xdealv1.Record, act xdealv1.Record, member json.RawMessage) (*xdealv1.ActAuthorization, error) {
 	journal, err := s.v1DealJournal(ctx, dealID)
 	if err != nil {
 		return nil, err
@@ -241,7 +247,7 @@ func (s *dealSession) authorizeV1Act(ctx context.Context, dealID string, earlier
 	for _, r := range earlier {
 		ins = append(ins, xdealv1.ActIn{Record: r})
 	}
-	ins = append(ins, xdealv1.ActIn{Record: act})
+	ins = append(ins, xdealv1.ActIn{Record: act, Settlement: member})
 	auths, err := xdealv1.CheckActs(journal, ins)
 	if err != nil {
 		return nil, notAuthorizedError{err}
@@ -319,8 +325,7 @@ func (s *dealSession) storeV1Act(dealID string, events []sealedEvent, rec xdealv
 // reconcileV1Acts gives every act of the holder's book that has no local event
 // one, in book order (xdealv1-write-path §13 item 8): a run that stopped after
 // the append and before the local event is finished here, by digest, once.
-// Settle records get theirs with `deal settle`, which is not here yet; one
-// found here is refused rather than left uncounted.
+// A settle record is reconciled by reconcileV1Settle.
 func (s *dealSession) reconcileV1Acts(ctx context.Context, dealID string, book []xdealv1.Record) ([]sealedEvent, error) {
 	events, err := s.v1Events(ctx, dealID)
 	if err != nil {
@@ -335,8 +340,11 @@ func (s *dealSession) reconcileV1Acts(ctx context.Context, dealID string, book [
 		if v1EventByDigest(events, digest) != "" {
 			continue
 		}
-		if act.Block.RecordType == xdealv1.TypeSettle {
-			return nil, fmt.Errorf("%w: deal %s's book holds a settle record (%s) this version cannot count yet", cli.ErrConflict, dealID, digest)
+		if b, ok := settleOf(act); ok {
+			if events, err = s.reconcileV1Settle(ctx, dealID, book, events, act, b, digest); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		auth, err := s.authorizeV1Act(ctx, dealID, acts[:i], act)
 		var refused notAuthorizedError

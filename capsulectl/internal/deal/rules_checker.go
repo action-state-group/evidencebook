@@ -915,6 +915,7 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 	type act struct {
 		deal, id string
 		at       time.Time
+		v1       bool
 	}
 	var acts []act
 	since := cli.DealClock().Add(-cli.RulesHistoryDays * 24 * time.Hour)
@@ -928,7 +929,21 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 		if e != nil || at.Before(since) {
 			continue
 		}
-		acts = append(acts, act{deal, id, at})
+		acts = append(acts, act{deal, id, at, false})
+	}
+	// An x-deal-v1 deal's acts are its local act events (xdealv1-write-path
+	// §13 item 9): every act that cites a check, a payment counted from its
+	// send, a perform or a failed payment with no amount. Each is read as the
+	// v0-shaped record of its own deal's events, never the current deal's.
+	v1Acts, err := s.v1RulesActs(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, va := range v1Acts {
+		if va.at.Before(since) {
+			continue
+		}
+		acts = append(acts, act{va.deal, va.id, va.at, true})
 	}
 	sort.SliceStable(acts, func(i, j int) bool { return acts[i].at.After(acts[j].at) })
 	scope := &dealRulesHistory{Days: cli.RulesHistoryDays, Complete: true, Since: since}
@@ -937,7 +952,24 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 	}
 	history := []interface{}{}
 	items := map[string]string{}
+	v1Events := map[string][]sealedEvent{}
 	for _, a := range acts {
+		if a.v1 {
+			evs, ok := v1Events[a.deal]
+			if !ok {
+				if evs, err = s.v1Events(ctx, a.deal); err != nil {
+					return nil, nil, err
+				}
+				v1Events[a.deal] = evs
+			}
+			record, err := s.v1CapsuleWithInput(a.id, evs)
+			if err != nil || record == nil {
+				scope.Complete = false
+				continue
+			}
+			history = append(history, record)
+			continue
+		}
 		record, err := s.capsuleWithInput(ctx, a.id)
 		if err != nil || record == nil {
 			scope.Complete = false
@@ -1105,4 +1137,43 @@ func receivedNotice(ctx context.Context, p cli.Profile, role string, input []byt
 		return "", "the rules checker printed no line about the cards"
 	}
 	return run.Notice, ""
+}
+
+// v1RulesAct is an x-deal-v1 act the rules history reads.
+type v1RulesAct struct {
+	deal, id string
+	at       time.Time
+}
+
+// v1RulesActs are every x-deal-v1 deal's local act events that rest on a
+// check (AuthorizedBy set); the buyer's refund received, which cites none,
+// reaches only the money fold.
+func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, error) {
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='deal_v1_events'`).Scan(&exists); err != nil || exists == 0 {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT deal_id, n, local FROM deal_v1_events WHERE kind='act' ORDER BY deal_id, n`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []v1RulesAct
+	for rows.Next() {
+		var deal, local string
+		var n int64
+		if err := rows.Scan(&deal, &n, &local); err != nil {
+			return nil, err
+		}
+		var ev dealEvent
+		if json.Unmarshal([]byte(local), &ev) != nil || ev.Act == nil || ev.Act.AuthorizedBy == "" {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, ev.At)
+		if err != nil {
+			continue
+		}
+		out = append(out, v1RulesAct{deal, v1EventID(deal, n), at})
+	}
+	return out, rows.Err()
 }
