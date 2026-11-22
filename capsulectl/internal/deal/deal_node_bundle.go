@@ -135,15 +135,20 @@ func dealNodeBundleCommand() *cobra.Command {
 new file --out. It carries the record, its inclusion proof and the interval from the earliest record the bundle selects to that checkpoint:
 the capsules of every record in that interval travel with it, the later records' included (their headers and payloads
 stay withheld by digest unless --disclose reveals them), so a bundle of an old record shows that the book went on to the
-checkpoint.
+checkpoint. Each capsule in the interval still shows its type, time and digests: for a model call, its provider, model id
+and the digests of its prompt and completion, which do not hide a short or guessable text. A bundle of an old record shows
+how many records followed it and when.
 
-By default the bundle carries the record and what it commits, and withholds the headers and payloads of the records it
-discloses, each by its digest. With --disclose it reveals the header of the record and of the records it links to (one
-hop, whatever the link type), and their payloads. Disclosing is a record of the book: the book commits a disclosure record
-naming what the bundle disclosed, so the book's own history says it was shown, and the book has grown: the next
+By default every record in the bundle travels as its capsule only: its header and payloads are withheld, each named by its
+digest. With --disclose everything the record and the records it links to keep is shown, and the bundle reveals the header of the record and of the records it links to (one
+hop, whatever the link type, which can reach another party's records held in this book, such as a dispute's two half
+Capsules), and their payloads. Disclosing is a record of the book: the book commits a disclosure record
+naming what the bundle disclosed (permanent, and naming what was shown, not who it was shown to), so the book's own
+history says it was shown, and the book has grown: the next
 newest checkpoint is a new one, which a witnessed tick carries only as a later checkpoint of the book (the cadence chain
 then travels as "part": an earlier witnessed checkpoint and a consistency proof). To have the tick's own checkpoint ("all"),
-pass --at with a checkpoint whose cadence_extent deal node checkpoint --list shows as "all".
+pass --at with a checkpoint whose cadence_extent deal node checkpoint --list shows as "all". With "part" the witness saw
+only the earlier checkpoint: records after it are in the book by the consistency proof, but the witness did not see them.
 
 --witness-receipt FILE (a checkpoint.witnesses entry: ts_url, entry_hash, receipt_b64, leaf_index, tree_size) with
 --witness-directory FILE (witnesses.json) and --at carries the witness's receipt for that checkpoint; the receipt must
@@ -286,7 +291,7 @@ position; it does not show the record's content is true.`,
 	cmd.Flags().String("record", "", "The record the bundle proves (required)")
 	cmd.Flags().String("out", "", "Where to write the bundle: a new file (required)")
 	cmd.Flags().String("at", "", "The id of the checkpoint to prove it under (default: the newest, cut now if the book grew)")
-	cmd.Flags().Bool("disclose", false, "Reveal the header of the record and of the records it cites, and their payloads")
+	cmd.Flags().Bool("disclose", false, "Reveal everything the record and the records it links to (one hop, any link type) keep: their headers and payloads")
 	cmd.Flags().String("witness-receipt", "", "A witness receipt for the --at checkpoint (a checkpoint.witnesses entry as JSON)")
 	cmd.Flags().String("witness-directory", "", "The witness directory (witnesses.json) the receipt is verified under")
 	return cmd
