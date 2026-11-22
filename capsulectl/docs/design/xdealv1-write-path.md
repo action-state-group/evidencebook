@@ -371,58 +371,101 @@ the admission decision that the agreement cites. This slice gives a v1 deal the 
 needs. Section 5 says only "`deal check`, `deal note`: unchanged flags; on a v1 deal they seal the
 v1 records". This section says how.
 
-**The problem.** On main, both verbs refuse a v1 deal before anything loads (`deal.go:971-979`,
-`v1Refusal`). Their v0 path folds the deal's sealed v0 steps into a `dealState` (`foldDeal`,
-`deal_rules.go:1085`), starting from the opening's intent, counterparty, terms, claims and
-recourse. It evaluates the check input against that state (`evaluateDeal`), runs the pinned rules
-checker (`runRulesChecker`), builds the card, and seals v0 steps. A v1 deal has no opening: its
-book starts at the agreement, and the journal holds its intent, check, verdict, approval and
-journey records (x-deal-v1 PROFILE §4).
+**The problem.** On main, both verbs refuse a v1 deal before anything loads (`deal.go:973-980`,
+`v1Refusal`). Their v0 path reads two things:
+- the folded `dealState` (`foldDeal`, `deal_rules.go:1085`);
+- the raw event list itself (`checkRepresenting`, `checkAnswering`, `dealRole`,
+  `checkCounterpartyClass`, `promisedPay`, `dealBoundsOpening`, `rulesInput`, `checkCard`,
+  `openDeadlines`, `dealRecordSet`; `deal.go:2215-2510`).
 
-**Approach: one adapter, not a second checker.** The card, the rules and the materiality predicate
-are the product. A v1 deal reuses all of them, and only the source of the state and the writer
-change.
+Both start from the opening, which holds the plain values the records hold only as commitments:
+the user's verbatim words, the bounds, the type, the channel and the pinned materiality predicate.
+A v1 deal has no opening. Its journal holds commitments (`verbatim_commitment`,
+`bounds_commitment`, `dealprofile/types.go:79-92`), not the values the checks read. So the state
+cannot be rebuilt from v1 records (review round 1, both peers).
 
-1. **`v1DealState(ctx, dealID)`** builds the `dealState` that `evaluateDeal` and the rules checker
-   take, from v1 records:
+**Approach: keep the v0 events locally, seal v1 records.** Each v1 deal keeps a local, plain event
+list in the plugin's store (`deal_v1_events`), in the same `dealEvent` form v0 folds. Each v1 verb
+of this slice writes two things in one step: its plain event to that list, and its v1 record to the
+journal, with the record's digest kept on the event. `deal check` then runs the unchanged v0 body
+(fold, `evaluateDeal`, the rules checker, the card) over that list. So the card, the rules, the
+materiality predicate and every check that reads the raw events are reused unchanged, and nothing is
+rebuilt from commitments. A crash between the two writes is repaired as `deal admit` repairs one:
+the plain event is stored first with its record's payload, and the next run seals that payload when
+the journal lacks it.
 
-   | `dealState` part | v0 source | v1 source |
-   |---|---|---|
-   | intent (verbatim, limits, allowed) | the opening's intent, later `intent` steps | the latest journal `intent` sealed for this deal, then the `confirm_limits` approvals, as v0 folds them |
-   | agreed terms, terms | the opening's terms; a `change` overlays `terms` | the offer's `terms` (`dealprofile.Terms`, mapped field by field to `dealTerms`); a journal `detail_change` overlays them as v0's `change` does |
-   | who | the opening's counterparty; messages and evidence overlay | the offer's counterparty (`to`, or the received offer's signer key) and its `counterparty_profile` record; journey records overlay as in v0 |
-   | recourse | the opening's recourse | the agreement's `adjudicator` and `forums` |
-   | claims, messages, evidence, agent moves | v0 steps | the journal's journey records for this deal, in journal order |
-   | checks and approvals already made | v0 `check` and `approval` steps | the journal's `check`, `verdict` and `approval` records for this deal |
+1. **The opening.** The first `deal note --kind intent` on a v1 deal writes the synthetic `open`
+   event. Its input is v0's intent note input plus `type`, and optionally `channel`:
+   - `type` and `channel` come from the input;
+   - `intent` (verbatim words, bounds, allowed) comes from the input, sealed as the journal `intent`
+     record with its `verbatim_commitment` and `bounds_commitment` opened by the local nonces, as
+     v0 keeps them (`deal_profile.go:490-508`);
+   - `who` comes from the offer's counterparty block and the `counterparty_profile` record. With no
+     counterparty layer (`to` is `null`) it is empty, as a v0 opening with no counterparty is;
+   - `terms` comes from the offer's `terms`, mapped field by field;
+   - the recourse (`Rail`, `Refundable`) comes from the input as in v0. The agreement's adjudicator
+     and forums are the dispute clause, which is not this recourse;
+   - `Records` is the x-deal-v0 path (`""`), so `dealRecordSet` gives the untyped behaviour;
+   - the pinned materiality predicate is read from the profile then and stored on the event, as
+     v0's `deal open` seals it.
 
-   The fold reuses `foldDeal`'s per-kind folds (`foldIntentJourney`, `foldAgentMove`,
-   `overlayWho`, `overlayTerms`, the approval fold) on a synthetic opening plus events read from
-   the journal. So the v0 and v1 paths share every rule, and a test runs one input through both
-   and compares the card.
-2. **`deal check` on a v1 deal** runs `evaluateDeal` and the rules checker on that state. It then
-   seals, in the journal, the `check` record (v0's body, plus `payment_ref` on a pay and a fresh
-   `nonce`, with the deal's `deal_id`) and the `verdict` (one `checks` ref, with a `nonce`). Same
-   flags, same card, same output. The input gains `payment_ref`, the reference a payment will be
-   made under, which `deal settle` (B2) cites. A pay check without it is refused, because x-deal-v1
-   §8's payer leg rests on it.
-3. **`deal note` on a v1 deal.**
-   - These kinds seal their journal record (journal overlay or journey overlay), with `deal_id`
-     placed by `SealContext`: `intent`, `approval` (its `approves` ref names the verdict, or the
-     intent on `confirm_limits`, with a `nonce`), `message`, `claim`, `evidence`, `change` (as
-     `detail_change`) and `disclosure`.
+   A `deal check` on a v1 deal with no intent yet is refused with "seal the user's intent first:
+   `deal note --deal ID --kind intent`". The library refuses a `standing_intent` approval with no
+   intent before it (`authorization.go:310`), and v0 cannot check without an opening.
+2. **Later intents narrow.** A later intent on the same deal is folded by v0's `laterIntent`
+   (`deal_rules.go:1239`), which only narrows, as the library's `limits.narrow` does
+   (`authorization.go:423`). Confirmed proposals then apply as v0 folds them.
+3. **Binding.** PROFILE §3 keeps `deal_id` off `intent`, `confirm_limits` approvals, `disclosure`,
+   `counterparty_profile` and journey records sealed before the offer. Every such record sealed by
+   this slice's verbs is bound to its deal at seal time, by the `--deal` of an existing v1 deal, in
+   `deal_v1_events`. A v1 deal exists from `deal offer` or `deal receive` on, so there is no pre-offer
+   case for this slice.
+4. **`v1DealJournal(ctx, dealID)`** is the one function that gives a deal's journal records: those
+   carrying its `deal_id`, plus those bound to it. `deal check` folds the matching local events, and
+   B2 passes exactly these records to `xdealv1.CheckAuthorizations`. So the card and the
+   authorization read the same subset, and another deal's intent or detail change in the same
+   journal never reaches either. B2 passes the deal's earlier acts with the candidate, so the
+   library's single-use check (`authorization.go:70-72`, `118-121`) sees them.
+5. **`deal check` on a v1 deal** writes v0's `snapshot` and `check` events locally, and seals the
+   journal `check` record: v0's body plus `payment_ref` on a pay and a fresh `nonce`, with
+   `deal_id`. It then seals the `verdict` (one `checks` ref, a `nonce`). Writing the snapshot first
+   is what makes an approval adopt the terms its card listed (`deal_rules.go:1138-1145`,
+   `1189-1200`).
+   - On a pass whose action the intent allows, it seals a `standing_intent` approval (with a
+     `nonce`), as v0 does on its untyped path (`deal.go:2470`). The library refuses an act whose
+     verdict has no approval (`authorization.go:104`).
+   - `payment_ref` is the reference fixed before paying: a Lightning payment hash, an ACP order
+     id, or the x402 authorization nonce. A pay check without it is refused, because the payer
+     leg's check is "the passing journal check that recorded the payment reference" (design note
+     461, settle's `check`). A reference the rail learns only afterwards, such as an on-chain
+     transaction hash, goes on the payer leg (Sherlock2, on #699).
+6. **The rules checker sees the v0 input.** `rulesInput` (`rules_checker.go:548`) hands the
+   checker the check's v0 body as v0 builds it, from the local events. The pinned checker
+   therefore gets byte-equal input for an equal v1 deal, and a test compares the bytes.
+   `rulesHistory` (`rules_checker.go:897-911`) counts v0 `act` steps. B2 adds a v1 deal's `perform`
+   and `settle` records to it, and that is a gate on making v1 the default (B5): spend and velocity
+   rules must count v1 acts before v1 deals act by default.
+7. **`deal note` on a v1 deal.**
+   - These kinds write their plain event and seal their journal record, with `deal_id` placed by
+     `SealContext` and the binding of item 3:
+     - `intent`;
+     - `approval`, whose `approves` ref names the verdict, or the intent on `confirm_limits`, with a
+       `nonce`;
+     - `message`, `claim`, `evidence`;
+     - `change`, sealed as `detail_change`;
+     - `disclosure`;
+     - the agent moves `searched`, `options`, `recommended`, `chose` and `couldnt`, sealed as
+       `agent_move`.
+   - A `user` or `agent_card` approval needs `--shown-card`, checked against the verdict's card.
+     v0 lets it be omitted (`deal.go:1550-1559`), but the library refuses such an approval without
+     its `card_commitment` (`authorization.go:65-69`, `346-355`), and it scans the whole journal. So
+     one approval sealed without it would break every later authorization of the deal.
    - These kinds have no v1 note form and refuse, naming the v1 verb: `act`, `payment_received`
-     and `delivered` (`deal perform`, `deal settle`, B2); `dispute` (`deal dispute`; already
-     refused); `ruling` (the adjudicator's case book); `acceptance` and `platform_approval` (the
-     sale overlay, B3).
-4. **Authorization stays in the library.** B1b seals what x-deal-v1 §8 reads. It decides no act.
-   B2's `perform` and `settle` run `xdealv1.CheckAuthorizations` over the journal and the act
-   before sealing.
-5. **Per-deal binding.** A journal record carries `deal_id` exactly where PROFILE §3 says. An
-   `intent` sealed before any offer carries none, so the plugin binds it locally to the deal whose
-   offer follows. This is the pattern `deal admit` uses (`deal_v1_admits`): an intent is bound once,
-   and `deal agree --intent` defaults to it.
+     and `delivered` (`deal perform`, `deal settle`, B2); `dispute` (`deal dispute`); `ruling` (the
+     adjudicator's case book); `acceptance` and `platform_approval` (the sale overlay, B3).
+   - Sale-thread and `offer` actions on a v1 deal are refused until B3.
 
-**Settled by Sherlock2 on #699 (no door for Steven), and what is left.**
+**Settled by Sherlock2 on #699, and what is left.** There is no door for Steven here.
 - **The person's signature** (x-deal-v1 §8). It is ruled, and the ruling is in PROFILE §8. An act
   must not be relied on until the person's signatures are held, and each travels beside its
   record:
@@ -431,26 +474,32 @@ change.
   - the first intent a `standing_intent` approval rests on (Steven, evidencebook#500 option b).
 
   What is left is how the plugin carries the signature, gated on AAC defining the member
-  (agent-action-capsule#627). Until then, B2 seals an act whose authorization the library
-  accepts, reports the digests that still need the person's signature (`CheckAuthorizations`'s
-  per-act digests), and never counts the act as authorized. A receipt or report for such an act
-  says the person's own key's signature is missing.
-- **The `payment_ref` member** of the check input keeps the record's name (PROFILE §5, check). It
-  is the reference fixed before paying: a Lightning payment hash, an ACP order id, or the x402
-  authorization nonce. A reference the rail learns only afterwards, such as an on-chain
-  transaction hash, goes on the payer leg as settlement evidence, not here. Every rail in use has
-  a pre-payment reference, so the refusal of a pay check without one stands. A rail with none
-  would be a profile question, filed when such a rail is used (Sherlock2, on #699).
+  (agent-action-capsule#627). Until then, B2 seals an act whose authorization the library accepts,
+  reports the digests that still need the person's signature (`CheckAuthorizations`'s per-act
+  digests), and never counts the act as authorized. A receipt or report for such an act says the
+  person's own key's signature is missing.
+- **`payment_ref`** keeps the record's name (PROFILE §5, check), with the form in item 5.
 
 **Tests.**
-- **One input, two versions:** the same check input on a v0 deal and on an equivalent v1 deal
-  gives the same card and verdict, for pass, pause and deny, with a confirmed-limits approval and
-  with a detail change.
-- **Record placement:** each sealed v1 record passes `xdealv1.CheckSealed` with its context, has a
-  fresh nonce, and carries `deal_id` exactly where PROFILE §3 says.
-- **Refusals:** a v1 pay check with no `payment_ref`; each v1 note kind with no form, naming its
-  verb.
-- **Old deals:** the v0 suite is unchanged, with v1 deals and v0 deals in one store.
-- **Authorization joint test, after B2:** `CheckAuthorizations` accepts a journal B1b sealed for a
-  checked, approved act, and refuses it for a reused approval, a changed detail and a wrong-deal
-  check.
+- **One input, two versions.** The same input on a v0 deal and on an equivalent v1 deal gives the
+  same card, the same verdict and byte-equal rules-checker input. Cases: pass, pause and deny; a
+  confirmed-limits approval; a detail change; change, check, approve and check again (the second
+  card lists no change); a later, wider intent that narrows rather than widens; a delegated
+  `chose`.
+- **Records.** Each sealed v1 record passes `xdealv1.CheckSealed` with its context, has a fresh
+  nonce, and carries `deal_id` exactly where PROFILE §3 says. Each bound record is bound to its
+  deal.
+- **Crash and restart.** A run that stops between the local event and the seal is finished by the
+  next run with the same digest. After a restart the check reads the same plain values.
+- **Refusals.**
+  - A check before any intent.
+  - A pay check with no `payment_ref`.
+  - A `user` approval with no `--shown-card`.
+  - Each note kind with no v1 form, naming its verb.
+  - Sale-thread actions.
+- **Authorization, in this slice.** `CheckAuthorizations` over `v1DealJournal` accepts a constructed
+  act after a passing check with its automatic approval, and after a pause with a user approval.
+  It still accepts when another deal's intent or detail change sits in the same journal, since
+  `v1DealJournal` leaves it out. It refuses an approval reused across two commands, and a
+  wrong-deal check.
+- **Old deals.** The v0 suite is unchanged, with v1 and v0 deals in one store.
