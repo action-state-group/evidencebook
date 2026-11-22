@@ -908,7 +908,7 @@ def counterparty_withheld(records):
     """Section 6 rule 12 "Copies": the positions (0-based) of the records a
     counterparty copy of a deal under rule 12 withholds, by kind and uniformly,
     never by a record's result or answer (evidencebook#607, #613): every
-    claim_authority, represent check, evaluation, answer to a check
+    claim_authority, represent or share check, evaluation, answer to a check
     (user_approval, card_answer), unchecked_action outcome, telling (a
     disclosure, or an action-record/v0 that discloses) and close, and every
     agent claim carrying its own verdict. The rule 12 part only: other copy
@@ -924,7 +924,7 @@ def counterparty_withheld(records):
             withheld = body.get("authority") in ("user_approval", "card_answer")
         else:
             withheld = (t in ("claim_authority", "verdict", "close", "disclosure")
-                        or (t == "check" and body.get("action") == "represent")
+                        or (t == "check" and body.get("action") in ("represent", "share_contact", "share_credentials"))
                         or (t == "action" and "disclosed" in body)
                         or (t == "outcome" and body.get("status") == "unchecked_action")
                         or (t == "claim" and body.get("source_kind") == "agent" and _claim_carries_verdict(body)))
@@ -1481,7 +1481,7 @@ def check_chain(records):
             ev = records[k]["body"]
             ran = []
             r = ev.get("rules")
-            if isinstance(r, dict) and r.get("status") == "evaluated" and r.get("kind", "deal") == "deal":
+            if isinstance(r, dict) and r.get("status") == "evaluated" and r.get("kind") == "deal":
                 ran.append(r.get("definition_digest"))
             ran += [rc.get("definition_digest") for rc in ev.get("rules_checks") or []]
             if body["pack_digest"] not in ran:
@@ -1748,6 +1748,14 @@ def run_fixtures() -> int:
             ok = False
         bad += not ok
         print(f"{'ok  ' if ok else 'FAIL'} counterparty copy {c['name']}")
+    for c in load(FIX / "counterparty-copy-vectors.json")["negatives"]:
+        try:
+            check_chain(c["records"])
+            ok, why = False, "accepted"
+        except StageError as e:
+            ok, why = c["expected_error_contains"] in str(e), str(e)
+        bad += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} counterparty copy negative {c['name']}: {why}")
     for x in load(FIX / "commercial-bounds-vectors.json")["vectors"]:
         ok = jcs(x["document"]).decode("utf-8") == x["text"] and commitment(x["nonce"], x["text"]) == x["bounds_commitment"]
         bad += not ok
@@ -1974,7 +1982,7 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
              "cc-hold": "not yet",
              "cc-card": "Make the offer of 1850 to Example Buyer? Tell them about the condition first. [Hold]"}
 
-    def build(chain_id, authorized, close_on_unchecked=False):
+    def build(chain_id, authorized, close_on_unchecked=False, packs=(TERMS_PACK,)):
         records, clock = [], iter([f"2026-10-09T10:{m:02d}:00Z" for m in range(0, 60, 2)])
 
         def tref(j):
@@ -2022,10 +2030,12 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
             represent = records[check]["body"]["action"] == "represent"
             # The seller's deal-terms pack runs on every check; its terms_pack
             # follows every evaluation but a represent check's.
-            body["rules_checks"] = [{"ruleset_id": "example/bicycle-seller", "definition_digest": TERMS_PACK, "verdict": "allow"}]
+            body["rules_checks"] = [{"ruleset_id": f"example/bicycle-seller-{n}", "definition_digest": d, "verdict": "allow"}
+                                    for n, d in enumerate(packs)]
             k = typed("action-evaluation/v0", body, refs=[("checks", check)])
             if not represent:
-                v0("terms_pack", {"pack_digest": TERMS_PACK}, refs=[("checks", check)])
+                for d in packs:
+                    v0("terms_pack", {"pack_digest": d}, refs=[("checks", check)])
             return k
 
         oc_at = [None]
@@ -2059,6 +2069,8 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
             typed("action-record/v0", {"action": "share_contact",
                                        "disclosed": {"to": "counterparty", "fields": [{"class": "phone", "value_commitment": com("cc-phone")}]},
                                        "evaluation_ref": tref(sv), "authority_basis": basis}, refs=[("authorized_by", sv)])
+            # A second share to the same buyer: its memory counts the phone as told.
+            evaluation(typed("proposed-action/v0", dict(share, repeat_disclosures=["phone"], recipient_told_before=True)), "DO", [], [])
             end = typed("action-outcome/v0", {"status": "received", "outcome": "completed", "findings": [],
                                               "actor": "agent", "reason": "completed"})
             close = {"outcome": "completed", "unchecked_actions": 0, "actor": "agent", "reason": "completed"}
@@ -2078,6 +2090,8 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
                 evaluation(sc, "ASK", gate, ["hold"])
                 v0("disclosure", {"to": "counterparty", "authority": "none", "rule": "required_representation_missing",
                                   "fields": [{"class": "phone", "value_commitment": com("cc-phone")}]})
+                # The same second share: a telling given without authority is not told.
+                evaluation(typed("proposed-action/v0", share), "ASK", gate, ["hold"])
                 diff = [{"question": "delivered", "rule": "delivered_differs", "field": "price_minor"}]
                 end = typed("action-outcome/v0", {"status": "received", "outcome": "mismatch", "findings": diff,
                                                   "actor": "agent", "reason": "delivered_mismatch"})
@@ -2088,7 +2102,40 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
         v0("rules_verdict", {"word": "met", "pack_digest": "cd" * 32}, refs=[("confirms", closed)])
         return records
 
-    cases = []
+    def buyer(rules, packs):
+        """The positive buyer chain up to its share check, then a verdict
+        carrying rules and a terms_pack for each pack."""
+        records = [load(p)["record"] for p in sorted((FIX / "positive").glob("*.json"))[:7]]
+
+        def v0(rtype, body, refs):
+            r = {"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": records[0]["x-deal-v0"]["deal_id"],
+                               "record_type": rtype, "seq": len(records) + 1,
+                               "at": f"2026-10-01T16:20:{10 + len(records):02d}Z",
+                               "prev": _ref(record_digest(records[-1])), "baseline_ref": _ref(record_digest(records[0])),
+                               "refs": [{"rel": rel, **_ref(record_digest(records[j]))} for rel, j in refs]},
+                 "body": body}
+            records.append(r)
+        v0("verdict", {"result": "pass", "differences": [], "options": [], "judge": {"kind": "rules"}, "rules": rules},
+           [("checks", 6)])
+        for d in packs:
+            v0("terms_pack", {"pack_digest": d}, [("checks", 6)])
+        return records
+
+    evaluated = {"status": "evaluated", "ruleset_id": "example/sticker-buyer", "kind": "deal", "definition_digest": "d1" * 32,
+                 "checker_sha256": "c5" * 32, "verdict": "allow", "findings": [], "history": {"days": 31, "acts": 0, "complete": True}}
+
+    cases, negatives = [], []
+
+    def negative(name, story, records, contains):
+        try:
+            for r in records:
+                check_record(r)
+            check_chain(records)
+        except StageError as e:
+            assert contains in str(e), (name, str(e))
+            negatives.append({"name": name, "story": story, "records": records, "expected_error_contains": contains})
+            return
+        raise AssertionError(f"{name}: accepted")
 
     def case(name, story, records=None, chain_dir=None):
         if chain_dir:
@@ -2121,12 +2168,22 @@ def write_counterparty_copy_vectors(nonce, rules, materiality):
     case("buyer-deal", "A buyer's deal: rule 12 does not apply, so nothing is withheld under it.", chain_dir="positive")
     case("seller-before-rule-12", "A seller's deal with no ordered_representations: rule 12 does not apply.",
          chain_dir="positive-typed-seller")
+    case("two-packs", "The authorized deal where every check ran two deal packs: two terms_pack records follow each "
+         "evaluation but a represent check's.", build("deal-cc3d0b8e6c2a5497", True, packs=(TERMS_PACK, "e7" * 32)))
+    case("buyer-terms-pack", "A buyer's x-deal-v0 deal: a verdict whose rules ran a pack of kind deal, then its terms_pack.",
+         buyer(evaluated, ["d1" * 32]))
+    negative("terms-pack-conduct-pack", "A terms_pack naming a pack of kind conduct: the party's private policy.",
+             buyer(dict(evaluated, kind="conduct"), ["d1" * 32]), "is not a definition digest of a deal pack")
+    negative("terms-pack-pack-without-kind", "A terms_pack naming a pack pinned with no kind: private policy too.",
+             buyer({k: v for k, v in evaluated.items() if k != "kind"}, ["d1" * 32]), "is not a definition digest of a deal pack")
+    negative("terms-pack-rules-not-configured", "A terms_pack after a verdict whose rules did not run.",
+             buyer({"status": "not_configured"}, ["d1" * 32]), "is not a definition digest of a deal pack")
     (FIX / "counterparty-copy-vectors.json").write_text(json.dumps({
         "note": "Generated by check_profile.py --regen. Section 6 rule 12 \"Copies\": for each deal, the 0-based "
                 "positions of the records a counterparty copy withholds under rule 12 (other copy rules may withhold "
                 "more: a message with private details, a rules verdict the holder does not share) and the positions "
                 "it must disclose. Go's CounterpartyWithheld and RequiredDisclosed are checked against it.",
-        "cases": cases}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        "cases": cases, "negatives": negatives}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def regen():

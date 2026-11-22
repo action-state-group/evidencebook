@@ -156,8 +156,10 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
       pack a check ran under, sealed right after its evaluation with one `checks` ref and only
       `pack_digest`, so the buyer's "under the seller's terms, pack X" line (evidencebook-deal#145)
       survives the withheld evaluation. Sherlock chose to keep the line this way and confirmed the
-      shape on four conditions: deal kind only, the same per-role audience as today, one per pack,
-      and the digest checked against the evaluation
+      shape on four conditions: deal kind only (a producer rule no checker here can see, since a
+      typed evaluation seals no kind; evidencebook-deal#244 tests that a conduct pack seals no
+      `terms_pack`), the same per-role audience as today, one per pack, and the digest checked
+      against the evaluation
       (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=beacc21982dc9dfd848ed3cb86ff83a5c9b4a5c3ee399800ffd09a62dab8cc41&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260,
       buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=d4fc9af52bc6ceb792637abb3075cebf12b8b49bab55982aba034c30cd545863&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260);
   - says nothing derived from a record this section withholds: its report (`steps`, `did`,
@@ -281,7 +283,7 @@ it runs the reference checker, the same tag's `check_profile.py`.
   u615, no new product meaning (Sherlock,
   buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=69334be4443defcbd62abab6c808751efffd19ef2be2a413ddbcec1d7dc06e7a&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260),
   narrowed to answers to a check, and widened to every telling in place of only the unauthorized
-  ones, on the Sherlock twin's point that the latter branches on the verdict; the report says
+  ones, Sherlock's decision (withholding only the latter branches on the verdict); the report says
   "not shared" where no end outcome is disclosed
   (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dc33a5bc87d97eefbfca7fc7e858f7837d9ddaa2f57749752a296f695f9590c2&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
   The second limit of section 7 is Steven's call, asked in the same message.
@@ -292,3 +294,20 @@ Each implementation passes the shared fixtures (positive and negative, same verd
 failure for each negative). Go and Rust unit tests cover each rule 12 branch on the new record and
 the old-shape branch. `check_profile.py` runs over the fixtures in CI as it does now. The
 evidencebook-deal side tests the copies (#244).
+
+**evidencebook#613 adds:** `counterparty-copy-vectors.json`, whose sets Go
+(`CounterpartyWithheld`, `RequiredDisclosed`) and `check_profile.py` compute and whose chains Go,
+Rust and `check_profile.py` check, with its negatives (a `terms_pack` of a pack of kind
+`conduct`, of a pack with no kind, after rules that did not run); the `terms_pack` fixture and
+negatives in `positive-typed-seller-represent`; and a Go test that the twins' disclosed records are
+equal once digests, commitments and times are set aside, apart from gap 3's steps.
+evidencebook-deal#244 tests, on its own copies:
+- the twin pair as a standalone seller deal and as a sale's thread (a thread carries its sale's
+  intent unchanged, evidencebook-deal `deal_profile.go:1494-1497`, so its baseline puts it under
+  rule 12 as `CheckChain` and `CounterpartyWithheld` read it), comparing report text and disclosed
+  records;
+- Sherlock's two close conditions: the report says how the deal ended, or "not shared", and a
+  late `evidence` or `rules_verdict` confirming the withheld close still verifies;
+- `terms_pack`: a check under a conduct pin, or a pin with no kind, seals none; the four
+  pack-receipt tests pass unchanged outside rule 12 and give the same line from `terms_pack`
+  inside it.

@@ -19,6 +19,7 @@ Files in this directory:
 | `fixtures/positive-typed/` | One deal sealed in the typed action records beside x-deal-v0 evidence records (section 9). |
 | `fixtures/positive-typed-seller/` | A seller's typed deal that gives a listing platform the public pickup area (`pickup_area`) before any offer. |
 | `fixtures/negative/` | Records that MUST be rejected, each at one named stage. |
+| `fixtures/counterparty-copy-vectors.json` | Section 6 rule 12 "Copies": for twin seller deals that differ only in whether the ordered claim was authorized, and other deals, the records a counterparty copy withholds under that rule and the records it must disclose. |
 | `fixtures/fingerprint-vectors.json` | Test-only local store: a public test secret, the raw values, their normalized forms, fingerprints and commitments. |
 | `fixtures/expected-digests.txt` | The positive digests as a manifest. |
 | `sentence-marks.txt` | The 181 sentence-mark code points the attributed-claim template refuses (section 6). |
@@ -219,7 +220,7 @@ Twenty-five record types. The set is closed: an unknown `record_type` fails the 
 | `counterparty_profile` | The payee of the `check` just before it, fingerprinted under this profile's own key, for the user's own history: one merchant has one value across the profile's deals. Sealed right after its check, before any rules checker runs; never in a shared copy. | `counterparty_profile` in the header: `{fp_alg: "hmac-sha256-profile-key", ids: {payee}}`; an empty body | exactly one `about` → the `check` it follows. No `counterparty` block. |
 | `rules_verdict` | The party's own overall rules word for the deal, under the pack its digest names, so a counterparty copy can say whether that side's own check agreed (evidencebook-deal#191; Steven's ruling, Buzz 8b6aaecf). One word, derived once by the party's own check and never re-run, counted or combined; never a field of a report and never on a History card. | `word` (`met`\|`not_met`\|`unknown`\|`out_of_scope`), `pack_digest` (the pack's definition digest, 64 hex), optional `pack_id` (`publisher/name/semver`, only for a published pack; a private or forked pack carries the digest alone); no `counterparty` block. | At most one per deal, sealed only after the final `close` (the verdict is on the finished deal): a late record like `evidence` (Late records, section 3), with exactly one `confirms` ref → the final `close`, chained `confirms` as a Capsule, so a reconcile admission that reads every later step as confirming that close still holds. |
 | `claim_authority` | Where the user sells, the seller's own verdict on its agent's claim (section 6 rule 12): what authorized it, or that nothing did. Sealed apart from the claim so a copy can carry the claim's words without it (evidencebook#607). | Exactly one of: `authority_basis` + `evaluation_ref`, or `unchecked: true` + `rule` (one of rule 12's: `no_check`, `not_approved`, `denied`, `approval_used`, `differs_from_check`, `changed_after_check`, `authority_changed`, `check_expired`); no other member; no `counterparty` or `channel`. | Exactly one `about` ref → the claim it judges, which is the record right before it; with `authority_basis`, exactly one `authorized_by` ref → the evaluation (DO) or the user's approval (ASK); no other ref. |
-| `terms_pack` | The deal-terms pack a check ran under (a pack of kind `deal` the profile pins for the party's role), named apart from the check's evaluation so a copy that withholds the evaluation still names the terms that bind (evidencebook#613). Never a pack of another kind, or one pinned with no kind: those are the party's private policy. | `pack_digest` (the pack's definition digest, 64 hex); no other member; no `counterparty` or `channel`. | Exactly one `checks` ref → the check the pack ran on, never a `represent` check. It directly follows that check's evaluation (or another `terms_pack` of that check), and `pack_digest` is one of the definition digests the evaluation ran (a verdict's `rules.definition_digest`, of kind `deal` where a kind is sealed; an `action-evaluation/v0`'s `rules_checks`). One per pack: a check that ran two deal packs has two. |
+| `terms_pack` | The deal-terms pack a check ran under (a pack of kind `deal` the profile pins for the party's role), named apart from the check's evaluation so a copy that withholds the evaluation still names the terms that bind (evidencebook#613). Never a pack of another kind, or one pinned with no kind: those are the party's private policy. | `pack_digest` (the pack's definition digest, 64 hex); no other member; no `counterparty` or `channel`. | Exactly one `checks` ref → the check the pack ran on, never a `represent` check. It directly follows that check's evaluation (or another `terms_pack` of that check), and `pack_digest` is one of the definition digests the evaluation ran (a verdict's `rules.definition_digest`, of kind `deal`, never one with no kind; an `action-evaluation/v0`'s `rules_checks`). One per pack: a check that ran two deal packs has two. |
 | `outcome_note` | TEMPORARY (evidencebook#462; evidencebook#461's computed row status supersedes it; this bridge fits today's layout only, which has a final `close`, and #461's target has none). The book owner's own note that the deal did not hold, against the owner: each `reason` is the owner's own failure (`dispute_lost`: it lost a dispute; `settled_against`: a dispute settled against it; `not_delivered`: it did not deliver; `other`: any other way the deal did not hold for the owner). A buyer whose seller failed does not write it, since the History card counts it on the writer's own card. It is the owner's own statement, not checked against any ruling or the other side, and no card or UI wording calls it a ruling. Written only by the owner into its own book, never a counterparty's signature appended to it. evidencebook-deal's share path leaves it out of every shared copy (the holder's own record, no share policy applies; a producer rule with its own test, not a check of this profile). Migration: a deal book that holds an `outcome_note` stays readable under this profile version, which keeps the type read-only forever (old logs are never rewritten); #461's new layout either maps a held note to its did-not-hold line or ignores it, and names which when it lands. | `outcome` (`did_not_hold`), `reason` (`dispute_lost`\|`settled_against`\|`not_delivered`\|`other`); no `counterparty` block. | At most one per deal, sealed only after the final `close`, like a `rules_verdict`: exactly one `confirms` ref → the final `close`. The History deal entry's `outcome` is `did_not_hold` for a deal whose log holds one (section 11). |
 
 ### Action classes
@@ -778,7 +779,9 @@ A verifier holding one deal's records in `seq` order checks:
       authorized (evidencebook#607, evidencebook#613). It withholds these records by kind, across
       the whole deal, whatever each one's result or answer:
       - every `claim_authority`;
-      - every `check` with `action: "represent"`;
+      - every `check` with `action: "represent"`, and every share check (`share_contact`,
+        `share_credentials`), whose `repeat_disclosures` and `recipient_told_before` count only
+        tellings given with authority;
       - every evaluation (`action-evaluation/v0`), since the gate below names
         `required_representation_missing` there;
       - every answer to a check (an `action-approval/v0` of authority `user_approval` or
@@ -792,9 +795,10 @@ A verifier holding one deal's records in `seq` order checks:
       - every agent claim that carries its own verdict (sealed before evidencebook#607), whose
         words it opens nowhere.
 
-      It discloses every `terms_pack` (section 3), from which its report names the seller's terms
-      ("under the seller's terms, pack X") where it would have named them from the withheld
-      evaluation: a `terms_pack` follows every check that ran the pack, whatever the verdict.
+      It discloses every `terms_pack` (section 3), each the acting party's own pack pinned for its
+      role (section 8), from which its report names the seller's terms ("under the seller's terms,
+      pack X") where it would have named them from the withheld evaluation: a `terms_pack` follows
+      every check that ran the pack, whatever the verdict.
 
       Its report names a record it withholds this way by no kind, line, result or count beyond its
       place in the log: no `told` item, no count of unchecked acts. It says how the deal ended from
@@ -808,18 +812,20 @@ A verifier holding one deal's records in `seq` order checks:
       this rule and the records it must disclose.
 
       An adjudicator's copy, by default, withholds every agent claim, every `claim_authority` and
-      the represent trail; with the seller's own choice it carries all of them. Copies made before
+      the represent trail (every `check` with `action: "represent"`, its evaluation, and every
+      answer to it); with the seller's own choice it carries all of them. Copies made before
       this change still carry the verdicts they carried.
 
       **Known limits.**
       - A withheld record keeps its place in the log, which a copy's verification rests on;
         counting the withheld records before a claim can suggest, but never prove, that it had no
-        check.
+        check. A disclosed `terms_pack` marks where a check ran; this limit covers it.
       - An act the gate held (below) that the agent did anyway is sealed unchecked and is not in
         force, so nothing that rests on it follows: no acceptance of that offer is recorded, and no
         commit or share that rests on one. The buyer's copy then lacks those steps, which the buyer
         may know happened, and its end outcome compares the delivery with the terms in force
-        without that offer (`mismatch` where an authorized deal says `completed`). A buyer who knows
+        without that offer (`mismatch` where an authorized deal says `completed`), as does a later
+        check's `material_fields_changed`. A buyer who knows
         the steps happened can tell they were not authorized, never why. Closing this would mean
         withholding every act and outcome, including the offers rule 10 gives the buyer in full.
     - While an ordered class has no authorized claim in this deal (on a sale, in this thread), a
@@ -1186,8 +1192,9 @@ a `represent` check, a pack of any other kind, or one pinned with no kind, which
 private policy. A copy names the pack to a counterparty from the `terms_pack` alone, exactly where
 it names it today (a pack pinned per role, only for that role), so a copy that withholds the
 evaluation (section 6 rule 12, Copies) still names the terms. A typed evaluation seals no kind,
-so the checks here hold the `terms_pack` to the evaluation's definition digests and the producer
-to the kind. A deal sealed before this has none.
+so the checks here hold the `terms_pack` to the evaluation's definition digests and cannot see the
+kind: a `terms_pack` for a pack not of kind `deal` is a producer defect no checker here detects,
+and it would disclose the party's private policy. A deal sealed before this has none.
 
 ## 9. Typed action records and the check contract
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -83,12 +84,14 @@ func orEmpty(v []int) []int {
 }
 
 // The twins differ only in whether the ordered claim was authorized: no
-// record a counterparty copy discloses carries a verdict member or names
-// the gate's finding, and their disclosed records are the same kinds but
-// the steps that rest on the held offer (the offer itself and the buyer's
-// acceptance; gap 3's stated limit).
+// record a counterparty copy discloses carries a verdict member or names the
+// gate's finding, and their disclosed records are the same, kind by kind and
+// body by body once digests, commitments and times are set aside, but for
+// the steps that rest on the held offer (the offer act and the buyer's
+// acceptance) and the end outcome, which compares with the terms in force
+// without it: gap 3's stated limit.
 func TestCounterpartyCopyTwinsCarryNoVerdict(t *testing.T) {
-	kinds := map[string][]string{}
+	disclosed := map[string][]string{}
 	for _, c := range loadCopyVectors(t).Cases {
 		if c.Name != "authorized" && c.Name != "unauthorized" {
 			continue
@@ -107,7 +110,7 @@ func TestCounterpartyCopyTwinsCarryNoVerdict(t *testing.T) {
 			}
 			raw, err := json.Marshal(d)
 			require.NoError(t, err)
-			for _, s := range []string{"required_representation_missing", "unchecked", `"authority":"none"`} {
+			for _, s := range []string{"required_representation_missing", "unchecked", `"authority":"none"`, "recipient_told_before"} {
 				assert.NotContains(t, string(raw), s, "%s: disclosed position %d", c.Name, i)
 			}
 			k := str(block(d)["record_type"])
@@ -119,18 +122,67 @@ func TestCounterpartyCopyTwinsCarryNoVerdict(t *testing.T) {
 			if ty := str(block(d)["typed"]); ty != "" {
 				k = ty
 			}
-			kinds[c.Name] = append(kinds[c.Name], k)
+			switch {
+			case c.Name == "authorized" && (k == TypeActionRecord || k == TypeActionApproval):
+				continue // the held offer and its acceptance (gap 3)
+			case k == TypeActionOutcome:
+				disclosed[c.Name] = append(disclosed[c.Name], k) // its outcome differs (gap 3)
+				continue
+			}
+			nb, err := json.Marshal(normalized(mp(d["body"])))
+			require.NoError(t, err)
+			disclosed[c.Name] = append(disclosed[c.Name], k+" "+string(nb))
 		}
 	}
-	held := map[string]bool{"action-record/v0": true, "action-approval/v0": true}
-	var a, u []string
-	for _, k := range kinds["authorized"] {
-		if !held[k] {
-			a = append(a, k)
+	assert.Equal(t, disclosed["authorized"], disclosed["unauthorized"],
+		"the twins disclose the same records apart from gap 3's")
+}
+
+// normalized drops what differs between any two deals: digests, refs,
+// commitments and times.
+func normalized(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		for k, w := range x {
+			if strings.HasSuffix(k, "_commitment") || strings.HasSuffix(k, "_ref") || strings.HasSuffix(k, "_digest") && k != "pack_digest" || k == "ref" {
+				continue
+			}
+			out[k] = normalized(w)
 		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, w := range x {
+			out[i] = normalized(w)
+		}
+		return out
 	}
-	u = kinds["unauthorized"]
-	assert.Equal(t, a, u, "the twins disclose the same kinds apart from the held offer and its acceptance")
+	return v
+}
+
+// The vectors' negatives: each chain is refused at the chain stage with the
+// stated text (a terms_pack of a pack not of kind deal, or after rules that
+// did not run).
+func TestCounterpartyCopyVectorNegatives(t *testing.T) {
+	var v struct {
+		Negatives []struct {
+			Name     string            `json:"name"`
+			Records  []json.RawMessage `json:"records"`
+			Contains string            `json:"expected_error_contains"`
+		} `json:"negatives"`
+	}
+	readJSON(t, filepath.Join(fixturesDir, "counterparty-copy-vectors.json"), &v)
+	require.NotEmpty(t, v.Negatives)
+	for _, c := range v.Negatives {
+		var records []any
+		for _, r := range c.Records {
+			records = append(records, []byte(r))
+		}
+		err := CheckChain(records)
+		require.Error(t, err, c.Name)
+		assert.Contains(t, err.Error(), c.Contains, c.Name)
+	}
 }
 
 func containsInt(s []int, v int) bool {

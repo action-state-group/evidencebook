@@ -658,8 +658,8 @@ func (c *dealChain) action(typed bool) {
 // termsPack is a terms_pack naming check j (evidencebook#613): it directly
 // follows that check's evaluation, or another terms_pack of that check; it
 // never names a represent check; its pack_digest is a definition digest the
-// evaluation ran its rules under (a verdict's rules, of kind deal when a kind
-// is sealed; an evaluation's rules_checks); and a check has one per pack.
+// evaluation ran its rules under (a verdict's rules of kind deal, never one
+// with no kind; an evaluation's rules_checks); and a check has one per pack.
 func (c *dealChain) termsPack(j int, digest string) {
 	k := c.i - 1
 	for k > j && c.rt(k) == TypeTermsPack && c.byDig[str(mp(sl(block(c.docs[k])["refs"])[0])["digest"])] == j {
@@ -673,7 +673,7 @@ func (c *dealChain) termsPack(j int, digest string) {
 	}
 	ev := c.bodyOf(k)
 	var ran []string
-	if r := mp(ev["rules"]); r != nil && r["status"] == "evaluated" && (!has(r, "kind") || r["kind"] == "deal") {
+	if r := mp(ev["rules"]); r != nil && r["status"] == "evaluated" && r["kind"] == "deal" {
 		ran = append(ran, str(r["definition_digest"]))
 	}
 	for _, rc := range sl(ev["rules_checks"]) {

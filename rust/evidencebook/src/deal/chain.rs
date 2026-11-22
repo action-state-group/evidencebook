@@ -723,8 +723,8 @@ impl Chain {
     /// A terms_pack naming check `j` (evidencebook#613): it directly follows
     /// that check's evaluation, or another terms_pack of that check; it never
     /// names a represent check; its pack_digest is a definition digest the
-    /// evaluation ran its rules under (a verdict's rules, of kind deal when a
-    /// kind is sealed; an evaluation's rules_checks); a check has one per pack.
+    /// evaluation ran its rules under (a verdict's rules of kind deal, never one
+    /// with no kind; an evaluation's rules_checks); a check has one per pack.
     fn terms_pack(&mut self, j: usize, digest: String) -> R<()> {
         let mut k = self.i.wrapping_sub(1);
         while k > j && self.rt(k) == TYPE_TERMS_PACK && self.first_ref_index(k) == j {
@@ -739,9 +739,7 @@ impl Chain {
         let ev = self.body_of(k);
         let mut ran: Vec<&str> = Vec::new();
         let r = g(ev, "rules");
-        if string_is(g(r, "status"), "evaluated")
-            && (!has(r, "kind") || string_is(g(r, "kind"), "deal"))
-        {
+        if string_is(g(r, "status"), "evaluated") && string_is(g(r, "kind"), "deal") {
             ran.push(s(g(r, "definition_digest")));
         }
         for rc in list(g(ev, "rules_checks")) {

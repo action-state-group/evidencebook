@@ -16,7 +16,9 @@ package dealprofile
 // log, the result is empty. Withholding is by kind, uniformly across the
 // deal, never by a record's result or answer:
 //   - every claim_authority;
-//   - every represent check (a proposed-action/v0 with representing);
+//   - every represent check (a proposed-action/v0 with representing), and
+//     every share check (share_contact, share_credentials), whose rule inputs
+//     count only tellings given with authority;
 //   - every evaluation (action-evaluation/v0);
 //   - every answer to a check (an action-approval/v0 whose authority is
 //     user_approval or card_answer), whatever the check or the answer; the
@@ -137,7 +139,11 @@ func counterpartyWithholds(rec obj) bool {
 	case TypeClaimAuthority, TypeVerdict, TypeClose, TypeDisclosure:
 		return true
 	case TypeCheck:
-		return body["action"] == "represent"
+		// A represent check is the represent trail; a share check's rule
+		// inputs (repeat_disclosures, recipient_told_before) count only
+		// tellings given with authority, so they show whether an earlier one was.
+		a := body["action"]
+		return a == "represent" || a == "share_contact" || a == "share_credentials"
 	case TypeAction:
 		return has(body, "disclosed")
 	case TypeOutcome:
