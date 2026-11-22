@@ -620,8 +620,9 @@ func nonceOf(r Record) string {
 // larger scale, draft-mih-agent-settlement-records-01), with amount_minor at
 // the currency's minor units (dealprofile.AssetScale). A payer leg settles
 // its amount; a payee leg settles received plus receive_fee, AAC's amount
-// rule, since received is net of the fee. A member whose amount field is not
-// its leg's is refused.
+// rule, since received is net of the fee (with no receive_fee, received may
+// not exceed the checked amount). A member carrying the other leg's amount
+// field is refused.
 func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) error {
 	if len(member) == 0 || cb == nil || (cb.AmountMinor == nil && cb.Currency == "") {
 		return nil
@@ -636,12 +637,17 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 	}
 	parts := []*legAmount{m.Amount}
 	switch {
-	case leg == LegPayer && m.Amount == nil && m.Received != nil,
-		leg == LegPayee && m.Received == nil && m.Amount != nil:
+	case leg == LegPayer && (m.Received != nil || m.ReceiveFee != nil),
+		leg == LegPayee && m.Amount != nil:
 		return fmt.Errorf("its settlement member carries the other leg's amount field for a %s leg", leg)
 	case leg == LegPayee:
 		parts = []*legAmount{m.Received, m.ReceiveFee}
 	}
+	// A payee leg with no receive_fee settles received plus a fee it does
+	// not state, so only received above the checked amount is shown to
+	// differ. AAC's PaymentCheck reports the leg fee_unstated, and never
+	// reads a missing fee as zero unless it is shown not to apply.
+	feeUnstated := leg == LegPayee && m.ReceiveFee == nil
 	if parts[0] == nil {
 		return nil
 	}
@@ -679,7 +685,7 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 	} else {
 		checked.Mul(checked, pow10(scale-checkScale))
 	}
-	if sum.Cmp(checked) != 0 {
+	if c := sum.Cmp(checked); c > 0 || (c < 0 && !feeUnstated) {
 		return fmt.Errorf("the settled amount differs from the checked %d %s: a new check is needed", *cb.AmountMinor, parts[0].AssetCode)
 	}
 	return nil

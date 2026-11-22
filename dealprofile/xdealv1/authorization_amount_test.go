@@ -59,6 +59,7 @@ func TestCheckActsHoldsTheSettledAmountToTheCheckedOne(t *testing.T) {
 		"not a number":      {`{"amount":{"value":"4.5","assetCode":"USD","assetScale":2}}`, "not a whole number"},
 		"not json":          {`{`, "settlement member"},
 		"the payee's field": {`{"received":{"value":"4500","assetCode":"USD","assetScale":2}}`, "other leg's amount field for a payer leg"},
+		"both fields":       {`{"amount":{"value":"4500","assetCode":"USD","assetScale":2},"received":{"value":"1","assetCode":"USD","assetScale":2}}`, "other leg's amount field for a payer leg"},
 	} {
 		err := checkLeg(t, f, act, c.member)
 		require.Error(t, err, name)
@@ -81,12 +82,16 @@ func TestCheckActsHoldsARefundToItsCancelCheck(t *testing.T) {
 	for name, member := range map[string]string{
 		"received with its fee":     `{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"30","assetCode":"USD","assetScale":2}}`,
 		"fee at another scale":      `{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"300","assetCode":"USD","assetScale":3}}`,
-		"received, no fee recorded": `{"received":{"value":"6000","assetCode":"USD","assetScale":2}}`,
+		"received with a zero fee":  `{"received":{"value":"6000","assetCode":"USD","assetScale":2},"receive_fee":{"value":"0","assetCode":"USD","assetScale":2}}`,
+		"no fee stated, at checked": `{"received":{"value":"6000","assetCode":"USD","assetScale":2}}`,
+		"no fee stated, net of one": `{"received":{"value":"5970","assetCode":"USD","assetScale":2}}`,
 	} {
 		assert.NoError(t, checkLeg(t, f, payee, member), name)
 	}
 	for name, c := range map[string]struct{ member, want string }{
-		"received alone, net of a fee": {`{"received":{"value":"5970","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
+		"no fee stated, above checked": {`{"received":{"value":"6001","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
+		"zero fee, net below checked":  {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"0","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
+		"both fields":                  {`{"received":{"value":"6000","assetCode":"USD","assetScale":2},"amount":{"value":"6000","assetCode":"USD","assetScale":2}}`, "other leg's amount field for a payee leg"},
 		"a sum off by one":             {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"31","assetCode":"USD","assetScale":2}}`, "settled amount differs"},
 		"a fee in another currency":    {`{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"30","assetCode":"EUR","assetScale":2}}`, "settled currency EUR"},
 		"the payer's field":            {`{"amount":{"value":"6000","assetCode":"USD","assetScale":2}}`, "other leg's amount field for a payee leg"},

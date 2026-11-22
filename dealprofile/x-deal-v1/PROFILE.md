@@ -318,7 +318,8 @@ and returns per act the record digests the person signs. A settle's leg travels 
 `xdealv1.CheckActs`, which is the same check given each act's settlement member as well. A caller
 holding the Capsules uses it. Where both the leg and the check carry them, the leg's asset code
 equals the check's `currency`, and its settled amount equals the check's `amount_minor`. A payer leg
-settles its `amount`, and a payee leg settles `received` plus `receive_fee`. Amounts compare as
+settles its `amount`, and a payee leg settles `received` plus `receive_fee`; with no `receive_fee`, its `received` may not exceed
+the checked amount, and AAC's payment check reports the fee unstated. Amounts compare as
 integers at the larger scale, with `amount_minor` read at the currency's minor units. A checked
 amount in a currency with no known minor units is refused. The record digests the person signs:
 
