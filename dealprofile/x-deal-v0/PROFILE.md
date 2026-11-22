@@ -823,6 +823,10 @@ A verifier holding one deal's records in `seq` order checks:
         check's `material_fields_changed`. A buyer who knows
         the steps happened can tell they were not authorized, never why. Closing this would mean
         withholding every act and outcome, including the offers rule 10 gives the buyer in full.
+      - The buyer's "under the seller's terms, pack X" line (evidencebook-deal#145) is not in the
+        copy: a report names the deal-terms pack a check ran under from the check's evaluation,
+        which this rule withholds. The adjudicator copy keeps it. An x-deal-v1 offer names its
+        pack on the offer itself (`propose`'s `pack_digest`).
     - While an ordered class has no authorized claim in this deal (on a sale, in this thread), a
       check of `offer`, `commit`, `sign`, `pay`, `share_contact` or `share_credentials` asks, with
       finding `required_representation_missing` and no `proceed` option. No transaction approval

@@ -10,7 +10,7 @@
   counterparty's acceptance and platform approval observations stay. The copy says how the deal
   ended from the outcome the close refs, or "not shared" when that outcome is an unchecked one. In a rule 12 counterparty copy of a v0 deal, the
   buyer's "under the seller's terms, pack X" line is no longer shown, since the evaluations that
-  name the pack are withheld; the adjudicator copy keeps it.
+  name the pack are withheld; the adjudicator copy keeps it. PROFILE.md states this as a known limit.
   New `CounterpartyWithheld` and `RequiredDisclosed` give, for a deal's records, the positions such
   a copy withholds under rule 12 and the ones it must disclose; `check_profile.py` computes the same
   and generates `x-deal-v0/fixtures/counterparty-copy-vectors.json` (twin deals that differ only
