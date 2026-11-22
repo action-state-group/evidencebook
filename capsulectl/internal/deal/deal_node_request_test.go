@@ -276,3 +276,42 @@ func TestDealNodeRespondDoesNotServeARecordUnderTheDefaultPolicy(t *testing.T) {
 		assert.Equal(t, "refusal", got["outcome"], "requester %q", requester)
 	}
 }
+
+// What respond answers from a node book under the default policy, as its help says it does.
+func TestDealNodeRespondDefaultPolicyBoundary(t *testing.T) {
+	dealFixture(t)
+	_, err := nodeAppend(t, "--book", "goose/node", "--type", "goose_joined", "--statement", writeJSON(t, `{"node":"n1"}`))
+	require.NoError(t, err)
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	cases := []struct {
+		name, request, anyone, authenticated string
+	}{
+		{"checkpoints", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`, "policy_declined", "artifact"},
+		{"checkpoint_range", `{"subject":{"checkpoint_range":[1,1]},"coverage":{"min_freshness":1}}`, "policy_declined", "policy_declined"},
+		{"history_card/1", `{"subject":{"checkpoints":null},"derivation":"history_card/1","coverage":{"min_freshness":1}}`, "artifact", "artifact"},
+		{"history_card/2", `{"subject":{"checkpoints":null},"derivation":"history_card/2","coverage":{"min_freshness":1}}`, "artifact", "artifact"},
+		{"standard_history/1", `{"subject":{"checkpoints":null},"derivation":"standard_history/1","coverage":{"min_freshness":1}}`, "derivation_unsupported", "derivation_unsupported"},
+		{"standard_history/3", `{"subject":{"checkpoints":null},"derivation":"standard_history/3","coverage":{"min_freshness":1}}`, "derivation_unsupported", "derivation_unsupported"},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		_, err := nodeVerb(t, "request", "--request", writeJSON(t, c.request), "--responder", p.TrustedKeys[0], "--output", filepath.Join(dir, "r.json"))
+		require.NoError(t, err, c.name)
+		for _, who := range []struct{ requester, want string }{{"", c.anyone}, {"peer-1", c.authenticated}} {
+			args := []string{"--request", filepath.Join(dir, "r.json"), "--output", filepath.Join(dir, "a-"+who.requester+".json")}
+			if who.requester != "" {
+				args = append(args, "--requester", who.requester)
+			}
+			got, err := nodeVerb(t, "respond", args...)
+			require.NoError(t, err, c.name)
+			want := who.want
+			if want == "artifact" {
+				assert.Equal(t, "artifact", got["outcome"], "%s requester %q", c.name, who.requester)
+			} else {
+				assert.Equal(t, "refusal", got["outcome"], "%s requester %q", c.name, who.requester)
+				assert.Equal(t, want, got["reason"], "%s requester %q", c.name, who.requester)
+			}
+		}
+	}
+}

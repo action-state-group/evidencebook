@@ -190,16 +190,19 @@ func dealNodeRespondCommand() *cobra.Command {
 	cmd.Short = "Answer a request addressed to a node book with a signed reply, and record it"
 	cmd.Long = strings.TrimSpace(cmd.Long + `
 
-On a node book. This is the one verb that can answer a requester from a node's own book, so it says what it can show.
-To anyone, with no --requester: only the public questions (the checkpoints and checkpoint_range subjects and the
-history_card/1 and history_card/2 derivations); everything else gets a signed refusal. A requester you authenticated
-with --requester is also answered the standard_history/1 derivation (counts only, the same for every requester) unless
-the policy turns it off. With the default policy (history_segments "counterparties") a record, exchange or
-correlation subject is served only when every record it names has that requester as its counterparty, and the
-records deal node append and seal-model-call seal name none, so by default they go to no one. With a policy that sets
-history_segments to "peers", any requester you authenticated can ask for any record of the node book by its subject:
-the answer carries the record's Capsule (its digests), not its payload originals, so a sealed prompt does not leave
-with it, and it does carry the record's statement members.
+On a node book. This is the one verb that can answer a requester from a node's own book, so it says what it can show,
+as observed on a node book under the default policy. With no --requester: the history_card/1 and history_card/2
+derivations are answered (the book's checkpoint commitments only); the checkpoints subject, checkpoint_range and every
+other subject get a signed refusal (policy_declined). A requester you authenticated with --requester is also answered
+the checkpoints subject; checkpoint_range is still declined. The standard_history derivations (/1 and /3) are not
+served from a node book at all (derivation_unsupported): a node book counts no deals, and the standard card comes
+from the deal verbs. With the default policy (history_segments "counterparties") a record, exchange or correlation
+subject is served only when every record it names has that requester as its counterparty, and the records deal node
+append and seal-model-call seal name none, so by default they go to no one. With a policy that sets history_segments
+to "peers", any requester you authenticated can ask for any record of the node book by its subject: the answer carries
+the record's Capsule and its statement members, not its payload originals. A sealed prompt's text does not leave with
+a model-call record, but its digest does, and the digest of a short or guessable text does not hide it; a held half's
+statement members name the other party's key id.
 
 Recording: an answer or a refusal to a well-formed request from a requester you authenticated is a signed record of the
 node book. A malformed request, or one with no --requester, is answered without a record, so the book is not an audit
