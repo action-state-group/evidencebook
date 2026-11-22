@@ -68,7 +68,7 @@ func TestAV1ReportRefusals(t *testing.T) {
 	h.buyer.act(t)
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID), "the next cadence tick covers it")
-	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "needs --out FILE and --to", "--bundle": "not served yet",
+	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "needs --out FILE or --bundle FILE, and --to",
 		"--email": "receipt email", "--from-bundle": "countersignatures", "--directory": "countersignatures"} {
 		arg := filepath.Join(t.TempDir(), "x")
 		if flag == "--share" {
@@ -196,7 +196,7 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
 	assert.Len(t, disclosures(), 2, "nothing recorded")
 
-	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--out", filepath.Join(t.TempDir(), "x.json")), "needs --out FILE and --to")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--out", filepath.Join(t.TempDir(), "x.json")), "needs --out FILE or --bundle FILE, and --to")
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--to", "Kettle Shop"), "use it with --share counterparty or adjudicator")
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--read-only", "--share", "counterparty", "--to", "x"), "writes nothing")
 }
@@ -360,8 +360,17 @@ func TestAV1ReportBundleVerifiesAndWritesNothing(t *testing.T) {
 // in any bundle's bytes.
 func TestAV1ReportBundleAudiencesAndMarkers(t *testing.T) {
 	h := agreedBoth(t, oneForum)
+	// The rows rely on a record of each side: the seller's statement, which
+	// the buyer receives, and the buyer's own; a due tick checkpoints them.
+	h.seller.act(t)
+	sellerStmt := filepath.Join(t.TempDir(), "seller-s.json")
+	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", sellerStmt)
 	h.buyer.act(t)
+	dealRun(t, "receive", sellerStmt)
+	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "buyer-s.json"))
 	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	dir := t.TempDir()
 	paths := map[string]string{"keep": filepath.Join(dir, "keep.json"), "counterparty": filepath.Join(dir, "cp.json"), "adjudicator": filepath.Join(dir, "adj.json")}
 	dealRun(t, "report", "--deal", h.dealID, "--bundle", paths["keep"])
@@ -377,6 +386,7 @@ func TestAV1ReportBundleAudiencesAndMarkers(t *testing.T) {
 		}
 		if reliedOn == nil {
 			reliedOn = ids
+			require.GreaterOrEqual(t, len(ids), 2, "the rows rely on records of both sides")
 		}
 		assert.ElementsMatch(t, reliedOn, ids, audience)
 		input := value["extensions"].(map[string]interface{})[dealprofile.ReportExtension].(map[string]interface{})["agent_input"].(map[string]interface{})

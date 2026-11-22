@@ -44,7 +44,7 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	readOnly, _ := f.GetBool("read-only")
 	switch {
 	case f.Changed("html"):
-		return cli.InputError("--html renders an x-deal-v0 deal's page; an x-deal-v1 report has no page yet: deal report prints it, and --out seals it to a file")
+		return cli.InputError("--html renders an x-deal-v0 deal's page; an x-deal-v1 report has no page yet: deal report prints it, --out seals it to a file, and --bundle writes it with your deal book")
 	case f.Changed("email"):
 		return cli.InputError("--email writes an x-deal-v0 deal's receipt email; it does not apply to an x-deal-v1 report")
 	case f.Changed("from-bundle") || f.Changed("directory"):

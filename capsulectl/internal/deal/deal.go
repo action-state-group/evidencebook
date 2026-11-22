@@ -3034,7 +3034,7 @@ func dealReportCommand() *cobra.Command {
 	cmd.Flags().String("deal", "", "Deal ID from `deal open`")
 	cmd.Flags().String("html", "", "Write the report as one local, self-contained page to this new file")
 	cmd.Flags().String("email", "", "Write the receipt as a ready-to-send email (.eml, no sender or recipient) to this new file, for the agent host's own email tool to send")
-	cmd.Flags().String("bundle", "", "Write the deal's Evidence Bundle (for `capsulectl verify --bundle`) to this new file")
+	cmd.Flags().String("bundle", "", "Write the deal's Evidence Bundle (for `capsulectl verify --bundle`) to this new file. On an x-deal-v1 deal: your deal book at the report's checkpoint, with the sealed report beside it; with --share counterparty or adjudicator, a disclose act, put on record before the file is written")
 	cmd.Flags().String("share", cli.DealAudienceKeep, "Who the page is for: keep (your own copy, nothing withheld), counterparty or adjudicator (a shared copy, put on record first)")
 	cmd.Flags().String("to", "", "With --share: who the shared copy is for, as sealed in the disclosure record. On an x-deal-v1 adjudicator's copy it is a label for who it is for; the copy is recorded for the adjudicator key the agreement names")
 	addIncludeAgentClaimsFlag(cmd.Flags())
@@ -3050,6 +3050,12 @@ func dealExportCommand() *cobra.Command {
 		path, _ := c.Flags().GetString("output")
 		if path == "" {
 			return cli.InputError("--output is required: the file to write the result to")
+		}
+		if v1, err := v1DealOfFlag(c); err != nil {
+			return err
+		} else if v1 {
+			dealID, _ := c.Flags().GetString("deal")
+			return cli.InputError("deal " + dealID + " is an x-deal-v1 deal: its verifiable export is the deal book's Evidence Bundle, `deal report --deal " + dealID + " --bundle FILE`")
 		}
 		return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
 			records := make([]json.RawMessage, 0, len(events))
