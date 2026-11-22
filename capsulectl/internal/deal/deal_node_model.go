@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,13 +29,19 @@ import (
 func dealNodeSealModelCallCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "seal-model-call",
-		Short: "Seal one model call as an effect-boundary record of a node book: the prompt kept, the completion by digest only (signs)",
-		Long: `Seal one model call an agent made, as a record of the node book --book names, under --type. The
-record is a Capsule signed in this process under the profile's key: its effect is an inference
-completion, attested only as claimed by the runtime (runtime_claimed), and its model_attestation names
---provider and --model-id. --prompt and --completion are JSON value files. The prompt stays in this node's
-store as the record's payload and is committed by digest; the completion is committed by digest and never
-stored. --out writes the Capsule as a verifier reads it (with its signature and key_id) to a new file.`,
+		Short: "Seal a model call the agent reports as a record of a node book: the prompt kept in full, the completion by digest only (signs)",
+		Long: `Seal a model call the agent reports, as a record of the node book --book names, under --type. The record
+is a Capsule signed in this process under the profile's key. Everything it says about the call is this node's
+own statement: its effect is an inference completion that the runtime claims (effect_attestation
+runtime_claimed), its status confirmed means only that the runtime reports the call finished, and its
+model_attestation names --provider and --model-id as this node states them; nothing checks that they answered.
+--prompt and --completion are JSON value files (not null).
+
+The prompt is kept in full as the record's payload, in this node's store, and goes with the record to anyone you
+share or export it to: do not seal a prompt you would not show them. The completion is not stored; only its
+digest is, and the digest hides a long completion, not a short or guessable one. --out writes the Capsule, with
+its signature and key_id as a verifier reads it, to a new file: that file carries the digests, not the prompt or
+the completion. --developer names who built the agent and is required.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
 			p, err := cli.Selected(c)
@@ -63,6 +70,9 @@ stored. --out writes the Capsule as a verifier reads it (with its signature and 
 				return err
 			}
 			developer, _ := c.Flags().GetString("developer")
+			if developer == "" {
+				return cli.InputError("--developer is required: who built the agent whose call this is")
+			}
 			out, _ := c.Flags().GetString("out")
 			var dest *newFile
 			if out != "" {
@@ -132,7 +142,7 @@ stored. --out writes the Capsule as a verifier reads it (with its signature and 
 			result := map[string]any{"record": nodeRecordOf(record), "capsule_id": sealed.CapsuleID}
 			if dest != nil {
 				if err := dest.commit(capsule); err != nil {
-					return errors.Join(errors.New("the model call is sealed (record "+record.RecordID+"), but its capsule file was not saved"), err)
+					return fmt.Errorf("the model call is sealed (record %s), but its capsule file was not saved: %w; the capsule, to keep: %s", record.RecordID, err, capsule)
 				}
 				result["file"] = out
 			} else {
@@ -147,7 +157,7 @@ stored. --out writes the Capsule as a verifier reads it (with its signature and 
 	cmd.Flags().String("model-id", "", "The model's id (required)")
 	cmd.Flags().String("prompt", "", "The prompt: a JSON value file, or - for standard input (required)")
 	cmd.Flags().String("completion", "", "The completion: a JSON value file (required); committed by digest only, never stored")
-	cmd.Flags().String("developer", "capsulectl-deal", "The developer name the Capsule carries")
+	cmd.Flags().String("developer", "", "Who built the agent whose call this is; the Capsule carries it (required)")
 	cmd.Flags().String("out", "", "Write the Capsule, with its signature and key_id, to this new file (default: in the result)")
 	return cmd
 }
@@ -165,6 +175,9 @@ func readJSONValue(c *cobra.Command, flag string) (any, error) {
 	var v any
 	if err := decodeKeepingNumbers(raw, &v); err != nil {
 		return nil, cli.InputError("--" + flag + " is not JSON: " + err.Error())
+	}
+	if v == nil {
+		return nil, cli.InputError("--" + flag + " is null: a model call's prompt and completion are JSON values other than null, so each digest is of something")
 	}
 	return v, nil
 }
@@ -213,7 +226,7 @@ func (f *newFile) commit(data []byte) error {
 	if _, err := f.tmp.Write(data); err != nil {
 		return err
 	}
-	if err := f.tmp.Close(); err != nil {
+	if err := errors.Join(f.tmp.Sync(), f.tmp.Close()); err != nil {
 		return err
 	}
 	return os.Link(f.tmp.Name(), f.path)

@@ -16,7 +16,7 @@ import (
 
 func sealModelCall(t *testing.T, extra ...string) (map[string]any, error) {
 	t.Helper()
-	args := append([]string{"--book", "goose/node", "--type", "goose_model_call", "--provider", "acme", "--model-id", "m-1",
+	args := append([]string{"--book", "goose/node", "--type", "goose_model_call", "--provider", "acme", "--model-id", "m-1", "--developer", "test-dev",
 		"--prompt", writeJSON(t, `{"messages":[{"role":"user","content":"hi"}]}`), "--completion", writeJSON(t, `{"text":"hello"}`)}, extra...)
 	out, err := invoke(t, "", append([]string{"--profile", "deal", "deal", "node", "seal-model-call"}, args...)...)
 	if err != nil {
@@ -100,6 +100,8 @@ func TestDealNodeSealModelCallKeepsThePromptAndNotTheCompletion(t *testing.T) {
 	record := got["record"].(map[string]any)
 	assert.NotEmpty(t, record["record_id"])
 	assert.NotContains(t, string(capsule), "hello", "the completion is not in the Capsule")
+	assert.NotContains(t, string(capsule), "\"hi\"", "nor is the prompt: the Capsule carries digests only")
+	assert.Contains(t, string(capsule), "test-dev", "the developer the caller named")
 
 	p, err := cli.LoadProfile("deal")
 	require.NoError(t, err)
@@ -120,12 +122,18 @@ func TestDealNodeSealModelCallRefusals(t *testing.T) {
 	dealFixture(t)
 	existing := writeJSON(t, `keep`)
 	for name, extra := range map[string][]string{
-		"an existing --out":         {"--out", existing},
-		"a library type":            {"--type", "index_root"},
-		"no provider":               {"--provider", ""},
-		"no model id":               {"--model-id", ""},
-		"a prompt that is not JSON": {"--prompt", writeJSON(t, `nope`)},
-		"a deal's book":             {"--book", "deal/deal-0000000000000000"},
+		"an existing --out":             {"--out", existing},
+		"a library type":                {"--type", "index_root"},
+		"no provider":                   {"--provider", ""},
+		"no model id":                   {"--model-id", ""},
+		"a prompt that is not JSON":     {"--prompt", writeJSON(t, `nope`)},
+		"a deal's book":                 {"--book", "deal/deal-0000000000000000"},
+		"no developer":                  {"--developer", ""},
+		"a null prompt":                 {"--prompt", writeJSON(t, `null`)},
+		"a null completion":             {"--completion", writeJSON(t, `null`)},
+		"trailing data in a prompt":     {"--prompt", writeJSON(t, `{"a":1} garbage`)},
+		"two values in a completion":    {"--completion", writeJSON(t, `{"a":1}`+"\n"+`{"b":2}`)},
+		"a completion that is not JSON": {"--completion", writeJSON(t, `nope`)},
 	} {
 		_, err := sealModelCall(t, extra...)
 		require.Error(t, err, name)

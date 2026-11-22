@@ -295,7 +295,14 @@ func normalizeNumbers(v any) any {
 func decodeKeepingNumbers(raw json.RawMessage, v *any) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
-	return dec.Decode(v)
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	// One value and nothing after it: a second value or junk is not a JSON file.
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("trailing data after the JSON value")
+	}
+	return nil
 }
 
 func contains(list []string, want string) bool {
