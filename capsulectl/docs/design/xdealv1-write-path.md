@@ -394,6 +394,10 @@ rebuilt from commitments. A crash between the two writes is repaired as `deal ad
 the plain event is stored first with its record's payload, and the next run seals that payload when
 the journal lacks it.
 
+   **The local list never leaves this store.** It holds the person's verbatim words and bounds in
+   plain text, which v1's commitments exist to keep out of shared records. No export, bundle,
+   share or disclosure carries it; only the journal's records, with their commitments, go out.
+
 1. **The opening.** The first `deal note --kind intent` on a v1 deal writes the synthetic `open`
    event. Its input is v0's intent note input plus `type`, and optionally `channel`:
    - `type` and `channel` come from the input;
@@ -538,4 +542,7 @@ the journal lacks it.
   It still accepts when another deal's intent or detail change sits in the same journal, since
   `v1DealJournal` leaves it out. It refuses an approval reused across two commands, and a
   wrong-deal check.
+- **The local list stays local.** A v1 deal's export, bundle and shared copy carry no content of
+  `deal_v1_events` (the verbatim words, bounds and plain counterparty values), so no later share
+  path can leak it (Sherlock2, on #699).
 - **Old deals.** The v0 suite is unchanged, with v1 and v0 deals in one store.
