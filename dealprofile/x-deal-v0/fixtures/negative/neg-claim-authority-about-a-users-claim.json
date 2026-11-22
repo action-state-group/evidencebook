@@ -31,11 +31,11 @@
       "deal_id": "deal-7e41b9c02d5a8f36",
       "record_type": "claim_authority",
       "seq": 19,
-      "at": "2026-10-08T09:42:00Z",
+      "at": "2026-10-08T09:40:00Z",
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "474a3d95375b1ddcd0239d7deef9c2e8e02fc0ff98a71218fcf7e45d5bec016c"
+        "digest": "c701e3b478b303c5647a5482b1a09bd9676ca8343e80e1dd36038770b7d6869d"
       },
       "baseline_ref": {
         "type": "deal-record",
@@ -47,7 +47,7 @@
           "rel": "about",
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "474a3d95375b1ddcd0239d7deef9c2e8e02fc0ff98a71218fcf7e45d5bec016c"
+          "digest": "c701e3b478b303c5647a5482b1a09bd9676ca8343e80e1dd36038770b7d6869d"
         }
       ]
     },
@@ -64,7 +64,7 @@
         "deal_id": "deal-7e41b9c02d5a8f36",
         "record_type": "claim",
         "seq": 18,
-        "at": "2026-10-08T09:42:00Z",
+        "at": "2026-10-08T09:40:00Z",
         "prev": {
           "type": "deal-record",
           "digest_alg": "SHA-256",

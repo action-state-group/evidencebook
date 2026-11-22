@@ -157,7 +157,7 @@ def test_positive_fixtures(chain, path):
 
 
 def test_positive_corpus_size():
-    assert len(POSITIVE) == 88
+    assert len(POSITIVE) == 87
 
 
 # Schema-stage negatives whose expected text is the reference validator's own

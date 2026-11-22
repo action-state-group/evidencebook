@@ -298,7 +298,6 @@ fn allowed_rels(t: &str) -> &'static [&'static str] {
         "counterparty_profile" => &["about"],
         "rules_verdict" | "outcome_note" => &["confirms"],
         "claim_authority" => &["about", "authorized_by"],
-        "terms_pack" => &["checks"],
         _ => &[],
     }
 }
@@ -693,9 +692,6 @@ struct Chain {
     profile_for_check: HashSet<usize>,
     rules_verdict: bool,
     outcome_note: bool,
-    // The pack digests each check's terms_pack records name, by the check's
-    // index (evidencebook#613).
-    terms_packs: HashMap<usize, Vec<String>>,
     reversed: HashSet<usize>,
     first_answer: HashMap<usize, usize>,
     last_outcome: Option<usize>,
@@ -718,45 +714,6 @@ impl Chain {
 
     fn body_of(&self, k: usize) -> &Value {
         g(&self.docs[k], "body")
-    }
-
-    /// A terms_pack naming check `j` (evidencebook#613): it directly follows
-    /// that check's evaluation, or another terms_pack of that check; it never
-    /// names a represent check; its pack_digest is a definition digest the
-    /// evaluation ran its rules under (a verdict's rules of kind deal, never one
-    /// with no kind; an evaluation's rules_checks); a check has one per pack.
-    fn terms_pack(&mut self, j: usize, digest: String) -> R<()> {
-        let mut k = self.i.wrapping_sub(1);
-        while k > j && self.rt(k) == TYPE_TERMS_PACK && self.first_ref_index(k) == j {
-            k -= 1;
-        }
-        if k <= j || k == usize::MAX || self.rt(k) != TYPE_VERDICT || self.first_ref_index(k) != j {
-            bail!(self, "a terms_pack directly follows the evaluation of the check it names, or another terms_pack of that check");
-        }
-        if string_is(g(self.body_of(j), "action"), "represent") {
-            bail!(self, "a terms_pack names no represent check");
-        }
-        let ev = self.body_of(k);
-        let mut ran: Vec<&str> = Vec::new();
-        let r = g(ev, "rules");
-        if string_is(g(r, "status"), "evaluated") && string_is(g(r, "kind"), "deal") {
-            ran.push(s(g(r, "definition_digest")));
-        }
-        for rc in list(g(ev, "rules_checks")) {
-            ran.push(s(g(rc, "definition_digest")));
-        }
-        if !ran.contains(&digest.as_str()) {
-            bail!(
-                self,
-                "pack_digest is not a definition digest of a deal pack the check's evaluation ran"
-            );
-        }
-        let seen = self.terms_packs.entry(j).or_default();
-        if seen.contains(&digest) {
-            bail!(self, "a check has one terms_pack per pack");
-        }
-        seen.push(digest);
-        Ok(())
     }
 
     fn first_ref_index(&self, k: usize) -> usize {
@@ -1164,7 +1121,6 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
         profile_for_check: HashSet::new(),
         rules_verdict: false,
         outcome_note: false,
-        terms_packs: HashMap::new(),
         reversed: HashSet::new(),
         first_answer: HashMap::new(),
         last_outcome: None,
@@ -1756,10 +1712,6 @@ impl Chain {
             let claim = self.body_of(j).clone();
             let at = s(g(block(&self.docs[j]), "at")).to_string();
             self.represented(body, &claim, Some(&at))?;
-        } else if t == TYPE_TERMS_PACK {
-            let j = self.one("checks", &[TYPE_CHECK], true)?.unwrap_or_default();
-            let digest = s(g(body, "pack_digest")).to_string();
-            self.terms_pack(j, digest)?;
         } else if t == TYPE_DETAIL_CHANGE {
             self.one("source", &[TYPE_MESSAGE, TYPE_EVIDENCE], false)?;
             let kinds: BTreeSet<&str> = g(g(b, "counterparty"), "ids")

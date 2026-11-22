@@ -145,7 +145,7 @@ func normalized(v any) any {
 	case map[string]any:
 		out := map[string]any{}
 		for k, w := range x {
-			if strings.HasSuffix(k, "_commitment") || strings.HasSuffix(k, "_ref") || strings.HasSuffix(k, "_digest") && k != "pack_digest" || k == "ref" {
+			if strings.HasSuffix(k, "_commitment") || strings.HasSuffix(k, "_ref") || strings.HasSuffix(k, "_digest") || k == "ref" {
 				continue
 			}
 			out[k] = normalized(w)
@@ -159,30 +159,6 @@ func normalized(v any) any {
 		return out
 	}
 	return v
-}
-
-// The vectors' negatives: each chain is refused at the chain stage with the
-// stated text (a terms_pack of a pack not of kind deal, or after rules that
-// did not run).
-func TestCounterpartyCopyVectorNegatives(t *testing.T) {
-	var v struct {
-		Negatives []struct {
-			Name     string            `json:"name"`
-			Records  []json.RawMessage `json:"records"`
-			Contains string            `json:"expected_error_contains"`
-		} `json:"negatives"`
-	}
-	readJSON(t, filepath.Join(fixturesDir, "counterparty-copy-vectors.json"), &v)
-	require.NotEmpty(t, v.Negatives)
-	for _, c := range v.Negatives {
-		var records []any
-		for _, r := range c.Records {
-			records = append(records, []byte(r))
-		}
-		err := CheckChain(records)
-		require.Error(t, err, c.Name)
-		assert.Contains(t, err.Error(), c.Contains, c.Name)
-	}
 }
 
 func containsInt(s []int, v int) bool {

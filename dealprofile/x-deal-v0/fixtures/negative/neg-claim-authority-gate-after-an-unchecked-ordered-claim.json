@@ -14,11 +14,11 @@
     "canonicalization": "jcs",
     "chain_id": "deal-7e41b9c02d5a8f36",
     "seq": 7,
-    "at": "2026-10-08T09:40:00Z",
+    "at": "2026-10-08T09:38:00Z",
     "prev": {
       "type": "record",
       "digest_alg": "SHA-256",
-      "digest": "8556546927be52089f734e7436cd6b1308ccf601e26e99808fc2ebda6b89b86d"
+      "digest": "8dbe2746bd210910cde98ec56625c65a21382a0b137d407b1105306167269f5a"
     },
     "chain_root": {
       "type": "record",
@@ -30,7 +30,7 @@
         "rel": "authorized_by",
         "type": "record",
         "digest_alg": "SHA-256",
-        "digest": "8556546927be52089f734e7436cd6b1308ccf601e26e99808fc2ebda6b89b86d"
+        "digest": "8dbe2746bd210910cde98ec56625c65a21382a0b137d407b1105306167269f5a"
       }
     ],
     "body": {
@@ -53,7 +53,7 @@
       "evaluation_ref": {
         "type": "record",
         "digest_alg": "SHA-256",
-        "digest": "8556546927be52089f734e7436cd6b1308ccf601e26e99808fc2ebda6b89b86d"
+        "digest": "8dbe2746bd210910cde98ec56625c65a21382a0b137d407b1105306167269f5a"
       },
       "authority_basis": [
         {
@@ -201,13 +201,6 @@
               "digest_alg": "SHA-256",
               "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
             }
-          }
-        ],
-        "rules_checks": [
-          {
-            "ruleset_id": "example/bicycle-seller",
-            "definition_digest": "a81f3c9d2e105c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
-            "verdict": "allow"
           }
         ]
       }

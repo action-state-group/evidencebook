@@ -770,16 +770,6 @@ pub struct RulesVerdictBody {
     pub pack_id: Option<String>,
 }
 
-/// TermsPackBody is `body_terms_pack` in the schema: the deal-terms pack
-/// (kind deal, pinned for the party's role) a check ran under, sealed right
-/// after that check's evaluation with one `checks` ref to the check, so a copy
-/// that withholds the evaluation still names the terms (evidencebook#613).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TermsPackBody {
-    pub pack_digest: String,
-}
-
 /// ClaimAuthorityBody is `body_claim_authority` in the schema: the seller's
 /// verdict on its agent's representation, sealed right after the claim it
 /// judges so a copy can withhold it apart from the claim's words

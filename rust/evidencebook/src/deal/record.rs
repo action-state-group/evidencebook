@@ -41,7 +41,6 @@ pub enum Body {
     RulesVerdict(RulesVerdictBody),
     OutcomeNote(OutcomeNoteBody),
     ClaimAuthority(ClaimAuthorityBody),
-    TermsPack(TermsPackBody),
 }
 
 impl Body {
@@ -72,7 +71,6 @@ impl Body {
             Body::RulesVerdict(_) => TYPE_RULES_VERDICT,
             Body::OutcomeNote(_) => TYPE_OUTCOME_NOTE,
             Body::ClaimAuthority(_) => TYPE_CLAIM_AUTHORITY,
-            Body::TermsPack(_) => TYPE_TERMS_PACK,
         }
     }
 
@@ -102,7 +100,6 @@ impl Body {
             TYPE_RULES_VERDICT => Body::RulesVerdict(serde_json::from_value(body)?),
             TYPE_OUTCOME_NOTE => Body::OutcomeNote(serde_json::from_value(body)?),
             TYPE_CLAIM_AUTHORITY => Body::ClaimAuthority(serde_json::from_value(body)?),
-            TYPE_TERMS_PACK => Body::TermsPack(serde_json::from_value(body)?),
             other => {
                 return Err(<serde_json::Error as serde::de::Error>::custom(format!(
                     "record type {other:?} has no body type"
@@ -139,7 +136,6 @@ impl Serialize for Body {
             Body::RulesVerdict(b) => b.serialize(s),
             Body::OutcomeNote(b) => b.serialize(s),
             Body::ClaimAuthority(b) => b.serialize(s),
-            Body::TermsPack(b) => b.serialize(s),
         }
     }
 }

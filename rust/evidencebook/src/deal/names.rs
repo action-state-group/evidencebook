@@ -47,9 +47,6 @@ pub const TYPE_OUTCOME_NOTE: &str = "outcome_note";
 /// The seller's verdict on its agent's representation, sealed apart from the
 /// claim (evidencebook#607).
 pub const TYPE_CLAIM_AUTHORITY: &str = "claim_authority";
-/// The deal-terms pack a check ran under, named apart from the check's
-/// evaluation (evidencebook#613).
-pub const TYPE_TERMS_PACK: &str = "terms_pack";
 
 /// The x-deal-v0 record types, in the schema's order.
 pub fn record_types() -> &'static [&'static str] {
@@ -78,7 +75,6 @@ pub fn record_types() -> &'static [&'static str] {
         TYPE_RULES_VERDICT,
         TYPE_OUTCOME_NOTE,
         TYPE_CLAIM_AUTHORITY,
-        TYPE_TERMS_PACK,
     ]
 }
 

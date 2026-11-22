@@ -487,14 +487,6 @@ type ClaimAuthorityBody struct {
 	Rule           string           `json:"rule,omitzero"`
 }
 
-// TermsPackBody is body_terms_pack in the schema: the deal-terms pack (kind
-// deal, pinned for the party's role) a check ran under, sealed right after
-// that check's evaluation with one checks ref to the check, so a copy that
-// withholds the evaluation still names the terms (evidencebook#613).
-type TermsPackBody struct {
-	PackDigest string `json:"pack_digest"`
-}
-
 // OutcomeNoteBody is body_outcome_note in the schema. TEMPORARY
 // (evidencebook#462; evidencebook#461's computed row status supersedes it):
 // the book owner's own note, sealed after the final close, that an outcome

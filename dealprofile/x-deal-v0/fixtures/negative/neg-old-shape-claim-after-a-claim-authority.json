@@ -31,7 +31,7 @@
       "deal_id": "deal-7e41b9c02d5a8f36",
       "record_type": "claim",
       "seq": 18,
-      "at": "2026-10-08T09:42:00Z",
+      "at": "2026-10-08T09:40:00Z",
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",

@@ -83,7 +83,6 @@ c7f213f1f5d3ecb4ed3eb43d128df644f2efe5f2e7f9589fa36f529cb2bce96c  positive-typed
 38148aae988b3ee44b3f4063fc2bf938d087182abbd9a00d06a77a0fd4cf1ecf  positive-typed-seller-represent/16-claim-refund-terms.json
 f6a9d088d3ef9a6c9991aed9bc7d30b20204a67259f5017e547aad2159614156  positive-typed-seller-represent/17-claim-authority-refund-terms.json
 e98b71ebb84c041b764074d7a8571468e8b5bb7b493be4fbf6a245c90f873c00  positive-typed-seller-represent/18-proposed-action-share-pickup-area.json
-0385098ccb20127f14403ecf6efff337f10284949b0de2491be27283cfea8082  positive-typed-seller-represent/19-action-evaluation.json
-94bf7527a08f87492a39531c74900faf9d735e52925c8ee12bf134e3f737a492  positive-typed-seller-represent/20-terms-pack-share-pickup-area.json
-330b47ac3add519d226947e1d4cb97b6b567aa121afd0c2db15194df1d789e8d  positive-typed-seller-represent/21-action-record-share-pickup-area.json
-7d18302487cace1ab0819864aeda28d4eaa07ebc57bb51566850198777e85e85  positive-typed-seller-represent/22-claim-pickup.json
+301408f0a4f705c79eca47a283fcf345c06b7801312650cdb15435b2a32f1f4c  positive-typed-seller-represent/19-action-evaluation.json
+b194854ffdd5e9642e85f3d5770b18420bee4a027250f777db62dce7b135d62c  positive-typed-seller-represent/20-action-record-share-pickup-area.json
+a5b9fbe449c83aee51ef4d89bf4eee5717cf182b032c624de5af17fd42830f5a  positive-typed-seller-represent/21-claim-pickup.json

@@ -156,16 +156,10 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
       withheld close still verifies (its ref is a digest). The counterparty's section 10 admission
       of this party's half then has no payload to read, so it no longer sees that the half is a
       final close; the half's opening still verifies;
-    - and discloses every `terms_pack`, the x-deal-v0 record evidencebook#613 adds: the deal-terms
-      pack a check ran under, sealed right after its evaluation with one `checks` ref and only
-      `pack_digest`, so the buyer's "under the seller's terms, pack X" line (evidencebook-deal#145)
-      survives the withheld evaluation. Sherlock chose to keep the line this way and confirmed the
-      shape on four conditions: deal kind only (a producer rule no checker here can see, since a
-      typed evaluation seals no kind; evidencebook-deal#244 tests that a conduct pack seals no
-      `terms_pack`), the same per-role audience as today, one per pack, and the digest checked
-      against the evaluation
-      (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=beacc21982dc9dfd848ed3cb86ff83a5c9b4a5c3ee399800ffd09a62dab8cc41&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260,
-      buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=d4fc9af52bc6ceb792637abb3075cebf12b8b49bab55982aba034c30cd545863&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260);
+    - and names no deal-terms pack from a withheld evaluation, so the buyer's "under the seller's
+      terms, pack X" line (evidencebook-deal#145) is not in such a copy. A record naming the pack
+      apart from the evaluation was built and dropped: x-deal-v0 gains no record type for it, and
+      new deals move to x-deal-v1 (Ethan's decision, 2026-11-22);
   - says nothing derived from a record this section withholds: its report (`steps`, `did`,
     `told`, `anomalies` and every other section) names such a record by no kind, line, result or
     count of its own beyond its place in the log (as a shared copy already treats the
@@ -301,9 +295,7 @@ evidencebook-deal side tests the copies (#244).
 
 **evidencebook#613 adds:** `counterparty-copy-vectors.json`, whose sets Go
 (`CounterpartyWithheld`, `RequiredDisclosed`) and `check_profile.py` compute and whose chains Go,
-Rust and `check_profile.py` check, with its negatives (a `terms_pack` of a pack of kind
-`conduct`, of a pack with no kind, after rules that did not run); the `terms_pack` fixture and
-negatives in `positive-typed-seller-represent`; and a Go test that the twins' disclosed records are
+Rust and `check_profile.py` check; and a Go test that the twins' disclosed records are
 equal once digests, commitments and times are set aside, apart from gap 3's steps.
 evidencebook-deal#244 tests, on its own copies:
 - the twin pair as a standalone seller deal and as a sale's thread (a thread carries its sale's
@@ -312,6 +304,4 @@ evidencebook-deal#244 tests, on its own copies:
   records;
 - Sherlock's two close conditions: the report says how the deal ended, or "not shared", and a
   late `evidence` or `rules_verdict` confirming the withheld close still verifies;
-- `terms_pack`: a check under a conduct pin, or a pin with no kind, seals none; the four
-  pack-receipt tests pass unchanged outside rule 12 and give the same line from `terms_pack`
-  inside it.
+- the four pack-receipt tests pass unchanged outside rule 12.
