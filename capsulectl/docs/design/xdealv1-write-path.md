@@ -553,104 +553,154 @@ the journal lacks it.
 ## 13. Slice 4, proposed: `deal perform`, `deal settle` and `deal statement` on a v1 deal (evidencebook#626, B2)
 
 **Status: proposed, for review before code.** The plan and its review are on #626
-(issuecomment-7079075997, answers in issuecomment-7079130863). Sherlock2 settled two questions,
-both engineering's and neither Steven's: the x402 reference (buzz dfc1040d) and the payer leg's
-status (buzz 182c81b6, which took the twin's design). The library holds a settled amount to the
-checked one (`xdealv1.CheckActs`, evidencebook#711). This slice builds on §11's writer and gate
+(issuecomment-7079075997, answers in issuecomment-7079130863). Sherlock2 settled the x402
+reference: the leg is joined to its check by digest (buzz dfc1040d). Sherlock2 settled the payer
+leg's timing after review round 1 (item 5). The library holds a settled amount to
+the checked one (`xdealv1.CheckActs`, evidencebook#711). This slice builds on §11's writer and gate
 and on §12's local event list.
 
 1. **One path for every act.** `deal perform` and `deal settle` build the record body and the
    settlement member. Then, inside `sealBookV1`'s `Validate`, which runs on the finished record and
    again after an `ErrBusy` rebuild, they run:
    - the first-act gate (`gateFirstAct`), on every first act whatever the flags, refusing unless
-     `Allowed`, and printing `Unguarded` when the counterparty has no layer (u611);
+     `Allowed`, and printing `Unguarded` when the counterparty has no layer (u611). Its
+     `commitmentShelfLog` is the shelf log the counterparty's agreement names (`ShelfLogID`) when
+     the holder holds that log's records. Empty otherwise, which `CanAct` reads as "not held";
    - `xdealv1.CheckActs` over `v1DealJournal` and the deal's earlier acts with their members, so
      the act's final `at` is the one checked, and a used approval and a changed amount are refused;
    - `settlement.StructureFailures` on the member, refusing any failure.
 
    The deal's local list is loaded through `v1Events` first, so an approval a crash left pending is
    sealed before the library reads the journal.
-2. **The check follows the act.** A `perform` rests on a `commit` check, a payer leg on a `pay`
-   check, and a leg with `--reverses` on a `cancel` check. Only `pay` carries `payment_ref`. A payee
-   leg cites no check. A refund or a payment remedy has no terms leg of its own (PROFILE §7,
-   `ReasonRefundCitesOffer`). It is sealed and shown, and the help says the payment row's check is
-   not run for it, rather than calling it verified.
+2. **The check follows the act.**
+   - A `perform` rests on a `commit` check, a payment's payer leg on a `pay` check, and a refund's
+     payer leg on a `cancel` check. Only `pay` carries `payment_ref`.
+   - A payee leg cites no check, so `CheckActs` does not reach it (it skips an act with no check),
+     and the writer holds it to its own rules (item 3).
+   - A refund or a payment remedy has no terms leg of its own (PROFILE §7,
+     `ReasonRefundCitesOffer`). It is sealed and shown, and the help says the payment row's check is
+     not run for it, rather than calling it verified.
 3. **The settlement member, from the deal, not from flags.**
-   - The leg is payer when the holder's party owes the payment row (the deal's `deal_v1.role` and
-     the row's `owed_by`), payee otherwise. A `--leg` that disagrees is refused.
-   - `terms_ref` is always the offer's sent Capsule id (`deal_v1_offers.pair` for the acceptor,
+   - **The row.** `--row` names the payment row. It may be left out when the offer has one payment
+     row.
+   - **The leg.**
+     - Without `--reverses`, the leg is payer when the holder's party owes the row (the deal's
+       `deal_v1.role` and the row's `owed_by`), and payee otherwise.
+     - With `--reverses`, it is the mirror of the leg it reverses. The seller refunding a payment it
+       received is the payer (`fixtures/settled/seller-book/05-refund.json`). The buyer's refund
+       received is the payee (`fixtures/settled/buyer-book/06-refund-received.json`).
+     - `--reverses` must name a settle record of this deal, from either book.
+     - A `--leg` that disagrees with this is refused.
+   - **`terms_ref`** is always the offer's sent Capsule id (`deal_v1_offers.pair` for the acceptor,
      `deal_sent` for the offerer).
-   - A payer leg carries `amount`, from the checked `amount_minor` at
+   - **A payer leg** carries `amount`, from the checked `amount_minor` at
      `dealprofile.AssetScale(currency)`, and an optional `--routing-fee`. An unknown currency is
      refused.
-   - A payee leg carries `--received` and `--receive-fee`. The fee is always stated, `0` when none
-     was taken, because `CheckActs` refuses an unstated fee on a priced check and AAC reads a
-     missing fee as unstated.
-   - `payment_ref` is flat (`{type, value, network?}`, AAC's qualifiers at the top level), with the
-     type from `--payment-ref-type`, one of `settlement.PaymentRefTypes`.
+   - **A payee leg** carries `--received` and `--receive-fee`. The writer requires the fee, `0` when
+     none was taken, because AAC reads a missing fee as `fee_unstated` and leaves the payment
+     `unjoined` (settlement.go:1029-1032). `CheckActs` refuses an unstated fee only on an act that
+     cites a priced check (a refund's payer leg is checked by amount there).
+   - **`payment_ref`** is flat: AAC's qualifiers sit at the top level, and each type's qualifiers
+     are required, exactly. The type comes from `--payment-ref-type`, one of
+     `settlement.PaymentRefTypes`, and its qualifiers from flags:
+     - `--payment-ref-network` for `x402.transaction`;
+     - `--payment-ref-method` for `mpp.reference`;
+     - `--payment-ref-debtor-agent` for `iso20022.end_to_end_id`.
 4. **The reference per rail (Sherlock2, option 1).**
-   - On `ln.payment_hash`, `bolt12.invoice_payment_hash`, `acp.order_id` and `ucp.order_id`, the
-     leg's value defaults to the check's `payment_ref` and must equal it.
-   - On `x402.transaction`, and every other type, `--payment-ref` is required. The leg joins its
-     check by digest, and the check keeps the authorization nonce. The help says: "on x402, the link
-     from the transaction to the checked nonce is the payer's claim unless a verifier reads the
-     transaction's `AuthorizationUsed` nonce on chain".
+   - **A payment's payer leg.** On `ln.payment_hash`, `bolt12.invoice_payment_hash`, `acp.order_id`
+     and `ucp.order_id`, its value defaults to its `pay` check's `payment_ref` and must equal it.
+     On `x402.transaction`, and every other type, `--payment-ref` is required: the leg joins its
+     check by digest, and the check keeps the authorization nonce.
+   - **The x402 help** says: "on x402, the link from the transaction to the checked nonce is the
+     payer's claim unless a verifier reads the transaction's `AuthorizationUsed` nonce on chain".
+   - **Refunds and payee legs.** A refund's legs and every payee leg take `--payment-ref` (the
+     refund's own reference, or the payment as received). AAC joins a payer leg with the payee leg
+     carrying the same reference. A payee leg's reference defaults to the counterparty's payer
+     leg's, when the holder holds it.
    - Wrapping the `x402.payment-payload` so the nonce is checkable offline is noted, not built (the
      twin's suggestion).
-5. **The payer leg is sealed once, at the point of no return (Sherlock2, buzz 182c81b6).** Its status
-   is what the payer observes then: `pending`, or already `settled` or `failed`. So the money counts
-   toward the caps from the moment it leaves, and a crash after the send still leaves the act. The
-   point of no return, per rail:
-   - Lightning: the HTLC is sent;
-   - x402: the signed authorization is handed to the facilitator;
-   - ACP and UCP: the order is submitted.
-
-   A payer leg never `supersedes` (a second leg on the same check is a second act, refused by the
-   library). Later observations go in a journey `evidence` record naming the check and the rail
-   reference. It is not an act, cites no approval and counts toward no spend. The settled state also
-   comes from the payee leg, which cites no check and may `supersedes` freely.
-
-   The help says: "a payment that fails after sending still counts toward your limits until profile
-   support for a payer status update lands (evidencebook#709)". This errs the safe way: it blocks
-   spending and never overspends.
+5. **The payer leg: sealed once, when the rail answers (Sherlock2, buzz 037352f4 and 44899e76).**
+   - **Why not at the send.** Review round 1 found two facts:
+     - AAC joins one payer head with one payee head and calls a status difference a `mismatch`
+       (settlement.go:1061, 1089), which `PaymentCheck` fails (payment.go:424). So a payer leg
+       sealed `pending` makes a payment that went through read as failed.
+     - On x402 the transaction exists only in the facilitator's settle response.
+   - **The flow of a pay.**
+     1. The pay check takes the profile's spend lock (one per profile, taken by every pay check).
+     2. Before the handoff, the payer seals a journey `evidence` record, "payment sent", naming the
+        check, the amount and the reference known then (the payment hash, the nonce). It is not an
+        act and cites no approval.
+     3. The lock is released.
+     4. When the rail answers (the Lightning payment result, x402's settle response, the ACP/UCP
+        order response) with `settled` or `failed`, the payer seals its one payer leg and the
+        sent-evidence is closed.
+     5. While the rail still says pending (a hold invoice, a slow confirmation), no payer leg is
+        sealed: the act is held, and the user is told which payment is in flight.
+   - **The send is irreversible; the answer is when the payer can seal.** Between them, the open
+     sent-evidence keeps the cap honest. Every later pay check counts each open sent-evidence's
+     amount against the cap, and names it to the user. That includes one a crash left open, so
+     money gone with no act is still counted.
+   - **No supersession.** A payer leg never `supersedes`: a second leg on the same check is a second
+     act, which the library refuses. evidencebook#709 is the profile change that would let a payer
+     seal `pending` and update it.
+   - **No report change.** A late payee's `pending` against a `settled` payer leg is today's
+     `PaymentCheck` behavior (a mismatch, read as a fail). It is not this slice's; it is
+     evidencebook#713, for Steven.
 6. **The record fields the rows read.**
-   - `--act` and `--observed` are required on `perform`, since the schema requires both (`body_perform`).
+   - `--act` and `--observed` are required on `perform`, since the schema requires both
+     (`body_perform`).
    - `--statement row=value` is repeatable, checked against the offer's rows, and written as an
      empty array when none is given.
    - `--mark NAME` is repeatable, checked against the offer's `named`, so a row whose date hangs on
      a named record starts.
-   - `--remedy-ruling DIGEST` fills `remedy_for.ruling`.
+   - `--remedy-row ROW` makes the record a remedy for that row (`remedy_for.row`, required in a
+     remedy), with an optional `--remedy-ruling DIGEST` that must be a ruling on that row. This
+     applies to both `perform` and `settle`.
    - `deal statement` seals a statement record with the same `--statement` and an optional
      `--names` (a cancellation or a ruling, exactly one). It is never gated.
 7. **The file to send, and the offerer's stamp.**
    - `perform`, `settle` and `statement` take `--out` and write a push through `writePush`, as
      `deal dispute` does.
-   - The offerer's first act stamps and carries the proof.
-   - The offerer can also stamp its agreement without acting, by `deal agree --stamp` on its own
-     sealed agreement, writing the push. Otherwise, when the acceptor is the buyer and pays first,
-     each side waits on the other (PROFILE §8: "the offerer stamps its agreement at once when its
-     first act waits on the acceptor's").
+   - PROFILE §8: "the offerer stamps its agreement at once when its first act waits on the
+     acceptor's". So `deal agree` stamps on the offerer side too, as it does on the acceptor side,
+     reusing an existing proof on a re-run (`deal_v1_agree.go:305-311`), and its file carries the
+     proof.
+   - There is no flag. A buyer acceptor who pays first then never waits on an offerer that forgot
+     one.
 8. **Crash and re-run.** The deal book is the source of truth for acts.
-   - After the append, the verb writes a local `act` event (item 9).
+   - After the append, the verb writes a local event (item 9).
    - Every load (`v1Events`, and `rulesHistory` before it reads) reconciles: an own-book `perform`
      or `settle` with no local event gets one, built from the record and its member, by digest,
      once.
    - A re-run finds the record its inputs already sealed and rewrites its file, sealing nothing, as
-     `deal dispute` does. An act is found by its check digest; a payee leg by its leg and reference;
-     a statement by its row values. An `--out` that already exists is refused for a new record.
-9. **What counts as spend.** The local event is v0's `act`, so `rulesHistory`, the next card's
-   spend-so-far and the used approval read it unchanged:
-   - a payer leg on a `pay` check whose status is not `failed` writes `Action: pay`, `AmountMinor`,
-     `Currency`, `Direction: out`, and `AuthorizedBy` as the local event id of the check's approval
-     (`ActAuthorization.Approval`), so the next check does not offer that approval again;
-   - a refund writes `Action: cancel` with `Reverses`, as the fold reads it (`deal_rules.go:645`);
-   - a `perform` writes `Action: commit` with no amount;
-   - a payee leg writes v0's `payment_received`, never an `act`.
+     `deal dispute` does. A record matches only on the whole of its inputs: the body the verb would
+     build (the row, `names`, marks, statements, check, `reverses` and `remedy_for`), plus the member
+     without its observed time. A changed input is a new record.
+   - An `--out` that already exists is refused for a new record.
+9. **What each act writes locally.** The local event is v0's, so `rulesHistory`, the next card's
+   spend so far and the used approval read it unchanged:
+   - **A payment's payer leg** on a `pay` check writes `act` with `Action: pay`, `Direction: out` and
+     `AuthorizedBy` set to the local event id of the check's approval (`ActAuthorization.Approval`).
+     A `settled` leg also carries `AmountMinor` and `Currency`. A `failed` leg carries
+     no amount, so it counts no spend while its approval stays used, as `CheckActs` counts it.
+   - **The seller's refund** (a payer leg on a `cancel` check) writes `act` with `Action: cancel`,
+     its amount and no `Direction` or `Reverses`. That is what v0 seals for a cancel with no
+     matching `pay` before it (`actDirection`, `deal_rules.go:624-660`), and it counts toward no
+     spend cap (`actOut`).
+   - **The buyer's refund received** (a payee leg with `--reverses`) writes `act` with
+     `Action: cancel`, `Direction: in` and `Reverses` set to the local event id of the buyer's
+     reversed `pay` act, found by the digest of the leg it reverses, so the fold returns the money
+     (`deal_rules.go:629-660`).
+   - **Any other payee leg** writes v0's `payment_received`.
+   - **A `perform`** writes `act` with `Action: commit` and no amount.
 
-   `rulesHistory` gets a v1 path: it reads these events and builds each act's record from its deal's
-   own local snapshot, as `v1CapsuleWithInput` does, never from the current deal's. The counterparty
-   and item lookups get v1 versions. With this, the B5 gate holds: spend and velocity rules count v1
-   acts.
+   **`rulesHistory` gets a v1 path.**
+   - It reads these events and builds each act's record from its deal's own local snapshot, as
+     `v1CapsuleWithInput` does, never from the current deal's. The counterparty and item lookups get
+     v1 versions.
+   - Its filter changes from "has an amount" to "is an act". An act with no amount (a perform, a
+     failed leg) counts toward velocity rules, with no spend.
+   - With this, the B5 gate holds: spend and velocity rules count v1 acts.
 10. **The person's signature.** Each act's output lists the approval digest only where the library
     says a person signs (`NeedsPersonSignature`), plus `LimitApprovals` and `Intent` for a standing
     intent. A receipt or report says the person's own key's signature is missing until AAC#627
@@ -662,25 +712,50 @@ they apply to a perform. Then `settle`, with items 3, 4 and 5 and the rest of 8 
 **Tests.**
 - **Acts.**
   - A perform on a commit check and a payer leg on a pay check pass `CheckSealed` and `CheckActs`.
-  - A payee leg with `received` and `receive_fee`, and the payer leg, join in AAC's `PaymentCheck`.
-  - The same pair with no fee is refused at the writer.
-- **x402.** A payer leg with an `x402.transaction` reference and a nonce check seals. A Lightning leg
-  whose value differs from its check's is refused.
-- **Refunds.** A refund on a cancel check seals; on a pay check it is refused, and so is the
-  reverse. The payment row's check is not shown as verified.
+  - A payer leg and a payee leg with `received` and `receive_fee` join in AAC's `PaymentCheck`.
+  - A payee leg with no fee is refused by the writer.
+- **x402.**
+  - A payer leg with an `x402.transaction` reference, its network and a nonce check seals.
+  - One with no network is refused.
+  - A Lightning leg whose value differs from its check's is refused.
+- **Pay flow.**
+  - Each rail's answer point seals the leg as `settled` or `failed`.
+  - A crash between the handoff and the answer leaves an open sent-evidence that the next pay
+    check counts.
+  - Payment A is pending, and payment B's check sees A's amount and is refused when A plus B is
+    over the cap.
+  - Two pay checks run at once are serialized by the lock.
+- **Refunds.** Each side is built from the two fixtures:
+  - the seller's refund on a cancel check seals;
+  - the buyer's refund received credits the buyer's `pay`;
+  - a refund on a pay check is refused, and so is a payment on a cancel check;
+  - the payment row's check is not shown as verified.
+- **Remedies.** A remedy with a row alone, and one with its ruling, on `perform` and on `settle`. A
+  ruling on another row is refused.
 - **Gate.**
   - A first act with no check is still gated.
   - Both sides' first acts.
-  - No witness, a wrong shelf proof and no layer (`Unguarded` printed).
-  - The buyer acceptor pays first after the offerer's `deal agree --stamp`.
+  - No witness, a wrong shelf log, the log not held, and no layer (`Unguarded` printed).
+  - A buyer acceptor pays first after the offerer's `deal agree`, with no flag.
 - **Crash.**
   - A stop after the append, then restart: the act is counted once by `rulesHistory`.
   - A failed local insert, then reconciliation.
   - A re-run rewrites the file and seals nothing.
+  - A changed input seals a new record. Two statements on the same row values with different
+    `--names` are two records.
 - **Spend.**
-  - `rulesHistory` counts a payer leg once and counts no payee leg and no failed leg.
+  - `rulesHistory` counts a settled payer leg once and counts no payee leg.
+  - A failed leg counts toward velocity rules with no spend, and its approval is not offered again.
   - A second pay check after a settle shows the spend so far and does not offer the used approval.
-  - Mixed v0 and v1 deals, and acts across deals, each read from its own deal.
-- **Refusals.** A `--leg` that disagrees with the role, an unknown currency, a member that fails
-  `StructureFailures`, a changed amount, an `--out` that exists, and an unknown row or mark.
+  - Consecutive performs across deals count toward a velocity rule.
+  - Mixed v0 and v1 deals, each act read from its own deal.
+- **Refusals.**
+  - A `--leg` that disagrees.
+  - A missing `--row` with several payment rows.
+  - An unknown currency.
+  - A member that fails `StructureFailures`.
+  - A changed amount.
+  - An `--out` that exists.
+  - An unknown row or mark.
+  - A `--reverses` that names no settle record of the deal.
 - **The local list stays local.** The leak test extends to act events.
