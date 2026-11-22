@@ -1811,6 +1811,50 @@ def check_listing_classes(chains) -> int:
 # Fixture generation (deterministic; the jet-ski payee-switch deal)
 # ---------------------------------------------------------------------------
 
+# Negatives written by hand: no generator in regen() produces them, so regen leaves them in place.
+# A fixture with a generator is not listed here; add a name only for a file that has none.
+HAND_WRITTEN_NEGATIVES = frozenset({
+    "neg-counterparty-class-on-another-record.json",
+    "neg-counterparty-class-on-non-pay-check.json",
+    "neg-counterparty-class-unknown.json",
+    "neg-preimage-uppercase.json",
+    "neg-preimage-without-received-to.json",
+})
+
+
+def clear_generated(d, keep):
+    """Delete the *.json files regen rewrites in d, except the names in keep."""
+    for old in d.glob("*.json"):
+        if old.name not in keep:
+            old.unlink()
+
+
+def missing_hand_written(d):
+    """The HAND_WRITTEN_NEGATIVES absent from d; regen checks this before it deletes anything."""
+    return sorted(n for n in HAND_WRITTEN_NEGATIVES if not (d / n).exists())
+
+
+def clear_generated_selftest():
+    import tempfile
+    fails = []
+    with tempfile.TemporaryDirectory() as t:
+        d = Path(t)
+        for n in sorted(HAND_WRITTEN_NEGATIVES) + ["generated-a.json", "generated-b.json"]:
+            (d / n).write_text("{}")
+        clear_generated(d, HAND_WRITTEN_NEGATIVES)
+        left = sorted(p.name for p in d.glob("*.json"))
+        if left != sorted(HAND_WRITTEN_NEGATIVES):
+            fails.append(f"after clear_generated left {left}")
+        if missing_hand_written(d):
+            fails.append("missing_hand_written reports a name that is present")
+        (d / "neg-preimage-uppercase.json").unlink()
+        if missing_hand_written(d) != ["neg-preimage-uppercase.json"]:
+            fails.append("missing_hand_written does not report a removed name")
+    for n in missing_hand_written(FIX / "negative"):
+        fails.append(f"hand-written negative {n} is not in fixtures/negative")
+    return fails
+
+
 def regen():
     secret = hashlib.sha256(b"x-deal-v0 fixture store secret: public, test only").digest()
     deal_id = "deal-3f9c2a7be4d15068"
@@ -1939,10 +1983,11 @@ def regen():
     add("outcome-note", "outcome_note", {"outcome": "did_not_hold", "reason": "not_delivered"}, refs=[("confirms", closed)])
     assert a2 and b == 0
 
+    missing = missing_hand_written(FIX / "negative")
+    assert not missing, f"hand-written negatives missing from fixtures/negative: {missing}"
     for d in (FIX / "positive", FIX / "negative"):
         d.mkdir(parents=True, exist_ok=True)
-        for old in d.glob("*.json"):
-            old.unlink()
+        clear_generated(d, HAND_WRITTEN_NEGATIVES if d.name == "negative" else frozenset())
 
     def dump(path, obj):
         path.write_text(json.dumps(obj, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -3484,6 +3529,11 @@ def main(argv):
     fails = fails + lc_fails
     re2_fails = re2_parity_selftest()
     fails = fails + re2_fails
+    cg_fails = clear_generated_selftest()
+    for f in cg_fails:
+        print("FAIL clear_generated", f)
+    print(f"{'ok  ' if not cg_fails else 'FAIL'} clear_generated self-test (regen keeps the hand-written negatives)")
+    fails = fails + cg_fails
     if "--selftest" in argv:
         return 1 if fails else 0
     _validator()
