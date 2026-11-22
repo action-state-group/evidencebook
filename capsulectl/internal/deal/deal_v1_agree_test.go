@@ -167,7 +167,7 @@ func TestAnAgreementRefusesWhatItCannotCite(t *testing.T) {
 	res := dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", buyerOffer)
 	digest := res["offer"].(string)
 
-	assert.Contains(t, v1Err(t, "agree", digest, "--out", filepath.Join(t.TempDir(), "a.json")), "--admit is required")
+	assert.Contains(t, v1Err(t, "agree", digest, "--out", filepath.Join(t.TempDir(), "a.json")), "has no admission decision: seal capsule-engine's with `deal admit")
 	assert.Contains(t, v1Err(t, "agree", strings.Repeat("0", 64), "--admit", strings.Repeat("c", 64)), "holds no offer")
 	assert.Contains(t, v1Err(t, "agree", digest, "--admit", strings.Repeat("c", 64)), "not a record in your journal")
 	// The offerer agrees only once it holds the acceptor's agreement.

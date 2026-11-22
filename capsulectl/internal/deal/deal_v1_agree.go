@@ -100,8 +100,11 @@ func dealAgreeCommand() *cobra.Command {
 digest): seal your agreement as the first record of your deal book and write
 it to --out (standard output with none). --admit is the digest of your own
 admission decision in your journal, which an agreement cites: a GO, or a
-LIMIT whose tier holds the deal (capsule-engine admission evaluate --admit
-prints the body to seal and admits_deal); an ASK or a NO is refused. --intent is the
+LIMIT whose tier holds the deal; an ASK or a NO is refused. ` + "`deal admit`" + `
+seals capsule-engine's decision for the deal, and with no --admit the
+agreement cites that one. --admit naming an admit ` + "`deal admit`" + ` sealed for
+another deal is refused, and so is one other than the deal's own when it has
+one. --intent is the
 digest of your journal's intent for the task, when you sealed one. The
 agreement takes the offer's rows, witnesses, adjudicator and forums as they
 are.
@@ -117,9 +120,6 @@ act. Needs the deal store in the new layout (deal set-version x-deal-v1
 			admit, _ := c.Flags().GetString("admit")
 			intent, _ := c.Flags().GetString("intent")
 			out, _ := c.Flags().GetString("out")
-			if admit == "" {
-				return cli.InputError("--admit is required: the digest of your journal's admission decision for this deal, which an agreement cites")
-			}
 			v1ReceiveContext(c)
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
 				cad, err := s.requireMigrated(ctx)
@@ -159,6 +159,9 @@ act. Needs the deal store in the new layout (deal set-version x-deal-v1
 						return err
 					}
 					return s.writeAgreement(ctx, c, cad, d, out)
+				}
+				if admit, err = s.agreementAdmit(ctx, dealID, admit); err != nil {
+					return err
 				}
 				for _, want := range []struct{ flag, digest, typ, what string }{
 					{"--admit", admit, xdealv1.TypeAdmit, "an admission decision"},
@@ -240,7 +243,7 @@ act. Needs the deal store in the new layout (deal set-version x-deal-v1
 			})
 		},
 	}
-	cmd.Flags().String("admit", "", "The digest of your journal's admission decision for this deal (required)")
+	cmd.Flags().String("admit", "", "The digest of your journal's admission decision for this deal (default: the one `deal admit` sealed for it)")
 	cmd.Flags().String("intent", "", "The digest of your journal's intent for the task, when you sealed one")
 	cmd.Flags().String("out", "", "Where to write the file to send (default: standard output)")
 	return cmd
@@ -353,4 +356,32 @@ func citableAdmit(digest string, rec *xdealv1.Record) error {
 			": an agreement cites a GO, or a LIMIT whose tier holds the deal")
 	}
 	return nil
+}
+
+// agreementAdmit is the admit an agreement on dealID cites: the one
+// `deal admit` sealed for the deal, which --admit may name or leave out. An
+// admit `deal admit` sealed for another deal is refused, so an admission
+// decision is never cited on a deal it was not made for. An admit sealed
+// some other way (not through `deal admit`) is cited as named.
+func (s *dealSession) agreementAdmit(ctx context.Context, dealID, admit string) (string, error) {
+	own, err := s.dealAdmit(ctx, dealID)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case admit == "" && own == "":
+		return "", cli.InputError("deal " + dealID + " has no admission decision: seal capsule-engine's with `deal admit --deal " + dealID + " --input FILE`, which an agreement cites")
+	case admit == "":
+		return own, nil
+	case own != "" && admit != own:
+		return "", cli.InputError("--admit " + admit + " is not this deal's admission decision: `deal admit` sealed " + own + " for deal " + dealID + ", and the agreement cites that one")
+	}
+	other, err := s.admitDealOf(ctx, admit)
+	if err != nil {
+		return "", err
+	}
+	if other != "" && other != dealID {
+		return "", cli.InputError("--admit " + admit + " is the admission decision `deal admit` sealed for deal " + other + ", not for deal " + dealID)
+	}
+	return admit, nil
 }
