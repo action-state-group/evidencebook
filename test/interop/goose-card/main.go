@@ -9,12 +9,19 @@
 // (DeriveStandardHistory), with every SH §6 property PASS against those
 // inputs.
 //
-//	goose-card SHELF CARD KEY
+//	goose-card SHELF CARD KEY [STATEMENT POLICY]
 //
 // SHELF is the node's shelf.db, CARD the JSON the node's
 // loop_standard_history tool wrote ({"card", "as_of", "policy", ...}), and
 // KEY the node's signing key (hex): the key its deal steps' records verify
 // under, which the relying party holds.
+//
+// With STATEMENT, the JSON the node's loop_register_card tool wrote, and
+// POLICY, the relying party's own transparency policy ({"witnesses":
+// [{"name", "keys"}]}, never read from STATEMENT), it also reports
+// card_registered (SH §13.3) over the card's octets, under KEY and the
+// card's anchor. That reports existence at a time and nothing else:
+// anchor_inclusion stays NOT_CHECKED, and the check is not a card property.
 package main
 
 import (
@@ -34,6 +41,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
+	aacwitness "github.com/action-state-group/agent-action-capsule/go/witness"
 	artifactsqlite "github.com/action-state-group/capsule-emit/go/artifact/sqlite"
 	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -64,8 +72,8 @@ type written struct {
 }
 
 func run(args []string) error {
-	if len(args) != 3 {
-		return fmt.Errorf("usage: goose-card SHELF CARD KEY")
+	if len(args) != 3 && len(args) != 5 {
+		return fmt.Errorf("usage: goose-card SHELF CARD KEY [STATEMENT POLICY]")
 	}
 	raw, err := os.ReadFile(args[1])
 	if err != nil {
@@ -114,12 +122,62 @@ func run(args []string) error {
 			return fmt.Errorf("the card fails %s", p)
 		}
 	}
-	out, err := json.Marshal(map[string]any{"accepted": true, "anchor": asOf.Anchor, "deals": len(deals), "properties": properties})
+	result := map[string]any{"accepted": true, "anchor": asOf.Anchor, "deals": len(deals), "properties": properties}
+	if len(args) == 5 {
+		registered, err := checkRegistered(args[3], args[4], []byte(card.Card), args[2], asOf.Anchor)
+		if err != nil {
+			return err
+		}
+		result["card_registered"] = registered
+		result["anchor_inclusion"] = "NOT_CHECKED"
+		if registered.Status == aacwitness.AnchorPass && registered.Service != nil {
+			// SH §13.4: what a verifier may say, and no more.
+			said := "the holder registered this card with " + *registered.Service
+			if registered.RegistrationTime != nil {
+				said += " at " + time.Unix(*registered.RegistrationTime, 0).UTC().Format(time.RFC3339)
+			} else {
+				said += " (the Receipt states no time)"
+			}
+			result["registration"] = said
+		}
+	}
+	out, err := json.Marshal(result)
 	if err != nil {
 		return err
 	}
 	fmt.Println(string(out))
 	return nil
+}
+
+// checkRegistered is card_registered over the one card statement in
+// statementFile, under the holder key and anchor and the relying party's own
+// policy in policyFile.
+func checkRegistered(statementFile, policyFile string, card []byte, holder, anchor string) (evidencebook.CardRegisteredReport, error) {
+	var registered evidencebook.CardRegisteredReport
+	raw, err := os.ReadFile(statementFile)
+	if err != nil {
+		return registered, err
+	}
+	var file struct {
+		Statement string `json:"statement"`
+	}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		return registered, fmt.Errorf("statement file: %w", err)
+	}
+	statement, err := hex.DecodeString(file.Statement)
+	if err != nil {
+		return registered, fmt.Errorf("statement file: the statement is not hex: %w", err)
+	}
+	raw, err = os.ReadFile(policyFile)
+	if err != nil {
+		return registered, err
+	}
+	var policy aacwitness.AnchorWitnessPolicy
+	if err := json.Unmarshal(raw, &policy); err != nil {
+		return registered, fmt.Errorf("policy file: %w", err)
+	}
+	env := evidencebook.Envelope{Responder: holder, Anchor: evidencebook.Anchor{Digest: anchor}}
+	return evidencebook.CheckCardRegistered(card, env, [][]byte{statement}, policy), nil
 }
 
 // derive reads the shelf as Go's evidencebook opens it: tick n's anchor and
