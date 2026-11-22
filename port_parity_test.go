@@ -4,9 +4,11 @@ package evidencebook
 
 import (
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -27,36 +29,35 @@ var portParityStatus = regexp.MustCompile(`^(ported|not needed|(frozen|needed-by
 // methods belong to their type's or feature's row.
 func exportedAPIs(t *testing.T, dir string) map[string]bool {
 	t.Helper()
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	// build.ImportDir honors build constraints and leaves out _test.go files.
+	pkg, err := build.ImportDir(dir, 0)
 	require.NoError(t, err)
+	fset := token.NewFileSet()
 	out := map[string]bool{}
 	add := func(kind, name string) { out[dir+"\t"+kind+"\t"+name] = true }
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Files {
-			for _, decl := range file.Decls {
-				switch d := decl.(type) {
-				case *ast.FuncDecl:
-					if d.Recv == nil && d.Name.IsExported() {
-						add("func", d.Name.Name)
-					}
-				case *ast.GenDecl:
-					for _, spec := range d.Specs {
-						switch s := spec.(type) {
-						case *ast.TypeSpec:
-							if s.Name.IsExported() {
-								add("type", s.Name.Name)
-							}
-						case *ast.ValueSpec:
-							if d.Tok != token.VAR {
-								continue
-							}
-							for _, n := range s.Names {
-								if n.IsExported() {
-									add("var", n.Name)
-								}
+	for _, name := range pkg.GoFiles {
+		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+		require.NoError(t, err)
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Recv == nil && d.Name.IsExported() {
+					add("func", d.Name.Name)
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					switch s := spec.(type) {
+					case *ast.TypeSpec:
+						if s.Name.IsExported() {
+							add("type", s.Name.Name)
+						}
+					case *ast.ValueSpec:
+						if d.Tok != token.VAR {
+							continue
+						}
+						for _, n := range s.Names {
+							if n.IsExported() {
+								add("var", n.Name)
 							}
 						}
 					}

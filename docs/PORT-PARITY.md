@@ -11,8 +11,8 @@ carriage run by `cmd/evidencebook` and are not listed.
 
 | Status | Meaning |
 |---|---|
-| `ported` | A twin exists. Found by name against `rust/evidencebook/src` and `python/evidencebook`; a row the name match missed shows as frozen, so confirm before porting. |
-| `frozen #N` | No twin. Issue #N, labelled `frozen-port:rust` or `frozen-port:python`, names the Go entry points, the vectors a port must replay and the frozen status. |
+| `ported` | A public twin exists, possibly under another name (an associated constructor, a constant, an enum variant, one trait standing for several Go interfaces, or a Python dict form). A private or crate-internal item is not a twin. The first pass was a name match, then checked by hand; it can still be wrong in either direction, so confirm before relying on a row. |
+| `frozen #N` | No twin. Issue #N, labelled `frozen-port:rust` or `frozen-port:python`, (or its "Port" comment, for the issues that predate this table: #131, #140, #192, #618, #619) names the Go entry points, the vectors a port must replay and the frozen status. |
 | `needed-by-mesh #N` | No twin, and the Mesh plugin (`Mesh-LLM/capsules-plugin`) calls it. Not frozen. |
 | `not needed` | No twin is wanted: a Go sentinel error that each language reports through its own error type, or a Go struct type for data that Python reads as plain dicts (`dealprofile`, `dealprofile/xdealv1`, `rowstatus`). |
 

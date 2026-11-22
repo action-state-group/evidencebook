@@ -2,39 +2,39 @@ package	kind	symbol	feature	rust	python
 .	func	AttachCardReceipt	card-registration	frozen #618	frozen #619
 .	func	BuildCardStatement	card-registration	frozen #618	frozen #619
 .	func	CheckCardRegistered	card-registration	frozen #618	frozen #619
-.	func	CheckHistoryCard2	standard-history	frozen #648	frozen #647
+.	func	CheckHistoryCard2	standard-history	ported	ported
 .	func	CheckStandardHistoryMaterial	standard-history	frozen #648	frozen #647
 .	func	CheckStaple	root-misc	ported	ported
 .	func	DefaultDisclosurePolicy	disclosure-policy	frozen #633	frozen #632
-.	func	DefaultSharePolicy	request-reply-respond	frozen #131	frozen #131
-.	func	DeriveStandardHistory	standard-history	frozen #648	ported
+.	func	DefaultSharePolicy	request-reply-respond	ported	ported
+.	func	DeriveStandardHistory	standard-history	ported	ported
 .	func	DerivedFillers	root-misc	ported	ported
 .	func	DiffBundles	evidence-bundle	frozen #636	frozen #635
 .	func	EncodeRequest	request-reply-respond	frozen #131	ported
 .	func	EntryID	shelf	ported	ported
-.	func	EpistemicTypes	originals-and-stores	frozen #640	frozen #639
+.	func	EpistemicTypes	originals-and-stores	ported	ported
 .	func	KeyID	originals-and-stores	ported	ported
-.	func	LinkTypes	originals-and-stores	frozen #640	frozen #639
+.	func	LinkTypes	originals-and-stores	ported	ported
 .	func	MigratePayloadDir	originals-and-stores	frozen #640	frozen #639
-.	func	NewEd25519Signer	originals-and-stores	frozen #640	frozen #639
+.	func	NewEd25519Signer	originals-and-stores	frozen #640	ported
 .	func	NewOpening	originals-and-stores	frozen #640	ported
 .	func	NewRecordIDIndex	indexes	frozen #638	frozen #637
 .	func	NewSCITTReceiptSubstrate	substrates	frozen #650	frozen #649
 .	func	NewSubjectIndex	indexes	frozen #638	frozen #637
 .	func	NewTokenIndex	indexes	frozen #638	frozen #637
-.	func	NewWindowLimiter	request-reply-respond	frozen #131	frozen #131
+.	func	NewWindowLimiter	request-reply-respond	ported	ported
 .	func	Open	originals-and-stores	ported	ported
-.	func	OpenCLL	substrates	frozen #650	frozen #649
-.	func	OpenCLLSQLite	substrates	frozen #650	frozen #649
-.	func	OpenFileStore	originals-and-stores	frozen #640	frozen #639
+.	func	OpenCLL	substrates	ported	frozen #649
+.	func	OpenCLLSQLite	substrates	frozen #650	ported
+.	func	OpenFileStore	originals-and-stores	frozen #640	ported
 .	func	OpenHalf	reconcile-halves	frozen #644	frozen #643
 .	func	OpenOriginalsFile	originals-and-stores	frozen #640	frozen #639
 .	func	OpenSQLiteIndex	indexes	frozen #638	frozen #637
-.	func	OpenSQLiteShelf	shelf	frozen #646	frozen #645
+.	func	OpenSQLiteShelf	shelf	ported	ported
 .	func	OpenedFieldsAgree	reconcile-halves	frozen #644	frozen #643
 .	func	OpeningsFor	shelf	ported	ported
 .	func	ParsePolicyChange	disclosure-policy	frozen #633	frozen #632
-.	func	ParseReply	request-reply-respond	frozen #131	ported
+.	func	ParseReply	request-reply-respond	ported	ported
 .	func	ParseWitnessDirectory	substrates	frozen #650	frozen #649
 .	func	PushA2AExtension	a2a-mcp-carriage	frozen #627	frozen #140
 .	func	ReadClose	close-record	frozen #629	frozen #628
@@ -51,7 +51,7 @@ package	kind	symbol	feature	rust	python
 .	func	VerifyCheckpoints	substrates	frozen #650	frozen #649
 .	func	VerifyHandover	shelf	ported	ported
 .	func	VerifyHandoverTimes	shelf	ported	ported
-.	func	VerifyKeyRange	indexes	ported	frozen #637
+.	func	VerifyKeyRange	indexes	frozen #638	frozen #637
 .	func	VerifyLeaf	indexes	frozen #638	frozen #637
 .	func	VerifyOpening	originals-and-stores	frozen #640	ported
 .	func	VerifyOpenings	shelf	ported	ported
@@ -62,8 +62,8 @@ package	kind	symbol	feature	rust	python
 .	type	A2AServer	a2a-mcp-carriage	frozen #627	frozen #140
 .	type	AbsenceRecord	request-reply-respond	frozen #131	frozen #131
 .	type	AbsenceWindow	request-reply-respond	frozen #131	frozen #131
-.	type	AfterReceiveProfile	shelf	frozen #646	frozen #645
-.	type	Anchor	request-reply-respond	frozen #131	frozen #131
+.	type	AfterReceiveProfile	shelf	ported	ported
+.	type	Anchor	request-reply-respond	ported	frozen #131
 .	type	AnsweredStatement	request-reply-respond	ported	frozen #131
 .	type	ArtifactStore	originals-and-stores	frozen #640	frozen #639
 .	type	AskOutcome	reconcile-asked	frozen #642	frozen #641
@@ -78,16 +78,16 @@ package	kind	symbol	feature	rust	python
 .	type	AudienceFact	shelf	ported	ported
 .	type	AuthenticatedIndex	indexes	ported	frozen #637
 .	type	BatchEntry	shelf	ported	ported
-.	type	BeforeStampProvider	shelf	frozen #646	frozen #645
+.	type	BeforeStampProvider	shelf	ported	frozen #645
 .	type	Book	originals-and-stores	ported	ported
 .	type	BookFact	shelf	ported	ported
-.	type	BookStatusProvider	shelf	frozen #646	frozen #645
+.	type	BookStatusProvider	shelf	ported	ported
 .	type	Bundle	evidence-bundle	frozen #636	frozen #635
 .	type	BundleCheckpoint	substrates	frozen #650	frozen #649
 .	type	BundleClaims	evidence-bundle	frozen #636	frozen #635
 .	type	BundleDiff	evidence-bundle	frozen #636	frozen #635
 .	type	BundleRequest	evidence-bundle	frozen #636	frozen #635
-.	type	CLLSubstrate	substrates	frozen #650	ported
+.	type	CLLSubstrate	substrates	ported	ported
 .	type	Cadence	originals-and-stores	ported	ported
 .	type	CadenceConfig	originals-and-stores	ported	ported
 .	type	CadenceLog	originals-and-stores	ported	frozen #639
@@ -106,12 +106,12 @@ package	kind	symbol	feature	rust	python
 .	type	Comparator	reconcile-halves	ported	frozen #643
 .	type	CompletenessCertificate	substrates	frozen #650	frozen #649
 .	type	Config	originals-and-stores	ported	ported
-.	type	ConsistencyEvidence	substrates	ported	frozen #649
+.	type	ConsistencyEvidence	substrates	ported	ported
 .	type	ContentCheck	reconcile-halves	frozen #644	frozen #643
 .	type	ContentVerdict	reconcile-halves	frozen #644	frozen #643
 .	type	Correlation	originals-and-stores	ported	ported
 .	type	CountedPrefix	shelf	ported	ported
-.	type	Coverage	request-reply-respond	ported	frozen #131
+.	type	Coverage	request-reply-respond	ported	ported
 .	type	CoverageGiven	deal-reconcile	frozen #631	frozen #630
 .	type	DealHalf	deal-reconcile	frozen #631	frozen #630
 .	type	DealMapping	standard-history	frozen #648	frozen #647
@@ -128,18 +128,18 @@ package	kind	symbol	feature	rust	python
 .	type	DoctorWitness	doctor	frozen #192	frozen #634
 .	type	Ed25519Signer	originals-and-stores	frozen #640	ported
 .	type	Entry	originals-and-stores	ported	ported
-.	type	Envelope	request-reply-respond	ported	frozen #131
+.	type	Envelope	request-reply-respond	ported	ported
 .	type	EpistemicType	originals-and-stores	ported	frozen #639
 .	type	Evidence	shelf	ported	ported
 .	type	EvidenceRef	deal-reconcile	frozen #631	frozen #630
-.	type	EvidenceRequest	request-reply-respond	frozen #131	ported
+.	type	EvidenceRequest	request-reply-respond	ported	ported
 .	type	ExchangeState	reconcile-halves	frozen #644	frozen #643
 .	type	FactInput	shelf	ported	frozen #645
-.	type	FactOpening	shelf	frozen #646	frozen #645
+.	type	FactOpening	shelf	ported	ported
 .	type	FileStore	originals-and-stores	frozen #640	ported
 .	type	Filter	indexes	ported	frozen #637
 .	type	FormatSwitch	shelf	ported	ported
-.	type	Freshness	request-reply-respond	frozen #131	frozen #131
+.	type	Freshness	request-reply-respond	ported	frozen #131
 .	type	Half	reconcile-halves	ported	frozen #643
 .	type	HalfMapping	deal-reconcile	frozen #631	frozen #630
 .	type	HalfSet	reconcile-halves	ported	frozen #643
@@ -157,7 +157,7 @@ package	kind	symbol	feature	rust	python
 .	type	HeldRecord	shelf	ported	ported
 .	type	HostLog	originals-and-stores	ported	ported
 .	type	HostLogStores	originals-and-stores	ported	ported
-.	type	InclusionEvidence	substrates	ported	frozen #649
+.	type	InclusionEvidence	substrates	ported	ported
 .	type	IndexRoot	indexes	ported	frozen #637
 .	type	IntervalEvidence	substrates	frozen #650	frozen #649
 .	type	JournalStatus	shelf	frozen #646	frozen #645
@@ -170,9 +170,9 @@ package	kind	symbol	feature	rust	python
 .	type	LifecycleStatement	originals-and-stores	ported	frozen #639
 .	type	Link	originals-and-stores	ported	ported
 .	type	LinkType	originals-and-stores	ported	frozen #639
-.	type	LinkValue	shelf	ported	frozen #645
+.	type	LinkValue	shelf	frozen #646	frozen #645
 .	type	LogCoordinates	substrates	frozen #650	frozen #649
-.	type	LoggedSize	shelf	ported	frozen #645
+.	type	LoggedSize	shelf	frozen #646	frozen #645
 .	type	MCPOptions	a2a-mcp-carriage	frozen #627	frozen #140
 .	type	MCPServer	a2a-mcp-carriage	frozen #627	frozen #140
 .	type	MMRInclusion	substrates	frozen #650	frozen #649
@@ -180,7 +180,7 @@ package	kind	symbol	feature	rust	python
 .	type	MaterialRecord	standard-history	frozen #648	frozen #647
 .	type	Membership	substrates	frozen #650	frozen #649
 .	type	Message	request-reply-respond	frozen #131	ported
-.	type	Opening	originals-and-stores	ported	ported
+.	type	Opening	originals-and-stores	frozen #640	ported
 .	type	OperationalIndex	indexes	ported	frozen #637
 .	type	PairResult	reconcile-halves	ported	frozen #643
 .	type	PayloadsMode	evidence-bundle	ported	frozen #635
@@ -206,9 +206,9 @@ package	kind	symbol	feature	rust	python
 .	type	Record	originals-and-stores	ported	ported
 .	type	RecordOutcome	shelf	ported	ported
 .	type	RecordSource	indexes	ported	frozen #637
-.	type	Refusal	request-reply-respond	ported	frozen #131
+.	type	Refusal	request-reply-respond	ported	ported
 .	type	Registrar	substrates	frozen #650	frozen #649
-.	type	Reply	request-reply-respond	frozen #131	ported
+.	type	Reply	request-reply-respond	ported	ported
 .	type	Reproduction	originals-and-stores	ported	frozen #639
 .	type	RequestLimiter	request-reply-respond	ported	ported
 .	type	RequestStatement	request-reply-respond	frozen #131	frozen #131
@@ -234,11 +234,11 @@ package	kind	symbol	feature	rust	python
 .	type	ShelfRecord	shelf	ported	ported
 .	type	ShelfRecords	shelf	ported	ported
 .	type	Signer	originals-and-stores	ported	ported
-.	type	SortedMerkleIndex	indexes	ported	ported
+.	type	SortedMerkleIndex	indexes	frozen #638	ported
 .	type	StampBatch	shelf	ported	ported
 .	type	StampEntry	shelf	ported	ported
 .	type	StampProof	shelf	ported	ported
-.	type	StampStatusProvider	shelf	frozen #646	frozen #645
+.	type	StampStatusProvider	shelf	ported	frozen #645
 .	type	StandardHistoryAnchor	root-misc	ported	ported
 .	type	StandardHistoryBundleRequest	standard-history	frozen #648	frozen #647
 .	type	StandardHistoryCheck	standard-history	frozen #648	frozen #647
@@ -247,10 +247,10 @@ package	kind	symbol	feature	rust	python
 .	type	Staple	root-misc	ported	ported
 .	type	StapleCheck	root-misc	ported	ported
 .	type	StatusInput	shelf	ported	ported
-.	type	StatusProvider	shelf	frozen #646	ported
+.	type	StatusProvider	shelf	ported	ported
 .	type	Store	originals-and-stores	frozen #640	ported
 .	type	StoredRecord	originals-and-stores	ported	ported
-.	type	Subject	request-reply-respond	frozen #131	frozen #131
+.	type	Subject	request-reply-respond	ported	ported
 .	type	SubjectKind	request-reply-respond	ported	frozen #131
 .	type	Substrate	substrates	ported	ported
 .	type	SubstrateEntry	substrates	frozen #650	frozen #649
@@ -269,7 +269,7 @@ package	kind	symbol	feature	rust	python
 .	type	WitnessCheck	originals-and-stores	ported	ported
 .	type	WitnessReceipt	originals-and-stores	ported	ported
 .	type	WitnessRow	substrates	frozen #650	ported
-.	var	DefaultReceiveBounds	shelf	frozen #646	frozen #645
+.	var	DefaultReceiveBounds	shelf	ported	ported
 .	var	ErrBusy	sentinel-errors	not needed	not needed
 .	var	ErrCorrupt	sentinel-errors	not needed	not needed
 .	var	ErrDeleted	sentinel-errors	not needed	not needed
@@ -303,7 +303,7 @@ dealprofile	func	Fingerprint	x-deal-v0	ported	ported
 dealprofile	func	Kinds	x-deal-v0	ported	ported
 dealprofile	func	MinorUnits	x-deal-v0	ported	ported
 dealprofile	func	Normalize	x-deal-v0	ported	ported
-dealprofile	func	NormalizeReferee	x-deal-v0	ported	ported
+dealprofile	func	NormalizeReferee	x-deal-v0	frozen #652	ported
 dealprofile	func	PreimageMatches	x-deal-v0	frozen #652	ported
 dealprofile	func	ProfileKey	x-deal-v0	ported	ported
 dealprofile	func	ProfileSchema	x-deal-v0	ported	ported
@@ -433,11 +433,11 @@ dealprofile/xdealv1	func	CheckSealed	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Decode	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Digest	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Encode	x-deal-v1	ported	ported
-dealprofile/xdealv1	func	KnownTime	x-deal-v1	frozen #654	frozen #653
+dealprofile/xdealv1	func	KnownTime	x-deal-v1	ported	frozen #653
 dealprofile/xdealv1	func	NameAllRulings	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	NameRulings	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	NewNonce	x-deal-v1	ported	frozen #653
-dealprofile/xdealv1	func	NullOf	x-deal-v1	frozen #654	frozen #653
+dealprofile/xdealv1	func	NullOf	x-deal-v1	ported	frozen #653
 dealprofile/xdealv1	func	Pair	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	PaymentCheck	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	PaymentRows	x-deal-v1	ported	ported
@@ -450,8 +450,8 @@ dealprofile/xdealv1	func	ReportPayload	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	ResolveRow	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	RowInputs	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	RowsDigest	x-deal-v1	ported	ported
-dealprofile/xdealv1	func	Some	x-deal-v1	frozen #654	frozen #653
-dealprofile/xdealv1	func	StampTime	x-deal-v1	ported	frozen #653
+dealprofile/xdealv1	func	Some	x-deal-v1	ported	frozen #653
+dealprofile/xdealv1	func	StampTime	x-deal-v1	frozen #654	ported
 dealprofile/xdealv1	func	Start	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	StartFromBooks	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	TermsLeg	x-deal-v1	ported	ported
@@ -531,7 +531,7 @@ dealprofile/xdealv1	type	StatusBooks	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	StatusDispute	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	StatusFirstAct	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	StatusNamed	x-deal-v1	ported	not needed
-dealprofile/xdealv1	type	StatusProvider	x-deal-v1	frozen #654	ported
+dealprofile/xdealv1	type	StatusProvider	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	StatusRecord	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	StatusRow	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	StatusRowDispute	x-deal-v1	ported	not needed
@@ -549,7 +549,7 @@ dealprofile/xdealv1	type	TimedRecord	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	ValueBand	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	VerdictBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Witness	x-deal-v1	ported	ported
-dealprofile/xdealv1	var	NoTime	x-deal-v1	frozen #654	frozen #653
+dealprofile/xdealv1	var	NoTime	x-deal-v1	ported	frozen #653
 rowstatus	func	Compute	row-status	ported	ported
 rowstatus	func	ComputeLate	row-status	ported	ported
 rowstatus	func	ParseInput	row-status	ported	ported
