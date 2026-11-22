@@ -91,8 +91,11 @@ statement has the same value for MEMBER, nothing is sealed and that record is re
 true. The check and the seal are one step under the shelf's writer lock, and the shelf itself recovers an
 append an interrupted run left half written when it is next opened, before the check reads the book. It is
 not a transaction: a verb that seals several records is resumed by repeating each with --once.
-Only MEMBER is compared: a record with the same MEMBER and a different rest of the statement is returned
-as it is, not updated.`,
+Only MEMBER is compared: the first record whose MEMBER has this value is returned, whatever its other
+members say, and is not updated.
+
+These records are the node's own. No verb here serves them to a requester or a counterparty; they are read
+with `deal node records`, and a verb that would serve a node book has to say what it shows.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
 			p, err := cli.Selected(c)
