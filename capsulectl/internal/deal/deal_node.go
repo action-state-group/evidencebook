@@ -90,7 +90,9 @@ something happened, signed under the profile's key. --type is the node's own nam
 statement has the same value for MEMBER, nothing is sealed and that record is returned with "existing":
 true. The check and the seal are one step under the shelf's writer lock, and the shelf itself recovers an
 append an interrupted run left half written when it is next opened, before the check reads the book. It is
-not a transaction: a verb that seals several records is resumed by repeating each with --once.`,
+not a transaction: a verb that seals several records is resumed by repeating each with --once.
+Only MEMBER is compared: a record with the same MEMBER and a different rest of the statement is returned
+as it is, not updated.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
 			p, err := cli.Selected(c)
