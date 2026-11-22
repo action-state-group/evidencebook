@@ -236,9 +236,10 @@ func TestAV1AdjudicatorCopyNeedsTheAgreementsAdjudicator(t *testing.T) {
 }
 
 // The bytes are staged before the record: a failed record leaves no file
-// (and no staging file), a failed staging runs no record, and a file that
-// appears at the path after the record is never replaced and the error says
-// the copy is on record; an existing file fails before the record.
+// (and no staging file); an unwritable directory or an existing file runs no
+// record; a file that appears at the path after the record is never
+// replaced and the error says the copy is on record; a failed folder sync
+// says the copy is written and recorded.
 func TestWriteNewFileAfterStagesBeforeTheRecord(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "c.json")
@@ -255,23 +256,41 @@ func TestWriteNewFileAfterStagesBeforeTheRecord(t *testing.T) {
 	assert.False(t, ran, "an unwritable directory fails before the record")
 
 	require.NoError(t, os.WriteFile(out, []byte("theirs"), 0o600))
-	ran = false
 	assert.ErrorContains(t, writeNewFileAfter(out, []byte("mine\n"), func() error { ran = true; return nil }), "exists")
 	assert.False(t, ran, "an existing file fails before the record")
-	got, rerr := os.ReadFile(out)
-	require.NoError(t, rerr)
+	require.NoError(t, os.Remove(out))
+
+	// Another writer takes the path while the record is made: its file is
+	// never replaced.
+	err = writeNewFileAfter(out, []byte("mine\n"), func() error { return os.WriteFile(out, []byte("theirs"), 0o600) })
+	assert.ErrorContains(t, err, "on record, but")
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
 	assert.Equal(t, "theirs", string(got), "never replaced")
 	require.NoError(t, os.Remove(out))
-	entries, err = os.ReadDir(dir)
+
+	v1SyncDir = func(string) error { return errors.New("sync failed") }
+	t.Cleanup(func() { v1SyncDir = syncDir })
+	err = writeNewFileAfter(out, []byte("mine\n"), func() error { return nil })
+	assert.ErrorContains(t, err, "on record and written to")
+	got, err = os.ReadFile(out)
 	require.NoError(t, err)
-	assert.Len(t, entries, 1, "only ro/: no placeholder or staging file left")
+	assert.Equal(t, "mine\n", string(got))
+	v1SyncDir = syncDir
 
 	fresh := filepath.Join(dir, "d.json")
-	require.NoError(t, writeNewFileAfter(fresh, []byte("y\n"), nil))
+	require.NoError(t, writeNewFileAfter(fresh, []byte("y\n"), func() error { return nil }))
 	got, err = os.ReadFile(fresh)
 	require.NoError(t, err)
 	assert.Equal(t, "y\n", string(got))
 	info, err := os.Stat(fresh)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	entries, err = os.ReadDir(dir)
+	require.NoError(t, err)
+	names := []string{}
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	assert.ElementsMatch(t, []string{"c.json", "d.json", "ro"}, names, "no staging or probe file left")
 }

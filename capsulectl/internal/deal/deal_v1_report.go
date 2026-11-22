@@ -224,7 +224,11 @@ func runV1Report(c *cobra.Command) (err error) {
 				return nil
 			}
 		}
-		if err := writeNewFileAfter(out, file, record); err != nil {
+		write := func() error { return writeNewFile(out, file) }
+		if record != nil {
+			write = func() error { return writeNewFileAfter(out, file, record) }
+		}
+		if err := write(); err != nil {
 			return err
 		}
 		result["sealed_report"], result["file"] = digest, out
@@ -283,41 +287,28 @@ func (s *dealSession) sealV1Report(p cli.Profile, r xdealv1.Report, at time.Time
 }
 
 // writeNewFile writes data, exactly, to a file that must not exist yet.
-func writeNewFile(path string, data []byte) error { return writeNewFileAfter(path, data, nil) }
+func writeNewFile(path string, data []byte) error {
+	if _, err := os.Lstat(path); err == nil {
+		return cli.InputError(path + " exists: --out names a new file")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return cli.AtomicFile(path, data, false)
+}
 
 // writeNewFileAfter writes data, exactly, to a file that must not exist yet,
-// running before (when set) once the bytes are staged and before they are put
-// in place. The name is reserved first (an empty file created exclusively),
-// so a file already there, a missing permission or an unwritable directory
-// fails before anything else; the bytes are written and synced to a
-// temporary file beside it, so a full disk fails before `before` runs too.
-// Only the rename over the reserved name and the directory's sync come
-// after it, and their error says the copy is on record. A rename, unlike a
-// hard link, works on every filesystem; it replaces only the placeholder
-// this function created.
+// running before between staging the bytes and putting them in place (a
+// shared copy's record). Everything that can fail on its own fails before
+// before runs: the bytes are written and synced to a temporary file beside
+// path, and the folder is shown to take a hard link, since the copy is
+// linked into place and a link, unlike a rename, never replaces a file. Only
+// the link (path taken meanwhile) and the folder's sync come after it, and
+// each error says what is on record and what is on disk.
 func writeNewFileAfter(path string, data []byte, before func() error) (err error) {
 	dir := filepath.Dir(path)
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	ph, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return cli.InputError(path + " exists: --out names a new file")
-		}
-		return err
-	}
-	if err = ph.Close(); err != nil {
-		return errors.Join(err, os.Remove(path))
-	}
-	placed := false
-	defer func() {
-		if !placed {
-			if e := os.Remove(path); e != nil && !errors.Is(e, os.ErrNotExist) {
-				err = errors.Join(err, e)
-			}
-		}
-	}()
 	f, err := os.CreateTemp(dir, ".capsulectl-deal-*")
 	if err != nil {
 		return err
@@ -339,33 +330,47 @@ func writeNewFileAfter(path string, data []byte, before func() error) (err error
 	if err != nil {
 		return err
 	}
-	if before != nil {
-		if err = before(); err != nil {
-			return err
-		}
+	probe := tmp + ".link"
+	if err = os.Link(tmp, probe); err != nil {
+		return cli.InputError("the folder of " + path + " does not take a hard link (" + err.Error() + "), which a shared copy is put in place with, so it is never written over another file: choose --out on another drive")
 	}
-	onRecord := func(e error) error {
-		if e != nil && before != nil {
-			return fmt.Errorf("the shared copy is on record, but %s could not be written (%w): run deal report again to write and record a new copy", path, e)
-		}
-		return e
+	if err = os.Remove(probe); err != nil {
+		return err
 	}
-	if err = os.Rename(tmp, path); err != nil {
-		return onRecord(err)
+	if _, err = os.Lstat(path); err == nil {
+		return cli.InputError(path + " exists: --out names a new file")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	placed = true
+	if err = before(); err != nil {
+		return err
+	}
+	if err = os.Link(tmp, path); err != nil {
+		return fmt.Errorf("the shared copy is on record, but %s could not be written (%w): run deal report again to write and record a new copy", path, err)
+	}
 	// The directory entry is made durable too, so a crash cannot keep the
 	// record and lose the file.
+	if err = v1SyncDir(dir); err != nil {
+		return fmt.Errorf("the shared copy is on record and written to %s, but its folder could not be synced (%w): the file may not survive a crash until the system flushes it", path, err)
+	}
+	return nil
+}
+
+// syncDir syncs a directory, making the entries in it durable.
+func syncDir(dir string) error {
 	d, err := os.Open(dir)
 	if err != nil {
-		return onRecord(err)
+		return err
 	}
 	if err = d.Sync(); err != nil {
 		_ = d.Close()
-		return onRecord(err)
+		return err
 	}
-	return onRecord(d.Close())
+	return d.Close()
 }
+
+// v1SyncDir is syncDir, a seam for tests.
+var v1SyncDir = syncDir
 
 // v1ShareGate is dealShareGate, a seam for tests.
 var v1ShareGate = dealShareGate
