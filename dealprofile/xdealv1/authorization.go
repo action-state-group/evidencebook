@@ -410,13 +410,17 @@ func intentBetween(journal []Record, j, i int) bool {
 	return false
 }
 
-// changesDetails is a journal record after which no earlier check covers an
-// act (v0 §6 rules 5 and 13; dealprofile chain.go changesDetails): a
-// detail_change; a message or evidence carrying counterparty identifiers or
+// changesDetails is ChangesDetails for the walk's journal record k.
+func (w *journalWalk) changesDetails(k int) bool { return ChangesDetails(w.journal[k]) }
+
+// ChangesDetails says a journal record is one after which no earlier check
+// covers an act (v0 §6 rules 5 and 13; dealprofile chain.go changesDetails):
+// a detail_change; a message or evidence carrying counterparty identifiers or
 // counterparty facts; an intent that starts a leg (a counterparty block) or
-// picks the item; an agent's chose move.
-func (w *journalWalk) changesDetails(k int) bool {
-	r := w.journal[k]
+// picks the item; an agent's chose move. CheckAuthorizations refuses an act
+// after such a record sealed after its check, so a writer holding a payment
+// in flight refuses to seal one (capsulectl write-path §13 item 5).
+func ChangesDetails(r Record) bool {
 	switch r.Block.RecordType {
 	case TypeDetailChange:
 		return true

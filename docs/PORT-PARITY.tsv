@@ -426,6 +426,7 @@ dealprofile/xdealv1	func	BookEntry	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	BookPair	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	BuildReport	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	BuildStatus	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	ChangesDetails	x-deal-v1	frozen #710	frozen #710
 dealprofile/xdealv1	func	Check	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckActs	x-deal-v1	frozen #710	frozen #710
 dealprofile/xdealv1	func	CheckAgreement	x-deal-v1	ported	ported
