@@ -1,6 +1,8 @@
 package deal
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -142,8 +144,11 @@ func TestDealNodeBundleRefusals(t *testing.T) {
 		"a receipt that is not JSON":     {"--record", record.Record.RecordID, "--at", cp, "--witness-receipt", writeJSON(t, `nope`), "--witness-directory", directory, "--out", filepath.Join(dir, "g.json")},
 	} {
 		_, err := nodeBundle(t, args...)
-		require.Error(t, err, name)
+		require.ErrorIs(t, err, cli.ErrInput, name)
 	}
+	_, err = nodeBundle(t, "--record", record.Record.RecordID, "--at", cp, "--witness-receipt", receipt, "--witness-directory", directory, "--out", filepath.Join(dir, "f2.json"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "receipt", "the refusal is the library's: the carried receipt does not verify under the directory")
 	kept, err := os.ReadFile(existing)
 	require.NoError(t, err)
 	assert.Equal(t, "keep", string(kept))
@@ -152,4 +157,96 @@ func TestDealNodeBundleRefusals(t *testing.T) {
 	assert.Empty(t, matches, "a refused bundle writes no file and leaves no temp file")
 	_, err = invoke(t, "", "--profile", "deal", "deal", "node", "bundle", "--book", "deal/deal-0000000000000000", "--record", "x", "--out", filepath.Join(dir, "h.json"))
 	require.ErrorIs(t, err, cli.ErrInput)
+}
+
+// A misspelled --book is an input error and makes no new empty log the cadence would commit.
+func TestDealNodeCheckpointAndBundleDoNotCreateABook(t *testing.T) {
+	dealFixture(t)
+	record, err := nodeAppend(t, "--book", "goose/node", "--type", "goose_joined", "--statement", writeJSON(t, `{"node":"n1"}`))
+	require.NoError(t, err)
+	for _, verb := range [][]string{
+		{"checkpoint", "--book", "goose/nod"},
+		{"checkpoint", "--book", "goose/nod", "--list"},
+		{"bundle", "--book", "goose/nod", "--record", record.Record.RecordID, "--out", filepath.Join(t.TempDir(), "b.json")},
+	} {
+		_, err := invoke(t, "", append([]string{"--profile", "deal", "deal", "node"}, verb...)...)
+		require.ErrorIs(t, err, cli.ErrInput, verb[0])
+	}
+	assert.NotContains(t, nodeRecordsBooks(t), "goose/nod")
+}
+
+// --disclose follows one hop, not the library's default two: a record's bundle
+// reveals what the record links to, not what those records link to.
+func TestDealNodeBundleDiscloseFollowsOneHop(t *testing.T) {
+	dealFixture(t)
+	a, err := nodeAppend(t, "--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `{"n":"a"}`), "--payload", writeJSON(t, `{"body":"payload of A"}`))
+	require.NoError(t, err)
+	b, err := nodeAppend(t, "--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `{"n":"b"}`), "--payload", writeJSON(t, `{"body":"payload of B"}`), "--cite", a.Record.RecordID)
+	require.NoError(t, err)
+	c, err := nodeAppend(t, "--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `{"n":"c"}`), "--cite", b.Record.RecordID)
+	require.NoError(t, err)
+	out := filepath.Join(t.TempDir(), "b.json")
+	_, err = nodeBundle(t, "--record", c.Record.RecordID, "--disclose", "--out", out)
+	require.NoError(t, err)
+	raw, err := os.ReadFile(out)
+	require.NoError(t, err)
+	var carried []string
+	for _, encoded := range bundlePayloads(t, raw) {
+		octets, err := base64.RawURLEncoding.DecodeString(encoded)
+		require.NoError(t, err)
+		carried = append(carried, string(octets))
+	}
+	joined := strings.Join(carried, "|")
+	assert.Contains(t, joined, "payload of B", "the record it links to is disclosed")
+	assert.NotContains(t, joined, "payload of A", "what that record links to is not")
+}
+
+// With a witnessed cadence tick the chain travels in the bundle; --list says which checkpoints are carried.
+func TestDealNodeBundleCarriesTheCadenceChain(t *testing.T) {
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	first, err := nodeAppend(t, "--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `{"n":"1"}`))
+	require.NoError(t, err)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), key)
+
+	listed := func() []map[string]any {
+		got, err := nodeVerb(t, "checkpoint", "--list")
+		require.NoError(t, err)
+		var rows []map[string]any
+		for _, r := range got["checkpoints"].([]any) {
+			rows = append(rows, r.(map[string]any))
+		}
+		return rows
+	}
+	rows := listed()
+	require.NotEmpty(t, rows)
+	assert.Equal(t, true, rows[len(rows)-1]["cadence_witnessed"], "the tick carries the book's checkpoint")
+	assert.Equal(t, "all", rows[len(rows)-1]["cadence_extent"])
+	carried := rows[len(rows)-1]["id"].(string)
+
+	out := filepath.Join(t.TempDir(), "all.json")
+	got, err := nodeBundle(t, "--record", first.Record.RecordID, "--out", out)
+	require.NoError(t, err)
+	assert.Equal(t, "all", got["cadence_extent"])
+	raw, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "x-cadence-witness/v0")
+	_, err = evidencebook.VerifyBundle(raw)
+	require.NoError(t, err)
+
+	// The book grows: the newest checkpoint is new and carried only as an earlier checkpoint
+	// plus a consistency proof ("part"); --at names the one the tick carried ("all").
+	_, err = nodeAppend(t, "--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `{"n":"2"}`))
+	require.NoError(t, err)
+	part, err := nodeBundle(t, "--record", first.Record.RecordID, "--out", filepath.Join(t.TempDir(), "part.json"))
+	require.NoError(t, err)
+	assert.Equal(t, "part", part["cadence_extent"])
+	exact, err := nodeBundle(t, "--record", first.Record.RecordID, "--at", carried, "--out", filepath.Join(t.TempDir(), "exact.json"))
+	require.NoError(t, err)
+	assert.Equal(t, "all", exact["cadence_extent"])
+	assert.Equal(t, carried, exact["checkpoint"])
+	assert.Greater(t, len(listed()), len(rows), "the bundles above cut newer checkpoints as the book grew")
 }
