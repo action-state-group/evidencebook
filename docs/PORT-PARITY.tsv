@@ -1,0 +1,568 @@
+package	kind	symbol	feature	rust	python
+.	func	AttachCardReceipt	card-registration	frozen #618	frozen #619
+.	func	BuildCardStatement	card-registration	frozen #618	frozen #619
+.	func	CheckCardRegistered	card-registration	frozen #618	frozen #619
+.	func	CheckHistoryCard2	standard-history	frozen #648	frozen #647
+.	func	CheckStandardHistoryMaterial	standard-history	frozen #648	frozen #647
+.	func	CheckStaple	root-misc	ported	ported
+.	func	DefaultDisclosurePolicy	disclosure-policy	frozen #633	frozen #632
+.	func	DefaultSharePolicy	request-reply-respond	frozen #131	frozen #131
+.	func	DeriveStandardHistory	standard-history	frozen #648	ported
+.	func	DerivedFillers	root-misc	ported	ported
+.	func	DiffBundles	evidence-bundle	frozen #636	frozen #635
+.	func	EncodeRequest	request-reply-respond	frozen #131	ported
+.	func	EntryID	shelf	ported	ported
+.	func	EpistemicTypes	originals-and-stores	frozen #640	frozen #639
+.	func	KeyID	originals-and-stores	ported	ported
+.	func	LinkTypes	originals-and-stores	frozen #640	frozen #639
+.	func	MigratePayloadDir	originals-and-stores	frozen #640	frozen #639
+.	func	NewEd25519Signer	originals-and-stores	frozen #640	frozen #639
+.	func	NewOpening	originals-and-stores	frozen #640	ported
+.	func	NewRecordIDIndex	indexes	frozen #638	frozen #637
+.	func	NewSCITTReceiptSubstrate	substrates	frozen #650	frozen #649
+.	func	NewSubjectIndex	indexes	frozen #638	frozen #637
+.	func	NewTokenIndex	indexes	frozen #638	frozen #637
+.	func	NewWindowLimiter	request-reply-respond	frozen #131	frozen #131
+.	func	Open	originals-and-stores	ported	ported
+.	func	OpenCLL	substrates	frozen #650	frozen #649
+.	func	OpenCLLSQLite	substrates	frozen #650	frozen #649
+.	func	OpenFileStore	originals-and-stores	frozen #640	frozen #639
+.	func	OpenHalf	reconcile-halves	frozen #644	frozen #643
+.	func	OpenOriginalsFile	originals-and-stores	frozen #640	frozen #639
+.	func	OpenSQLiteIndex	indexes	frozen #638	frozen #637
+.	func	OpenSQLiteShelf	shelf	frozen #646	frozen #645
+.	func	OpenedFieldsAgree	reconcile-halves	frozen #644	frozen #643
+.	func	OpeningsFor	shelf	ported	ported
+.	func	ParsePolicyChange	disclosure-policy	frozen #633	frozen #632
+.	func	ParseReply	request-reply-respond	frozen #131	ported
+.	func	ParseWitnessDirectory	substrates	frozen #650	frozen #649
+.	func	PushA2AExtension	a2a-mcp-carriage	frozen #627	frozen #140
+.	func	ReadClose	close-record	frozen #629	frozen #628
+.	func	RecomputeDealReconcile	deal-reconcile	frozen #631	frozen #630
+.	func	ReconcileAsked	reconcile-asked	frozen #642	frozen #641
+.	func	ReconcileHalves	reconcile-halves	ported	frozen #643
+.	func	ReconcileHalvesWith	reconcile-halves	frozen #644	frozen #643
+.	func	RegisterCard	card-registration	frozen #618	frozen #619
+.	func	SamePayloadCommitments	reconcile-halves	ported	frozen #643
+.	func	StatusOfClose	reconcile-halves	frozen #644	frozen #643
+.	func	SyncedFile	originals-and-stores	frozen #640	frozen #639
+.	func	VerifyBundle	evidence-bundle	frozen #636	frozen #635
+.	func	VerifyBundleAnswer	evidence-bundle	frozen #636	frozen #635
+.	func	VerifyCheckpoints	substrates	frozen #650	frozen #649
+.	func	VerifyHandover	shelf	ported	ported
+.	func	VerifyHandoverTimes	shelf	ported	ported
+.	func	VerifyKeyRange	indexes	ported	frozen #637
+.	func	VerifyLeaf	indexes	frozen #638	frozen #637
+.	func	VerifyOpening	originals-and-stores	frozen #640	ported
+.	func	VerifyOpenings	shelf	ported	ported
+.	func	VerifyStampProof	shelf	ported	ported
+.	type	A2AOptions	a2a-mcp-carriage	frozen #627	frozen #140
+.	type	A2ARequest	a2a-mcp-carriage	frozen #627	frozen #140
+.	type	A2AResponse	a2a-mcp-carriage	frozen #627	frozen #140
+.	type	A2AServer	a2a-mcp-carriage	frozen #627	frozen #140
+.	type	AbsenceRecord	request-reply-respond	frozen #131	frozen #131
+.	type	AbsenceWindow	request-reply-respond	frozen #131	frozen #131
+.	type	AfterReceiveProfile	shelf	frozen #646	frozen #645
+.	type	Anchor	request-reply-respond	frozen #131	frozen #131
+.	type	AnsweredStatement	request-reply-respond	ported	frozen #131
+.	type	ArtifactStore	originals-and-stores	frozen #640	frozen #639
+.	type	AskOutcome	reconcile-asked	frozen #642	frozen #641
+.	type	AskedExchange	reconcile-asked	frozen #642	frozen #641
+.	type	AskedHalf	reconcile-asked	frozen #642	frozen #641
+.	type	AskedRecord	reconcile-asked	frozen #642	frozen #641
+.	type	AskedReport	reconcile-asked	frozen #642	frozen #641
+.	type	AskedResult	reconcile-asked	frozen #642	frozen #641
+.	type	AskedState	reconcile-asked	frozen #642	frozen #641
+.	type	AskedVerdict	reconcile-asked	frozen #642	frozen #641
+.	type	Audience	shelf	frozen #646	frozen #645
+.	type	AudienceFact	shelf	ported	ported
+.	type	AuthenticatedIndex	indexes	ported	frozen #637
+.	type	BatchEntry	shelf	ported	ported
+.	type	BeforeStampProvider	shelf	frozen #646	frozen #645
+.	type	Book	originals-and-stores	ported	ported
+.	type	BookFact	shelf	ported	ported
+.	type	BookStatusProvider	shelf	frozen #646	frozen #645
+.	type	Bundle	evidence-bundle	frozen #636	frozen #635
+.	type	BundleCheckpoint	substrates	frozen #650	frozen #649
+.	type	BundleClaims	evidence-bundle	frozen #636	frozen #635
+.	type	BundleDiff	evidence-bundle	frozen #636	frozen #635
+.	type	BundleRequest	evidence-bundle	frozen #636	frozen #635
+.	type	CLLSubstrate	substrates	frozen #650	ported
+.	type	Cadence	originals-and-stores	ported	ported
+.	type	CadenceConfig	originals-and-stores	ported	ported
+.	type	CadenceLog	originals-and-stores	ported	frozen #639
+.	type	CadenceTick	originals-and-stores	ported	ported
+.	type	Candidates	indexes	ported	frozen #637
+.	type	CapsuleSealer	originals-and-stores	frozen #640	ported
+.	type	CardRegisteredReport	card-registration	frozen #618	frozen #619
+.	type	CardStatementRegistrar	card-registration	frozen #618	frozen #619
+.	type	Checkpoint	substrates	ported	ported
+.	type	CloseInput	close-record	frozen #629	frozen #628
+.	type	ClosePeriod	close-record	frozen #629	frozen #628
+.	type	CloseReconcile	close-record	frozen #629	frozen #628
+.	type	CloseStatement	close-record	frozen #629	frozen #628
+.	type	CloseStatus	reconcile-halves	ported	frozen #643
+.	type	CommittedLog	standard-history	frozen #648	frozen #647
+.	type	Comparator	reconcile-halves	ported	frozen #643
+.	type	CompletenessCertificate	substrates	frozen #650	frozen #649
+.	type	Config	originals-and-stores	ported	ported
+.	type	ConsistencyEvidence	substrates	ported	frozen #649
+.	type	ContentCheck	reconcile-halves	frozen #644	frozen #643
+.	type	ContentVerdict	reconcile-halves	frozen #644	frozen #643
+.	type	Correlation	originals-and-stores	ported	ported
+.	type	CountedPrefix	shelf	ported	ported
+.	type	Coverage	request-reply-respond	ported	frozen #131
+.	type	CoverageGiven	deal-reconcile	frozen #631	frozen #630
+.	type	DealHalf	deal-reconcile	frozen #631	frozen #630
+.	type	DealMapping	standard-history	frozen #648	frozen #647
+.	type	DealReconcile	deal-reconcile	frozen #631	frozen #630
+.	type	DealReconcileInput	deal-reconcile	frozen #631	frozen #630
+.	type	DealReconcileResult	deal-reconcile	frozen #631	frozen #630
+.	type	DerivationDefinition	root-misc	ported	ported
+.	type	DisclosurePolicy	disclosure-policy	frozen #633	frozen #632
+.	type	DisclosureStatement	evidence-bundle	ported	frozen #635
+.	type	DiscoveryIndex	indexes	ported	frozen #637
+.	type	DoctorFinding	doctor	frozen #192	frozen #634
+.	type	DoctorOptions	doctor	frozen #192	frozen #634
+.	type	DoctorTransport	doctor	frozen #192	frozen #634
+.	type	DoctorWitness	doctor	frozen #192	frozen #634
+.	type	Ed25519Signer	originals-and-stores	frozen #640	ported
+.	type	Entry	originals-and-stores	ported	ported
+.	type	Envelope	request-reply-respond	ported	frozen #131
+.	type	EpistemicType	originals-and-stores	ported	frozen #639
+.	type	Evidence	shelf	ported	ported
+.	type	EvidenceRef	deal-reconcile	frozen #631	frozen #630
+.	type	EvidenceRequest	request-reply-respond	frozen #131	ported
+.	type	ExchangeState	reconcile-halves	frozen #644	frozen #643
+.	type	FactInput	shelf	ported	frozen #645
+.	type	FactOpening	shelf	frozen #646	frozen #645
+.	type	FileStore	originals-and-stores	frozen #640	ported
+.	type	Filter	indexes	ported	frozen #637
+.	type	FormatSwitch	shelf	ported	ported
+.	type	Freshness	request-reply-respond	frozen #131	frozen #131
+.	type	Half	reconcile-halves	ported	frozen #643
+.	type	HalfMapping	deal-reconcile	frozen #631	frozen #630
+.	type	HalfSet	reconcile-halves	ported	frozen #643
+.	type	Handover	shelf	ported	ported
+.	type	HandoverCheckpoint	shelf	ported	ported
+.	type	HandoverConsistency	shelf	ported	ported
+.	type	HandoverDocument	shelf	ported	ported
+.	type	HandoverLatest	shelf	ported	ported
+.	type	HandoverResult	shelf	ported	ported
+.	type	HandoverTie	shelf	ported	ported
+.	type	HandoverTimes	shelf	ported	ported
+.	type	Header	originals-and-stores	ported	ported
+.	type	HeldLock	shelf	ported	ported
+.	type	HeldProof	shelf	ported	ported
+.	type	HeldRecord	shelf	ported	ported
+.	type	HostLog	originals-and-stores	ported	ported
+.	type	HostLogStores	originals-and-stores	ported	ported
+.	type	InclusionEvidence	substrates	ported	frozen #649
+.	type	IndexRoot	indexes	ported	frozen #637
+.	type	IntervalEvidence	substrates	frozen #650	frozen #649
+.	type	JournalStatus	shelf	frozen #646	frozen #645
+.	type	KeyRangeAnswer	indexes	ported	frozen #637
+.	type	KeyRangeProof	indexes	frozen #638	frozen #637
+.	type	LeafProof	indexes	frozen #638	frozen #637
+.	type	LegacyCadence	root-misc	ported	ported
+.	type	LegacyCloseStatement	close-record	frozen #629	frozen #628
+.	type	LegacyLog	originals-and-stores	frozen #640	frozen #639
+.	type	LifecycleStatement	originals-and-stores	ported	frozen #639
+.	type	Link	originals-and-stores	ported	ported
+.	type	LinkType	originals-and-stores	ported	frozen #639
+.	type	LinkValue	shelf	ported	frozen #645
+.	type	LogCoordinates	substrates	frozen #650	frozen #649
+.	type	LoggedSize	shelf	ported	frozen #645
+.	type	MCPOptions	a2a-mcp-carriage	frozen #627	frozen #140
+.	type	MCPServer	a2a-mcp-carriage	frozen #627	frozen #140
+.	type	MMRInclusion	substrates	frozen #650	frozen #649
+.	type	ManifestOptions	a2a-mcp-carriage	frozen #627	frozen #140
+.	type	MaterialRecord	standard-history	frozen #648	frozen #647
+.	type	Membership	substrates	frozen #650	frozen #649
+.	type	Message	request-reply-respond	frozen #131	ported
+.	type	Opening	originals-and-stores	ported	ported
+.	type	OperationalIndex	indexes	ported	frozen #637
+.	type	PairResult	reconcile-halves	ported	frozen #643
+.	type	PayloadsMode	evidence-bundle	ported	frozen #635
+.	type	PeerRecord	evidence-bundle	frozen #636	frozen #635
+.	type	PolicyChange	disclosure-policy	frozen #633	frozen #632
+.	type	PolicyStep	disclosure-policy	frozen #633	frozen #632
+.	type	ProofOutcome	shelf	ported	ported
+.	type	PushA2AServer	a2a-mcp-carriage	frozen #627	ported
+.	type	PushMCPServer	a2a-mcp-carriage	frozen #627	ported
+.	type	RangeWitness	substrates	frozen #650	frozen #649
+.	type	Receipt	substrates	ported	frozen #649
+.	type	ReceiveBounds	shelf	ported	ported
+.	type	ReceiveChanges	shelf	ported	ported
+.	type	ReceiveConfig	shelf	ported	ported
+.	type	ReceiveProfile	shelf	ported	ported
+.	type	ReceiveResult	shelf	ported	ported
+.	type	ReceivedPosition	shelf	frozen #646	frozen #645
+.	type	ReceivedRecord	shelf	ported	ported
+.	type	ReconcileBody	deal-reconcile	frozen #631	frozen #630
+.	type	ReconcileClaim	deal-reconcile	frozen #631	frozen #630
+.	type	ReconcileInput	reconcile-halves	frozen #644	frozen #643
+.	type	Reconciliation	reconcile-halves	frozen #644	frozen #643
+.	type	Record	originals-and-stores	ported	ported
+.	type	RecordOutcome	shelf	ported	ported
+.	type	RecordSource	indexes	ported	frozen #637
+.	type	Refusal	request-reply-respond	ported	frozen #131
+.	type	Registrar	substrates	frozen #650	frozen #649
+.	type	Reply	request-reply-respond	frozen #131	ported
+.	type	Reproduction	originals-and-stores	ported	frozen #639
+.	type	RequestLimiter	request-reply-respond	ported	ported
+.	type	RequestStatement	request-reply-respond	frozen #131	frozen #131
+.	type	RespondOptions	request-reply-respond	ported	ported
+.	type	ResponderKeys	request-reply-respond	frozen #131	ported
+.	type	ResponderPolicy	request-reply-respond	ported	ported
+.	type	ResponseStatement	request-reply-respond	frozen #131	frozen #131
+.	type	ResultAggregate	deal-reconcile	frozen #631	frozen #630
+.	type	ResultPeriod	deal-reconcile	frozen #631	frozen #630
+.	type	ResultPresentation	deal-reconcile	frozen #631	frozen #630
+.	type	ResultTallies	deal-reconcile	frozen #631	frozen #630
+.	type	RetentionState	originals-and-stores	ported	frozen #639
+.	type	SCITTReceiptSubstrate	substrates	frozen #650	frozen #649
+.	type	SQLiteIndex	indexes	frozen #638	frozen #637
+.	type	SentCapsule	shelf	ported	ported
+.	type	SentRequest	request-reply-respond	ported	ported
+.	type	SeqRun	reconcile-asked	frozen #642	frozen #641
+.	type	SetCompleteness	deal-reconcile	frozen #631	frozen #630
+.	type	SettingRow	disclosure-policy	frozen #633	frozen #632
+.	type	SharePolicy	request-reply-respond	ported	ported
+.	type	Shelf	shelf	ported	ported
+.	type	ShelfConfig	shelf	ported	frozen #645
+.	type	ShelfRecord	shelf	ported	ported
+.	type	ShelfRecords	shelf	ported	ported
+.	type	Signer	originals-and-stores	ported	ported
+.	type	SortedMerkleIndex	indexes	ported	ported
+.	type	StampBatch	shelf	ported	ported
+.	type	StampEntry	shelf	ported	ported
+.	type	StampProof	shelf	ported	ported
+.	type	StampStatusProvider	shelf	frozen #646	frozen #645
+.	type	StandardHistoryAnchor	root-misc	ported	ported
+.	type	StandardHistoryBundleRequest	standard-history	frozen #648	frozen #647
+.	type	StandardHistoryCheck	standard-history	frozen #648	frozen #647
+.	type	StandardHistoryMaterial	standard-history	frozen #648	frozen #647
+.	type	StandardHistorySource	standard-history	ported	ported
+.	type	Staple	root-misc	ported	ported
+.	type	StapleCheck	root-misc	ported	ported
+.	type	StatusInput	shelf	ported	ported
+.	type	StatusProvider	shelf	frozen #646	ported
+.	type	Store	originals-and-stores	frozen #640	ported
+.	type	StoredRecord	originals-and-stores	ported	ported
+.	type	Subject	request-reply-respond	frozen #131	frozen #131
+.	type	SubjectKind	request-reply-respond	ported	frozen #131
+.	type	Substrate	substrates	ported	ported
+.	type	SubstrateEntry	substrates	frozen #650	frozen #649
+.	type	SubstrateInfo	substrates	frozen #650	frozen #649
+.	type	Tallies	reconcile-halves	ported	frozen #643
+.	type	TickLeaf	root-misc	ported	ported
+.	type	TickLeaves	root-misc	ported	ported
+.	type	TickResult	originals-and-stores	ported	ported
+.	type	TokenIndex	indexes	frozen #638	frozen #637
+.	type	UnavailableError	originals-and-stores	frozen #640	ported
+.	type	VerificationEntry	request-reply-respond	frozen #131	frozen #131
+.	type	VerifiedBundle	evidence-bundle	frozen #636	frozen #635
+.	type	VerifiedStampProof	shelf	ported	ported
+.	type	WindowLimiter	request-reply-respond	ported	ported
+.	type	WithheldItem	evidence-bundle	ported	frozen #635
+.	type	WitnessCheck	originals-and-stores	ported	ported
+.	type	WitnessReceipt	originals-and-stores	ported	ported
+.	type	WitnessRow	substrates	frozen #650	ported
+.	var	DefaultReceiveBounds	shelf	frozen #646	frozen #645
+.	var	ErrBusy	sentinel-errors	not needed	not needed
+.	var	ErrCorrupt	sentinel-errors	not needed	not needed
+.	var	ErrDeleted	sentinel-errors	not needed	not needed
+.	var	ErrInvalid	sentinel-errors	not needed	not needed
+.	var	ErrLegalHold	sentinel-errors	not needed	not needed
+.	var	ErrMaterialWithheld	standard-history	not needed	not needed
+.	var	ErrNeverList	disclosure-policy	not needed	not needed
+.	var	ErrNoPolicy	disclosure-policy	not needed	not needed
+.	var	ErrNotCovered	sentinel-errors	not needed	not needed
+.	var	ErrNotFound	sentinel-errors	not needed	not needed
+.	var	ErrOverLimit	sentinel-errors	not needed	not needed
+.	var	ErrRefused	sentinel-errors	not needed	not needed
+.	var	ErrReleased	sentinel-errors	not needed	not needed
+.	var	ErrStaleRound	disclosure-policy	not needed	not needed
+.	var	ErrUnavailable	sentinel-errors	not needed	not needed
+.	var	ErrUnsupported	sentinel-errors	not needed	not needed
+.	var	NeverList	disclosure-policy	frozen #633	frozen #632
+.	var	RefusalReasons	request-reply-respond	frozen #131	frozen #131
+.	var	SettingsFields	disclosure-policy	frozen #633	frozen #632
+.	var	SubjectForms	request-reply-respond	frozen #131	frozen #131
+dealprofile	func	AssetScale	x-deal-v0	frozen #652	frozen #651
+dealprofile	func	Check	x-deal-v0	ported	ported
+dealprofile	func	CheckChain	x-deal-v0	ported	frozen #651
+dealprofile	func	CheckDigest	x-deal-v0	ported	ported
+dealprofile	func	CommitText	x-deal-v0	ported	ported
+dealprofile	func	DealKey	x-deal-v0	ported	ported
+dealprofile	func	Decode	x-deal-v0	ported	ported
+dealprofile	func	Digest	x-deal-v0	ported	ported
+dealprofile	func	Encode	x-deal-v0	ported	ported
+dealprofile	func	Fingerprint	x-deal-v0	ported	ported
+dealprofile	func	Kinds	x-deal-v0	ported	ported
+dealprofile	func	MinorUnits	x-deal-v0	ported	ported
+dealprofile	func	Normalize	x-deal-v0	ported	ported
+dealprofile	func	NormalizeReferee	x-deal-v0	ported	ported
+dealprofile	func	PreimageMatches	x-deal-v0	frozen #652	ported
+dealprofile	func	ProfileKey	x-deal-v0	ported	ported
+dealprofile	func	ProfileSchema	x-deal-v0	ported	ported
+dealprofile	func	ProfileSchemaAt	x-deal-v0	frozen #652	frozen #651
+dealprofile	func	RecordSchema	x-deal-v0	frozen #652	frozen #651
+dealprofile	func	RecordTypes	x-deal-v0	ported	ported
+dealprofile	func	ReportCapsule	x-deal-v0	ported	ported
+dealprofile	func	ReportPayload	x-deal-v0	ported	ported
+dealprofile	func	ReportReferee	x-deal-v0	frozen #652	ported
+dealprofile	func	SharedReferee	x-deal-v0	frozen #652	ported
+dealprofile	func	StandardHistoryDeal	x-deal-v0	ported	ported
+dealprofile	func	StepCapsule	x-deal-v0	ported	ported
+dealprofile	func	Version	x-deal-v0	ported	ported
+dealprofile	type	ActionApproval	x-deal-v0	ported	not needed
+dealprofile	type	ActionApprovalBody	x-deal-v0	ported	not needed
+dealprofile	type	ActionBody	x-deal-v0	ported	not needed
+dealprofile	type	ActionEvaluation	x-deal-v0	ported	not needed
+dealprofile	type	ActionEvaluationBody	x-deal-v0	ported	not needed
+dealprofile	type	ActionEvaluationBodyAuthorityBasisItem	x-deal-v0	ported	not needed
+dealprofile	type	ActionEvaluationBodyRulesChecksItem	x-deal-v0	ported	not needed
+dealprofile	type	ActionEvaluationBodyUnverifiedClaimsItem	x-deal-v0	ported	not needed
+dealprofile	type	ActionOutcome	x-deal-v0	ported	not needed
+dealprofile	type	ActionOutcomeBody	x-deal-v0	ported	not needed
+dealprofile	type	ActionRecord	x-deal-v0	ported	not needed
+dealprofile	type	ActionRecordBody	x-deal-v0	ported	not needed
+dealprofile	type	ActionReport	x-deal-v0	ported	not needed
+dealprofile	type	ActionReportBody	x-deal-v0	ported	not needed
+dealprofile	type	ActionReportBodyAuthorityItem	x-deal-v0	ported	not needed
+dealprofile	type	AgentMoveBody	x-deal-v0	ported	not needed
+dealprofile	type	AgentMoveBodyOptionsItem	x-deal-v0	ported	not needed
+dealprofile	type	ApprovalBody	x-deal-v0	ported	not needed
+dealprofile	type	ApprovalBodyLimits	x-deal-v0	ported	not needed
+dealprofile	type	AuthorityEntry	x-deal-v0	ported	not needed
+dealprofile	type	BaselineBody	x-deal-v0	ported	not needed
+dealprofile	type	BaselineBodySkill	x-deal-v0	ported	not needed
+dealprofile	type	Block	x-deal-v0	ported	not needed
+dealprofile	type	Body	x-deal-v0	ported	not needed
+dealprofile	type	CheckBody	x-deal-v0	ported	not needed
+dealprofile	type	CheckBodyPosting	x-deal-v0	ported	not needed
+dealprofile	type	CheckBodyRepresenting	x-deal-v0	ported	not needed
+dealprofile	type	CheckRequest	x-deal-v0	ported	not needed
+dealprofile	type	CheckRequestPlatform	x-deal-v0	ported	not needed
+dealprofile	type	CheckResponse	x-deal-v0	ported	not needed
+dealprofile	type	Checkpoint	x-deal-v0	ported	ported
+dealprofile	type	Claim	x-deal-v0	ported	not needed
+dealprofile	type	ClaimAuthorityBody	x-deal-v0	ported	not needed
+dealprofile	type	CloseBody	x-deal-v0	ported	not needed
+dealprofile	type	CloseBodyCarriedObligationsItem	x-deal-v0	ported	not needed
+dealprofile	type	CommercialBounds	x-deal-v0	ported	not needed
+dealprofile	type	Counterparty	x-deal-v0	ported	not needed
+dealprofile	type	CounterpartyFacts	x-deal-v0	ported	not needed
+dealprofile	type	CounterpartyProfile	x-deal-v0	ported	not needed
+dealprofile	type	CounterpartyProfileBody	x-deal-v0	ported	not needed
+dealprofile	type	CounterpartyProfileIDs	x-deal-v0	ported	not needed
+dealprofile	type	Decide	x-deal-v0	ported	ported
+dealprofile	type	DetailChangeBody	x-deal-v0	ported	not needed
+dealprofile	type	Difference	x-deal-v0	ported	not needed
+dealprofile	type	DisclosureBody	x-deal-v0	ported	not needed
+dealprofile	type	DisclosureBodyFieldsItem	x-deal-v0	ported	not needed
+dealprofile	type	EvidenceBody	x-deal-v0	ported	not needed
+dealprofile	type	EvidenceBodyReceivedTo	x-deal-v0	ported	not needed
+dealprofile	type	EvidenceBodyWrappedItem	x-deal-v0	ported	not needed
+dealprofile	type	HistoryInput	x-deal-v0	ported	ported
+dealprofile	type	HistoryRecord	x-deal-v0	ported	ported
+dealprofile	type	HistoryResult	x-deal-v0	ported	ported
+dealprofile	type	IntentBody	x-deal-v0	ported	not needed
+dealprofile	type	LimitSet	x-deal-v0	ported	not needed
+dealprofile	type	MaterialityRef	x-deal-v0	ported	not needed
+dealprofile	type	MerchantEmail	x-deal-v0	ported	not needed
+dealprofile	type	MerchantEmailParsed	x-deal-v0	ported	not needed
+dealprofile	type	MessageBody	x-deal-v0	ported	not needed
+dealprofile	type	Obligation	x-deal-v0	ported	not needed
+dealprofile	type	OutcomeBody	x-deal-v0	ported	not needed
+dealprofile	type	OutcomeNoteBody	x-deal-v0	ported	not needed
+dealprofile	type	Producer	x-deal-v0	ported	not needed
+dealprofile	type	ProposedAction	x-deal-v0	ported	not needed
+dealprofile	type	ProposedActionBody	x-deal-v0	ported	not needed
+dealprofile	type	ProposedActionBodyPosting	x-deal-v0	ported	not needed
+dealprofile	type	ProposedActionBodyRepresenting	x-deal-v0	ported	not needed
+dealprofile	type	Record	x-deal-v0	ported	ported
+dealprofile	type	Recourse	x-deal-v0	ported	not needed
+dealprofile	type	Ref	x-deal-v0	ported	ported
+dealprofile	type	RefereeError	x-deal-v0	frozen #652	ported
+dealprofile	type	RelRef	x-deal-v0	ported	not needed
+dealprofile	type	Report	x-deal-v0	ported	ported
+dealprofile	type	ReportCopy	x-deal-v0	ported	ported
+dealprofile	type	RulesVerdictBody	x-deal-v0	ported	not needed
+dealprofile	type	SaleBody	x-deal-v0	ported	not needed
+dealprofile	type	SaleCloseBody	x-deal-v0	ported	not needed
+dealprofile	type	SaleCutBody	x-deal-v0	ported	not needed
+dealprofile	type	SaleCutBodyThreadHeadsItem	x-deal-v0	ported	not needed
+dealprofile	type	SaleUnpostBody	x-deal-v0	ported	not needed
+dealprofile	type	StageError	x-deal-v0	ported	ported
+dealprofile	type	StepHeader	x-deal-v0	ported	ported
+dealprofile	type	StepInput	x-deal-v0	ported	ported
+dealprofile	type	TaskAuthority	x-deal-v0	ported	not needed
+dealprofile	type	TaskAuthorityBody	x-deal-v0	ported	not needed
+dealprofile	type	TaskAuthorityBodyPreconditionsItem	x-deal-v0	ported	not needed
+dealprofile	type	Terms	x-deal-v0	ported	not needed
+dealprofile	type	ThreadBody	x-deal-v0	ported	not needed
+dealprofile	type	ThreadOpenedBody	x-deal-v0	ported	not needed
+dealprofile	type	TypedCounterparty	x-deal-v0	ported	not needed
+dealprofile	type	TypedDisclosed	x-deal-v0	ported	not needed
+dealprofile	type	TypedDisclosedFieldsItem	x-deal-v0	ported	not needed
+dealprofile	type	TypedFinding	x-deal-v0	ported	not needed
+dealprofile	type	TypedRef	x-deal-v0	ported	not needed
+dealprofile	type	TypedRelRef	x-deal-v0	ported	not needed
+dealprofile	type	VerdictBody	x-deal-v0	ported	not needed
+dealprofile	type	VerdictBodyJudge	x-deal-v0	ported	not needed
+dealprofile	type	VerdictBodyRules	x-deal-v0	ported	not needed
+dealprofile	type	VerdictBodyRulesFindingsItem	x-deal-v0	ported	not needed
+dealprofile	type	VerdictBodyRulesHistory	x-deal-v0	ported	not needed
+dealprofile	type	VerdictBodyUnverifiedClaimsItem	x-deal-v0	ported	not needed
+dealprofile	var	ErrNotNormalizable	x-deal-v0	not needed	not needed
+dealprofile	var	ErrUnknownVersion	x-deal-v0	not needed	not needed
+dealprofile	var	ErrUnpriced	x-deal-v0	not needed	not needed
+dealprofile/xdealv1	func	BookEntry	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	BookPair	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	BuildReport	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	BuildStatus	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	Check	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CheckAgreement	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CheckAuthorizations	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CheckDispute	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CheckRuling	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CheckSealed	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	Decode	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	Digest	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	Encode	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	KnownTime	x-deal-v1	frozen #654	frozen #653
+dealprofile/xdealv1	func	NameAllRulings	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	NameRulings	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	NewNonce	x-deal-v1	ported	frozen #653
+dealprofile/xdealv1	func	NullOf	x-deal-v1	frozen #654	frozen #653
+dealprofile/xdealv1	func	Pair	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	PaymentCheck	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	PaymentRows	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	PlacementOf	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	ProfileSchema	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	RecordTypes	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	RefTo	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	ReportPair	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	ReportPayload	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	ResolveRow	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	RowInputs	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	RowsDigest	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	Some	x-deal-v1	frozen #654	frozen #653
+dealprofile/xdealv1	func	StampTime	x-deal-v1	ported	frozen #653
+dealprofile/xdealv1	func	Start	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	StartFromBooks	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	TermsLeg	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	VerifyBook	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	VerifyReport	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	VerifyReportBundle	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	VerifySent	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ActAuthorization	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ActGate	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ActGateInput	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	Adjudicator	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	AdmitBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	AgreeBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	AnswerBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ApprovalBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	AskAddress	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	AskBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Block	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Body	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	BookRead	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	BookRecord	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	CanActInput	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	CheckBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Counterparty	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Date	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	DisputeBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	FirstAct	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	Named	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	Null	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	OfferContext	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	PaymentInput	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	PaymentResult	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	PerformBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Placement	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Producer	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ProposeBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReceiveProfile	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	Record	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	Ref	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	RelRef	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	RemedyFor	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Report	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ReportBook	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ReportBooks	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportBundle	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ReportCopy	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ReportCounterpartLog	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportFact	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportLate	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportLateDispute	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportLateStatement	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportLog	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportRead	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ReportRestsOn	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportRow	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportRuling	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportSource	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Row	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	RowBooks	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	RowRemedy	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	RulingBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	RulingKeys	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	RulingRead	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	RulingRemedy	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	SealContext	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	Sent	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	SettleBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StageError	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	StartBooks	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	StartInput	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	StartResult	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	StatementBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatementItem	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatementNames	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusAdjud	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusBooks	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusDispute	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusFirstAct	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusNamed	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusProvider	x-deal-v1	frozen #654	ported
+dealprofile/xdealv1	type	StatusRecord	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusRow	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusRowDispute	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusRowInput	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusRuling	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusSideTime	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusStart	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusStatement	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusTime	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	StatusTimeOnly	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	StatusValue	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Terms	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	TermsRows	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	TimedRecord	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ValueBand	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	VerdictBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Witness	x-deal-v1	ported	ported
+dealprofile/xdealv1	var	NoTime	x-deal-v1	frozen #654	frozen #653
+rowstatus	func	Compute	row-status	ported	ported
+rowstatus	func	ComputeLate	row-status	ported	ported
+rowstatus	func	ParseInput	row-status	ported	ported
+rowstatus	type	Date	row-status	ported	ported
+rowstatus	type	Dispute	row-status	ported	not needed
+rowstatus	type	Input	row-status	ported	not needed
+rowstatus	type	Late	row-status	ported	ported
+rowstatus	type	Named	row-status	ported	ported
+rowstatus	type	Remedy	row-status	ported	ported
+rowstatus	type	Result	row-status	ported	ported
+rowstatus	type	Row	row-status	ported	not needed
+rowstatus	type	Ruling	row-status	ported	not needed
+rowstatus	type	Statement	row-status	ported	not needed
+rowstatus	type	Time	row-status	ported	not needed
+rowstatus	type	Withdrawal	row-status	ported	not needed
+rowstatus	var	ErrInvalid	row-status	not needed	not needed
