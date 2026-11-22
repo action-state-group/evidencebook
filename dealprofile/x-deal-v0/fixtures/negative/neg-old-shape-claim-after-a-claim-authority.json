@@ -9,17 +9,20 @@
     "01-baseline.json",
     "02-task-authority.json",
     "03-claim-sealed-before.json",
-    "04-proposed-action-represent-condition.json",
+    "04-proposed-action-represent-before.json",
     "05-action-evaluation.json",
-    "06-claim-condition.json",
-    "07-claim-authority-condition.json",
-    "08-proposed-action-represent-warranty.json",
-    "09-action-evaluation.json",
-    "10-approval-of-the-warranty.json",
-    "11-claim-warranty.json",
-    "12-claim-authority-warranty.json",
-    "13-claim-refund-terms.json",
-    "14-claim-authority-refund-terms.json"
+    "06-claim-authorized-before.json",
+    "07-proposed-action-represent-condition.json",
+    "08-action-evaluation.json",
+    "09-claim-condition.json",
+    "10-claim-authority-condition.json",
+    "11-proposed-action-represent-warranty.json",
+    "12-action-evaluation.json",
+    "13-approval-of-the-warranty.json",
+    "14-claim-warranty.json",
+    "15-claim-authority-warranty.json",
+    "16-claim-refund-terms.json",
+    "17-claim-authority-refund-terms.json"
   ],
   "record": {
     "x-deal-v0": {
@@ -27,12 +30,12 @@
       "canonicalization": "jcs",
       "deal_id": "deal-7e41b9c02d5a8f36",
       "record_type": "claim",
-      "seq": 15,
-      "at": "2026-10-08T09:34:00Z",
+      "seq": 18,
+      "at": "2026-10-08T09:40:00Z",
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "e294637357f7301e5beb6dc0b76680fb685eb87a9f4d28b1e8d0efe6915ef737"
+        "digest": "f6a9d088d3ef9a6c9991aed9bc7d30b20204a67259f5017e547aad2159614156"
       },
       "baseline_ref": {
         "type": "deal-record",
