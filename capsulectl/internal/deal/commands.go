@@ -14,11 +14,7 @@ const Vendor = "action-state-group"
 const Name = "deal"
 
 // DealMetadata is capsulectl-deal's cli-plugin-metadata answer.
-<<<<<<< HEAD
-var DealMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"init", "open", "check", "note", "close", "report", "export", "list", "history", "deadlines", "disclosures", "settlement", "terms-leg", "audit-host", "reconcile", "countersign", "verify-email", "verify-object", "verifier-statement", "verify-statement", "tick", "checkpoint", "sale", "compose", "request", "respond", "held", "decline", "terms-result", "canary", "standard-history", "rules-verdict", "outcome-note", "set-version", "offer", "admit", "agree", "receive", "dispute"}, Presentations: dealViewPresentations()}
-=======
-var DealMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"init", "open", "check", "note", "close", "report", "export", "list", "history", "deadlines", "disclosures", "settlement", "terms-leg", "audit-host", "reconcile", "countersign", "verify-email", "verify-object", "verifier-statement", "verify-statement", "tick", "checkpoint", "sale", "compose", "request", "respond", "held", "decline", "terms-result", "canary", "standard-history", "rules-verdict", "outcome-note", "set-version", "offer", "agree", "receive", "dispute", "node"}, Presentations: dealViewPresentations()}
->>>>>>> 7ee22cf4 (feat(capsulectl): deal node append and records, a node's own book on the deal shelf (#624))
+var DealMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"init", "open", "check", "note", "close", "report", "export", "list", "history", "deadlines", "disclosures", "settlement", "terms-leg", "audit-host", "reconcile", "countersign", "verify-email", "verify-object", "verifier-statement", "verify-statement", "tick", "checkpoint", "sale", "compose", "request", "respond", "held", "decline", "terms-result", "canary", "standard-history", "rules-verdict", "outcome-note", "set-version", "offer", "admit", "agree", "receive", "dispute", "node"}, Presentations: dealViewPresentations()}
 
 // DealCommands are capsulectl-deal's own commands: `capsulectl deal ...`.
 func DealCommands() []*cobra.Command {
