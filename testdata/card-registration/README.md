@@ -1,0 +1,3 @@
+# card-registration
+
+`vectors.json` is `vectors/card-registration-v0/vectors.json` of agent-action-capsule at 3072014e (the merge of #641, `spec/standard-history-v0.md` §13), minus the two cases over 100 KiB (`pass-large-protected`, `large-bad-signature-beside-pass`). It is a copy: change it only by re-copying from that repository, never by hand. Each case gives a card, the holder key, the anchor, the card statements beside it, the transparency policy and the expected `card_registered` report. The keys are test keys derived from public labels; the holder key is the Ed25519 seed SHA-256("card-registration-v0 key holder").
