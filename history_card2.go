@@ -31,16 +31,31 @@ const (
 // and ranges date nothing: they show only that each listed checkpoint extends
 // the one before.
 func historyEntries2(ctx context.Context, src cllMaterialSource, chain []Checkpoint, anchor Checkpoint, positions []uint64) ([]any, error) {
-	var prover *cllProver
-	history := make([]any, len(positions))
+	sampled := make([]Checkpoint, len(positions))
 	for i, p := range positions {
 		if p >= uint64(len(chain)) {
 			return nil, fmt.Errorf("%w: checkpoint position %d is past the stream's %d checkpoints", ErrInvalid, p, len(chain))
 		}
-		cp := chain[p]
+		sampled[i] = chain[p]
+	}
+	return sampledEntries2(ctx, src, positions, sampled, anchor)
+}
+
+// sampledEntries2 is historyEntries2 over the sampled checkpoints alone:
+// sampled[i] is the checkpoint at positions[i]. A caller that reads only the
+// sampled checkpoints (Cadence.HistoryCard2) keeps its memory logarithmic in
+// the stream's length.
+func sampledEntries2(ctx context.Context, src cllMaterialSource, positions []uint64, sampled []Checkpoint, anchor Checkpoint) ([]any, error) {
+	if len(sampled) != len(positions) {
+		return nil, fmt.Errorf("%w: %d checkpoints for %d positions", ErrInvalid, len(sampled), len(positions))
+	}
+	var prover *cllProver
+	history := make([]any, len(positions))
+	for i, p := range positions {
+		cp := sampled[i]
 		var consistency any
 		if i > 0 {
-			before := chain[positions[i-1]]
+			before := sampled[i-1]
 			if before.TreeSize >= cp.TreeSize {
 				return nil, fmt.Errorf("%w: checkpoint %d does not grow the log past checkpoint %d", ErrCorrupt, p, positions[i-1])
 			}
