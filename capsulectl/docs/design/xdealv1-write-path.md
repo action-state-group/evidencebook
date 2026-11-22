@@ -438,8 +438,12 @@ the journal lacks it.
    authorization read the same subset, and another deal's intent or detail change in the same
    journal never reaches either. B2 passes the deal's earlier acts with the candidate, so the
    library's single-use check (`authorization.go:70-72`, `118-121`) sees them. `deal check` refuses
-   when `v1DealJournal` holds a record of the deal with no local event: a record sealed outside
-   these verbs would reach the authorization but not the card.
+   when `v1DealJournal` holds a record of the deal, of a kind this slice's verbs write, with no
+   local event. Those kinds are the journal overlay (`intent`, `check`, `verdict`, `approval`) and
+   the journey overlay. A record sealed outside these verbs would reach the authorization but not
+   the card. The deal's other records are not checked for a local event: `propose`, `agree` of
+   every kind, `admit` and the records sent whole, which `deal offer`, `deal receive`, `deal agree`
+   and `deal admit` keep in their own tables (`deal_sent`, `deal_v1`, `deal_v1_admits`).
    - **Cross-deal memory reads both.** `counterpartyMemory` reads other deals through the index's
      `deal_steps` query (`deal_counterparty.go:156-205`, `deal_index.go:130`), not through the event
      list. The shared query reads `deal_v1_events` too, in one order with duplicates removed. So a
@@ -507,7 +511,8 @@ the journal lacks it.
 
 **Tests.**
 - **One input, two versions.** The same input on a v0 deal and on an equivalent v1 deal gives the
-  same card, the same verdict and byte-equal rules-checker input. Cases: pass, pause and deny; a
+  same card, the same verdict and equal rules-checker input on the members the rules read, with
+  ids, digests and times normalised (item 6). Cases: pass, pause and deny; a
   confirmed-limits approval; a detail change; change, check, approve and check again (the second
   card lists no change); a later, wider intent that narrows rather than widens; a delegated
   `chose`; an empty `who`, then an intent that names the merchant; a seller deal and a buyer deal;
@@ -523,7 +528,9 @@ the journal lacks it.
   - A `user` approval answering a verdict with no `--shown-card` (a `confirm_limits` approval is
     sealed without one).
   - An input `party_role` that disagrees with the deal's side.
-  - A check while `v1DealJournal` holds a record of the deal with no local event.
+  - A check while `v1DealJournal` holds a journal-overlay or journey record of the deal with no
+    local event, such as a `detail_change` sealed outside these verbs. The normal offerer flow
+    (offer, receive, agree, intent, check) passes.
   - Each note kind with no v1 form, naming its verb.
   - Sale-thread actions.
 - **Authorization, in this slice.** `CheckAuthorizations` over `v1DealJournal` accepts a constructed
