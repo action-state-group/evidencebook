@@ -2,7 +2,13 @@
 //! (agent-action-capsule `spec/standard-history-v0.md` §13, cited as SH).
 //!
 //! A port of the Go `card_registration.go`, byte for byte: the same card
-//! statement octets, the same checks in the same order, the same refusals.
+//! statement octets and the same checks in the same order. The signer is the
+//! one the crate's answer path takes (`evidence_request::envelope::Signer`),
+//! since the holder key is the envelope's responder. Decoding is by
+//! `ciborium`, which is stricter than Go's decoder on a malformed statement (a
+//! null `unprotected`, a null `receipts` value, a repeated `receipts` label
+//! or a tag inside the statement is refused as not a card statement); a
+//! well-formed statement is accepted and re-encoded identically by both.
 //!
 //! Registration is opt-in and has no default: nothing here names or reaches a
 //! service, and the crate has no network client. The host supplies a
