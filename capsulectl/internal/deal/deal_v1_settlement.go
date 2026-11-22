@@ -24,15 +24,27 @@ import (
 // v1SettlementRow is one row of `deal settlement` on a v1 deal.
 type v1SettlementRow struct {
 	ID string `json:"id"`
-	// Check is the report row's check word (pass, fail, not_run,
-	// not_recomputed): the report's verdict on the row.
-	Check string `json:"check"`
-	// Payment is the payment check's result, exactly as the library gives
-	// it; null when the check was not run.
+	// ReportCheck is the report row's verdict (passed, failed, not_run,
+	// not_recomputed), the report's word for the same check Payment.Check
+	// gives as pass or fail.
+	ReportCheck string `json:"report_check"`
+	// Payment is the payment check on the legs, exactly as the library
+	// gives it; null when the status ran no check for the row (see
+	// not_run). A check that ran without a verdict has check "" and a
+	// reason (several_payments, a refund leg, ...).
 	Payment *xdealv1.PaymentResult `json:"payment"`
 	// NotRun says why the payment check was not run: not_recomputed,
-	// no_offer_pair or no_acceptor_key.
-	NotRun string `json:"not_run,omitempty"`
+	// no_offer_pair or no_acceptor_key; NotRunNote says it in plain words
+	// (v1NotRunNotes).
+	NotRun     string `json:"not_run,omitempty"`
+	NotRunNote string `json:"not_run_note,omitempty"`
+}
+
+// v1NotRunNotes say why a payment check was not run and what the user can
+// do (Sherlock2, #736). not_recomputed needs none: the row's verdict says it.
+var v1NotRunNotes = map[string]string{
+	xdealv1.NotRunNoOfferPair:   "this store holds the offer but not its signed copy, so the payment check cannot run here; receive the offer file again (deal receive) to keep it",
+	xdealv1.NotRunNoAcceptorKey: "your records do not name the accepting side's key yet, so the payment check cannot run; it runs once your agreement names it",
 }
 
 // v1SettlementFlags are v0's flags that a v1 deal does not take.
@@ -77,7 +89,8 @@ func runV1Settlement(c *cobra.Command) (err error) {
 	}
 	rows := []v1SettlementRow{}
 	for _, r := range snap.Report.Rows {
-		row := v1SettlementRow{ID: r.ID, Check: r.Check, NotRun: snap.PaymentsNotRun[r.ID]}
+		row := v1SettlementRow{ID: r.ID, ReportCheck: r.Check, NotRun: snap.PaymentsNotRun[r.ID]}
+		row.NotRunNote = v1NotRunNotes[row.NotRun]
 		if res, ok := snap.Payments[r.ID]; ok {
 			res := res
 			row.Payment = &res
@@ -87,5 +100,11 @@ func runV1Settlement(c *cobra.Command) (err error) {
 		}
 		rows = append(rows, row)
 	}
-	return cli.Output(c, map[string]any{"deal_id": dealID, "as_of": asOf, "rows": rows, "settled_note": personSignatureNote})
+	out := map[string]any{"deal_id": dealID, "as_of": asOf, "rows_state": snap.Report.RowsState, "rows": rows, "settled_note": personSignatureNote}
+	if snap.Report.RowsState != xdealv1.RowsListed {
+		// Before the deal starts the report lists no rows: say so, rather
+		// than an empty list that reads as no payment rows.
+		out["rows_note"] = "the deal has not started (" + snap.Report.Start.State + "), so its rows are not listed yet"
+	}
+	return cli.Output(c, out)
 }

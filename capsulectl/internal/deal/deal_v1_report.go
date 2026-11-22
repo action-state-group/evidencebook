@@ -274,7 +274,7 @@ func v1ReportError(dealID string, p cli.Profile, err error) error {
 		if cfg, cerr := p.DealCadence(); cerr == nil {
 			every = "about every " + cli.ShortDuration(cfg.Interval)
 		}
-		return cli.InputError("your deal book of " + dealID + " has records after its last checkpoint, and a report rests on a checkpoint: the next cadence tick covers it (" + every + "; deal tick runs one once it is due), then run deal report again")
+		return cli.InputError("your deal book of " + dealID + " has records after its last checkpoint, and a report rests on a checkpoint: the next cadence tick covers it (" + every + "; deal tick runs one once it is due), then run the command again")
 	case strings.Contains(msg, "after as_of"):
 		return cli.InputError("a record of deal " + dealID + " is timed after now, so no report can be computed: this computer's clock or the time the other side's witness gave is off")
 	}
