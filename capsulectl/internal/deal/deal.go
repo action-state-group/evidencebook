@@ -921,6 +921,11 @@ func (s *dealSession) seal(ctx context.Context, dealID string, events []sealedEv
 // witness when deals happen. The deal's checkpoint reaches the witness inside
 // the next cadence tick (`deal tick`), so its witness state is "scheduled".
 func (s *dealSession) milestone(ctx context.Context) (map[string]any, error) {
+	// An x-deal-v1 deal has no log of its own to cut: its records are in the
+	// journal, which the cadence checkpoints at each tick.
+	if s.v1 {
+		return map[string]any{"state": "not_configured"}, nil
+	}
 	if s.p.Checkpoint.Signing == (cli.Secret{}) {
 		return map[string]any{"state": "not_configured"}, nil
 	}
@@ -988,6 +993,9 @@ func runDeal(c *cobra.Command, needDeal bool, fn func(ctx context.Context, s *de
 			if c.Name() != "note" {
 				return v1Refusal(c.Name(), dealID)
 			}
+			if path, _ := c.Flags().GetString("opening"); path != "" && kind != "intent" {
+				return cli.InputError("--opening goes only on an x-deal-v1 deal's first intent note, which opens it")
+			}
 			// A note on a v1 deal runs the v0 note code over the deal's
 			// local event list; the first intent note seals the opening
 			// (xdealv1-write-path §12).
@@ -1005,6 +1013,9 @@ func runDeal(c *cobra.Command, needDeal bool, fn func(ctx context.Context, s *de
 				}
 			}
 			events, opened, verr := s.useV1Note(ctx, dealID, kind, raw, opening)
+			if verr == nil && !opened && opening != nil {
+				return cli.InputError("--opening goes only on an x-deal-v1 deal's first intent note, which opens it; this deal is already open")
+			}
 			if verr != nil {
 				return verr
 			}
@@ -1012,6 +1023,11 @@ func runDeal(c *cobra.Command, needDeal bool, fn func(ctx context.Context, s *de
 				return cli.Output(c, map[string]any{"deal_id": dealID, "kind": "intent", "opened": true, "step": events[len(events)-1].Event.N, "intent": events[len(events)-1].Digest})
 			}
 			return fn(ctx, s, dealID, events)
+		}
+		if c.Name() == "note" {
+			if path, _ := c.Flags().GetString("opening"); path != "" {
+				return cli.InputError("--opening goes only on an x-deal-v1 deal's first intent note; deal " + dealID + " is an x-deal-v0 deal, opened with `deal open`")
+			}
 		}
 		if err = s.useDeal(ctx, dealID, false); err != nil {
 			return err
@@ -1746,7 +1762,12 @@ func dealNoteCommand() *cobra.Command {
 					cl := ev.Claim
 					cl.AuthorizedBy, cl.Reason, cl.Rule = authorizeClaim(events, *cl, cli.DealClock().UTC())
 					cl.Unchecked = cl.AuthorizedBy == ""
-					ev.ClaimShape = dealClaimShapeVersion
+					// x-deal-v1 has no claim_authority record: a v1 deal's claim
+					// carries its authority in its own journal body, which is
+					// never sent (deal_v1_events.go).
+					if !s.v1 {
+						ev.ClaimShape = dealClaimShapeVersion
+					}
 				}
 			case "intent":
 				if open.Sale != "" {
@@ -1937,6 +1958,9 @@ func dealNoteCommand() *cobra.Command {
 					d.AuthorizedBy, d.Reason, d.Rule = "", "the check did not name your "+classWord(class), "class_not_checked"
 				}
 			}
+			if deferred != nil && s.v1 {
+				return cli.InputError("the email's sender check could not reach DNS: on an x-deal-v1 deal the email is not held for the tick; note it again when DNS answers")
+			}
 			if deferred != nil {
 				// Nothing is sealed yet, so the receipt has not changed: the
 				// page waits for the tick that seals the email.
@@ -1978,6 +2002,10 @@ func dealNoteCommand() *cobra.Command {
 					out["next"] = "this note asks for a higher limit or a new action: it is recorded as a proposal and not applied. " +
 						"Ask the user; only on their explicit yes, seal deal note --kind approval --check " + se.CapsuleID +
 						" --choice confirm_limits --said \"<their words>\""
+					if s.v1 {
+						out["next"] = "this note asks for a higher limit or a new action: it is recorded as a proposal and not applied. " +
+							"Confirming it (deal note --kind approval --choice confirm_limits) is not available on an x-deal-v1 deal yet (evidencebook#626, part 2)"
+					}
 				}
 			case "acceptance":
 				out["accepts"] = ev.Acceptance.Offer

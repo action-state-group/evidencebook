@@ -412,7 +412,8 @@ the journal lacks it.
      recovered from records. Left out, it is empty, and a later intent that names the merchant opens
      the merchant leg, as in v0;
    - `terms` comes from the offer's `terms`, mapped field by field;
-   - the recourse (`Rail`, `Refundable`) comes from `--opening`, as v0's opening takes it. The agreement's adjudicator
+   - the recourse (`Rail`, `Refundable`) comes from `--opening`, as v0's opening takes it. An offer's
+     terms (`dealprofile.Terms`) state no rail and no refundability, so nothing agreed is overridden; The agreement's adjudicator
      and forums are the dispute clause, which is not this recourse;
    - `Records` is the x-deal-v0 path (`""`), so `dealRecordSet` gives the untyped behaviour;
    - the pinned materiality predicate is read from the profile then and stored on the event, as
