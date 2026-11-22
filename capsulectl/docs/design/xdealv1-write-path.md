@@ -588,7 +588,11 @@ and on §12's local event list.
      - Without `--reverses`, the leg is payer when the holder's party owes the row (the deal's
        `deal_v1.role` and the row's `owed_by`), and payee otherwise.
      - With `--reverses`, it is the mirror of the leg it reverses, which must be a settle record in
-       the holder's **own** book, of the other leg kind and not already reversed. The seller
+       the holder's **own** book, of the other leg kind, that no other refund reverses. A refund is
+       one leg plus the legs that supersede it. A later observation of the same refund (a payee
+       refund received, `pending` then `settled`) is a payee leg with `--supersedes` naming the
+       earlier one, carrying the same `reverses`. A second, independent refund of the same leg is
+       refused. The seller
        refunding a payment it received reverses its own payee leg and is the payer
        (`fixtures/appendix-a/seller-book/07-refund.json`). The buyer's refund received reverses its
        own payer leg and is the payee (`fixtures/appendix-a/buyer-book/08-refund-received.json`).
@@ -628,31 +632,46 @@ and on §12's local event list.
        (settlement.go:1061, 1089), which `PaymentCheck` fails (payment.go:424). So a payer leg
        sealed `pending` makes a payment that went through read as failed.
      - On x402 the transaction exists only in the facilitator's settle response.
-   - **The flow of a pay: two calls of `deal settle`.** capsulectl does not drive the rail; the
-     agent does, and tells the plugin at the two moments.
-     1. **`deal settle --sent --check DIGEST`**, before the handoff, in one store transaction
-        (`BEGIN IMMEDIATE`). That transaction is the profile's spend lock (Sherlock2's condition 1),
-        held for one command and never across a person's approval. Inside it:
+   - **The flow of a payer leg: two calls of `deal settle`.** capsulectl does not drive the rail; the
+     agent does, and tells the plugin at the two moments. The flow applies to every payer leg, a
+     payment's on a `pay` check and a refund's on a `cancel` check.
+     1. **`deal settle --sent --check DIGEST`**, before the handoff. The spend lock (Sherlock2's
+        condition 1) is the session's shelf writer lock. A write session holds it from open to close
+        (`OpenSQLiteShelf` with `LockPath`, `deal_shelf.go:86`, `deal.go:176-178`), so two `--sent`
+        calls, or a `--sent` and a `deal check`, run one after the other for the whole command, and
+        it is never held across a person's approval. In order:
         - reconcile (item 8);
         - refuse when the check already has an open send or a payer leg;
         - run the gate and `CheckActs` on the candidate payer leg (status `settled`, `at` now), so a
           send the gate or the authorization would refuse never reaches the rail;
-        - re-run the deal's spend rules over the check's snapshot with the current history (acts
-          plus every open send, across v1 deals), so a second payment that a first one, still in
-          flight, puts over the cap is refused;
-        - write the local `sent` event with its record's payload, as §12 stores a step, and seal the
-          journal `evidence` record (Sherlock2's condition 2).
+        - on a `pay` check, re-run the deal's spend rules over the check's snapshot with the current
+          history (acts plus every open send, across v1 deals), so a second payment that a first
+          one, still in flight, puts over the cap is refused;
+        - store the local `sent` event with its record's payload, then append the journal `evidence`
+          record. Each is its own write, as `storeV1` and `appendV1Journal` do, and `v1Events`
+          recovers a crash between the two (§12). No SQLite transaction spans the append, because
+          the shelf is a separate connection on the same file.
 
         The evidence record carries no `Who`, no counterparty identifiers and no
         `counterparty_facts`, so it is not a change of details between the check and the act
-        (`changesDetails`). Its `detail_commitment` commits to the check digest, amount, currency and
-        reference known then (the payment hash, the nonce), and the local `sent` event keeps them
-        plain, as §12 keeps an intent's words.
+        (`changesDetails`). Its `detail_commitment` commits to the check digest, the amount, the
+        currency and the reference known then (the payment hash, the nonce). The local `sent` event
+        keeps them plain, as §12 keeps an intent's words.
      2. **`deal settle --check DIGEST --status settled|failed`**, when the rail answers (the Lightning
-        payment result, x402's settle response, the ACP/UCP order response). It seals the one payer
-        leg, re-running the gate and `CheckActs` at its final `at`. `--status pending` is refused:
-        while the rail says pending, no payer leg is sealed, the act is held, and `deal status` names
-        the payment in flight.
+        payment result, x402's settle response, the ACP/UCP order response).
+        - It requires the check's stored `sent` event and refuses without one, so no payer leg skips
+          the send and its spend check.
+        - The leg must match what the send bound: the amount, the currency, the reference type, and
+          the reference value where the send knew it (an x402 transaction is added here).
+        - It seals the one payer leg, re-running the gate and `CheckActs` at the leg's final `at`.
+        - `--status pending` is refused. While the rail says pending, no payer leg is sealed, the act
+          is held, and `deal status` names the payment in flight.
+        - Only a re-run whose inputs match an already sealed leg rewrites its file (item 8).
+   - **No detail change while a payment is in flight.** `CheckActs` refuses an act after a detail
+     change sealed after its check (`authorization.go:122-125`). So while a deal has an open send,
+     `deal note` refuses the kinds that change details (`change`, and a `message` or `evidence`
+     naming the counterparty), naming the payment in flight, until its payer leg is sealed. A
+     payment already sent can then always be sealed.
    - **Open sends.** A send is open while its check is cited by no payer leg in the holder's own
      book. That is read from the local `sent` events and the own book, after reconciliation, across
      all v1 deals (`v1MemorySteps`). Every pay check and every `--sent` counts each open send's
@@ -754,15 +773,21 @@ they apply to a perform. Then `settle`, with items 3, 4 and 5 and the rest of 8 
     the send not at all.
   - A `--sent` the gate or the authorization refuses seals nothing.
   - A second `--sent` on the same check is refused.
+  - `--status settled` with no stored send, or with an amount or reference that differs from the
+    send's, is refused.
+  - A detail change while a send is open is refused, and the payment is then sealed.
+  - A refund's payer leg goes through the same two calls.
   - The payer leg passes `CheckActs` with the sent evidence between its check and the act.
   - Payment A is pending, and payment B's check sees A's amount and is refused when A plus B is
     over the cap.
-  - Two `--sent` calls run at once are serialized by the transaction, and the second sees the first.
+  - Two processes running `--sent` at once: the second waits on the writer lock, then sees the
+    first's open send.
 - **Refunds.** Each side is built from the two fixtures:
   - the seller's refund on a cancel check seals;
   - the buyer's refund received credits the buyer's `pay` once, only when `settled`. A pending
     one, then a settled one, credits once; a failed one credits nothing;
-  - a `--reverses` naming the counterparty's leg is refused;
+  - a `--reverses` naming the counterparty's leg is refused, and so is a second, independent refund
+    of a leg already refunded; a superseding observation of the same refund is sealed;
   - the seller's cancel approval is not offered again;
   - a refund on a pay check is refused, and so is a payment on a cancel check;
   - the payment row's check is not shown as verified.
