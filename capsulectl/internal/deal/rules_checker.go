@@ -1147,10 +1147,15 @@ type v1RulesAct struct {
 
 // v1RulesActs are every x-deal-v1 deal's local act events that rest on a
 // check (AuthorizedBy set); the buyer's refund received, which cites none,
-// reaches only the money fold.
+// reaches only the money fold. Each deal's book is reconciled first, so an
+// act a stopped run sealed but did not record locally (or a payment whose
+// failed leg did not yet clear its amount) is read as it stands.
 func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, error) {
 	var exists int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='deal_v1_events'`).Scan(&exists); err != nil || exists == 0 {
+		return nil, err
+	}
+	if err := s.reconcileAllV1(ctx); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT deal_id, n, local FROM deal_v1_events WHERE kind='act' ORDER BY deal_id, n`)
@@ -1176,4 +1181,39 @@ func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, error) {
 		out = append(out, v1RulesAct{deal, v1EventID(deal, n), at})
 	}
 	return out, rows.Err()
+}
+
+// reconcileAllV1 reconciles every x-deal-v1 deal whose book this profile holds
+// (reconcileV1Acts).
+func (s *dealSession) reconcileAllV1(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT deal_id FROM deal_v1 WHERE own_agreement_id != ''`)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		d, err := s.v1DealOf(ctx, id)
+		if err != nil || d == nil {
+			return err
+		}
+		book, err := s.ownBookV1(ctx, d)
+		if err != nil {
+			return err
+		}
+		if _, err := s.reconcileV1Acts(ctx, id, book); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -5,6 +5,7 @@ package deal
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -252,4 +253,160 @@ func TestARefundOnBothSides(t *testing.T) {
 	dealRun(t, append(base, "--status", "settled", "--supersedes", pending["digest"].(string), "--out", filepath.Join(t.TempDir(), "rs.json"))...)
 	assert.Equal(t, 1, credits(), "settled: the money comes back once")
 	assert.Contains(t, v1Err(t, append(base, "--status", "settled", "--out", filepath.Join(t.TempDir(), "r2.json"))...), "already refunded")
+}
+
+// buyerCheckedFor is buyerChecked on an offer of the deal's choosing, paying
+// amount under paymentRef with an intent that allows it.
+func buyerCheckedFor(t *testing.T, offer func(string) string, amount int, paymentRef string) (*handshakeV1, string) {
+	t.Helper()
+	h := agreedBoth(t, offer)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, `{"verbatim":"buy the lamp, at most 70 dollars","max_total_minor":7000}`), "--opening", writeJSON(t, v1Opening))
+	in := fmt.Sprintf(`{"action":"pay","amount_minor":%d,"authorized_max_minor":%d,"terms":{"item":"lamp","price_minor":%d,"currency":"USD"},"payment_ref":%q}`, amount, amount, amount, paymentRef)
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, in))
+	require.Equal(t, "pass", out["verdict"], "%v", out)
+	var check string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		check = checkDigest(t, journal)
+	})
+	return h, check
+}
+
+// The legs both sides seal with deal settle join in the library's payment
+// check under the offer's terms leg and pass.
+func TestBothSidesLegsPassThePaymentCheck(t *testing.T) {
+	h, check := buyerCheckedFor(t, paymentOffer, 6000, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	payer := filepath.Join(t.TempDir(), "payer.json")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--statement", "paid_as_agreed=met", "--out", payer)
+	h.seller.act(t)
+	dealRun(t, "receive", payer)
+	payee := filepath.Join(t.TempDir(), "payee.json")
+	dealRun(t, "settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
+		"--received", "6000", "--receive-fee", "0", "--status", "settled", "--statement", "paid_as_agreed=met", "--out", payee)
+	offer, err := os.ReadFile(h.offerFile)
+	require.NoError(t, err)
+	res, err := xdealv1.PaymentCheck(xdealv1.PaymentInput{Offer: offer, OfferDigest: h.offer, AcceptorKey: h.seller.party.signer, Row: "paid_as_agreed",
+		Legs: [][]byte{readPush(t, payer).Record, readPush(t, payee).Record}})
+	require.NoError(t, err)
+	assert.Equal(t, xdealv1.PaymentPass, res.Check, "%+v", res)
+}
+
+// On x402 the leg carries the rail's transaction: --status without it is
+// refused rather than sealing the check's nonce as the transaction; a re-run
+// with other inputs, another network or another --reverses is refused.
+func TestAnAnsweredPaymentIsBoundToItsSend(t *testing.T) {
+	nonce := strings.Repeat("0f", 32)
+	h, check := buyerChecked(t, nonce)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "x402.transaction", "--payment-ref-network", "base")
+	file := filepath.Join(t.TempDir(), "leg.json")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", file), "--payment-ref is required")
+	tx := "0x" + strings.Repeat("9a", 32)
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--payment-ref", tx, "--payment-ref-network", "ethereum", "--out", file), "sent with network base")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--reverses", strings.Repeat("aa", 32), "--status", "settled", "--payment-ref", tx, "--out", file), "--reverses must name")
+	args := []string{"settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--payment-ref", tx, "--out", file}
+	first := dealRun(t, args...)
+	assert.Equal(t, first["digest"], dealRun(t, args...)["digest"], "the same inputs rewrite the file")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--status", "failed", "--payment-ref", tx, "--out", file), "already sealed")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "x402.transaction", "--payment-ref-network", "base"), "is used")
+}
+
+// A send the authorization refuses (a paused check with no approval) seals
+// nothing and counts nothing.
+func TestARefusedSendSealsNothing(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"pay","amount_minor":9000,"authorized_max_minor":9000,"terms":{"item":"lamp","price_minor":9000,"currency":"USD"},"payment_ref":"`+v1LnHash+`"}`))
+	require.NotEqual(t, "pass", out["verdict"], "over the intent's cap: %v", out)
+	var check string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		check = checkDigest(t, journal)
+	})
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "not authorized")
+	assert.Nil(t, sendRow(t, h.dealID, check))
+	assert.Empty(t, v1ActEvents(t, h.dealID))
+}
+
+// A run stopped after the payer leg is sealed and before its send is closed is
+// finished by the next command, and the same --status rewrites the leg.
+func TestALegSealedBeforeItsSendClosedIsFinished(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	afterLegSealedHook = func() error { return fmt.Errorf("stopped") }
+	file := filepath.Join(t.TempDir(), "leg.json")
+	args := []string{"settle", "--deal", h.dealID, "--check", check, "--status", "failed", "--out", file}
+	assert.Contains(t, v1Err(t, args...), "stopped")
+	afterLegSealedHook = nil
+	require.Empty(t, sendRow(t, h.dealID, check).Leg, "the run stopped before closing")
+	out := dealRun(t, args...)
+	assert.Equal(t, out["digest"], sendRow(t, h.dealID, check).Leg, "closed by reconciliation")
+	acts := v1ActEvents(t, h.dealID)
+	require.Len(t, acts, 1)
+	assert.Nil(t, acts[0].Event.Act.AmountMinor, "the failed payment counts no spend")
+}
+
+// Refund edges: a failed payment cannot be refunded; a failed refund leaves
+// the leg free for a new one; two refunds of one leg cannot be in flight at
+// once; the money returned is what was received, net of the fee.
+func TestRefundEdges(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	paid := dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+
+	h.seller.act(t)
+	received := dealRun(t, "settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
+		"--received", "4500", "--receive-fee", "0", "--status", "settled", "--out", filepath.Join(t.TempDir(), "received.json"))["digest"].(string)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
+	cancelCheck := func() string {
+		out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"cancel","amount_minor":4500,"terms":{"item":"lamp","price_minor":4500,"currency":"USD"}}`))
+		require.Equal(t, "pass", out["verdict"], "%v", out)
+		var d string
+		withSession(t, func(s *dealSession) {
+			journal, err := s.v1DealJournal(t.Context(), h.dealID)
+			require.NoError(t, err)
+			d = checkDigest(t, journal)
+		})
+		return d
+	}
+	refund := func(check, ref string) []string {
+		return []string{"settle", "--deal", h.dealID, "--check", check, "--reverses", received, "--payment-ref-type", "ln.payment_hash", "--payment-ref", ref}
+	}
+	first := cancelCheck()
+	dealRun(t, append(refund(first, strings.Repeat("71", 32)), "--sent")...)
+	second := cancelCheck()
+	assert.Contains(t, v1Err(t, append(refund(second, strings.Repeat("72", 32)), "--sent")...), "already refunded", "one refund of a leg in flight at a time")
+	failedFile := filepath.Join(t.TempDir(), "rf.json")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", first, "--reverses", received, "--status", "failed", "--out", failedFile)
+	again := dealRun(t, "settle", "--deal", h.dealID, "--check", first, "--reverses", received, "--status", "failed", "--out", failedFile)
+	assert.NotEmpty(t, again["digest"], "a refund's re-run rewrites its file")
+	dealRun(t, append(refund(second, strings.Repeat("72", 32)), "--sent")...)
+
+	h.buyer.act(t)
+	base := []string{"settle", "--deal", h.dealID, "--reverses", paid["digest"].(string), "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("72", 32), "--received", "4470", "--receive-fee", "30", "--status", "settled"}
+	rf := filepath.Join(t.TempDir(), "rr.json")
+	dealRun(t, append(base, "--out", rf)...)
+	dealRun(t, append(base, "--out", rf)...)
+	var credit *int64
+	n := 0
+	for _, se := range v1ActEvents(t, h.dealID) {
+		if se.Event.Act.Direction == "in" {
+			credit, n = se.Event.Act.AmountMinor, n+1
+		}
+	}
+	require.Equal(t, 1, n, "a re-run credits nothing more")
+	assert.Equal(t, int64(4470), *credit, "what came back, net of the fee")
+}
+
+// A failed payment moved no money: it cannot be refunded.
+func TestAFailedPaymentCannotBeRefunded(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	failed := dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "failed", "--out", filepath.Join(t.TempDir(), "f.json"))
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--reverses", failed["digest"].(string), "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
+		"--received", "4500", "--receive-fee", "0", "--status", "settled", "--out", filepath.Join(t.TempDir(), "r.json")), "nothing to refund")
 }

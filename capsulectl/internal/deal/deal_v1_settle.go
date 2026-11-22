@@ -39,8 +39,9 @@ import (
 // either (sealV1Step), so the payment already sent stays authorized.
 
 // dealV1SendsTable holds each payer leg's send: the check it rests on, the
-// local act event that counts it, what the send bound (amount, currency,
-// reference), and the payer leg that closed it ("" while open).
+// local act event that counts it, what the send bound (amount, currency, the
+// whole payment reference, the leg a refund reverses), and the payer leg that
+// closed it ("" while open).
 const dealV1SendsTable = `CREATE TABLE IF NOT EXISTS deal_v1_sends (
 	deal_id TEXT NOT NULL,
 	check_digest TEXT NOT NULL,
@@ -49,6 +50,8 @@ const dealV1SendsTable = `CREATE TABLE IF NOT EXISTS deal_v1_sends (
 	currency TEXT NOT NULL,
 	ref_type TEXT NOT NULL,
 	ref_value TEXT NOT NULL,
+	ref_json TEXT NOT NULL,
+	reverses TEXT NOT NULL DEFAULT '',
 	leg_digest TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (deal_id, check_digest)
 )`
@@ -66,13 +69,14 @@ type v1Send struct {
 	DealID, Check          string
 	N, Amount              int64
 	Currency, RefType, Ref string
+	RefJSON, Reverses      string
 	Leg                    string
 }
 
 func (s *dealSession) sendOf(ctx context.Context, dealID, check string) (*v1Send, error) {
 	v := v1Send{DealID: dealID, Check: check}
-	err := s.db.QueryRowContext(ctx, `SELECT event_n, amount_minor, currency, ref_type, ref_value, leg_digest FROM deal_v1_sends WHERE deal_id=? AND check_digest=?`, dealID, check).
-		Scan(&v.N, &v.Amount, &v.Currency, &v.RefType, &v.Ref, &v.Leg)
+	err := s.db.QueryRowContext(ctx, `SELECT event_n, amount_minor, currency, ref_type, ref_value, ref_json, reverses, leg_digest FROM deal_v1_sends WHERE deal_id=? AND check_digest=?`, dealID, check).
+		Scan(&v.N, &v.Amount, &v.Currency, &v.RefType, &v.Ref, &v.RefJSON, &v.Reverses, &v.Leg)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -85,7 +89,7 @@ func (s *dealSession) sendOf(ctx context.Context, dealID, check string) (*v1Send
 // openSends are the holder's open sends of a deal, or of every deal when
 // dealID is "".
 func (s *dealSession) openSends(ctx context.Context, dealID string) ([]v1Send, error) {
-	q, args := `SELECT deal_id, check_digest, event_n, amount_minor, currency, ref_type, ref_value FROM deal_v1_sends WHERE leg_digest=''`, []any{}
+	q, args := `SELECT deal_id, check_digest, event_n, amount_minor, currency, ref_type, ref_value, reverses FROM deal_v1_sends WHERE leg_digest=''`, []any{}
 	if dealID != "" {
 		q, args = q+` AND deal_id=?`, append(args, dealID)
 	}
@@ -97,7 +101,7 @@ func (s *dealSession) openSends(ctx context.Context, dealID string) ([]v1Send, e
 	var out []v1Send
 	for rows.Next() {
 		var v v1Send
-		if err := rows.Scan(&v.DealID, &v.Check, &v.N, &v.Amount, &v.Currency, &v.RefType, &v.Ref); err != nil {
+		if err := rows.Scan(&v.DealID, &v.Check, &v.N, &v.Amount, &v.Currency, &v.RefType, &v.Ref, &v.Reverses); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -121,7 +125,7 @@ func (s *dealSession) refuseWhileInFlight(ctx context.Context, dealID string, pa
 		return err
 	}
 	return cli.InputError("a payment of deal " + dealID + " is in flight (check " + open[0].Check + "): a " + rec.Block.RecordType +
-		" record that changes the deal's details would void its authorization, so it waits until the payment is settled or failed (`deal settle --check " + open[0].Check + " --status ...`)")
+		" record that changes the deal's details would void its authorization, so it waits until the payment is settled or failed (`deal settle --deal " + dealID + " --check " + open[0].Check + " --status settled|failed`)")
 }
 
 // equalRefTypes are the payment reference types whose value is fixed before
@@ -279,9 +283,10 @@ func settleOf(r xdealv1.Record) (*xdealv1.SettleBody, bool) {
 
 // legFor is the leg the holder seals (§13 item 3): payer when its party owes
 // the row; with reverses, the mirror of the leg it reverses, which must be a
-// settle of the holder's own book that no other refund reverses (unless this
-// leg supersedes that refund's earlier observation).
-func (a *v1ActDeal) legFor(row *xdealv1.Row, reverses, supersedes string) (string, error) {
+// settle of the holder's own book that did not fail. Whether the leg is
+// already refunded is refundTaken's, asked only for a new record, after a
+// re-run has been found.
+func (s *dealSession) legFor(ctx context.Context, a *v1ActDeal, row *xdealv1.Row, reverses string) (string, error) {
 	if reverses == "" {
 		if row.OwedBy == a.d.Role {
 			return xdealv1.LegPayer, nil
@@ -289,7 +294,8 @@ func (a *v1ActDeal) legFor(row *xdealv1.Row, reverses, supersedes string) (strin
 		return xdealv1.LegPayee, nil
 	}
 	var target *xdealv1.SettleBody
-	for _, r := range a.book {
+	seq := 0
+	for i, r := range a.book {
 		b, ok := settleOf(r)
 		if !ok {
 			continue
@@ -299,24 +305,93 @@ func (a *v1ActDeal) legFor(row *xdealv1.Row, reverses, supersedes string) (strin
 			return "", err
 		}
 		if d == reverses {
-			target = b
+			target, seq = b, i+1
 		}
 	}
 	if target == nil {
 		return "", cli.InputError("--reverses must name a settle record of your own deal book: " + reverses + " is not one")
 	}
-	// A later observation of the same refund supersedes it (checked against
-	// that refund's reverses by settlePayee); a second, independent refund of
-	// the same leg is refused.
-	for _, r := range a.book {
-		if b, ok := settleOf(r); ok && supersedes == "" && b.Reverses != nil && b.Reverses.Digest == reverses && b.Supersedes == nil {
-			return "", cli.InputError("leg " + reverses + " is already refunded: a later observation of that refund names it with --supersedes")
-		}
+	status, err := s.legStatusAt(ctx, a.d, seq)
+	if err != nil {
+		return "", err
+	}
+	if status == legFailed {
+		return "", cli.InputError("leg " + reverses + " failed: no money moved, so there is nothing to refund")
 	}
 	if target.Leg == xdealv1.LegPayer {
 		return xdealv1.LegPayee, nil
 	}
 	return xdealv1.LegPayer, nil
+}
+
+// legStatusAt is the status of the settle record at seq of the holder's book,
+// from its Capsule's settlement member.
+func (s *dealSession) legStatusAt(ctx context.Context, d *v1Deal, seq int) (string, error) {
+	member, err := s.ownSettleMember(ctx, d, seq)
+	if err != nil {
+		return "", err
+	}
+	var m struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(member, &m); err != nil {
+		return "", fmt.Errorf("%w: the settlement member of record %d: %v", evidencebook.ErrCorrupt, seq, err)
+	}
+	return m.Status, nil
+}
+
+// refundTaken refuses a new refund of a leg that is already being refunded: a
+// payer refund when another send reverses it (open, or closed by a leg that
+// did not fail); a payee refund received when a leg of the holder's book that
+// did not fail already reverses it (a later observation of that refund names
+// it with --supersedes instead).
+func (s *dealSession) refundTaken(ctx context.Context, a *v1ActDeal, target string, payer bool) error {
+	taken := cli.InputError("leg " + target + " is already refunded: a later observation of that refund names it with --supersedes, and a failed refund leaves the leg free to refund again")
+	if payer {
+		rows, err := s.db.QueryContext(ctx, `SELECT leg_digest FROM deal_v1_sends WHERE deal_id=? AND reverses=?`, a.d.DealID, target)
+		if err != nil {
+			return err
+		}
+		var legs []string
+		for rows.Next() {
+			var l string
+			if err := rows.Scan(&l); err != nil {
+				rows.Close()
+				return err
+			}
+			legs = append(legs, l)
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		for _, l := range legs {
+			if l == "" {
+				return taken
+			}
+			for i, r := range a.book {
+				if d, err := xdealv1.Digest(r); err == nil && d == l {
+					if st, err := s.legStatusAt(ctx, a.d, i+1); err != nil {
+						return err
+					} else if st != legFailed {
+						return taken
+					}
+				}
+			}
+		}
+		return nil
+	}
+	for i, r := range a.book {
+		b, ok := settleOf(r)
+		if !ok || b.Leg != xdealv1.LegPayee || b.Reverses == nil || b.Reverses.Digest != target {
+			continue
+		}
+		if st, err := s.legStatusAt(ctx, a.d, i+1); err != nil {
+			return err
+		} else if st != legFailed {
+			return taken
+		}
+	}
+	return nil
 }
 
 // checkRecord is the deal's journal check of digest, with its body.
@@ -486,7 +561,7 @@ func (s *dealSession) settle(ctx context.Context, c *cobra.Command, in settleIn)
 	if err != nil {
 		return err
 	}
-	leg, err := a.legFor(row, in.reverses, in.supersedes)
+	leg, err := s.legFor(ctx, a, row, in.reverses)
 	if err != nil {
 		return err
 	}
@@ -521,6 +596,9 @@ func (s *dealSession) settle(ctx context.Context, c *cobra.Command, in settleIn)
 		return s.settlePayee(ctx, c, a, in, body, marks, currency, termsRef, events)
 	}
 	if leg != xdealv1.LegPayer {
+		if in.reverses != "" {
+			return cli.InputError("a refund you receive is a payee leg, which cites no --check: give --received, --receive-fee and --status")
+		}
 		return cli.InputError("you do not owe row " + row.ID + " of deal " + in.dealID + ": what you received is a payee leg, which cites no --check")
 	}
 	cb, err := s.checkRecord(ctx, in.dealID, in.check)
@@ -599,8 +677,15 @@ func sendRef(in settleIn, cb *xdealv1.CheckBody) (paymentRefFlags, error) {
 func (s *dealSession) settleSent(ctx context.Context, c *cobra.Command, a *v1ActDeal, in settleIn, body xdealv1.SettleBody, marks []string, cb *xdealv1.CheckBody, currency, termsRef string, events []sealedEvent) error {
 	if prev, err := s.sendOf(ctx, in.dealID, in.check); err != nil {
 		return err
+	} else if prev != nil && prev.Leg != "" {
+		return cli.InputError("check " + in.check + " is used: its payment was sealed as leg " + prev.Leg + ", and a check authorizes one payment")
 	} else if prev != nil {
-		return cli.InputError("a payment on check " + in.check + " is in flight (" + strconv.FormatInt(prev.Amount, 10) + " " + prev.Currency + ", " + prev.RefType + " " + prev.Ref + "): run deal settle --check " + in.check + " --status settled or failed when the rail answers")
+		return cli.InputError("a payment on check " + in.check + " is in flight (" + strconv.FormatInt(prev.Amount, 10) + " " + prev.Currency + ", " + prev.RefType + " " + prev.Ref + "): when the rail answers, run " + statusHint(in.dealID, in.check, prev.Reverses, prev.RefType))
+	}
+	if in.reverses != "" {
+		if err := s.refundTaken(ctx, a, in.reverses, true); err != nil {
+			return err
+		}
 	}
 	for _, r := range v1Acts(a.book) {
 		if b, ok := settleOf(r); ok && b.Check != nil && b.Check.Digest == in.check {
@@ -663,13 +748,34 @@ func (s *dealSession) settleSent(ctx context.Context, c *cobra.Command, a *v1Act
 	if err != nil {
 		return err
 	}
-	if err := s.storeSend(ctx, in.dealID, ev.N, local, digest, payload, v1Send{Check: in.check, Amount: *cb.AmountMinor, Currency: currency, RefType: p.Type, Ref: p.Value}); err != nil {
+	refJSON, err := json.Marshal(refMember)
+	if err != nil {
+		return err
+	}
+	if err := s.storeSend(ctx, in.dealID, ev.N, local, digest, payload, v1Send{Check: in.check, Amount: *cb.AmountMinor, Currency: currency, RefType: p.Type, Ref: p.Value, RefJSON: string(refJSON), Reverses: in.reverses}); err != nil {
 		return err
 	}
 	result := map[string]any{"deal_id": in.dealID, "sent": digest, "check": in.check, "amount_minor": *cb.AmountMinor, "currency": currency,
-		"next": "hand the payment to the rail; when it answers, run deal settle --deal " + in.dealID + " --check " + in.check + " --status settled|failed --out FILE"}
+		"next": "hand the payment to the rail; when it answers, run " + statusHint(in.dealID, in.check, in.reverses, p.Type)}
 	actResult(result, &gate, auth)
 	return cli.Output(c, result)
+}
+
+// statusHint is the command that seals a sent payment's leg when the rail
+// answers, with the flags it needs.
+func statusHint(dealID, check, reverses, refType string) string {
+	h := "deal settle --deal " + dealID + " --check " + check
+	if reverses != "" {
+		h += " --reverses " + reverses
+	}
+	h += " --status settled|failed --out FILE"
+	if !equalRefTypes[refType] && reverses == "" {
+		h += " --payment-ref THE_RAILS_REFERENCE"
+		if refType == "x402.transaction" {
+			h += " (the transaction)"
+		}
+	}
+	return h
 }
 
 // sentEvidence is the journal "payment sent" evidence: about the deal's intent,
@@ -722,8 +828,8 @@ func (s *dealSession) storeSend(ctx context.Context, dealID string, n int64, loc
 	if _, err := tx.ExecContext(ctx, `INSERT INTO deal_v1_events (deal_id, n, kind, local, record_digest, payload) VALUES (?, ?, 'act', ?, ?, ?)`, dealID, n, string(local), digest, payload); err != nil {
 		return errors.Join(err, tx.Rollback())
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO deal_v1_sends (deal_id, check_digest, event_n, amount_minor, currency, ref_type, ref_value) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		dealID, v.Check, n, v.Amount, v.Currency, v.RefType, v.Ref); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO deal_v1_sends (deal_id, check_digest, event_n, amount_minor, currency, ref_type, ref_value, ref_json, reverses) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		dealID, v.Check, n, v.Amount, v.Currency, v.RefType, v.Ref, v.RefJSON, v.Reverses); err != nil {
 		return errors.Join(err, tx.Rollback())
 	}
 	if err := tx.Commit(); err != nil {
@@ -734,9 +840,19 @@ func (s *dealSession) storeSend(ctx context.Context, dealID string, n int64, loc
 		if herr != nil || held {
 			return errors.Join(err, herr)
 		}
-		_, derr := s.db.ExecContext(ctx, `DELETE FROM deal_v1_sends WHERE deal_id=? AND check_digest=?`, dealID, v.Check)
-		_, eerr := s.db.ExecContext(ctx, `DELETE FROM deal_v1_events WHERE deal_id=? AND n=?`, dealID, n)
-		return errors.Join(err, derr, eerr)
+		// Both rows go in one transaction, so a send never outlives its act
+		// event or the reverse; a failure keeps both for the next read.
+		dtx, derr := s.db.BeginTx(ctx, nil)
+		if derr != nil {
+			return errors.Join(err, derr)
+		}
+		if _, derr = dtx.ExecContext(ctx, `DELETE FROM deal_v1_sends WHERE deal_id=? AND check_digest=?`, dealID, v.Check); derr == nil {
+			_, derr = dtx.ExecContext(ctx, `DELETE FROM deal_v1_events WHERE deal_id=? AND n=?`, dealID, n)
+		}
+		if derr != nil {
+			return errors.Join(err, derr, dtx.Rollback())
+		}
+		return errors.Join(err, dtx.Commit())
 	}
 	return s.v1Appended(ctx, dealID, digest)
 }
@@ -749,32 +865,16 @@ func (s *dealSession) settleAnswered(ctx context.Context, c *cobra.Command, a *v
 	if send == nil {
 		return cli.InputError("no payment on check " + in.check + " was sent: run deal settle --deal " + in.dealID + " --check " + in.check + " --sent before the handoff")
 	}
-	result := map[string]any{"deal_id": in.dealID, "record": xdealv1.TypeSettle, "leg": xdealv1.LegPayer}
-	if send.Leg != "" {
-		for i, r := range a.book {
-			if d, err := xdealv1.Digest(r); err == nil && d == send.Leg {
-				return s.writeSealedAt(ctx, c, a.d, i+1, r, in.out, result)
-			}
+	if in.reverses != send.Reverses {
+		if send.Reverses == "" {
+			return cli.InputError("the payment on check " + in.check + " was sent as a payment, not a refund: leave out --reverses")
 		}
-		return fmt.Errorf("%w: the payer leg %s of check %s is not in your deal book", cli.ErrConflict, send.Leg, in.check)
+		return cli.InputError("the refund on check " + in.check + " was sent as reversing leg " + send.Reverses + ": give --reverses " + send.Reverses)
 	}
-	if err := refuseExistingOut(in.out); err != nil {
-		return err
+	if send.Amount != *cb.AmountMinor || send.Currency != currency {
+		return fmt.Errorf("%w: the payment was sent as %d %s, and check %s records %d %s", cli.ErrConflict, send.Amount, send.Currency, in.check, *cb.AmountMinor, currency)
 	}
-	p := in.ref
-	if p.Type == "" {
-		p.Type = send.RefType
-	}
-	if p.Type != send.RefType {
-		return cli.InputError("the payment was sent under " + send.RefType + ", and --payment-ref-type is " + p.Type)
-	}
-	if equalRefTypes[p.Type] || p.Value == "" {
-		if p.Value != "" && p.Value != send.Ref {
-			return cli.InputError("on " + p.Type + " the leg's reference is the one the payment was sent under (" + send.Ref + "), and --payment-ref differs")
-		}
-		p.Value = send.Ref
-	}
-	refMember, err := p.member()
+	refMember, err := answeredRef(in, cb, send)
 	if err != nil {
 		return err
 	}
@@ -782,11 +882,35 @@ func (s *dealSession) settleAnswered(ctx context.Context, c *cobra.Command, a *v
 	if in.hasRoutingFee {
 		routing = &in.routingFee
 	}
-	if send.Amount != *cb.AmountMinor || send.Currency != currency {
-		return fmt.Errorf("%w: the payment was sent as %d %s, and check %s records %d %s", cli.ErrConflict, send.Amount, send.Currency, in.check, *cb.AmountMinor, currency)
-	}
 	member, err := payerMember(termsRef, send.Amount, currency, refMember, in.status, routing)
 	if err != nil {
+		return err
+	}
+	result := map[string]any{"deal_id": in.dealID, "record": xdealv1.TypeSettle, "leg": xdealv1.LegPayer, "status": in.status}
+	if send.Leg != "" {
+		// A re-run rewrites the sealed leg only when its inputs are the ones
+		// sealed (§13 item 8): a payer leg is never sealed twice for one check.
+		for i, r := range a.book {
+			d, err := xdealv1.Digest(r)
+			if err != nil || d != send.Leg {
+				continue
+			}
+			held, err := s.ownSettleMember(ctx, a.d, i+1)
+			if err != nil {
+				return err
+			}
+			sameBody, err := sameRecordInput(r, body, marks)
+			if err != nil {
+				return err
+			}
+			if !sameBody || !sameButObservedAt(held, member) {
+				return cli.InputError("the payment on check " + in.check + " is already sealed as leg " + send.Leg + " with other inputs; a check authorizes one payment, and a payer leg is never sealed again")
+			}
+			return s.writeSealedAt(ctx, c, a.d, i+1, r, in.out, result)
+		}
+		return fmt.Errorf("%w: the payer leg %s of check %s is not in your deal book", cli.ErrConflict, send.Leg, in.check)
+	}
+	if err := refuseExistingOut(in.out); err != nil {
 		return err
 	}
 	earlier := v1Acts(a.book)
@@ -808,12 +932,66 @@ func (s *dealSession) settleAnswered(ctx context.Context, c *cobra.Command, a *v
 	if err != nil {
 		return err
 	}
+	if afterLegSealedHook != nil {
+		if err := afterLegSealedHook(); err != nil {
+			return err
+		}
+	}
 	if err := s.closeSend(ctx, in.dealID, in.check, sealed.Digest, in.status); err != nil {
 		return err
 	}
-	result["digest"], result["seq"], result["status"] = sealed.Digest, sealed.Seq, in.status
+	result["digest"], result["seq"] = sealed.Digest, sealed.Seq
 	actResult(result, &gate, auth)
 	return writePush(c, sealed.Pair, in.out, result)
+}
+
+// afterLegSealedHook lets a test stop a run between sealing a payer leg and
+// closing its send.
+var afterLegSealedHook func() error
+
+// answeredRef is the payer leg's payment_ref when the rail answers: the send's
+// whole reference, with its type and qualifiers unchanged. Its value is the
+// send's on an equal type and on a refund (whose send bound the refund's own
+// reference); on x402 and the other types of a payment, where the send bound
+// the reference known before paying, the leg carries the rail's own
+// (--payment-ref), so it joins the payee leg.
+func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]any, error) {
+	var bound map[string]any
+	if err := json.Unmarshal([]byte(send.RefJSON), &bound); err != nil {
+		return nil, fmt.Errorf("%w: the send of check %s: %v", evidencebook.ErrCorrupt, send.Check, err)
+	}
+	if in.ref.Type != "" && in.ref.Type != send.RefType {
+		return nil, cli.InputError("the payment was sent under " + send.RefType + ", and --payment-ref-type is " + in.ref.Type)
+	}
+	for flag, name := range map[string]string{in.ref.Network: "network", in.ref.Method: "method", in.ref.DebtorAgent: "debtor_agent"} {
+		if flag != "" && flag != bound[name] {
+			return nil, cli.InputError("the payment was sent with " + name + " " + fmt.Sprint(bound[name]) + ", and --payment-ref-" + strings.ReplaceAll(name, "_", "-") + " differs")
+		}
+	}
+	keepsValue := equalRefTypes[send.RefType] || cb.Action != "pay"
+	switch {
+	case keepsValue && in.ref.Value != "" && in.ref.Value != send.Ref:
+		return nil, cli.InputError("on " + send.RefType + " the leg's reference is the one the payment was sent under (" + send.Ref + "), and --payment-ref differs")
+	case !keepsValue && in.ref.Value == "":
+		return nil, cli.InputError("--payment-ref is required: on " + send.RefType + " the leg carries the rail's own reference (the transaction on x402), not the " + send.Ref + " the check recorded before paying")
+	case !keepsValue:
+		bound["value"] = in.ref.Value
+	}
+	return bound, nil
+}
+
+// sameRecordInput says a sealed record carries the body and marks a command
+// would build.
+func sameRecordInput(r xdealv1.Record, body xdealv1.Body, marks []string) (bool, error) {
+	want, err := json.Marshal(body)
+	if err != nil {
+		return false, err
+	}
+	got, err := json.Marshal(r.Body)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(got, want) && slices.Equal(r.Block.Marks, marks), nil
 }
 
 // closeSend records the payer leg that closed a send. A failed payment counts
@@ -854,6 +1032,9 @@ func (s *dealSession) closeSend(ctx context.Context, dealID, check, leg, status 
 
 func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, a *v1ActDeal, in settleIn, body xdealv1.SettleBody, marks []string, currency, termsRef string, events []sealedEvent) error {
 	if body.Leg != xdealv1.LegPayee {
+		if in.reverses != "" {
+			return cli.InputError("a refund you make is a payer leg: it rests on your cancel check (--check), sent with --sent first")
+		}
 		return cli.InputError("you owe this row: a payment you make rests on your pay check (--check), sent with --sent first")
 	}
 	if in.supersedes != "" {
@@ -894,6 +1075,11 @@ func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, a *v1Ac
 	} else if seq > 0 {
 		return s.writeSealedAt(ctx, c, a.d, seq, a.book[seq-1], in.out, result)
 	}
+	if in.reverses != "" && in.supersedes == "" {
+		if err := s.refundTaken(ctx, a, in.reverses, false); err != nil {
+			return err
+		}
+	}
 	if err := refuseExistingOut(in.out); err != nil {
 		return err
 	}
@@ -901,7 +1087,7 @@ func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, a *v1Ac
 	if err != nil {
 		return err
 	}
-	if _, err := s.creditRefund(ctx, in.dealID, a.book, events, sealed.Record, sealed.Digest, in.status, in.received+in.receiveFee, currency); err != nil {
+	if _, err := s.creditRefund(ctx, in.dealID, a.book, events, sealed.Record, sealed.Digest, in.status, in.received, currency); err != nil {
 		return err
 	}
 	result["digest"], result["seq"] = sealed.Digest, sealed.Seq
@@ -909,20 +1095,46 @@ func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, a *v1Ac
 }
 
 // sealedPayeeLike is the seq of a payee leg a re-run already sealed: the same
-// body and marks, and a member equal but for its observed time.
+// body and marks, a member equal but for its observed time, and no later
+// record stating the same rows. Every candidate is compared, not only the
+// first with the same body.
 func (s *dealSession) sealedPayeeLike(ctx context.Context, a *v1ActDeal, body xdealv1.SettleBody, marks []string, member json.RawMessage) (int, error) {
-	seq, err := sealedLike(a.book, xdealv1.TypeSettle, body, marks, body.Statements)
-	if err != nil || seq == 0 {
-		return seq, err
+	for i, r := range a.book {
+		if r.Block.RecordType != xdealv1.TypeSettle {
+			continue
+		}
+		same, err := sameRecordInput(r, body, marks)
+		if err != nil {
+			return 0, err
+		}
+		if !same || statedAfter(a.book, i, body.Statements) {
+			continue
+		}
+		held, err := s.ownSettleMember(ctx, a.d, i+1)
+		if err != nil {
+			return 0, err
+		}
+		if sameButObservedAt(held, member) {
+			return i + 1, nil
+		}
 	}
-	held, err := s.ownSettleMember(ctx, a.d, seq)
-	if err != nil {
-		return 0, err
+	return 0, nil
+}
+
+// statedAfter says a record of the book after place i states any of the rows.
+func statedAfter(book []xdealv1.Record, i int, items []xdealv1.StatementItem) bool {
+	rows := map[string]bool{}
+	for _, it := range items {
+		rows[it.Row] = true
 	}
-	if !sameButObservedAt(held, member) {
-		return 0, nil
+	for _, r := range book[i+1:] {
+		for _, it := range statementsOf(r) {
+			if rows[it.Row] {
+				return true
+			}
+		}
 	}
-	return seq, nil
+	return false
 }
 
 func sameButObservedAt(a, b json.RawMessage) bool {
@@ -965,7 +1177,9 @@ func (s *dealSession) ownSettleMember(ctx context.Context, d *v1Deal, seq int) (
 // creditRefund writes the buyer's refund received as money returned (§13 item
 // 9): a payee leg that reverses the holder's own payer leg, once it is
 // settled, once per reversed payment, as v0's act event with Action cancel,
-// Direction in and Reverses the reversed payment's act event. It writes
+// Direction in and Reverses the reversed payment's act event. The amount is
+// what was received (net of the receive fee, which the buyer did not get
+// back), at most what the payment counted. It writes
 // nothing for any other leg, for a pending or failed one, or for a payment
 // already credited. ok says whether it wrote.
 func (s *dealSession) creditRefund(ctx context.Context, dealID string, book []xdealv1.Record, events []sealedEvent, rec xdealv1.Record, digest, status string, amount int64, currency string) (bool, error) {
@@ -992,10 +1206,22 @@ func (s *dealSession) creditRefund(ctx context.Context, dealID string, book []xd
 		return false, err
 	}
 	payAct := v1EventID(dealID, send.N)
+	var paid *int64
 	for _, se := range events {
 		if se.Event.Act != nil && se.Event.Act.Reverses == payAct {
 			return false, nil
 		}
+		if se.CapsuleID == payAct && se.Event.Act != nil {
+			paid = se.Event.Act.AmountMinor
+		}
+	}
+	// A payment that moved no money (failed) returns none, and a refund
+	// returns at most what was paid.
+	if paid == nil {
+		return false, nil
+	}
+	if amount > *paid {
+		amount = *paid
 	}
 	ev, err := s.fixStep(dealID, events, dealEvent{Kind: "act", Act: &dealAct{Action: "cancel", AmountMinor: &amount, Currency: currency, Direction: "in", Reverses: payAct}})
 	if err != nil {
@@ -1011,64 +1237,58 @@ func (s *dealSession) creditRefund(ctx context.Context, dealID string, book []xd
 
 // reconcileV1Settle finishes a settle record a stopped run sealed but did not
 // record locally: a payer leg closes its send (its act event was written at
-// the send), and a settled refund received is credited once.
+// the send), and a settled refund received is credited once. A record with
+// nothing left to do returns before its Capsule is read.
 func (s *dealSession) reconcileV1Settle(ctx context.Context, dealID string, book []xdealv1.Record, events []sealedEvent, rec xdealv1.Record, b *xdealv1.SettleBody, digest string) ([]sealedEvent, error) {
+	var send *v1Send
+	switch {
+	case b.Leg == xdealv1.LegPayer && b.Check != nil:
+		var err error
+		if send, err = s.sendOf(ctx, dealID, b.Check.Digest); err != nil {
+			return nil, err
+		}
+		if send == nil {
+			return nil, fmt.Errorf("%w: deal %s's payer leg %s has no send recorded", cli.ErrConflict, dealID, digest)
+		}
+		if send.Leg != "" {
+			return events, nil
+		}
+	case b.Leg == xdealv1.LegPayee && b.Reverses != nil:
+		if v1EventByDigest(events, digest) != "" {
+			return events, nil
+		}
+	default:
+		return events, nil
+	}
 	d, err := s.v1DealOf(ctx, dealID)
 	if err != nil || d == nil {
 		return events, err
 	}
-	seq := int(rec.Block.Seq)
-	member, err := s.ownSettleMember(ctx, d, seq)
+	member, err := s.ownSettleMember(ctx, d, int(rec.Block.Seq))
 	if err != nil {
 		return nil, err
 	}
 	var m struct {
 		Status   string `json:"status"`
 		Received struct {
-			Value string `json:"value"`
-		} `json:"received"`
-		ReceiveFee struct {
-			Value string `json:"value"`
-		} `json:"receive_fee"`
-		Currency string
-	}
-	if err := json.Unmarshal(member, &m); err != nil {
-		return nil, fmt.Errorf("%w: the settlement member of record %d: %v", evidencebook.ErrCorrupt, seq, err)
-	}
-	if b.Leg == xdealv1.LegPayer && b.Check != nil {
-		send, err := s.sendOf(ctx, dealID, b.Check.Digest)
-		if err != nil {
-			return nil, err
-		}
-		if send == nil {
-			return nil, fmt.Errorf("%w: deal %s's payer leg %s has no send recorded", cli.ErrConflict, dealID, digest)
-		}
-		if send.Leg == "" {
-			if err := s.closeSend(ctx, dealID, b.Check.Digest, digest, m.Status); err != nil {
-				return nil, err
-			}
-			return s.v1Events(ctx, dealID)
-		}
-		return events, nil
-	}
-	var received, fee int64
-	if m.Received.Value != "" {
-		if received, err = strconv.ParseInt(m.Received.Value, 10, 64); err != nil {
-			return nil, err
-		}
-	}
-	if m.ReceiveFee.Value != "" {
-		if fee, err = strconv.ParseInt(m.ReceiveFee.Value, 10, 64); err != nil {
-			return nil, err
-		}
-	}
-	var cur struct {
-		Received struct {
+			Value     string `json:"value"`
 			AssetCode string `json:"assetCode"`
 		} `json:"received"`
 	}
-	_ = json.Unmarshal(member, &cur)
-	wrote, err := s.creditRefund(ctx, dealID, book, events, rec, digest, m.Status, received+fee, cur.Received.AssetCode)
+	if err := json.Unmarshal(member, &m); err != nil {
+		return nil, fmt.Errorf("%w: the settlement member of record %d: %v", evidencebook.ErrCorrupt, rec.Block.Seq, err)
+	}
+	if send != nil {
+		if err := s.closeSend(ctx, dealID, b.Check.Digest, digest, m.Status); err != nil {
+			return nil, err
+		}
+		return s.v1Events(ctx, dealID)
+	}
+	received, err := strconv.ParseInt(m.Received.Value, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("%w: the received amount of record %d: %v", evidencebook.ErrCorrupt, rec.Block.Seq, err)
+	}
+	wrote, err := s.creditRefund(ctx, dealID, book, events, rec, digest, m.Status, received, m.Received.AssetCode)
 	if err != nil || !wrote {
 		return events, err
 	}
