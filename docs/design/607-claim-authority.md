@@ -131,13 +131,17 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
   - withholds the represent trail: every `check` whose action is `represent` (typed: the
     `proposed-action/v0` with `representing`), its `action-evaluation/v0`, and every
     `action-approval/v0` or `approval` of such a check, whatever its answer;
-  - names a withheld record of these kinds by no kind, line or count of its own beyond its place in
-    the log (as a shared copy already treats the counterparty-profile step), and carries no
-    "unapproved" or "without authority" item;
   - where the deal follows rule 12, withholds every `action-evaluation/v0` (the seller's check of
     any step, whatever its disposition) and every outcome whose `status` is `unchecked_action`, so
     the `required_representation_missing` finding (leak 4) is in no disclosed record. Withholding
     only the records that carry that finding would single them out;
+  - says nothing derived from a record this section withholds: its report (`steps`, `did`,
+    `anomalies` and every other section) names such a record by no kind, line, result or count of
+    its own beyond its place in the log (as a shared copy already treats the counterparty-profile
+    step), carries no "Check: no differences" or difference count for it, and no "unapproved" or
+    "without authority" item. evidencebook-deal#244 tests it by comparing the counterparty copies
+    of two deals that differ only in whether an ordered claim was authorized: their report text
+    and disclosed records differ in nothing but digests, capsule ids, commitments and the number and places of withheld steps;
   - withholds every agent claim sealed in the old shape (carrying a verdict), all of them,
     authorized or not, and opens none of their words (there is no disclosed record to check them
     against). Section 6 says why.
