@@ -294,7 +294,12 @@ func (s *dealSession) dealSettlementLegs(ctx context.Context, events []sealedEve
 // dealSettlementCommand is `deal settlement`: the deal's own legs, with the
 // other side's legs the user holds, checked and read like `settlement status`.
 func dealSettlementCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "settlement", Short: "Derive the payment and delivery state of a deal's settlement legs, with the other side's legs you hold", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "settlement", Short: "Derive the payment and delivery state of a deal's settlement legs, with the other side's legs you hold; on an x-deal-v1 deal, each payment row's check as your records read it now", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		if v1, err := v1DealOfFlag(c); err != nil {
+			return err
+		} else if v1 {
+			return runV1Settlement(c)
+		}
 		return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
 			own, objects, err := s.dealSettlementLegs(ctx, events)
 			if err != nil {
