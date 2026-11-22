@@ -1,0 +1,203 @@
+{
+ "buyer": {
+  "action": "buy",
+  "half": {
+   "action_id": "buy/42c605ea-b660-4617-ab20-c1347681c1b9",
+   "action_type": "decide",
+   "assurance": {
+    "attestation_mode": "self_attested",
+    "effect_mode": "dispatched_unconfirmed",
+    "ledger_mode": "standalone"
+   },
+   "canonicalization_id": "jcs",
+   "capsule_id": "6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f",
+   "developer": "goose@test",
+   "disposition": {
+    "approver": "policy",
+    "decision": "accept",
+    "human_disposed": false,
+    "verdict_class": "executed"
+   },
+   "effect": {
+    "effect_attestation": "runtime_claimed",
+    "status": "dispatched",
+    "type": "buy"
+   },
+   "format_version": "4",
+   "key_id": "2127913842475ba65072f4fd0d5a19e93971154deae7b59690be6b17e1c53503",
+   "model_attestation": {
+    "compute_attestation": {
+     "action_digest": "827489f1d89a84471f3a937be7672b5286b01c91c7560821a37e44f3f0641559",
+     "peer": "seller-co",
+     "role": "requester"
+    }
+   },
+   "operator": "buyer-co",
+   "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202127913842475ba65072f4fd0d5a19e93971154deae7b59690be6b17e1c535030127a058206a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f5840f8b8fea120d8fcf0a638fa4eeef47fba35f364c516a0f6e9c285d1cb2cf98c1e92bcf51979bc634dc827f88fa81f09053a7dec5e82a2bae12c47e021ec459307",
+   "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+   "timestamp": "2026-11-22T04:57:22.346877Z"
+  },
+  "terms": {
+   "buyer": {
+    "book_key_id": "6a362793c103223933955f063de3c33bb0ed3c9dff18ce9b3c9d735a97102f0f",
+    "deal_id": "deal-5f275e037cc84ac7",
+    "operator": "buyer-co",
+    "pack": {
+     "definition_digest": "acb8a0f7073b872e0a1cc367997ace49dd69fd4e63fe60996c328d8b324ac4a7",
+     "pack_id": "asg/everyday/0.3.9"
+    }
+   },
+   "expires_at": "2026-11-01T11:00:00Z",
+   "item": "synthetic widget box",
+   "price": {
+    "assetCode": "USD",
+    "assetScale": 2,
+    "value": "2000"
+   },
+   "referee": {
+    "key_id": "4672e0b724b6077e82103b443f3ee6e4ce415154dc1193b4c815b953f97e40f2",
+    "mailbox": "nostr:referee-test"
+   },
+   "seller": {
+    "book_key_id": "3c694b52929476b13029f3aa6bd405d0ed59d1a23a32ef2454455f60c0df646a",
+    "deal_id": "deal-e22da7020675c691",
+    "operator": "seller-co",
+    "pack": {
+     "definition_digest": "5e112a7f5136e2193adb177605dfad10b7b0753a2de93ed72e446695b7acc56a",
+     "pack_id": "asg/seller/0.1.6"
+    }
+   }
+  }
+ },
+ "capsule": {
+  "action_id": "referee.result/f4f9bde4-48e5-4335-b46e-f5a49c00ce6a",
+  "action_type": "decide",
+  "assurance": {
+   "attestation_mode": "self_attested",
+   "effect_mode": "not_applicable",
+   "ledger_mode": "standalone"
+  },
+  "canonicalization_id": "jcs",
+  "capsule_id": "b82f2b2b19d8b3e3417158f16e226c48c0272548df900db12a8e15088dca8079",
+  "developer": "",
+  "disposition": {
+   "approver": "policy",
+   "decision": "accept",
+   "human_disposed": false,
+   "verdict_class": "assessed"
+  },
+  "format_version": "4",
+  "key_id": "4672e0b724b6077e82103b443f3ee6e4ce415154dc1193b4c815b953f97e40f2",
+  "model_attestation": {
+   "compute_attestation": {
+    "agent_input_digest": "7870937165ceaa76e4525ed9d18d3e2194fe0be59b08b3b69e63b8d9ad31d8fb",
+    "referee_result": {
+     "buyer_half": "6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f",
+     "contract_ref": "ec:deal-terms@1",
+     "result_digest": "7870937165ceaa76e4525ed9d18d3e2194fe0be59b08b3b69e63b8d9ad31d8fb",
+     "schema": "capsule-engine/referee-result/v1",
+     "seller_half": "d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375"
+    }
+   }
+  },
+  "operator": "referee-co",
+  "references": [
+   {
+    "citation_purpose": "responds_to",
+    "digest": "6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f",
+    "digest_alg": "SHA-256",
+    "type": "agent-action-capsule"
+   },
+   {
+    "citation_purpose": "responds_to",
+    "digest": "d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375",
+    "digest_alg": "SHA-256",
+    "type": "agent-action-capsule"
+   }
+  ],
+  "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458204672e0b724b6077e82103b443f3ee6e4ce415154dc1193b4c815b953f97e40f20127a05820b82f2b2b19d8b3e3417158f16e226c48c0272548df900db12a8e15088dca8079584081e2543382d8bf3c9a612c36100e08533606e3f6e6914b74d2be3ccecb6e57ba8395fb21edfdc2761646f9c3ba4eabd5cff1cd8e6fe8d6c2a6535c74e838de09",
+  "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+  "timestamp": "2026-11-22T04:57:23.498328Z"
+ },
+ "doc": "{\"aggregate\":{\"buckets\":{\"met\":[\"buyer/r05-spending-limits/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"buyer/r08-non-refundable-or-hard-to-undo/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"buyer/r09-material-terms-changed/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"buyer/r10-materially-different-offer/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"buyer/r21-unexpected-channel-change/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"buyer/r27-no-commitment-beyond-task-bounds/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"seller/s05-required-statement-made-first/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"seller/s06-proposal-still-current/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"seller/s08-stay-within-task-bounds/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"seller/s08-stay-within-task-bounds/efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"seller/s09-no-repeated-act/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"seller/s09-no-repeated-act/efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"deal-terms/delivered-before-expiry\",\"deal-terms/item-agreed\",\"deal-terms/paid-before-release\",\"deal-terms/price-agreed\"],\"not_evaluable\":[\"buyer/r14-message-that-commits-the-user\",\"buyer/r22-unusual-counterparty-behaviour/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"buyer/r24-outside-instructions-are-not-the-users\",\"buyer/r25-no-bypassing-safeguards\",\"buyer/r26-stay-within-task-bounds/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"seller/s03-price-below-the-floor/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"seller/s04-statement-that-needs-the-users-word/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"seller/s10-statement-never-made/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"seller/s11-one-commitment-per-sale/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"seller/s11-one-commitment-per-sale/efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\"],\"not_met\":[\"buyer/r02-ordinary-purchase/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"buyer/r06-new-merchant/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"seller/s07-payment-rail-the-user-allows/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\"]},\"coverage\":{\"evaluated_population\":29,\"excluded_not_applicable\":26,\"unknown_count\":0}},\"claims\":[{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r02-ordinary-purchase/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"CONTRADICTED\"},\"proofs\":[],\"requirement_ref\":\"r02-ordinary-purchase\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"not_met\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r05-spending-limits/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"r05-spending-limits\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r06-new-merchant/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"CONTRADICTED\"},\"proofs\":[],\"requirement_ref\":\"r06-new-merchant\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"not_met\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r08-non-refundable-or-hard-to-undo/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"r08-non-refundable-or-hard-to-undo\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r09-material-terms-changed/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"r09-material-terms-changed\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r10-materially-different-offer/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"r10-materially-different-offer\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"acb8a0f7073b872e0a1cc367997ace49dd69fd4e63fe60996c328d8b324ac4a7\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r14-message-that-commits-the-user\",\"presentation\":{\"kind\":\"analysis\",\"status\":\"NOT_FOUND\",\"summary\":\"The pack does not measure this rule yet: it waits on the commitment_classification field, which no record carries.\"},\"proofs\":[],\"requirement_ref\":\"r14-message-that-commits-the-user\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r21-unexpected-channel-change/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"r21-unexpected-channel-change\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r22-unusual-counterparty-behaviour/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"NOT_FOUND\"},\"proofs\":[],\"requirement_ref\":\"r22-unusual-counterparty-behaviour\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"acb8a0f7073b872e0a1cc367997ace49dd69fd4e63fe60996c328d8b324ac4a7\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r24-outside-instructions-are-not-the-users\",\"presentation\":{\"kind\":\"analysis\",\"status\":\"NOT_FOUND\",\"summary\":\"The pack does not measure this rule yet: it waits on the instruction_source field, which no record carries.\"},\"proofs\":[],\"requirement_ref\":\"r24-outside-instructions-are-not-the-users\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"acb8a0f7073b872e0a1cc367997ace49dd69fd4e63fe60996c328d8b324ac4a7\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r25-no-bypassing-safeguards\",\"presentation\":{\"kind\":\"analysis\",\"status\":\"NOT_FOUND\",\"summary\":\"The pack does not measure this rule yet: it waits on the user_control_state field, which no record carries.\"},\"proofs\":[],\"requirement_ref\":\"r25-no-bypassing-safeguards\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r26-stay-within-task-bounds/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"NOT_FOUND\"},\"proofs\":[],\"requirement_ref\":\"r26-stay-within-task-bounds\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/everyday@0.3.9\",\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"buyer/r27-no-commitment-beyond-task-bounds/f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"presentation\":{\"evidence\":[{\"digest\":\"f8903616289dfc88f4dced0668107ae54d1449c8147eb7b395cf26b5f7048234\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"r27-no-commitment-beyond-task-bounds\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s03-price-below-the-floor/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"NOT_FOUND\"},\"proofs\":[],\"requirement_ref\":\"s03-price-below-the-floor\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s04-statement-that-needs-the-users-word/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"NOT_FOUND\"},\"proofs\":[],\"requirement_ref\":\"s04-statement-that-needs-the-users-word\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s05-required-statement-made-first/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"s05-required-statement-made-first\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s06-proposal-still-current/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"s06-proposal-still-current\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s07-payment-rail-the-user-allows/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"CONTRADICTED\"},\"proofs\":[],\"requirement_ref\":\"s07-payment-rail-the-user-allows\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"not_met\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s08-stay-within-task-bounds/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"s08-stay-within-task-bounds\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s08-stay-within-task-bounds/efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"presentation\":{\"evidence\":[{\"digest\":\"efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"s08-stay-within-task-bounds\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s09-no-repeated-act/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"s09-no-repeated-act\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s09-no-repeated-act/efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"presentation\":{\"evidence\":[{\"digest\":\"efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"s09-no-repeated-act\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s10-statement-never-made/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"NOT_FOUND\"},\"proofs\":[],\"requirement_ref\":\"s10-statement-never-made\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s11-one-commitment-per-sale/1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"presentation\":{\"evidence\":[{\"digest\":\"1d20f23eb8631ad5b18f8ba46d5ef5276eead61f81afa1b938b1b2d6dbdd3a51\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"NOT_FOUND\"},\"proofs\":[],\"requirement_ref\":\"s11-one-commitment-per-sale\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"asg/seller@0.1.6\",\"evidence\":[{\"digest\":\"efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"seller/s11-one-commitment-per-sale/efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"presentation\":{\"evidence\":[{\"digest\":\"efbf901912c75043d6fd45eec09cc0f3b57bb0a7faf48da6376d93688a540d3c\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"NOT_FOUND\"},\"proofs\":[],\"requirement_ref\":\"s11-one-commitment-per-sale\",\"sufficiency\":\"GAP\",\"tier\":\"recomputed\",\"verdict\":\"not_evaluable\"},{\"contract_ref\":\"ec:deal-terms@1\",\"evidence\":[{\"digest\":\"6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"fe1f85947410ed85e8b8f76241e520b6cc436fc58a4eb415e39f3e1a7980625a\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"b68442b7923b99c6b4d78fd4e83d9ca526a53693fb0e570da51c47b9037e8d7a\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"deal-terms/delivered-before-expiry\",\"presentation\":{\"evidence\":[{\"digest\":\"6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"fe1f85947410ed85e8b8f76241e520b6cc436fc58a4eb415e39f3e1a7980625a\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"b68442b7923b99c6b4d78fd4e83d9ca526a53693fb0e570da51c47b9037e8d7a\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"delivered-before-expiry\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"ec:deal-terms@1\",\"evidence\":[{\"digest\":\"6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"deal-terms/item-agreed\",\"presentation\":{\"evidence\":[{\"digest\":\"6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"item-agreed\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"ec:deal-terms@1\",\"evidence\":[{\"digest\":\"6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"fe1f85947410ed85e8b8f76241e520b6cc436fc58a4eb415e39f3e1a7980625a\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"1ce8518eb811475fbdf00b5a92c3348fcb82f5a5b17493a1e7af4c5b2d6985b0\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"794a8fdfd89007bd65ea018fe819c7428fce59585a8d4a62f81d8cf1f4585fa8\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"deal-terms/paid-before-release\",\"presentation\":{\"evidence\":[{\"digest\":\"6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"fe1f85947410ed85e8b8f76241e520b6cc436fc58a4eb415e39f3e1a7980625a\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"1ce8518eb811475fbdf00b5a92c3348fcb82f5a5b17493a1e7af4c5b2d6985b0\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"794a8fdfd89007bd65ea018fe819c7428fce59585a8d4a62f81d8cf1f4585fa8\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"paid-before-release\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"},{\"contract_ref\":\"ec:deal-terms@1\",\"evidence\":[{\"digest\":\"6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"fe1f85947410ed85e8b8f76241e520b6cc436fc58a4eb415e39f3e1a7980625a\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"0f29507271895e68c15551bdd487113793c506e3cedc029ac0a2ad2b3b7e46c5\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"1ce8518eb811475fbdf00b5a92c3348fcb82f5a5b17493a1e7af4c5b2d6985b0\",\"digest_alg\":\"SHA-256\"}],\"grade\":\"self-attested\",\"id\":\"deal-terms/price-agreed\",\"presentation\":{\"evidence\":[{\"digest\":\"6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"fe1f85947410ed85e8b8f76241e520b6cc436fc58a4eb415e39f3e1a7980625a\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"0f29507271895e68c15551bdd487113793c506e3cedc029ac0a2ad2b3b7e46c5\",\"digest_alg\":\"SHA-256\"},{\"digest\":\"1ce8518eb811475fbdf00b5a92c3348fcb82f5a5b17493a1e7af4c5b2d6985b0\",\"digest_alg\":\"SHA-256\"}],\"kind\":\"disclosure\",\"status\":\"SATISFIED\"},\"proofs\":[],\"requirement_ref\":\"price-agreed\",\"sufficiency\":\"SATISFIED\",\"tier\":\"recomputed\",\"verdict\":\"met\"}],\"generated_at\":\"2026-11-01T12:00:00Z\",\"result_version\":\"evidence-result-v0\"}",
+ "seller": {
+  "action": "buy",
+  "half": {
+   "action_id": "buy/869c88be-5c70-4d91-be90-896b9a02545b",
+   "action_type": "decide",
+   "assurance": {
+    "attestation_mode": "self_attested",
+    "effect_mode": "confirmed",
+    "ledger_mode": "standalone"
+   },
+   "canonicalization_id": "jcs",
+   "capsule_id": "d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f1375",
+   "developer": "goose@test",
+   "disposition": {
+    "approver": "policy",
+    "decision": "accept",
+    "human_disposed": false,
+    "verdict_class": "executed"
+   },
+   "effect": {
+    "effect_attestation": "runtime_claimed",
+    "response_digest": "5c1f6f233b1004e9240aa0565ad429316811a10ed656e30a7a7cfd6d278f79bd",
+    "status": "confirmed",
+    "type": "buy"
+   },
+   "format_version": "4",
+   "key_id": "4ad812b7e36bce96f2aaeadbccfefb4465c1b074c213837b4a2a893a6d65e500",
+   "model_attestation": {
+    "compute_attestation": {
+     "action_digest": "827489f1d89a84471f3a937be7672b5286b01c91c7560821a37e44f3f0641559",
+     "peer": "buyer-co",
+     "role": "responder"
+    }
+   },
+   "operator": "seller-co",
+   "references": [
+    {
+     "citation_purpose": "responds_to",
+     "digest": "6a4e23274d837c866e8b303e39b0d418e2d7106ff09a23f93d6dece4abc9585f",
+     "digest_alg": "SHA-256",
+     "type": "agent-action-capsule"
+    }
+   ],
+   "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458204ad812b7e36bce96f2aaeadbccfefb4465c1b074c213837b4a2a893a6d65e5000127a05820d85eba05ccaf976af922ce8bb705e6b4cc08153f94a7650128477216317f13755840b3df9f59f3b5691e30e1a24cee2f53682a376e79318220772dcfcdc493fac54703317d1f19d4d2b16d88d3fe17022fac54cfd153846c96cb18385e8df0127604",
+   "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+   "timestamp": "2026-11-22T04:57:22.368691Z"
+  },
+  "terms": {
+   "buyer": {
+    "book_key_id": "6a362793c103223933955f063de3c33bb0ed3c9dff18ce9b3c9d735a97102f0f",
+    "deal_id": "deal-5f275e037cc84ac7",
+    "operator": "buyer-co",
+    "pack": {
+     "definition_digest": "acb8a0f7073b872e0a1cc367997ace49dd69fd4e63fe60996c328d8b324ac4a7",
+     "pack_id": "asg/everyday/0.3.9"
+    }
+   },
+   "expires_at": "2026-11-01T11:00:00Z",
+   "item": "synthetic widget box",
+   "price": {
+    "assetCode": "USD",
+    "assetScale": 2,
+    "value": "2000"
+   },
+   "referee": {
+    "key_id": "4672e0b724b6077e82103b443f3ee6e4ce415154dc1193b4c815b953f97e40f2",
+    "mailbox": "nostr:referee-test"
+   },
+   "seller": {
+    "book_key_id": "3c694b52929476b13029f3aa6bd405d0ed59d1a23a32ef2454455f60c0df646a",
+    "deal_id": "deal-e22da7020675c691",
+    "operator": "seller-co",
+    "pack": {
+     "definition_digest": "5e112a7f5136e2193adb177605dfad10b7b0753a2de93ed72e446695b7acc56a",
+     "pack_id": "asg/seller/0.1.6"
+    }
+   }
+  }
+ },
+ "source": "action-state-group/capsule-engine conformance-vectors/referee/v0/cases.json at origin/main, cases ok and bind-ok (same halves); sealed live with fresh keys, committed once; used here only as a valid Result to receive"
+}
