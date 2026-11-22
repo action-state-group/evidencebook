@@ -4,6 +4,7 @@ package deal
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -43,4 +44,73 @@ func TestASecondSendOverTheCapIsRefused(t *testing.T) {
 
 	dealRun(t, "settle", "--deal", h.dealID, "--check", a, "--status", "failed", "--out", filepath.Join(t.TempDir(), "a.json"))
 	dealRun(t, "settle", "--deal", h.dealID, "--check", b, "--sent", "--payment-ref-type", "ln.payment_hash")
+}
+
+// sequencedChecker is a rules checker that answers first, on the check, and
+// then, on every later run (the re-run at --sent), as later.
+func sequencedChecker(t *testing.T, first, later string) {
+	t.Helper()
+	// The checker runs from a hashed copy, so its count lives at a fixed path.
+	count := filepath.Join(t.TempDir(), "count")
+	body := `n=$(cat "` + count + `" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "` + count + `"
+if [ "$n" -eq 1 ]; then ` + first + `; else ` + later + `; fi`
+	pinChecker(t, map[string]any{"command": []string{stubChecker(t, "rules-seq", body)}})
+}
+
+// buyerPaused is a deal whose buyer's pay check paused on the rules and was
+// approved with its card; it returns the check's digest.
+func buyerPaused(t *testing.T, first, later string) (*handshakeV1, string) {
+	t.Helper()
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	sequencedChecker(t, first, later)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	in := fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("ab", 32)+`"`)
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, in))
+	require.Equal(t, "pause", out["verdict"], "%v", out)
+	_, err := answer(t, h.dealID, out["check_id"].(string), "yes", shownCard(t, out["card"].(string)))
+	require.NoError(t, err)
+	var d string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		d = checkDigest(t, journal)
+	})
+	return h, d
+}
+
+const newMerchant = `{"id":"new-merchant","check":"caps/1","verdict":"fail","reason":"first time paying this seller"}`
+
+// A check the user approved on an escalation is refused at --sent when the
+// rules now deny, when they now fail a rule the user never saw, or when they
+// cannot answer; the same escalation sends.
+func TestAnApprovedEscalationIsAskedAgainAtTheSend(t *testing.T) {
+	esc := checkerPrints("escalate", newMerchant)
+	weekly := `{"id":"weekly","check":"caps/1","verdict":"fail","reason":"over the 7-day limit","limit":5000,"value":7500}`
+	for name, c := range map[string]struct {
+		later, want string
+	}{
+		"now denies":         {checkerPrints("deny", denyFinding), "no longer holds"},
+		"a new failing rule": {checkerPrints("escalate", newMerchant+","+weekly), "over the 7-day limit"},
+		"cannot answer":      {"exit 3", "rules not evaluated"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h, check := buyerPaused(t, esc, c.later)
+			msg := v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+			assert.Contains(t, msg, c.want)
+			assert.Contains(t, msg, "Nothing was sent")
+			assert.Nil(t, sendRow(t, h.dealID, check))
+		})
+	}
+	t.Run("the same escalation", func(t *testing.T) {
+		h, check := buyerPaused(t, esc, esc)
+		input := filepath.Join(os.Getenv("CAPSULECTL_PLUGIN_ROOTS"), "rules-seq.input")
+		first, err := os.ReadFile(input)
+		require.NoError(t, err)
+		require.Contains(t, string(first), `"counterparty_profile"`, "the check's payee companion")
+		dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+		again, err := os.ReadFile(input)
+		require.NoError(t, err)
+		assert.Contains(t, string(again), `"counterparty_profile"`, "the re-run reads the same payee companion")
+	})
 }
