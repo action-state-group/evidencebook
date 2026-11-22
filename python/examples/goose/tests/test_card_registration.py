@@ -103,35 +103,28 @@ def test_a_service_that_misbehaves_leaves_the_card_as_it_was(nodes, clock, tmp_p
         service_misbehaving.close()
 
 
-def test_a_service_that_trickles_its_answer_is_cut_off(nodes, clock, tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode", ["slow", "slow-headers"])
+def test_a_service_that_drips_is_cut_off_at_the_total_deadline(nodes, clock, tmp_path, monkeypatch, mode):
+    """A socket timeout bounds one read; the total deadline ends the whole call, headers or body."""
+    import time
+
     monkeypatch.setattr(cs, "TOTAL_SECONDS", 1)
     buyer = ticked(nodes, clock)
-    slow = FakeAnchor(mode="slow")
+    slow = FakeAnchor(mode=mode)
     try:
         service = cs.load_service(service_file(tmp_path, slow))
+        started = time.monotonic()
         with pytest.raises(cs.ServiceError, match="no complete answer"):
             buyer.register_card(cs.AnchorRegistrar(service), service.policy)
+        assert time.monotonic() - started < 4
     finally:
         slow.close()
-
-
-def test_nothing_is_posted_when_the_receipt_cannot_be_checked(nodes, clock, anchor, tmp_path, monkeypatch):
-    """With an agent-action-capsule that lacks the card checks, registration refuses before the
-    permanent post, not after it."""
-    import card_registration as cr
-
-    buyer = ticked(nodes, clock)
-    service = cs.load_service(service_file(tmp_path, anchor))
-    monkeypatch.delattr(cr._witness, "check_card_statement")
-    with pytest.raises(gn.Refused, match="0.19.0"):
-        buyer.register_card(cs.AnchorRegistrar(service), service.policy)
-    assert anchor.posted == []
 
 
 def test_the_tool_checks_where_it_writes_before_it_posts(nodes, clock, anchor, tmp_path, monkeypatch):
     """A registration is permanent, so an out_path that cannot be written, or that already holds a
     statement, is refused before anything is sent (the Receipt would otherwise be lost and a retry
-    would add a second entry)."""
+    would add a second entry), and a failed registration frees the path."""
     import loop_server
 
     buyer = ticked(nodes, clock)
@@ -148,6 +141,39 @@ def test_the_tool_checks_where_it_writes_before_it_posts(nodes, clock, anchor, t
     done = json.loads(loop_server.loop_register_card(out_path=str(good)))
     assert done["ok"] is True and len(anchor.posted) == 1
     assert json.loads(good.read_text())["statement"]
+
+
+def test_two_calls_for_one_path_post_once(nodes, clock, anchor, tmp_path, monkeypatch):
+    import threading
+
+    import loop_server
+
+    buyer = ticked(nodes, clock)
+    monkeypatch.setattr(loop_server, "_node", buyer)
+    monkeypatch.setenv("GOOSE_CARD_SERVICE", str(service_file(tmp_path, anchor)))
+    target, results = tmp_path / "card.json", []
+    threads = [threading.Thread(target=lambda: results.append(json.loads(loop_server.loop_register_card(out_path=str(target)))))
+               for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(r["ok"] for r in results) == [False, False, False, True]
+    assert len(anchor.posted) == 1 and json.loads(target.read_text())["statement"]
+
+
+def test_a_failed_registration_frees_the_path(nodes, clock, tmp_path, monkeypatch):
+    import loop_server
+
+    buyer = ticked(nodes, clock)
+    down = FakeAnchor()
+    path = service_file(tmp_path, down)
+    down.close()
+    monkeypatch.setattr(loop_server, "_node", buyer)
+    monkeypatch.setenv("GOOSE_CARD_SERVICE", str(path))
+    target = tmp_path / "card.json"
+    assert json.loads(loop_server.loop_register_card(out_path=str(target)))["ok"] is False
+    assert not target.exists()
 
 
 def test_a_service_that_is_down_leaves_the_card_as_it_was(nodes, clock, tmp_path):

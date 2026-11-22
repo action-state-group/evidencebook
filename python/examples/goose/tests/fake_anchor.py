@@ -22,7 +22,7 @@ IAT = 1_795_000_000
 class FakeAnchor:
     def __init__(self, seed: int = 11, mode: str = "ok"):
         self.key = Ed25519PrivateKey.from_private_bytes(bytes([seed]) * 32)
-        self.mode = mode  # "ok", "redirect", "junk", "huge", "slow" or "bad-receipt"
+        self.mode = mode  # "ok", "redirect", "junk", "huge", "slow", "slow-headers" or "bad-receipt"
         self.posted: list[bytes] = []
         outer = self
 
@@ -41,6 +41,9 @@ class FakeAnchor:
                     self.send_response(302)
                     self.send_header("Location", "http://127.0.0.1:1/elsewhere")
                     self.end_headers()
+                    return
+                if outer.mode == "slow-headers":
+                    time.sleep(6)
                     return
                 if outer.mode == "slow":
                     # headers promise a body, then one byte at a time, longer than the total deadline

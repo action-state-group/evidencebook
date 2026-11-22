@@ -29,7 +29,7 @@ import base64
 import binascii
 import json
 import os
-import time
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -98,19 +98,33 @@ class AnchorRegistrar:
         request = urllib.request.Request(
             self._service.url + "/transparency/register-statement", data=body, method="POST",
             headers={"Content-Type": "application/json", "Accept": "application/json"})
-        deadline = time.monotonic() + TOTAL_SECONDS
-        try:
-            with self._opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-                raw = b""
-                while len(raw) <= MAX_RESPONSE_BYTES:
-                    chunk = response.read(8192)
-                    if not chunk:
-                        break
-                    raw += chunk
-                    if time.monotonic() > deadline:
-                        raise ServiceError(f"{self._service.url}: no complete answer in {TOTAL_SECONDS} seconds")
-        except (urllib.error.URLError, OSError) as exc:
-            raise ServiceError(f"{self._service.url}: {exc}") from None
+        outcome: list[Any] = []
+
+        def post() -> None:
+            try:
+                with self._opener.open(request, timeout=TIMEOUT_SECONDS) as response:
+                    raw = b""
+                    while len(raw) <= MAX_RESPONSE_BYTES:
+                        chunk = response.read(8192)
+                        if not chunk:
+                            break
+                        raw += chunk
+                outcome.append(raw)
+            except BaseException as exc:  # handed to the caller below
+                outcome.append(exc)
+
+        # The whole registration, connect to last byte, ends at TOTAL_SECONDS: a socket timeout bounds one
+        # read, not a service that drips bytes. The worker is a daemon, so a stuck one never holds the process.
+        worker = threading.Thread(target=post, daemon=True)
+        worker.start()
+        worker.join(TOTAL_SECONDS)
+        if not outcome:
+            raise ServiceError(f"{self._service.url}: no complete answer in {TOTAL_SECONDS} seconds")
+        raw = outcome[0]
+        if isinstance(raw, (urllib.error.URLError, OSError)):
+            raise ServiceError(f"{self._service.url}: {raw}") from None
+        if isinstance(raw, BaseException):
+            raise raw
         if len(raw) > MAX_RESPONSE_BYTES:
             raise ServiceError("the service's answer is over 1 MiB")
         try:
@@ -119,13 +133,15 @@ class AnchorRegistrar:
             raise ServiceError("the service's answer holds no receipt_b64") from None
 
 
-def check_out_file(path: str | Path) -> Path:
-    """Where the card statement will be written, checked *before* anything is posted: a registration
-    is permanent, so a file that cannot be written (a missing directory, no permission) or that
-    already holds a statement (its Receipt would be lost) is refused up front, not after the post."""
+def reserve_out_file(path: str | Path):
+    """Create the file the card statement will be written to, exclusively and *before* anything is posted,
+    and return it open for writing. A registration is permanent, so a file that cannot be created (a missing
+    directory, no permission) or that already exists (its Receipt would be lost; another call may hold it) is
+    refused up front, never after the post, and two calls for one path cannot both post."""
     out = Path(path).expanduser()
-    if out.exists():
-        raise ServiceError(f"{out} already exists; a registered statement is never overwritten")
-    if not out.parent.is_dir() or not os.access(out.parent, os.W_OK):
-        raise ServiceError(f"{out} cannot be written: its directory is missing or not writable")
-    return out
+    try:
+        return out, open(out, "xb")
+    except FileExistsError:
+        raise ServiceError(f"{out} already exists; a registered statement is never overwritten") from None
+    except OSError as exc:
+        raise ServiceError(f"{out} cannot be written: {exc}") from None

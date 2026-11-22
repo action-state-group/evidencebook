@@ -649,17 +649,25 @@ def loop_register_card(out_path: str, tick: int = 0) -> str:
         raise gn.Refused("no transparency service is configured: set GOOSE_CARD_SERVICE to a service "
                          "file (card_service.py); registration is opt-in and has no default")
     service = cs.load_service(path)
-    out = cs.check_out_file(out_path)  # before the post: a registration cannot be taken back
-    result = node().register_card(cs.AnchorRegistrar(service), service.policy, tick)
-    result["service"] = {"name": service.name, "operator": service.operator, "url": service.url,
-                         "keys": list(service.keys)}
-    document = json.dumps(result, sort_keys=True, indent=2).encode()
+    out, handle = cs.reserve_out_file(out_path)  # before the post: a registration cannot be taken back
     try:
-        out.write_bytes(document)
-    except OSError as exc:
-        # The service already has the statement: never drop its only copy.
-        raise gn.Refused(f"the card was registered but {out} could not be written ({exc}); "
-                         f"keep this statement: {result['statement']}") from None
+        try:
+            result = node().register_card(cs.AnchorRegistrar(service), service.policy, tick)
+        except BaseException:
+            handle.close()
+            out.unlink(missing_ok=True)  # nothing was registered, so nothing to keep: free the path
+            raise
+        result["service"] = {"name": service.name, "operator": service.operator, "url": service.url,
+                             "keys": list(service.keys)}
+        try:
+            handle.write(json.dumps(result, sort_keys=True, indent=2).encode())
+            handle.flush()
+        except OSError as exc:
+            # The service already has the statement: never drop its only copy.
+            raise gn.Refused(f"the card was registered but {out} could not be written ({exc}); "
+                             f"keep this statement: {result['statement']}") from None
+    finally:
+        handle.close()
     return _out(ok=True, tick=result["tick"], anchor=result["anchor"], service=service.name,
                 operator=service.operator, file=out_path)
 
