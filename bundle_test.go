@@ -341,3 +341,44 @@ func TestVerifyBundleRefusesACheckpointLogIDThatIsNotAString(t *testing.T) {
 		}
 	}
 }
+
+// IntervalFromFirst proves the log from its first record to the anchor, not
+// from the lowest record selected: the record "other" cites nothing, so by
+// default its interval starts at its own position, and with the option at 1.
+// Neither changes what is disclosed.
+func TestBundleIntervalFromFirst(t *testing.T) {
+	ctx := context.Background()
+	book, records := linkedBook(t)
+	root := records[3]
+	plain, err := book.Bundle(ctx, BundleRequest{Root: root.RecordID, Payloads: PayloadsSelected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	whole, err := book.Bundle(ctx, BundleRequest{Root: root.RecordID, Payloads: PayloadsSelected, IntervalFromFirst: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, b := range map[string]Bundle{"default": plain, "from first": whole} {
+		result := aacVerify(t, b.JSON)
+		if result.IntervalCoverage.Status != "pass" || result.PerRecordMembership.Status != "pass" {
+			t.Fatalf("%s: interval %s membership %s", name, result.IntervalCoverage.Status, result.PerRecordMembership.Status)
+		}
+	}
+	first := func(b Bundle) uint64 {
+		verified, err := VerifyBundle(b.JSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return verified.IntervalFirst
+	}
+	if got := first(plain); got != root.Seq {
+		t.Fatalf("default interval starts at %d, want the selected record's own seq %d", got, root.Seq)
+	}
+	if got := first(whole); got != 1 {
+		t.Fatalf("IntervalFromFirst interval starts at %d, want 1", got)
+	}
+	// The same disclosure: the selected set is the root's closure either way.
+	if len(plain.Disclosure.Header.LinksTo(Cites)) != len(whole.Disclosure.Header.LinksTo(Cites)) {
+		t.Fatal("IntervalFromFirst changed what the bundle disclosed")
+	}
+}

@@ -102,6 +102,14 @@ type BundleRequest struct {
 	// under its own directory.
 	WitnessDirectory []WitnessRow
 
+	// IntervalFromFirst starts the bundle's interval at the book's first record
+	// (seq 1) whatever is selected, so coverage is shown from the first leaf
+	// to the anchor, as a standard_history handover's is. By default the
+	// interval starts at the lowest sequence number the selected set holds.
+	// It changes no record disclosed, only how much of the log the interval
+	// proves; the interval carries every record from seq 1 to the anchor.
+	IntervalFromFirst bool
+
 	// handover is a standard_history handover (StandardHistoryBundle): the
 	// caller has chosen the whole selected set (Include), so the root brings
 	// no link hops, and the interval starts at seq 1 whatever is selected,
@@ -227,7 +235,7 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		return Bundle{}, err
 	}
 	first := anchor.Entries
-	if req.handover {
+	if req.handover || req.IntervalFromFirst {
 		first = 1
 	}
 	for id := range selected {
