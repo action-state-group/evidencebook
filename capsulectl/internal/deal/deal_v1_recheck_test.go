@@ -142,3 +142,37 @@ func TestARuleThatWasNotEvaluatedAndNowFailsIsRefused(t *testing.T) {
 	h, check = buyerPaused(t, checkerPrints("escalate", newMerchant+","+declared), checkerPrints("escalate", newMerchant+","+realNotEval))
 	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "no month of history")
 }
+
+// A declared, not measured rule takes part in no comparison of the recheck:
+// not the approved set, not the rules failing now, not a deny's reasons, and
+// not a verdict, whichever side it is on; a real finding under the same id
+// is compared as any other.
+func TestTheRecheckIgnoresADeclaredRuleEverywhere(t *testing.T) {
+	declared := dealRulesFinding{ID: "monthly", Verdict: "not_evaluable", Reason: rulesDeclaredNotMeasured}
+	realNotEval := dealRulesFinding{ID: "monthly", Verdict: "not_evaluable", Reason: "no month of history"}
+	fails := dealRulesFinding{ID: "monthly", Verdict: "fail", Reason: "over the monthly limit"}
+	merchant := dealRulesFinding{ID: "new-merchant", Verdict: "fail", Reason: "first time paying this seller"}
+	rules := func(verdict string, fs ...dealRulesFinding) dealRules {
+		return dealRules{Status: "evaluated", Verdict: verdict, Findings: fs}
+	}
+	unchecked := &dealRules{Status: "not_evaluated"}
+	for name, c := range map[string]struct {
+		orig   *dealRules
+		now    dealRules
+		refuse bool
+		why    []string
+	}{
+		"declared now only, after an unchecked approval": {unchecked, rules("allow", declared), false, nil},
+		"declared now only, after an allow":              {ptr(rules("allow")), rules("allow", declared), false, nil},
+		"declared on both sides":                         {ptr(rules("escalate", merchant, declared)), rules("escalate", merchant, declared), false, nil},
+		"declared approved, the same id now real":        {ptr(rules("escalate", merchant, declared)), rules("escalate", merchant, realNotEval), true, []string{"monthly: no month of history"}},
+		"declared approved, the same id now fails":       {ptr(rules("escalate", merchant, declared)), rules("escalate", merchant, fails), true, []string{"monthly: over the monthly limit"}},
+		"a deny names no declared rule":                  {ptr(rules("escalate", merchant)), rules("deny", merchant, declared), true, []string{"new-merchant: first time paying this seller"}},
+		"declared then gone":                             {ptr(rules("escalate", merchant, declared)), rules("escalate", merchant), false, nil},
+		"a real not_evaluable approved, still the same":  {ptr(rules("not_evaluable", realNotEval)), rules("not_evaluable", realNotEval), false, nil},
+	} {
+		refuse, _, why := rulesChange(c.orig, c.now)
+		assert.Equal(t, c.refuse, refuse, name)
+		assert.Equal(t, c.why, why, name)
+	}
+}

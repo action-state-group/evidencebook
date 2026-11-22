@@ -88,50 +88,60 @@ func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events [
 		}
 		return cli.InputError("your rules checker could not answer (" + rules.Reason + "), so the payment cannot be checked against what was paid since. Nothing was sent: run deal settle --sent again once the checker answers")
 	}
-	if rules.Verdict == "deny" {
-		return recheckRefusal(dealID, paidSince, "denied by your rules", failingTexts(&rules, nil))
-	}
-	// A rule the user approved is one the check's rules failed or could not
-	// evaluate, by its id and that state; any rule failing now that the
-	// check did not fail is new.
-	approved := map[[2]string]bool{}
-	if checked {
-		for _, f := range orig.Rules.Findings {
-			// A declared, not measured rule was never shown or approved.
-			if !isDeclaredRule(f) {
-				approved[[2]string{f.ID, f.Verdict}] = true
-			}
-		}
-	}
-	origRules := ""
-	if checked {
-		origRules = orig.Rules.Verdict
-	}
-	newly := failingTexts(&rules, approved)
-	if rulesRank(rules.Verdict) > rulesRank(origRules) || len(newly) > 0 {
-		return recheckRefusal(dealID, paidSince, "rules: "+rules.Verdict, newly)
+	if refuse, verdict, why := rulesChange(orig.Rules, rules); refuse {
+		return recheckRefusal(dealID, paidSince, verdict, why)
 	}
 	return nil
 }
 
-// failingTexts are the words of each rule the rules failed or could not
-// evaluate that is not in approved (by id and state), as the card words them.
-func failingTexts(r *dealRules, approved map[[2]string]bool) []string {
-	var out []string
-	for _, f := range r.Findings {
-		// A rule the ruleset declares but does not measure never changes
-		// the verdict or reaches the card (isDeclaredRule): it is no failure.
-		if (f.Verdict != "fail" && f.Verdict != "not_evaluable") || isDeclaredRule(f) {
+// rulesChange compares the rules a check's user approved with the rules'
+// answer now, both evaluated or orig not (then nothing was approved). A rule
+// the ruleset declares but does not measure is dropped from both at the
+// start (isDeclaredRule: it never moves the verdict or reaches the card, so
+// it was never shown, approved or failing), and no comparison below sees
+// one. It refuses a deny; a verdict ranked above the check's (allow <
+// escalate, not_evaluable < deny); and any rule failing or not evaluable now
+// that the check did not have in that same state, by its id. why are those
+// rules' words.
+func rulesChange(orig *dealRules, now dealRules) (refuse bool, verdict string, why []string) {
+	approved := map[[2]string]bool{}
+	origVerdict := ""
+	if orig != nil && orig.Status == "evaluated" {
+		origVerdict = orig.Verdict
+		for _, f := range substantiveFindings(orig.Findings) {
+			approved[[2]string{f.ID, f.Verdict}] = true
+		}
+	}
+	var failing []string
+	for _, f := range substantiveFindings(now.Findings) {
+		if f.Verdict != "fail" && f.Verdict != "not_evaluable" {
 			continue
 		}
-		if approved[[2]string{f.ID, f.Verdict}] {
+		if now.Verdict != "deny" && approved[[2]string{f.ID, f.Verdict}] {
 			continue
 		}
 		text := f.ID
 		if f.Reason != "" {
 			text += ": " + f.Reason
 		}
-		out = append(out, text)
+		failing = append(failing, text)
+	}
+	switch {
+	case now.Verdict == "deny":
+		return true, "denied by your rules", failing
+	case rulesRank(now.Verdict) > rulesRank(origVerdict) || len(failing) > 0:
+		return true, "rules: " + now.Verdict, failing
+	}
+	return false, "", nil
+}
+
+// substantiveFindings are findings less the declared, not measured ones.
+func substantiveFindings(fs []dealRulesFinding) []dealRulesFinding {
+	var out []dealRulesFinding
+	for _, f := range fs {
+		if !isDeclaredRule(f) {
+			out = append(out, f)
+		}
 	}
 	return out
 }
