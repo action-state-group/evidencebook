@@ -19,57 +19,36 @@ func stapleRun(t *testing.T, args ...string) (string, error) {
 	return invoke(t, "", append([]string{"--profile", "deal", "deal", "standard-history", "staple"}, args...)...)
 }
 
-// stapleFixture is a person who answers the card, with one deal and a tick.
-func stapleFixture(t *testing.T) string {
-	t.Helper()
+// Offer staples carry history_card/2 only: --derivation accepts nothing
+// else, with the reason for the two a staple used to carry, and --deal is
+// gone. Refusals are exit 2 with nothing on stdout.
+func TestStapleRefusesWhatIsNoLongerStapled(t *testing.T) {
 	dealFixture(t)
-	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
-	id := retailDeal(t)
-	dealRun(t, "standard-history", "declare", "--holder-kind", "person", "--answer")
-	*now = now.Add(2 * time.Minute)
-	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
-	return id
-}
-
-// The contract's refusals are exit 2 with nothing on stdout.
-func TestStapleRefusesBadInputWithExit2(t *testing.T) {
-	stapleFixture(t)
-	for name, args := range map[string][]string{
-		"no derivation":    {},
-		"a third":          {"--derivation", "deal_ledger/1"},
-		"the empty string": {"--derivation", ""},
-		"unknown deal":     {"--derivation", "standard_history/1", "--deal", "deal-00000000000000000000000000000000"},
-		"not a deal id":    {"--derivation", "standard_history/1", "--deal", "x"},
-	} {
-		out, err := stapleRun(t, args...)
-		require.Error(t, err, name)
-		assert.Equal(t, 2, cli.ExitCode(err), name)
-		assert.Empty(t, out, name)
+	for _, d := range []string{"history_card/1", "standard_history/1"} {
+		out, err := stapleRun(t, "--derivation", d)
+		require.Error(t, err, d)
+		assert.Equal(t, 2, cli.ExitCode(err), d)
+		assert.Contains(t, err.Error(), "a staple carries history_card/2 only: "+d+" is no longer stapled", d)
+		assert.Contains(t, err.Error(), "deal respond", d)
+		assert.Empty(t, out, d)
 	}
-}
-
-func TestStapleNeedsADeclaredHolderThatAnswers(t *testing.T) {
-	dealFixture(t)
-	clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
-	out, err := stapleRun(t, "--derivation", "standard_history/1")
-	require.Error(t, err)
-	assert.Equal(t, 2, cli.ExitCode(err))
-	assert.Contains(t, err.Error(), "declare")
-	assert.Empty(t, out)
-
-	dealRun(t, "standard-history", "declare", "--holder-kind", "person")
-	out, err = stapleRun(t, "--derivation", "standard_history/1")
-	require.Error(t, err)
-	assert.Equal(t, 2, cli.ExitCode(err), "a person who answers no card staples none")
+	for _, d := range []string{"history_card/3", ""} {
+		out, err := stapleRun(t, "--derivation", d)
+		require.Error(t, err, d)
+		assert.Equal(t, 2, cli.ExitCode(err), d)
+		assert.Contains(t, err.Error(), "--derivation \""+d+"\" is not a derivation a staple carries", d)
+		assert.NotContains(t, err.Error(), "no longer stapled", "the reason only for the two it used to carry")
+		assert.Empty(t, out, d)
+	}
+	out, err := stapleRun(t, "--deal", "deal-0123456789abcdef")
+	require.Error(t, err, "--deal is gone")
 	assert.Empty(t, out)
 }
 
-// With no tick there is no checkpoint to be as of: any other failure, exit 1.
 func TestStapleNeedsATick(t *testing.T) {
 	dealFixture(t)
 	clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
-	dealRun(t, "standard-history", "declare", "--holder-kind", "person", "--answer")
-	out, err := stapleRun(t, "--derivation", "standard_history/1")
+	out, err := stapleRun(t)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Contains(t, err.Error(), "deal tick")
@@ -78,7 +57,6 @@ func TestStapleNeedsATick(t *testing.T) {
 
 type stapleDoc struct {
 	Derivation string `json:"derivation"`
-	DealID     string `json:"deal_id"`
 	Staple     struct {
 		Request json.RawMessage `json:"request"`
 		Reply   json.RawMessage `json:"reply"`
@@ -102,53 +80,83 @@ func readStaple(t *testing.T, out string) (stapleDoc, evidencebook.Staple) {
 	return doc, s
 }
 
-// A standard_history/1 staple is the one CheckStaple accepts, and names the
-// deal it was attached to; each call carries a fresh nonce.
-func TestStapleStandardHistoryPassesCheckStaple(t *testing.T) {
-	id := stapleFixture(t)
-	out, err := stapleRun(t, "--derivation", "standard_history/1", "--deal", id)
-	require.NoError(t, err, out)
-	doc, s := readStaple(t, out)
-	assert.Equal(t, "standard_history/1", doc.Derivation)
-	assert.Equal(t, id, doc.DealID)
-	require.NotNil(t, s.Reply.Envelope)
-	check, err := evidencebook.CheckStaple(s, s.Reply.Envelope.Responder)
-	require.NoError(t, err)
-	assert.Equal(t, "standard_history/1", check.Derivation)
-
-	out2, err := stapleRun(t, "--derivation", "standard_history/1")
-	require.NoError(t, err)
-	doc2, s2 := readStaple(t, out2)
-	assert.Empty(t, doc2.DealID, "deal_id is present only when --deal was given")
-	assert.NotContains(t, out2, `"deal_id"`)
-	check2, err := evidencebook.CheckStaple(s2, s2.Reply.Envelope.Responder)
-	require.NoError(t, err)
-	assert.NotEqual(t, check.Nonce, check2.Nonce)
-	assert.Equal(t, check.Anchor, check2.Anchor, "both are as of the newest checkpoint")
-}
-
-// A history_card/1 staple passes CheckStaple, needs no declaration and seals
-// nothing; with no tick it is exit 1.
-func TestStapleHistoryCardPassesCheckStaple(t *testing.T) {
+// The staple is history_card/2 with or without --derivation: it passes
+// CheckStaple for the profile's key, needs no declaration, seals nothing,
+// and its output keeps the shape {derivation, staple: {request, reply}}.
+func TestStapleIsHistoryCard2(t *testing.T) {
 	dealFixture(t)
 	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
-	out, err := stapleRun(t, "--derivation", "history_card/1")
-	require.Error(t, err)
-	assert.Equal(t, 1, cli.ExitCode(err))
-	assert.Empty(t, out)
-
+	id := retailDeal(t)
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
-	id := retailDeal(t)
-	out, err = stapleRun(t, "--derivation", "history_card/1", "--deal", id)
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	key, err := cli.PrivateKey(p.Signing)
+	require.NoError(t, err)
+	signer, err := evidencebook.NewEd25519Signer(key)
+	require.NoError(t, err)
+
+	for _, args := range [][]string{nil, {"--derivation", "history_card/2"}} {
+		out, err := stapleRun(t, args...)
+		require.NoError(t, err, out)
+		var shape map[string]map[string]json.RawMessage
+		var top map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal([]byte(out), &top))
+		assert.Subset(t, rawKeys(top), []string{"derivation", "staple"}, "the output keeps its members")
+		assert.NotContains(t, rawKeys(top), "deal_id", "--deal is gone")
+		require.NoError(t, json.Unmarshal([]byte(`{"s":`+string(top["staple"])+`}`), &shape))
+		assert.ElementsMatch(t, []string{"request", "reply"}, rawKeys(shape["s"]), "the staple's members")
+
+		doc, s := readStaple(t, out)
+		assert.Equal(t, evidencebook.DerivationHistoryCard2, doc.Derivation)
+		check, err := evidencebook.CheckStaple(s, evidencebook.KeyID(signer))
+		require.NoError(t, err, "signed by the profile's own key")
+		assert.Equal(t, evidencebook.DerivationHistoryCard2, check.Derivation)
+	}
+	assert.Equal(t, 0, answeredRows(t, id), "a staple seals nothing for the deal")
+	assert.Equal(t, 0, allAnsweredRows(t), "nor any answered record at all")
+}
+
+// A store moved to the new layout staples the same card: ticks after the
+// move are stamps on the same cadence log.
+func TestStapleOnAMigratedStore(t *testing.T) {
+	dealFixture(t)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	retailDeal(t)
+	*now = now.Add(2 * time.Minute)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	dealRun(t, "set-version", "x-deal-v1", "--migrate")
+	*now = now.Add(10 * time.Minute)
+	dealRun(t, "tick")
+	out, err := stapleRun(t)
 	require.NoError(t, err, out)
-	doc, s := readStaple(t, out)
-	assert.Equal(t, "history_card/1", doc.Derivation)
-	assert.NotContains(t, out, `"deal_id"`, "--deal is ignored for history_card/1")
+	_, s := readStaple(t, out)
 	require.NotNil(t, s.Reply.Envelope)
 	check, err := evidencebook.CheckStaple(s, s.Reply.Envelope.Responder)
 	require.NoError(t, err)
-	assert.Equal(t, "history_card/1", check.Derivation)
+	assert.Equal(t, evidencebook.DerivationHistoryCard2, check.Derivation)
+}
+
+// rawKeys is a JSON object's member names.
+func rawKeys(m map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// allAnsweredRows is every sealed answered row in the store, whatever its deal.
+func allAnsweredRows(t *testing.T) int {
+	t.Helper()
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	db, err := sql.Open("sqlite", "file:"+p.Connection.Database+"?mode=ro")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+	var n int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM deal_requests WHERE kind=?`, dealExchangeAnswered).Scan(&n))
+	return n
 }
 
 // answeredRows is the deal's sealed exchange rows in the store.
@@ -162,36 +170,4 @@ func answeredRows(t *testing.T, dealID string) int {
 	var n int
 	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM deal_requests WHERE deal_id=? AND kind=?`, dealID, dealExchangeAnswered).Scan(&n))
 	return n
-}
-
-// Only a standard_history/1 staple seals a record, one, naming the deal; a
-// history_card/1 staple and a refused one seal none. Both kinds are signed by
-// the profile's own key.
-func TestStapleSealsOnlyTheStandardHistoryRecord(t *testing.T) {
-	id := stapleFixture(t)
-	p, err := cli.LoadProfile("deal")
-	require.NoError(t, err)
-	key, err := cli.PrivateKey(p.Signing)
-	require.NoError(t, err)
-	signer, err := evidencebook.NewEd25519Signer(key)
-	require.NoError(t, err)
-	holder := evidencebook.KeyID(signer)
-
-	out, err := stapleRun(t, "--derivation", "history_card/1", "--deal", id)
-	require.NoError(t, err, out)
-	assert.Equal(t, 0, answeredRows(t, id))
-	_, card := readStaple(t, out)
-	_, err = evidencebook.CheckStaple(card, holder)
-	require.NoError(t, err, "the history card is signed by the profile's key")
-
-	out, err = stapleRun(t, "--derivation", "standard_history/1", "--deal", id)
-	require.NoError(t, err, out)
-	assert.Equal(t, 1, answeredRows(t, id))
-	_, std := readStaple(t, out)
-	_, err = evidencebook.CheckStaple(std, holder)
-	require.NoError(t, err, "the standard card is signed by the profile's key")
-
-	_, err = stapleRun(t, "--derivation", "standard_history/1", "--deal", "deal-00000000000000000000000000000000")
-	require.Error(t, err)
-	assert.Equal(t, 1, answeredRows(t, id), "a refused staple seals nothing")
 }
