@@ -281,3 +281,17 @@ func TestAnOfferersOldAgreementFileGetsItsProof(t *testing.T) {
 	assert.Equal(t, true, out["stamp_proof"])
 	assert.NotNil(t, readPush(t, file).StampProof, "the file now carries the proof")
 }
+
+// A statement a perform made in between counts too: restating the row after it
+// seals a new statement.
+func TestAStatementRestatedAfterAPerformsStatementIsSealedAgain(t *testing.T) {
+	h, check := sellerChecked(t)
+	state := func(v string) map[string]any {
+		return dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed="+v, "--out", filepath.Join(t.TempDir(), v+".json"))
+	}
+	met := state("met")
+	dealRun(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self",
+		"--statement", "paid_as_agreed=not_met", "--out", filepath.Join(t.TempDir(), "p.json"))
+	again := state("met")
+	assert.NotEqual(t, met["seq"], again["seq"], "a new statement after the perform's")
+}

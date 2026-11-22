@@ -144,23 +144,32 @@ func (a *v1ActDeal) parseMarks(flags []string) ([]string, error) {
 // sealedLike finds the record of the holder's book a re-run of the same
 // command already sealed: one of the same type whose body and marks are the
 // command's, byte for byte. Its place (seq) is 0 when there is none. With
-// newestOnly, only the newest record of the type counts: a statement that
-// repeats an older one after a different one in between is a new statement,
-// since a row reads the side's latest (status_rows.go). A perform needs no
-// such rule: its check's approval authorizes one act only.
-func sealedLike(book []xdealv1.Record, recordType string, body xdealv1.Body, marks []string, newestOnly bool) (int, error) {
+// restated, a match is a re-run only when no later record of the book (a
+// statement, a perform or a settle) states any of the same rows: a row reads
+// the side's latest statement (status_rows.go), so repeating an older one
+// after another is a new statement. A perform needs no such rule: its check's
+// approval authorizes one act only.
+func sealedLike(book []xdealv1.Record, recordType string, body xdealv1.Body, marks []string, restated []xdealv1.StatementItem) (int, error) {
 	want, err := json.Marshal(body)
 	if err != nil {
 		return 0, err
 	}
-	newest := -1
-	for i, r := range book {
-		if r.Block.RecordType == recordType {
-			newest = i
+	rows := map[string]bool{}
+	for _, it := range restated {
+		rows[it.Row] = true
+	}
+	statedLater := func(i int) bool {
+		for _, r := range book[i+1:] {
+			for _, it := range statementsOf(r) {
+				if rows[it.Row] {
+					return true
+				}
+			}
 		}
+		return false
 	}
 	for i, r := range book {
-		if r.Block.RecordType != recordType || !slices.Equal(r.Block.Marks, marks) || (newestOnly && i != newest) {
+		if r.Block.RecordType != recordType || !slices.Equal(r.Block.Marks, marks) || statedLater(i) {
 			continue
 		}
 		got, err := json.Marshal(r.Body)
@@ -172,6 +181,25 @@ func sealedLike(book []xdealv1.Record, recordType string, body xdealv1.Body, mar
 		}
 	}
 	return 0, nil
+}
+
+// statementsOf are the statements a record of the holder's book carries.
+func statementsOf(r xdealv1.Record) []xdealv1.StatementItem {
+	switch b := r.Body.(type) {
+	case *xdealv1.StatementBody:
+		return b.Statements
+	case xdealv1.StatementBody:
+		return b.Statements
+	case *xdealv1.PerformBody:
+		return b.Statements
+	case xdealv1.PerformBody:
+		return b.Statements
+	case *xdealv1.SettleBody:
+		return b.Statements
+	case xdealv1.SettleBody:
+		return b.Statements
+	}
+	return nil
 }
 
 // refuseExistingOut refuses an --out that is already there for a new record:
@@ -357,21 +385,25 @@ func actResult(result map[string]any, gate *xdealv1.ActGate, auth *xdealv1.ActAu
 
 const performLong = `Seal a perform record in your deal book of an x-deal-v1 deal: delivery or
 another act you did, with what you observed, and write the file to send to
---out. The other side counts it with deal receive. The output lists the record
-digests the person signs: the act must not be relied on until those
-signatures are held.
+--out. The other side counts it with deal receive.
+
+The output lists the record digests the person must sign with their own key
+(person_signature: missing). Until those signatures are held, no one should
+rely on this act. The person cannot add them yet: where they travel is still
+being defined (agent-action-capsule#627).
 
 The act rests on your passing commit check (--check, from deal check): it is
 sealed only when that check's verdict has its approval, no detail changed
-since, and the approval has authorized no other act. Your first act is held
-until the other side's stamp proof covers its agreement; when the other side
-runs no layer, it is sealed and the output says that no stamp proof came.
+since, and the approval has authorized no other act. Your first act is refused
+until you hold the other side's stamp proof on its agreement (deal receive
+brings it); run deal perform again then. If the other side runs no stamping,
+the act is sealed and the output says no stamp proof came.
 
 --statement row=value says how a row went (met, not_met or cannot_tell, with
 :remedy for a remedy the row allows); --mark names the offer's named record
 this act is, so a row whose date hangs on it starts; --remedy-row makes the
-act a remedy for that row. Run again with the same flags, a command rewrites
-the same file and seals nothing new. An --out file that already exists is
+act a remedy for that row. Run again with the same flags, it rewrites the
+same file and seals nothing new. An --out file that already exists is
 refused for a new record.`
 
 func dealPerformCommand() *cobra.Command {
@@ -431,7 +463,7 @@ func dealPerformCommand() *cobra.Command {
 					return err
 				}
 				result := map[string]any{"deal_id": dealID, "record": xdealv1.TypePerform}
-				if seq, err := sealedLike(a.book, xdealv1.TypePerform, body, mk, false); err != nil {
+				if seq, err := sealedLike(a.book, xdealv1.TypePerform, body, mk, nil); err != nil {
 					return err
 				} else if seq > 0 {
 					// A re-run says again which signatures the act waits on.
@@ -507,9 +539,9 @@ more rows went, and write the file to send to --out (standard output with
 none). The other side counts it with deal receive, and a row's status reads it.
 
 --statement row=value is repeatable: value is met, not_met or cannot_tell,
-with :remedy for a remedy the row allows. A statement is never held by the
-first-act rule and rests on no check. Run again with the same flags, a command
-rewrites the same file and seals nothing new. An --out file that already
+with :remedy for a remedy the row allows. A statement can be sent at any
+time: it does not wait for the other side's stamp proof, and it needs no
+check. Run again with the same flags, it rewrites the same file and seals nothing new. An --out file that already
 exists is refused for a new record.`
 
 func dealStatementCommand() *cobra.Command {
@@ -539,7 +571,7 @@ func dealStatementCommand() *cobra.Command {
 				}
 				body := xdealv1.StatementBody{Statements: stmts}
 				result := map[string]any{"deal_id": dealID, "record": xdealv1.TypeStatement}
-				if seq, err := sealedLike(a.book, xdealv1.TypeStatement, body, nil, true); err != nil {
+				if seq, err := sealedLike(a.book, xdealv1.TypeStatement, body, nil, stmts); err != nil {
 					return err
 				} else if seq > 0 {
 					return s.writeSealedAt(ctx, c, a.d, seq, a.book[seq-1], out, result)
