@@ -78,16 +78,39 @@ func loadCardService(path string) (cardService, error) {
 		return s, cli.InputError("the service file needs keys: the hex DER public keys its Receipts verify under")
 	}
 	for _, k := range s.Keys {
-		if k == "" {
-			return s, cli.InputError("the service file's keys hold an empty entry")
+		if !policyKeyShape(k) {
+			return s, cli.InputError("the service file's keys must each be lowercase hex of a DER SubjectPublicKeyInfo for an Ed25519 (44 bytes) or P-256 (91 bytes) key: a key of any other shape is ignored by the check, and every Receipt would then fail after the statement was posted for good")
 		}
 	}
 	u, err := url.Parse(s.URL)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return s, cli.InputError("the service url is not an http or https URL")
 	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return s, cli.InputError("the service url holds no credentials, query or fragment: the client adds the route itself")
+	}
 	s.URL = strings.TrimRight(s.URL, "/")
 	return s, nil
+}
+
+var (
+	ed25519SPKIPrefix = []byte{0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00}
+	p256SPKIPrefix    = []byte{0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00}
+)
+
+// policyKeyShape is the two shapes a transparency policy lists a key in
+// (agent-action-capsule go witness, AnchorWitnessPolicy): lowercase hex of an
+// Ed25519 or a P-256 SubjectPublicKeyInfo. The library ignores any other
+// entry, so a mistyped key would reach the service and fail only afterwards.
+func policyKeyShape(k string) bool {
+	if k != strings.ToLower(k) {
+		return false
+	}
+	der, err := hex.DecodeString(k)
+	if err != nil {
+		return false
+	}
+	return (len(der) == 44 && bytes.HasPrefix(der, ed25519SPKIPrefix)) || (len(der) == 91 && bytes.HasPrefix(der, p256SPKIPrefix))
 }
 
 // anchorRegistrar is an evidencebook.CardStatementRegistrar for a
@@ -118,7 +141,11 @@ func (r *anchorRegistrar) RegisterStatement(ctx context.Context, statement []byt
 	}
 	ctx, cancel := context.WithTimeout(ctx, cardServiceTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.service.URL+"/transparency/register-statement", bytes.NewReader(body))
+	base, err := url.Parse(r.service.URL)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base.JoinPath("transparency", "register-statement").String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -246,6 +273,16 @@ logged the statement anyway, and the error says so. The profile's signing key mu
 			if err != nil {
 				return err
 			}
+			// The destination is claimed before anything is posted: a registration
+			// is permanent, and its statement must have somewhere to go.
+			out, _ := c.Flags().GetString("out")
+			var dest *statementDest
+			if out != "" {
+				if dest, err = claimStatementDest(out); err != nil {
+					return err
+				}
+				defer dest.release()
+			}
 			env := evidencebook.Envelope{Responder: holder, Anchor: evidencebook.Anchor{Digest: anchor}}
 			registrar := newAnchorRegistrar(service)
 			statement, err := evidencebook.RegisterCard(c.Context(), signer, cardOctets, env, registrar, service.policy())
@@ -256,15 +293,23 @@ logged the statement anyway, and the error says so. The profile's signing key mu
 			if err != nil {
 				return err
 			}
-			if out, _ := c.Flags().GetString("out"); out != "" {
-				return writeFileAtomic(out, file)
+			saved := func(err error) error {
+				return fmt.Errorf("the card is registered, but its statement was not saved: %w; the statement, to keep beside the card: %s", err, file)
 			}
-			_, err = c.OutOrStdout().Write(append(file, '\n'))
-			return err
+			if dest != nil {
+				if err := dest.commit(file); err != nil {
+					return saved(err)
+				}
+				return nil
+			}
+			if _, err := c.OutOrStdout().Write(append(file, '\n')); err != nil {
+				return saved(err)
+			}
+			return nil
 		},
 	}
 	cardFlags(cmd)
-	cmd.Flags().String("out", "", "Where to write the statement file (default: standard output)")
+	cmd.Flags().String("out", "", "Where to write the statement file: a new file, never an existing one (default: standard output)")
 	return cmd
 }
 
@@ -323,19 +368,40 @@ func mustString(c *cobra.Command, name string) string {
 	return v
 }
 
-// writeFileAtomic writes through a temp file in the destination's directory
-// and renames it, so a reader never sees a half-written statement.
-func writeFileAtomic(path string, data []byte) error {
+// statementDest is the new file the statement is written to: claimed before
+// the post (the directory must take a file, and the path must not exist, so
+// neither the card nor an earlier statement is replaced), filled by a hard link
+// that fails if the path appeared since, so a reader never sees a half-written
+// statement.
+type statementDest struct {
+	path string
+	tmp  *os.File
+}
+
+func claimStatementDest(path string) (*statementDest, error) {
+	if _, err := os.Lstat(path); err == nil {
+		return nil, cli.InputError("--out " + path + " exists: the statement is written to a new file, never over the card or an earlier statement")
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".card-*")
 	if err != nil {
+		return nil, cli.InputError("--out cannot be written, and nothing was posted: " + err.Error())
+	}
+	return &statementDest{path: path, tmp: tmp}, nil
+}
+
+func (d *statementDest) commit(data []byte) error {
+	if _, err := d.tmp.Write(data); err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(data); err != nil {
-		return errors.Join(err, tmp.Close())
-	}
-	if err := tmp.Close(); err != nil {
+	if err := d.tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return os.Link(d.tmp.Name(), d.path)
+}
+
+func (d *statementDest) release() {
+	_ = d.tmp.Close()
+	_ = os.Remove(d.tmp.Name())
 }

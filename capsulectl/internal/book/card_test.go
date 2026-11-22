@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -134,15 +135,23 @@ func TestCardRegisterWritesTheStatementAndCheckPasses(t *testing.T) {
 	holderProfile(t, "holder")
 	vector, err := hex.DecodeString(v.Statements[0])
 	require.NoError(t, err)
-	var posted []byte
+	postedCh := make(chan []byte, 1)
+	receipt := receiptOf(t, vector)
 	anchor := newFakeAnchor(t, func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Statement string `json:"signed_statement_b64"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		posted, err = base64.StdEncoding.DecodeString(body.Statement)
-		require.NoError(t, err)
-		receiptAnswer(receiptOf(t, vector))(w, r)
+		if json.NewDecoder(r.Body).Decode(&body) != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+		octets, decodeErr := base64.StdEncoding.DecodeString(body.Statement)
+		if decodeErr != nil {
+			http.Error(w, "bad base64", http.StatusBadRequest)
+			return
+		}
+		postedCh <- octets
+		receiptAnswer(receipt)(w, r)
 	})
 	service.URL = anchor.URL
 	card, svc, out := cardFile(t, v), serviceFile(t, service), filepath.Join(t.TempDir(), "statement.json")
@@ -150,7 +159,7 @@ func TestCardRegisterWritesTheStatementAndCheckPasses(t *testing.T) {
 	_, err = invoke(t, "", "--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", v.Anchor, "--service", svc, "--out", out)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, anchor.posts.Load())
-	assert.NotEqual(t, vector, posted, "the service is sent the statement with no Receipt")
+	assert.NotEqual(t, vector, <-postedCh, "the service is sent the statement with no Receipt")
 
 	raw, err := os.ReadFile(out)
 	require.NoError(t, err)
@@ -192,6 +201,8 @@ func TestCardRegisterPostsNothingWhenRefused(t *testing.T) {
 	anchor := newFakeAnchor(t, receiptAnswer(receiptOf(t, vector)))
 	service.URL = anchor.URL
 	card, svc := cardFile(t, v), serviceFile(t, service)
+	existing := filepath.Join(t.TempDir(), "earlier.json")
+	require.NoError(t, os.WriteFile(existing, []byte("earlier statement"), 0o600))
 	base := []string{"--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", v.Anchor}
 
 	t.Run("no --service: opt-in, no default", func(t *testing.T) {
@@ -210,6 +221,21 @@ func TestCardRegisterPostsNothingWhenRefused(t *testing.T) {
 		_, err := invoke(t, "", "--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", "zz", "--service", svc)
 		require.Error(t, err)
 	})
+	t.Run("--out is an existing file, such as the card itself", func(t *testing.T) {
+		for _, out := range []string{card, existing} {
+			_, err := invoke(t, "", "--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", v.Anchor, "--service", svc, "--out", out)
+			require.ErrorIs(t, err, cli.ErrInput)
+			assert.Contains(t, err.Error(), "exists")
+		}
+		kept, err := os.ReadFile(existing)
+		require.NoError(t, err)
+		assert.Equal(t, "earlier statement", string(kept))
+	})
+	t.Run("--out in a directory that does not exist", func(t *testing.T) {
+		_, err := invoke(t, "", "--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", v.Anchor, "--service", svc, "--out", filepath.Join(t.TempDir(), "missing", "s.json"))
+		require.ErrorIs(t, err, cli.ErrInput)
+		assert.Contains(t, err.Error(), "nothing was posted")
+	})
 	t.Run("missing flags", func(t *testing.T) {
 		_, err := invoke(t, "", "--profile", "holder", "card", "register", "--service", svc)
 		require.ErrorIs(t, err, cli.ErrInput)
@@ -221,6 +247,7 @@ func TestCardRegisterFailuresLeaveNothing(t *testing.T) {
 	v, service := loadCardVector(t)
 	holderProfile(t, "holder")
 	vector, _ := hex.DecodeString(v.Statements[0])
+	goodReceipt := receiptOf(t, vector)
 	card := cardFile(t, v)
 	cases := map[string]func(w http.ResponseWriter, r *http.Request){
 		"server error": func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", http.StatusInternalServerError) },
@@ -232,7 +259,7 @@ func TestCardRegisterFailuresLeaveNothing(t *testing.T) {
 		"over the bound": func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(make([]byte, cardServiceMaxResponse+2)) },
 		"junk receipt":   receiptAnswer([]byte("junk")),
 		"receipt of another statement": func(w http.ResponseWriter, r *http.Request) {
-			other := append([]byte{}, receiptOf(t, vector)...)
+			other := append([]byte{}, goodReceipt...)
 			other[len(other)-1] ^= 0xff
 			receiptAnswer(other)(w, r)
 		},
@@ -281,18 +308,26 @@ func TestCardCheck(t *testing.T) {
 }
 
 func TestLoadCardServiceRefuses(t *testing.T) {
-	good := `{"name":"a","operator":"o","url":"https://a.example","keys":["00"]}`
+	key := "302a300506032b6570032100c3e0c07b69a2d7a85de9a29c2bb013418a99d632b582c81517504a5d8efd52ef"
+	good := `{"name":"a","operator":"o","url":"https://a.example","keys":["` + key + `"]}`
 	_, err := loadCardService(writeJSON(t, good))
 	require.NoError(t, err)
+	k := `"keys":["` + key + `"]`
 	for name, body := range map[string]string{
-		"no name":       `{"operator":"o","url":"https://a.example","keys":["00"]}`,
-		"no operator":   `{"name":"a","url":"https://a.example","keys":["00"]}`,
-		"no keys":       `{"name":"a","operator":"o","url":"https://a.example","keys":[]}`,
-		"empty key":     `{"name":"a","operator":"o","url":"https://a.example","keys":[""]}`,
-		"ftp url":       `{"name":"a","operator":"o","url":"ftp://a.example","keys":["00"]}`,
-		"no host":       `{"name":"a","operator":"o","url":"https://","keys":["00"]}`,
-		"unknown key":   `{"name":"a","operator":"o","url":"https://a.example","keys":["00"],"default":true}`,
-		"not an object": `[]`,
+		"no name":         `{"operator":"o","url":"https://a.example",` + k + `}`,
+		"no operator":     `{"name":"a","url":"https://a.example",` + k + `}`,
+		"no keys":         `{"name":"a","operator":"o","url":"https://a.example","keys":[]}`,
+		"empty key":       `{"name":"a","operator":"o","url":"https://a.example","keys":[""]}`,
+		"short key":       `{"name":"a","operator":"o","url":"https://a.example","keys":["00"]}`,
+		"uppercase key":   `{"name":"a","operator":"o","url":"https://a.example","keys":["` + strings.ToUpper(key) + `"]}`,
+		"raw 32-byte key": `{"name":"a","operator":"o","url":"https://a.example","keys":["` + key[24:] + `"]}`,
+		"ftp url":         `{"name":"a","operator":"o","url":"ftp://a.example",` + k + `}`,
+		"no host":         `{"name":"a","operator":"o","url":"https://",` + k + `}`,
+		"credentials":     `{"name":"a","operator":"o","url":"https://user:secret@a.example",` + k + `}`,
+		"query":           `{"name":"a","operator":"o","url":"https://a.example/?x=1",` + k + `}`,
+		"fragment":        `{"name":"a","operator":"o","url":"https://a.example/#f",` + k + `}`,
+		"unknown member":  `{"name":"a","operator":"o","url":"https://a.example",` + k + `,"default":true}`,
+		"not an object":   `[]`,
 	} {
 		_, err := loadCardService(writeJSON(t, body))
 		assert.ErrorIs(t, err, cli.ErrInput, name)
