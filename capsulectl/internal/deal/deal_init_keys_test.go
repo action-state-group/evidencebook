@@ -87,12 +87,16 @@ func TestDealInitKeepsAnExistingKeyFromAHexSeed(t *testing.T) {
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	file := writeKeyFile(t, []byte(hex.EncodeToString(key.Seed())+"\n"))
-	out, _, err := initWith(t, "--signing-key-file", file)
+	out, dir, err := initWith(t, "--signing-key-file", file)
 	require.NoError(t, err)
 	assert.Equal(t, hex.EncodeToString(pub), out["public_key"])
 	p, err := cli.LoadProfile("deal")
 	require.NoError(t, err)
 	assert.NotEqual(t, []string{hex.EncodeToString(pub)}, p.Checkpoint.TrustedKeys, "a checkpoint key not given is made fresh")
+	cpSeed, err := os.ReadFile(filepath.Join(dir, "checkpoint.seed"))
+	require.NoError(t, err)
+	cpKey := ed25519.NewKeyFromSeed(mustHexBytes(t, string(cpSeed)))
+	assert.Equal(t, []string{hex.EncodeToString(cpKey.Public().(ed25519.PublicKey))}, p.Checkpoint.TrustedKeys, "the fresh checkpoint seed is the profile's checkpoint key")
 }
 
 func TestDealInitRefusesAKeyThatIsNotAnEd25519Key(t *testing.T) {
@@ -112,6 +116,73 @@ func TestDealInitRefusesAKeyThatIsNotAnEd25519Key(t *testing.T) {
 		_, statErr := os.Stat(filepath.Join(dir, "signing.seed"))
 		assert.True(t, os.IsNotExist(statErr), "%s: no seed is written", name)
 	}
-	_, _, err = initWith(t, "--signing-key-file", "/nonexistent/key")
-	require.Error(t, err)
+	_, dir, err := initWith(t, "--signing-key-file", "/nonexistent/key")
+	require.ErrorIs(t, err, cli.ErrInput)
+	_, statErr := os.Stat(filepath.Join(dir, "signing.seed"))
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+// Every key is checked before anything is written: a good signing key with a
+// bad checkpoint key leaves no seed behind, so the corrected retry works.
+func TestDealInitChecksEveryKeyBeforeWritingAny(t *testing.T) {
+	_, signing, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	good := writeKeyFile(t, pemOf(t, signing))
+	bad := writeKeyFile(t, []byte("not a key"))
+	dealTestEnv(t, t.TempDir())
+	dir := filepath.Join(t.TempDir(), "deal")
+	_, err = invoke(t, "", "deal", "init", "--profile", "deal", "--dir", dir, "--no-witness", "--signing-key-file", good, "--checkpoint-key-file", bad)
+	require.ErrorIs(t, err, cli.ErrInput)
+	for _, name := range []string{"signing.seed", "checkpoint.seed"} {
+		_, statErr := os.Stat(filepath.Join(dir, name))
+		assert.True(t, os.IsNotExist(statErr), name)
+	}
+	_, loadErr := cli.LoadProfile("deal")
+	require.Error(t, loadErr)
+	out, err := invoke(t, "", "deal", "init", "--profile", "deal", "--dir", dir, "--no-witness", "--signing-key-file", good)
+	require.NoError(t, err, out)
+}
+
+// A seed that cannot be created removes the seed this call already wrote, so
+// the retry is not blocked by it.
+func TestDealInitRemovesTheFirstSeedWhenTheSecondCannotBeWritten(t *testing.T) {
+	dealTestEnv(t, t.TempDir())
+	dir := filepath.Join(t.TempDir(), "deal")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "checkpoint.seed"), []byte("taken"), 0o600))
+	_, err := invoke(t, "", "deal", "init", "--profile", "deal", "--dir", dir, "--no-witness")
+	require.ErrorIs(t, err, cli.ErrInput)
+	_, statErr := os.Stat(filepath.Join(dir, "signing.seed"))
+	assert.True(t, os.IsNotExist(statErr), "the signing seed written first is removed")
+	kept, readErr := os.ReadFile(filepath.Join(dir, "checkpoint.seed"))
+	require.NoError(t, readErr)
+	assert.Equal(t, "taken", string(kept), "a file that was already there is left alone")
+}
+
+func TestDealInitRefusesAnEncryptedKeyWithItsReason(t *testing.T) {
+	block := pem.EncodeToMemory(&pem.Block{Type: "ENCRYPTED PRIVATE KEY", Bytes: []byte("x")})
+	_, _, err := initWith(t, "--signing-key-file", writeKeyFile(t, block))
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, err.Error(), "encrypted")
+}
+
+// The result says where a kept key now lives and what to do about the second copy.
+func TestDealInitSaysWhereAKeptKeyNowLives(t *testing.T) {
+	_, signing, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	file := writeKeyFile(t, pemOf(t, signing))
+	out, dir, err := initWith(t, "--signing-key-file", file)
+	require.NoError(t, err)
+	assert.Equal(t, []any{file + " -> " + filepath.Join(dir, "signing.seed")}, out["kept_keys"])
+	assert.Contains(t, out["kept_keys_note"], "two places")
+	fresh, _, err := initWith(t)
+	require.NoError(t, err)
+	assert.NotContains(t, fresh, "kept_keys", "a profile with no kept key says nothing of the kind")
+}
+
+func mustHexBytes(t *testing.T, s string) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(s)
+	require.NoError(t, err)
+	return b
 }
