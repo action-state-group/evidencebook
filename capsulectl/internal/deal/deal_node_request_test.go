@@ -190,3 +190,26 @@ func TestDealNodeReplyCheck(t *testing.T) {
 	_, err = invoke(t, "", "--profile", "deal", "deal", "node", "reply-check", "--reply", filepath.Join(dir, "artifact.json"))
 	require.ErrorIs(t, err, cli.ErrInput)
 }
+
+// Under the default share policy a requester the operator authenticated is not
+// served a node book's record by its id either: serving a node book takes a policy that says so.
+func TestDealNodeRespondDoesNotServeARecordUnderTheDefaultPolicy(t *testing.T) {
+	dealFixture(t)
+	appended, err := nodeAppend(t, "--book", "goose/node", "--type", "goose_joined", "--statement", writeJSON(t, `{"node":"n1"}`))
+	require.NoError(t, err)
+	dir := t.TempDir()
+	request := writeJSON(t, `{"subject":{"record":"`+appended.Record.RecordID+`"},"coverage":{"min_freshness":1}}`)
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	_, err = nodeVerb(t, "request", "--request", request, "--responder", p.TrustedKeys[0], "--output", filepath.Join(dir, "r.json"))
+	require.NoError(t, err)
+	for _, requester := range []string{"", "peer-1"} {
+		args := []string{"--request", filepath.Join(dir, "r.json"), "--output", filepath.Join(dir, "a-"+requester+".json")}
+		if requester != "" {
+			args = append(args, "--requester", requester)
+		}
+		got, err := nodeVerb(t, "respond", args...)
+		require.NoError(t, err)
+		assert.Equal(t, "refusal", got["outcome"], "requester %q", requester)
+	}
+}

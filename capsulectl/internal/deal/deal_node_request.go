@@ -171,6 +171,13 @@ func dealNodeRespondCommand() *cobra.Command {
 	})
 	cmd.Flags().String("book", "", "The node's book on the shelf (required)")
 	cmd.Short = "Answer a request addressed to a node book with a signed reply, and record it"
+	cmd.Long += `
+
+On a node book. This is the one verb that can answer a requester from a node's own book, so it says what it can show:
+only what the share policy allows, to the requester the operator authenticated with --requester. With no --requester,
+or under the default policy, a history segment or a record of the node book is declined with a signed refusal; the
+refusal and every answer are records of the node book. Pass --policy only to serve more, and only for a book whose
+records you would show that requester.`
 	return cmd
 }
 

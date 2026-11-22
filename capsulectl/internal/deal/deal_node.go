@@ -94,8 +94,9 @@ not a transaction: a verb that seals several records is resumed by repeating eac
 Only MEMBER is compared: the first record whose MEMBER has this value is returned, whatever its other
 members say, and is not updated.
 
-These records are the node's own. No verb here serves them to a requester or a counterparty; they are read
-with deal node records, and a verb that would serve a node book has to say what it shows.`,
+These records are the node's own, read with deal node records. The one verb that can answer a requester from a
+node book is deal node respond, and it serves only what the share policy it is given allows; read its help
+before pointing it at a book whose records you would not show.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
 			p, err := cli.Selected(c)
