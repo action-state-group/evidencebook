@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -28,8 +29,10 @@ const (
 // v1Listings lists the store's x-deal-v1 deals, in deal id order. It
 // writes nothing: a deal's own book is opened only once the shelf shows it
 // holds records (Shelf.Open creates a missing log), and its status is a
-// keep copy computed now and never sealed.
-func (s *dealSession) v1Listings(ctx context.Context) ([]dealListing, error) {
+// keep copy computed now and never sealed. With in set (a --since/--until
+// range), only the deals with a record in it are listed, and no state is
+// computed for the others.
+func (s *dealSession) v1Listings(ctx context.Context, p cli.Profile, in *dealListBounds) ([]dealListing, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT deal_id FROM deal_versions WHERE version=? ORDER BY deal_id`, dealVersionV1)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table") {
@@ -62,11 +65,13 @@ func (s *dealSession) v1Listings(ctx context.Context) ([]dealListing, error) {
 	}
 	out := make([]dealListing, 0, len(ids))
 	for _, id := range ids {
-		l, err := s.v1ListingOf(ctx, id, books)
+		l, ok, err := s.v1ListingOf(ctx, p, id, books, in)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, l)
+		if ok {
+			out = append(out, l)
+		}
 	}
 	return out, nil
 }
@@ -75,18 +80,19 @@ func (s *dealSession) v1Listings(ctx context.Context) ([]dealListing, error) {
 // opened time is the offer's; the last record time is the own book's last
 // record's, or the offer's with no book; the log id is empty with no book),
 // and for --json the version, side, role, counterparty key and the offer's
-// summary. books are the shelf's logs that hold records.
-func (s *dealSession) v1ListingOf(ctx context.Context, dealID string, books []string) (dealListing, error) {
+// summary. books are the shelf's logs that hold records. ok is false for a
+// deal with no record in in, when in is set; its state is not computed.
+func (s *dealSession) v1ListingOf(ctx context.Context, p cli.Profile, dealID string, books []string, in *dealListBounds) (_ dealListing, ok bool, err error) {
 	d, err := s.v1DealOf(ctx, dealID)
 	if err != nil {
-		return dealListing{}, err
+		return dealListing{}, false, err
 	}
 	l := dealListing{DealID: dealID, Kind: "deal", Version: dealVersionV1, Side: d.Side, Role: d.Role, CounterpartyKey: d.CounterpartyKey, State: d.State}
 	sum := dealSummary{What: dealNotRecorded, Counterparty: dealNotRecorded, Outcome: d.State}
 	if d.OfferDigest != "" {
 		offer, err := s.offerByDigest(ctx, d.OfferDigest)
 		if err != nil {
-			return dealListing{}, err
+			return dealListing{}, false, err
 		}
 		if offer != nil {
 			l.OpenedAt, l.LastRecordAt = offer.Record.Block.At, offer.Record.Block.At
@@ -96,26 +102,43 @@ func (s *dealSession) v1ListingOf(ctx context.Context, dealID string, books []st
 			}
 		}
 	}
+	var hasBook bool
 	if d.OwnLogID != "" && slices.Contains(books, d.OwnLogID) {
 		book, err := s.ownBookV1(ctx, d)
 		if err != nil {
-			return dealListing{}, err
+			return dealListing{}, false, err
 		}
 		if len(book) > 0 {
+			hasBook = true
 			l.LogID, l.LastRecordAt = d.OwnLogID, book[len(book)-1].Block.At
 			for _, r := range book {
 				l.times = append(l.times, r.Block.At)
 			}
-			state, asOf, err := s.v1ListState(ctx, d)
-			if err != nil {
-				return dealListing{}, err
-			}
-			l.State, sum.Outcome, l.OutcomeAsOf = state, state, asOf
+		}
+	}
+	if in != nil {
+		if ok, err = v1InRange(l, *in); err != nil || !ok {
+			return dealListing{}, false, err
+		}
+	}
+	if hasBook {
+		state, asOf, err := s.v1ListState(ctx, d)
+		if err != nil {
+			// One deal's report failure names the deal, in plain words
+			// where they are known (a clock off), as deal report does.
+			return dealListing{}, false, fmt.Errorf("deal %s: %w", dealID, v1ReportError(dealID, p, err))
+		}
+		l.State, sum.Outcome, l.OutcomeAsOf = state, state, asOf
+		switch state {
+		case v1ListSettled:
+			l.SettledNote = v1ListSettledNote
+		case v1ListNotCheckpointed:
+			l.CheckpointNote = v1CheckpointNote(p)
 		}
 	}
 	sum.Text = v1SummaryText(sum, l.PaymentRows)
 	l.Summary = sum
-	return l, nil
+	return l, true, nil
 }
 
 // v1OfferSummary fills what the offer says: the item, and the amount only
@@ -177,23 +200,25 @@ func v1SummaryText(sum dealSummary, paymentRows *int) string {
 		amount = formatMoney(sum.Amount.AmountMinor, sum.Amount.Currency) + " in the offer"
 	case paymentRows != nil && *paymentRows > 1:
 		amount = "several payments in the offer"
+	case paymentRows != nil:
+		amount = "no payment row in the offer"
 	}
-	return strings.Join([]string{sum.What, "counterparty by key only", amount, sum.Outcome}, " · ")
+	return strings.Join([]string{sum.What, "counterparty: no name recorded (key only)", amount, sum.Outcome}, " · ")
 }
 
 // v1InRange says whether any of an x-deal-v1 deal's records (its offer, its
 // own book) falls in the range, Since inclusive and Until exclusive.
-func v1InRange(l dealListing, b dealListBounds) bool {
+func v1InRange(l dealListing, b dealListBounds) (bool, error) {
 	for _, at := range l.times {
 		ts, err := time.Parse(time.RFC3339, at)
 		if err != nil {
-			continue
+			return false, cli.Hint(cli.ErrConflict, "deal "+l.DealID+" holds a record whose time does not read: "+at)
 		}
-		if (b.since.IsZero() || !ts.Before(b.since)) && (b.until.IsZero() || ts.Before(b.until)) {
-			return true
+		if b.contains(ts) {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // v1RangeNote is the range object's word on x-deal-v1 deals (#626 B4a): a
@@ -211,4 +236,38 @@ func mergeListings(v0, v1 []dealListing) []dealListing {
 // v1ListSnapshot is the provider's ReportSnapshot, a seam for tests.
 var v1ListSnapshot = func(ctx context.Context, p *xdealv1.StatusProvider, logID string, c xdealv1.ReportCopy) (xdealv1.ReportSnapshot, error) {
 	return p.ReportSnapshot(ctx, logID, c)
+}
+
+// v1ListSettledNote is said beside a settled v1 deal (Sherlock2, #733, as
+// #727's settled_note): settled is computed from the agent's records, which
+// the person has not signed. evidencebook#729 replaces it.
+const v1ListSettledNote = "settled: computed from the agent's records; no act carries the person's own signature yet (agent-action-capsule#627)"
+
+// v1CheckpointNote explains not_checkpointed with the profile's cadence, as
+// deal report's refusal does (#727).
+func v1CheckpointNote(p cli.Profile) string {
+	every := "about every 5m"
+	if cfg, err := p.DealCadence(); err == nil {
+		every = "about every " + cli.ShortDuration(cfg.Interval)
+	}
+	return "not_checkpointed: records since the last checkpoint; the next cadence tick covers it (" + every + "), then list again"
+}
+
+// v1ListFooter is the plain list's footer for its v1 rows: the settled note
+// when any row is settled, the checkpoint note when any is not
+// checkpointed. It goes to stderr, so the tab-separated lines stay a table.
+func v1ListFooter(list []dealListing) []string {
+	var out []string
+	for _, note := range []func(dealListing) string{
+		func(l dealListing) string { return l.SettledNote },
+		func(l dealListing) string { return l.CheckpointNote },
+	} {
+		for _, l := range list {
+			if n := note(l); n != "" {
+				out = append(out, n)
+				break
+			}
+		}
+	}
+	return out
 }

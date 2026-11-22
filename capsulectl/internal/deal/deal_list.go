@@ -51,6 +51,10 @@ type dealListing struct {
 	CounterpartyKey string `json:"counterparty_key,omitempty"`
 	PaymentRows     *int   `json:"payment_rows,omitempty"`
 	OutcomeAsOf     string `json:"outcome_as_of,omitempty"`
+	// SettledNote is said beside a settled v1 deal, and CheckpointNote
+	// explains not_checkpointed (Sherlock2, #733).
+	SettledNote    string `json:"settled_note,omitempty"`
+	CheckpointNote string `json:"checkpoint_note,omitempty"`
 	// events are the steps the listing was read from (none for x-deal-v1).
 	events []sealedEvent
 	// times are an x-deal-v1 deal's record times (its offer and own book),
@@ -74,7 +78,8 @@ type dealSummary struct {
 }
 
 // dealSummaryAmount is an amount as recorded, in minor units. Basis says
-// which: "paid" is the net of the sealed acts in the first act's currency
+// which: "offer_terms" is an x-deal-v1 offer's one payment row's owed (an
+// offer with any other number of payment rows gives none); "paid" is the net of the sealed acts in the first act's currency
 // (`deal report`'s money net_minor; acts in another currency are counted in
 // OtherCurrencyActs, as the report counts them, never summed), and
 // "opening_terms" the opening step's price when no act moved money (a later
@@ -110,7 +115,11 @@ func dealListCommand() *cobra.Command {
 			return err
 		}
 		asJSON, _ := c.Flags().GetBool("json")
-		v1, err := s.v1Listings(c.Context())
+		var in *dealListBounds
+		if ranged {
+			in = &bounds
+		}
+		v1, err := s.v1Listings(c.Context(), p, in)
 		if err != nil {
 			return err
 		}
@@ -120,14 +129,8 @@ func dealListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var inRange []dealListing
-			for _, l := range v1 {
-				if v1InRange(l, bounds) {
-					inRange = append(inRange, l)
-				}
-			}
-			if len(inRange) > 0 {
-				r.Deals, r.V1Note = mergeListings(r.Deals, inRange), v1RangeNote
+			if len(v1) > 0 {
+				r.Deals, r.V1Note = mergeListings(r.Deals, v1), v1RangeNote
 			}
 			if asJSON {
 				if err := s.fillReconcile(c.Context(), r.Deals, bounds.until); err != nil {
@@ -167,6 +170,15 @@ func dealListCommand() *cobra.Command {
 				fp = *l.CounterpartyFingerprint
 			}
 			if _, err = fmt.Fprintln(c.OutOrStdout(), strings.Join([]string{l.DealID, l.Kind, l.State, l.OpenedAt, l.LastRecordAt, fp, l.LogID}, "\t")); err != nil {
+				return err
+			}
+		}
+		notes := v1ListFooter(list)
+		if ranged && len(v1) > 0 {
+			notes = append(notes, v1RangeNote)
+		}
+		for _, note := range notes {
+			if _, err = fmt.Fprintln(c.ErrOrStderr(), note); err != nil {
 				return err
 			}
 		}

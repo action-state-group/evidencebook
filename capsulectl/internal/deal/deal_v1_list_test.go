@@ -1,6 +1,7 @@
 package deal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
@@ -79,6 +81,7 @@ func TestAV1DealIsListed(t *testing.T) {
 	assert.Equal(t, "lamp", sum["what"])
 	assert.Nil(t, sum["amount"], "the offer's one row is not recomputed, so it is no payment row")
 	assert.Equal(t, float64(0), l["payment_rows"])
+	assert.Contains(t, sum["text"], "no payment row in the offer")
 
 	h.seller.act(t)
 	dealRun(t, "receive", h.offerFile)
@@ -115,6 +118,11 @@ func TestAV1DealIsListed(t *testing.T) {
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
 	deals, _ = v1List(t)
 	assert.Equal(t, "not_checkpointed", deals[h.dealID]["state"])
+	assert.Contains(t, deals[h.dealID]["checkpoint_note"], "the next cadence tick covers it (about every 5m)")
+	assert.Contains(t, deals[h.dealID]["summary"].(map[string]any)["text"], "counterparty: no name recorded (key only)")
+	stdout, stderr := invokeSplit(t, "--profile", "deal", "deal", "list")
+	assert.NotContains(t, stdout, "not_checkpointed:", "the table stays a table")
+	assert.Contains(t, stderr, "not_checkpointed: records since the last checkpoint")
 }
 
 // With no own book the state is deal_versions' as it is (each word the
@@ -150,22 +158,29 @@ func TestAV1ListPassesTheStateThroughWithNoBook(t *testing.T) {
 func TestAV1ListSettledAndErrors(t *testing.T) {
 	h := agreedBoth(t, offerTo)
 	h.buyer.act(t)
+	orig := v1ListSnapshot
+	t.Cleanup(func() { v1ListSnapshot = orig })
 	v1ListSnapshot = func(context.Context, *xdealv1.StatusProvider, string, xdealv1.ReportCopy) (xdealv1.ReportSnapshot, error) {
 		return xdealv1.ReportSnapshot{Report: xdealv1.Report{Settled: true}}, nil
 	}
-	t.Cleanup(func() {
-		v1ListSnapshot = func(ctx context.Context, p *xdealv1.StatusProvider, logID string, c xdealv1.ReportCopy) (xdealv1.ReportSnapshot, error) {
-			return p.ReportSnapshot(ctx, logID, c)
-		}
-	})
 	deals, _ := v1List(t)
 	assert.Equal(t, "settled", deals[h.dealID]["state"])
+	assert.Contains(t, deals[h.dealID]["settled_note"], "no act carries the person's own signature yet")
+	_, stderr := invokeSplit(t, "--profile", "deal", "deal", "list")
+	assert.Contains(t, stderr, "settled: computed from the agent's records")
 
 	v1ListSnapshot = func(context.Context, *xdealv1.StatusProvider, string, xdealv1.ReportCopy) (xdealv1.ReportSnapshot, error) {
 		return xdealv1.ReportSnapshot{}, errors.New("xdealv1: report: a record is timed after as_of")
 	}
 	out, err := invoke(t, "", "--profile", "deal", "deal", "list", "--json")
-	assert.Error(t, err, out)
+	require.Error(t, err, out)
+	assert.Contains(t, err.Error(), "deal "+h.dealID+":", "the error names the deal")
+	assert.Contains(t, err.Error(), "this computer's clock", "in plain words, as deal report says it")
+
+	// A range that leaves the deal out computes no state for it, so its
+	// failure does not stop the list.
+	_, r := v1List(t, "--since", "2030-01-01")
+	assert.Nil(t, r["x_deal_v1_note"])
 }
 
 // An offer with one payment row (recomputed, an amount) gives its amount;
@@ -206,6 +221,57 @@ func TestAV1ListMixedAndRange(t *testing.T) {
 	in, r := v1List(t, "--since", "2026-09-27", "--until", "2026-09-28")
 	assert.Contains(t, in, v1ID)
 	assert.Contains(t, r["x_deal_v1_note"], "not yet counted in the totals")
+	_, stderr := invokeSplit(t, "--profile", "deal", "deal", "list", "--since", "2026-09-27", "--until", "2026-09-28")
+	assert.Contains(t, stderr, "not yet counted in the totals", "the plain range says it too")
 	out, _ := v1List(t, "--since", "2026-09-28")
 	assert.NotContains(t, out, v1ID)
+}
+
+// invokeSplit runs the command with stdout and stderr apart.
+func invokeSplit(t *testing.T, args ...string) (string, string) {
+	t.Helper()
+	c := testCommand()
+	var out, errOut bytes.Buffer
+	c.SetIn(strings.NewReader(""))
+	c.SetOut(&out)
+	c.SetErr(&errOut)
+	c.SetArgs(args)
+	require.NoError(t, c.ExecuteContext(t.Context()), errOut.String())
+	return out.String(), errOut.String()
+}
+
+// A range picks a v1 deal by a later own-book record when its offer is
+// outside it, Since inclusive and Until exclusive, and the deal changes
+// neither the totals nor the disclosures.
+func TestAV1ListRangeByABookRecord(t *testing.T) {
+	h := newHandshakeV1(t) // the offer and the acceptor's agreement at the fixture's clock
+	h.seller.act(t)
+	deals, _ := v1List(t)
+	agreedAt := deals[h.dealID]["last_record_at"].(string)
+	opened := deals[h.dealID]["opened_at"].(string)
+	clockAt(t, v1Time(t, agreedAt).Add(72*time.Hour))
+	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
+	deals, _ = v1List(t)
+	last := deals[h.dealID]["last_record_at"].(string)
+	require.NotEqual(t, opened, last)
+
+	at := v1Time(t, last)
+	in, r := v1List(t, "--since", at.Format(time.RFC3339), "--until", at.Add(time.Second).Format(time.RFC3339))
+	assert.Contains(t, in, h.dealID, "the book record is in the range though the offer is not")
+	assert.Equal(t, last, in[h.dealID]["last_record_at"])
+	assert.Equal(t, float64(0), r["totals"].(map[string]any)["deals"], "a v1 deal is not counted in the totals")
+	for _, d := range r["disclosures"].([]any) {
+		assert.Equal(t, float64(0), d.(map[string]any)["recipients"])
+	}
+	out, _ := v1List(t, "--since", at.Add(time.Second).Format(time.RFC3339))
+	assert.NotContains(t, out, h.dealID, "since is inclusive of the record's second only")
+	before, _ := v1List(t, "--until", v1Time(t, opened).Format(time.RFC3339))
+	assert.NotContains(t, before, h.dealID, "until is exclusive")
+}
+
+func v1Time(t *testing.T, s string) time.Time {
+	t.Helper()
+	ts, err := time.Parse(time.RFC3339, s)
+	require.NoError(t, err)
+	return ts
 }
