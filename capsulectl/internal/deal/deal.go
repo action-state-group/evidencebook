@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/x509"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -997,20 +999,67 @@ func stepOutput(dealID string, se sealedEvent) map[string]any {
 	return map[string]any{"deal_id": dealID, "step": se.Event.N, "kind": se.Event.Kind, "capsule_id": se.CapsuleID, "sequence": se.Sequence}
 }
 
-func writeSeed(path string) (ed25519.PrivateKey, error) {
-	_, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return nil, err
-	}
+// writeSeed writes key to path as a hex seed, 0600 and create-exclusive. A
+// write that fails after the file was created removes it, so a retry is not
+// blocked by a file this call left behind.
+func writeSeed(path string, key ed25519.PrivateKey) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, cli.InputError("cannot create key file (it must not already exist): " + path)
+		return cli.InputError("cannot create key file (it must not already exist): " + path)
 	}
-	_, werr := f.WriteString(hex.EncodeToString(private.Seed()))
+	_, werr := f.WriteString(hex.EncodeToString(key.Seed()))
 	if err = errors.Join(werr, f.Sync(), f.Close()); err != nil {
+		return errors.Join(err, os.Remove(path))
+	}
+	return nil
+}
+
+// resolveKey is the key a deal profile signs under: the one from names (a
+// PKCS#8 PEM, as a Python Goose node keeps its producer.key and
+// checkpoint.key, or a 64-hex seed, so its key id stays), else a fresh one. It
+// reads and checks the key and creates nothing, so deal init can resolve every
+// key before it writes any file.
+func resolveKey(from string) (ed25519.PrivateKey, error) {
+	if from == "" {
+		_, private, err := ed25519.GenerateKey(rand.Reader)
+		return private, err
+	}
+	raw, err := cli.ReadInput(from)
+	if err != nil {
 		return nil, err
 	}
-	return private, nil
+	key, err := parseKeyFile(raw)
+	if err != nil {
+		return nil, cli.InputError("key file " + from + ": " + err.Error())
+	}
+	return key, nil
+}
+
+// parseKeyFile reads an Ed25519 private key from a PKCS#8 PEM or a 64-hex seed.
+func parseKeyFile(raw []byte) (ed25519.PrivateKey, error) {
+	if block, _ := pem.Decode(raw); block != nil {
+		switch block.Type {
+		case "PRIVATE KEY":
+		case "ENCRYPTED PRIVATE KEY":
+			return nil, errors.New("the key is encrypted: decrypt it first (this reads an unencrypted PKCS#8 PEM or a hex seed)")
+		default:
+			return nil, errors.New("a " + block.Type + " block is not a PKCS#8 private key")
+		}
+		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, errors.New("not a PKCS#8 private key")
+		}
+		key, ok := parsed.(ed25519.PrivateKey)
+		if !ok {
+			return nil, errors.New("not an Ed25519 key")
+		}
+		return key, nil
+	}
+	seed, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil || len(seed) != ed25519.SeedSize {
+		return nil, errors.New("neither a PKCS#8 PEM nor a 64-hex Ed25519 seed")
+	}
+	return ed25519.NewKeyFromSeed(seed), nil
 }
 
 func dealInitCommand() *cobra.Command {
@@ -1028,16 +1077,25 @@ func dealInitCommand() *cobra.Command {
 		} else if _, e = os.Lstat(path); e == nil {
 			return cli.InputError("profile already exists: " + name)
 		}
+		signingFrom, _ := c.Flags().GetString("signing-key-file")
+		checkpointFrom, _ := c.Flags().GetString("checkpoint-key-file")
+		// Every key is resolved, read and checked, before anything is created.
+		signing, err := resolveKey(signingFrom)
+		if err != nil {
+			return err
+		}
+		cpKey, err := resolveKey(checkpointFrom)
+		if err != nil {
+			return err
+		}
 		if err = os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
-		signing, err := writeSeed(filepath.Join(dir, "signing.seed"))
-		if err != nil {
+		if err = writeSeed(filepath.Join(dir, "signing.seed"), signing); err != nil {
 			return err
 		}
-		cpKey, err := writeSeed(filepath.Join(dir, "checkpoint.seed"))
-		if err != nil {
-			return err
+		if err = writeSeed(filepath.Join(dir, "checkpoint.seed"), cpKey); err != nil {
+			return errors.Join(err, os.Remove(filepath.Join(dir, "signing.seed")))
 		}
 		signer, err := checkpoint.NewEd25519Signer(cpKey)
 		if err != nil {
@@ -1117,6 +1175,16 @@ func dealInitCommand() *cobra.Command {
 			"profile": name, "store": p.Connection.Database, "public_key": public, "witness": witness, "cadence_log": p.LogID,
 			"guarantee": "tamper-evident against ourselves and the agent, not non-repudiation: the signing seed is on this machine",
 		}
+		if signingFrom != "" || checkpointFrom != "" {
+			var copied []string
+			for _, kept := range []struct{ from, to string }{{signingFrom, "signing.seed"}, {checkpointFrom, "checkpoint.seed"}} {
+				if kept.from != "" {
+					copied = append(copied, kept.from+" -> "+filepath.Join(dir, kept.to))
+				}
+			}
+			out["kept_keys"] = copied
+			out["kept_keys_note"] = "each kept key now exists in the file it came from and again as a seed copied into --dir, re-encoded as a hex seed (listed above, one line per copy): the source stays yours to keep or delete, so secure or remove it once the earlier home is retired. A peer that knows the key id sees a new log from it that starts empty; stop the earlier home from sealing and checkpointing first, or it and this profile answer under one key over two different histories"
+		}
 		if witness == "scheduled" {
 			out["witness_endpoint"], out["witness_sees"] = cli.DealDefaultWitness, dealWitnessSees
 			cadence := "its cadence"
@@ -1131,6 +1199,8 @@ func dealInitCommand() *cobra.Command {
 		return cli.Output(c, out)
 	}}
 	cmd.Flags().String("dir", "", "Directory for the store and seeds (created 0700)")
+	cmd.Flags().String("signing-key-file", "", "Keep an existing signing key (a PKCS#8 PEM or a 64-hex seed) instead of making one, so its key id stays; the key is copied into --dir as a hex seed. Stop writing to the earlier home first: one key, one live store")
+	cmd.Flags().String("checkpoint-key-file", "", "Keep an existing checkpoint signing key (a PKCS#8 PEM or a 64-hex seed) instead of making one; copied into --dir as a hex seed. Stop the earlier home's checkpointing first: one key, one live store")
 	cmd.Flags().Bool("no-witness", false, "Do not configure the default public witness; deals are sealed on this device only")
 	cmd.Flags().String("materiality", "", "A materiality predicate (a materiality-predicate/v0 JSON file, or builtin:neutral) for this profile's checks to evaluate, pinned by its digest; without one, every attribute the agent picks pauses the check")
 	return cmd
