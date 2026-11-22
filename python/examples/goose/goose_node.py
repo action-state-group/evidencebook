@@ -65,8 +65,10 @@ from evidencebook.staple import DERIVATION_STANDARD_HISTORY, Staple, check_stapl
 from evidencebook._time import profile_time
 from agent_action_capsule.evidence_request import sign_envelope
 from evidencebook.cadence import CADENCE_EXTENSION, CadenceConfig
+from evidencebook.errors import InvalidError
 from evidencebook.shelf import Shelf
 
+import card_registration as cr
 import deal_records as dr
 
 __all__ = ["Node", "verify_half", "verify_history_staple", "HISTORY_STAPLE_MEMBER", "HISTORY_CARD_MEMBER", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "DISPUTE_HALF", "DISPUTE_ASKED",
@@ -359,6 +361,14 @@ class _BookRecords:
         if held is None:
             raise NoRecord(capsule_id)
         return StoredRecord(jcs(held.capsule), held.envelope)
+
+
+@dataclass(frozen=True)
+class _Holder:
+    """The two members of an envelope a card statement binds: its responder and its anchor."""
+
+    responder: str
+    anchor_digest: str
 
 
 class Refused(ValueError):
@@ -1260,6 +1270,32 @@ class Node:
                                      profile=ER_PROFILE)
             return {"request": request.octets.decode(),
                     "reply": encode_envelope(envelope, MEDIA_TYPE_JSON).message.octets.decode()}
+
+    def register_card(self, registrar: Any, policy: Any, tick: int = 0) -> dict:
+        """Register the node's ``standard_history/1`` card as of a cadence tick (the newest when 0)
+        on the transparency service ``registrar`` posts to, and return what the host keeps beside
+        the card: the card statement, its octets as hex, with the Receipt attached after it passed
+        under ``policy`` (agent-action-capsule ``standard-history-v0`` §13, Go ``RegisterCard``).
+
+        Opt-in: the node names no service, and the host's registrar is the only way one is reached
+        (:mod:`card_service`). The card is built first and is complete without this; a service that
+        is down or a Receipt that does not pass raises, and the card is as it was. The node's lock
+        is not held during the post. What registration shows is that the card existed at a time,
+        nothing else: ``anchor_inclusion`` stays NOT_CHECKED."""
+        with self._lock:
+            try:
+                anchor = self.cadence.standard_history_anchor(tick)
+            except NotFoundError as exc:
+                raise Refused(f"no card to register: {exc} (run loop_tick)") from None
+            built = self.standard_history(anchor.tick.n)
+        card = built["card"].encode()
+        envelope = _Holder(self.key_id, anchor.anchor)
+        try:
+            statement = cr.register_card(self.signer, card, envelope, registrar, policy)
+        except InvalidError as exc:
+            raise Refused(f"the card was not registered: {exc}") from None
+        return {"card": built["card"], "tick": anchor.tick.n, "anchor": anchor.anchor, "responder": self.key_id,
+                "statement": statement.hex()}
 
     def _halves_received(self, extent: int) -> set[str]:
         """The deals whose counterparty half this node verified, among the

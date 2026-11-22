@@ -21,7 +21,7 @@ is imported once as a host log, nothing re-signed.
           its commitment advertises)
     09    loop_dispute_ask, loop_dispute_poll (a referee's Result fetched over the Nostr mailbox and sealed as received; the check is capsule-engine's)
     12    loop_join, loop_probe, loop_import
-    cards loop_history_card, loop_standard_history
+    cards loop_history_card, loop_standard_history, loop_register_card (opt-in)
 
 Add to ``~/.config/goose/config.yaml``::
 
@@ -39,7 +39,8 @@ Add to ``~/.config/goose/config.yaml``::
           GOOSE_OPERATOR: "acme-co"
 
 Every tool returns one JSON object. A refusal is ``{"ok": false, "error": ...}``
-and seals nothing. Nothing here moves money or opens a connection: a payment
+and seals nothing. Nothing here moves money, and nothing opens a connection unless the
+caller sets GOOSE_CARD_SERVICE and calls loop_register_card (card_service.py): a payment
 reference is a value the caller observed, and halves and requests move as
 files over the caller's own channel.
 """
@@ -65,6 +66,7 @@ from capsule_emit.store_backed_ledger import LedgerError
 
 from evidencebook import BookError, Coverage, EvidenceRequest, Message, ResponderKeys, Subject
 
+import card_service as cs
 import commitment as cm
 import deal_records as dr
 import goose_node as gn
@@ -621,6 +623,37 @@ def loop_standard_history(out_path: str, tick: int = 0) -> str:
     _write(out_path, json.dumps(result, sort_keys=True, indent=2).encode())
     return _out(ok=True, tick=result["tick"], deals=len(result["deals"]), anchor=result["as_of"]["anchor"],
                 file=out_path)
+
+
+@_tool
+def loop_register_card(out_path: str, tick: int = 0) -> str:
+    """Register this node's ``standard_history/1`` card (as of a cadence tick, the newest when 0) on
+    the transparency service named in ``GOOSE_CARD_SERVICE``, and write the card statement with its
+    Receipt to ``out_path``. Opt-in: with ``GOOSE_CARD_SERVICE`` unset nothing is sent and the tool
+    refuses; the card is complete without it, and a failed registration changes nothing.
+
+    Call it only when the user has asked to register this card, and tell them first that it is
+    permanent and that the service learns which of their keys registered a card for which anchor,
+    and when. Say who runs the service as the result names it (``service`` and ``operator``).
+
+    What a passing Receipt shows: this node registered this card with the named service, at the time
+    in the Receipt (or with no time, when the Receipt states none). It does not show that the service checked the counts, the deals or the anchor,
+    that the service authenticated this node, or that this is the node's only card, and
+    ``anchor_inclusion`` stays NOT_CHECKED. A registration is permanent: the service's log is
+    append-only, and the service and anyone who reads its log learn which key registered a card for
+    which anchor, and when. The statement carries the card's digest, not the card, but a small card's
+    counts can be guessed from it."""
+    path = os.environ.get("GOOSE_CARD_SERVICE")
+    if not path:
+        raise gn.Refused("no transparency service is configured: set GOOSE_CARD_SERVICE to a service "
+                         "file (card_service.py); registration is opt-in and has no default")
+    service = cs.load_service(path)
+    result = node().register_card(cs.AnchorRegistrar(service), service.policy, tick)
+    result["service"] = {"name": service.name, "operator": service.operator, "url": service.url,
+                         "keys": list(service.keys)}
+    _write(out_path, json.dumps(result, sort_keys=True, indent=2).encode())
+    return _out(ok=True, tick=result["tick"], anchor=result["anchor"], service=service.name,
+                operator=service.operator, file=out_path)
 
 
 if __name__ == "__main__":

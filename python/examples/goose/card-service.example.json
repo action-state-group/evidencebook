@@ -1,0 +1,6 @@
+{
+  "name": "capsule-anchor (run by Action State Group)",
+  "operator": "Action State Group",
+  "url": "https://witness.agentactioncapsule.org",
+  "keys": ["302a300506032b657003210039bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5"]
+}

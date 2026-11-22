@@ -180,6 +180,9 @@ over MCP stdio, as Goose speaks to it:
 .venv/bin/python python/examples/goose/scripted_run.py /tmp/goose-run
 ```
 
+With `GOOSE_CARD_SERVICE` set to a service file ([Registering your card](#registering-your-card-optional)), the run also registers each node's card and writes
+`<node>-card-statement.json`; unset, it sends nothing.
+
 ## What each side seals
 
 The buyer's deal book holds the records capsulectl deal seals for a retail purchase:
@@ -247,6 +250,43 @@ Go's evidencebook:
 ```bash
 go run ./test/interop/goose-card /tmp/goose-run/buyer/shelf.db /tmp/goose-run/buyer-card.json "$(cat /tmp/goose-run/buyer.key)"
 ```
+
+## Registering your card (optional)
+
+A card can be registered on a transparency service, so that a relying party you give the card statement to, and that accepts the service, can check that your key stated this
+card no later than a time. This is off until you name a service: there is no default service, and with
+`GOOSE_CARD_SERVICE` unset `loop_register_card` refuses and nothing is sent. The card is complete without it, and a
+registration that fails changes nothing about the card.
+
+`card-service.example.json` names the service this demo uses: capsule-anchor at
+`https://witness.agentactioncapsule.org`, **run by Action State Group**. That is this demo's choice, not a default of the
+library or a recommendation. When we run this demo the node is ours too, so our runs show no check by an independent
+party: a service the holder operates confers nothing. If you run it, the node is yours, and whether a service run by
+Action State Group counts for you is your relying party's choice; a relying party should list only a service it holds
+independent of the holder. Its `keys` entry is the key the service published (its `/.well-known/did.json`); you decide whether to trust it.
+
+```bash
+export GOOSE_CARD_SERVICE=python/examples/goose/card-service.example.json
+# in Goose, after a finished loop_tick:
+#   loop_register_card out_path=/tmp/goose-run/buyer-card-statement.json
+```
+
+`loop_register_card` writes the card statement, with the service's Receipt, to `out_path`; keep it beside the card.
+A registration is permanent: the service's log is append-only, and it learns which of your keys registered a card for
+which anchor, and when. The statement carries the card's digest, not the card, but a digest does not hide a small card from
+a party that can guess its counts.
+
+A relying party checks it with its own copy of the service's key, never one read from the statement file:
+
+```bash
+go run ./test/interop/goose-card /tmp/goose-run/buyer/shelf.db /tmp/goose-run/buyer-card.json "$(cat /tmp/goose-run/buyer.key)" \
+  /tmp/goose-run/buyer-card-statement.json my-policy.json   # {"witnesses": [{"name": "...", "keys": ["<hex DER key>"]}]}
+```
+
+On a pass it reports `card_registered` PASS and what that shows and no more: that this holder registered this card with
+the named service, at the time in the Receipt (or with no time, when the Receipt states none). It does not show that the service checked the counts, the deals or the
+anchor, that the service authenticated the holder, or that this is your only card, and `anchor_inclusion` stays
+`NOT_CHECKED`.
 
 A Mesh node on capsules-plugin v0.1.8 has no channel to receive a Goose half yet
 (evidencebook#291 adds one). CI instead runs each half through exactly the checks such a node runs

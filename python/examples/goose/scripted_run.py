@@ -17,7 +17,9 @@ loop_book_bundle); ``buyer-pay-opening.json`` and ``<node>-settlement-disclosure
 ``buyer-opening-bundle.json`` is the buyer's admission and its record
 of the deal, one bundle (loop_deal_bundle). Go's check of a
 card is ``go run ./test/interop/goose-card OUT/<node>/shelf.db
-OUT/<node>-card.json $(cat OUT/<node>.key)``.
+OUT/<node>-card.json $(cat OUT/<node>.key)``. With GOOSE_CARD_SERVICE set to a service file
+(card-service.example.json), each node also registers its card on that service
+(loop_register_card) and writes ``<node>-card-statement.json``.
 """
 from __future__ import annotations
 
@@ -122,6 +124,9 @@ async def run(out: Path) -> None:
                                     out_path=str(out / "buyer-model-call-bundle.json"))
                 await node.call("loop_probe")
                 await node.call("loop_standard_history", out_path=str(out / f"{node.name}-card.json"))
+                if os.environ.get("GOOSE_CARD_SERVICE"):
+                    # Opt-in: only a host that named a service registers its card.
+                    await node.call("loop_register_card", out_path=str(out / f"{node.name}-card-statement.json"))
                 await node.call("loop_history_card", book_id=f"deal/{deal_id}",
                                 out_path=str(out / f"{node.name}-history-card.json"))
                 (out / f"{node.name}.key").write_text(key["key_id"])
