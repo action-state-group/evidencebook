@@ -1,0 +1,31 @@
+{
+  "fixture": "09-claim-condition.json",
+  "expect": "valid",
+  "story": "The condition claim, sealed under the check's nonce: its words only, no verdict.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim",
+      "seq": 9,
+      "at": "2026-10-08T09:16:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "61a07c9d31772561ad4af15b172195163f748546fe4cce9e752cbd3c0246c805"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      }
+    },
+    "body": {
+      "text_commitment": "61856d5898d148c9e0904e565f69e2ad274e49426fb9bdc0b8089c85353817af",
+      "source_kind": "agent",
+      "class": "condition"
+    }
+  },
+  "expected_digest": "ba0adb7949ae9155296a1767ff8c6292dfe435274a47a40fc9e6ea19e2ded4b4"
+}

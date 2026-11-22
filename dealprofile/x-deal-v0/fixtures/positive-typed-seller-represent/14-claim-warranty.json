@@ -1,0 +1,31 @@
+{
+  "fixture": "14-claim-warranty.json",
+  "expect": "valid",
+  "story": "The warranty claim: its words only.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim",
+      "seq": 14,
+      "at": "2026-10-08T09:26:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "74ecff5f1c1d8d5b93cf77d10d143861e0cc912af53bad08e506270cda87db85"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      }
+    },
+    "body": {
+      "text_commitment": "a207cd81a3a63a005c3493e6f37e5bc1f6868d9d3db36dbf1823631907ba7798",
+      "source_kind": "agent",
+      "class": "warranty"
+    }
+  },
+  "expected_digest": "c7f213f1f5d3ecb4ed3eb43d128df644f2efe5f2e7f9589fa36f529cb2bce96c"
+}

@@ -1,0 +1,50 @@
+{
+  "fixture": "01-baseline.json",
+  "expect": "valid",
+  "story": "First contact on a seller's deal that orders a condition statement (ordered_representations).",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "baseline",
+      "seq": 1,
+      "at": "2026-10-08T09:00:00Z",
+      "channel": "marketplace",
+      "counterparty": {
+        "fp_alg": "hmac-sha256-deal-key",
+        "ids": {
+          "name": "ff4eca193de6e6c792513b0eff850221b49d42d15a588ba1af645cd1b3aa0751",
+          "domain": "98800778364287b6640514e7058e20a1e7b5b35dc27d11e5831820d214cefe02"
+        }
+      }
+    },
+    "body": {
+      "deal_type": "purchase",
+      "demo": true,
+      "intent": {
+        "verbatim_commitment": "6d14d36b5673bd7c6fecae707aeec18e9d08803eef026a6a58521bf04b48b15b",
+        "party_role": "seller",
+        "allowed": [
+          "offer",
+          "commit",
+          "share_contact"
+        ],
+        "ordered_representations": [
+          "condition"
+        ]
+      },
+      "terms": {
+        "item": "example bicycle",
+        "quantity": 1,
+        "price_minor": 190000,
+        "currency": "USD"
+      },
+      "recourse": {
+        "rail": "card",
+        "refundable": false
+      }
+    }
+  },
+  "expected_digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+}

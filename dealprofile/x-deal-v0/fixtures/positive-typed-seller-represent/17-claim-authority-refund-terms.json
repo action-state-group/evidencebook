@@ -1,0 +1,38 @@
+{
+  "fixture": "17-claim-authority-refund-terms.json",
+  "expect": "valid",
+  "story": "Its verdict: unchecked, rule no_check, naming nothing that authorized it.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim_authority",
+      "seq": 17,
+      "at": "2026-10-08T09:32:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "38148aae988b3ee44b3f4063fc2bf938d087182abbd9a00d06a77a0fd4cf1ecf"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      },
+      "refs": [
+        {
+          "rel": "about",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "38148aae988b3ee44b3f4063fc2bf938d087182abbd9a00d06a77a0fd4cf1ecf"
+        }
+      ]
+    },
+    "body": {
+      "unchecked": true,
+      "rule": "no_check"
+    }
+  },
+  "expected_digest": "f6a9d088d3ef9a6c9991aed9bc7d30b20204a67259f5017e547aad2159614156"
+}

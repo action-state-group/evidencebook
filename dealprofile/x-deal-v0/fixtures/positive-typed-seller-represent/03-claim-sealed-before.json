@@ -1,0 +1,33 @@
+{
+  "fixture": "03-claim-sealed-before.json",
+  "expect": "valid",
+  "story": "A claim sealed before the verdict moved off it: unchecked, rule no_check, on the claim itself.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim",
+      "seq": 3,
+      "at": "2026-10-08T09:04:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      }
+    },
+    "body": {
+      "text_commitment": "dd7582fb2d2035080428a531f0a5fd63471f8e748822bfc4cefb54dae5d0a5b2",
+      "source_kind": "agent",
+      "class": "other",
+      "unchecked": true,
+      "rule": "no_check"
+    }
+  },
+  "expected_digest": "758cb45db0a6c350c04115afb563efe983ca7fb323ea27d4a71b3201fa596020"
+}

@@ -1,0 +1,64 @@
+{
+  "fixture": "20-action-record-share-pickup-area.json",
+  "expect": "valid",
+  "story": "The pickup area shared: a gated step, after the ordered statement's authorized claim_authority.",
+  "record": {
+    "type": "action-record/v0",
+    "canonicalization": "jcs",
+    "chain_id": "deal-7e41b9c02d5a8f36",
+    "seq": 20,
+    "at": "2026-10-08T09:38:00Z",
+    "prev": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "301408f0a4f705c79eca47a283fcf345c06b7801312650cdb15435b2a32f1f4c"
+    },
+    "chain_root": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+    },
+    "refs": [
+      {
+        "rel": "authorized_by",
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "301408f0a4f705c79eca47a283fcf345c06b7801312650cdb15435b2a32f1f4c"
+      }
+    ],
+    "body": {
+      "action": "share_contact",
+      "disclosed": {
+        "to": "platform",
+        "fields": [
+          {
+            "class": "pickup_area",
+            "value_commitment": "2b510e7e2591bb7d16081c4133303d44a165b0ab17d3b90d5c32869c8dfdd91c"
+          }
+        ]
+      },
+      "counterparty": {
+        "fp_alg": "hmac-sha256-chain-key",
+        "ids": {
+          "domain": "24c51e554ec1688cd690e974d1c91bdca94f599d6fffd49bba149461e293084d"
+        }
+      },
+      "evaluation_ref": {
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "301408f0a4f705c79eca47a283fcf345c06b7801312650cdb15435b2a32f1f4c"
+      },
+      "authority_basis": [
+        {
+          "type": "task_authority",
+          "ref": {
+            "type": "record",
+            "digest_alg": "SHA-256",
+            "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
+          }
+        }
+      ]
+    }
+  },
+  "expected_digest": "b194854ffdd5e9642e85f3d5770b18420bee4a027250f777db62dce7b135d62c"
+}

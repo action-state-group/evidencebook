@@ -1,0 +1,69 @@
+{
+  "fixture": "12-action-evaluation.json",
+  "expect": "valid",
+  "story": "The check asks (ASK): the representation goes beyond what the user asked the agent to say.",
+  "record": {
+    "type": "action-evaluation/v0",
+    "canonicalization": "jcs",
+    "chain_id": "deal-7e41b9c02d5a8f36",
+    "seq": 12,
+    "at": "2026-10-08T09:22:00Z",
+    "prev": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "320a8ad3502b7228f1355510b9e677eca3d952ced0b260032d28191d0fbfb8a0"
+    },
+    "chain_root": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+    },
+    "refs": [
+      {
+        "rel": "checks",
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "320a8ad3502b7228f1355510b9e677eca3d952ced0b260032d28191d0fbfb8a0"
+      }
+    ],
+    "body": {
+      "disposition": "ASK",
+      "findings": [
+        {
+          "question": "what",
+          "rule": "representation_outside_authority",
+          "field": "warranty"
+        }
+      ],
+      "options": [
+        "hold",
+        "proceed"
+      ],
+      "judge": {
+        "kind": "rules"
+      },
+      "proposed_action_digest": "320a8ad3502b7228f1355510b9e677eca3d952ced0b260032d28191d0fbfb8a0",
+      "task_authority_ref": {
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
+      },
+      "ruleset_digest": "0a2a70b102a3c1a08f7a18db0c30ef991aff18a93c4cdcfea0fc6aec5088d60a",
+      "materiality": "predicate",
+      "materiality_digest": "53af8695f236e1351c36c7996efadcc8665c7185862f95d9ac8acf070ad6b6d1",
+      "valid_until": "2026-10-08T09:50:00Z",
+      "authority_basis": [
+        {
+          "type": "task_authority",
+          "ref": {
+            "type": "record",
+            "digest_alg": "SHA-256",
+            "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
+          }
+        }
+      ],
+      "rendering_commitment": "bf720bc791551e59651deba294b2368cf21e2f8c032fc1ffb1b8d417accbd1f8"
+    }
+  },
+  "expected_digest": "2c5a1199371f1454d0055d5eef83e85c186cf24121ddbad5a364bd1b1d232812"
+}

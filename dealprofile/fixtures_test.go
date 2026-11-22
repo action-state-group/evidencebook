@@ -132,7 +132,7 @@ func TestRecordTypesAreTheSchemas(t *testing.T) {
 }
 
 // positiveChains are the fixtures' four positive chains.
-var positiveChains = []string{"positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"}
+var positiveChains = []string{"positive", "positive-typed", "positive-typed-seller", "positive-typed-seller-represent", "positive-sale", "positive-sale-unpost"}
 
 func TestPositiveFixtures(t *testing.T) {
 	store := localStoreValues(loadFingerprints(t))
@@ -234,6 +234,8 @@ var schemaWordingOnly = map[string]string{
 	"neg-agent-card-with-words.json":                        "/body: 'not' failed",                 // there: "should not be valid under ... said_commitment"
 	"neg-typed-seller-offer-no-proposal-beside-source.json": "/body: 'not' failed",                 // there: "should not be valid under"
 	"neg-typed-seller-source-on-a-commit.json":              "/body/action: value must be 'offer'", // there: "'offer' was expected"
+	"neg-claim-authority-unknown-rule.json":                 "/body/rule: value must be one of",    // there: "'because' is not one of"
+	"neg-claim-authority-both-forms.json":                   "/body: additional properties '",      // there: the body, not valid under any of the forms; Go lists the members in map order
 }
 
 // TestNegativeFixtures checks that every negative the reference checker

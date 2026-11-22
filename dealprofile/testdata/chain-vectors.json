@@ -197,6 +197,111 @@
       "error": ""
     },
     {
+      "name": "positive-typed-seller-represent/1",
+      "stage": "chain",
+      "error": "seq position 1: a deal where the user sells is sealed in the typed action records"
+    },
+    {
+      "name": "positive-typed-seller-represent/2",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/3",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/4",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/5",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/6",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/7",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/8",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/9",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/10",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/11",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/12",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/13",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/14",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/15",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/16",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/17",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/18",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/19",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/20",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-typed-seller-represent/21",
+      "stage": "",
+      "error": ""
+    },
+    {
       "name": "positive-sale/2",
       "stage": "",
       "error": ""
@@ -352,6 +457,76 @@
       "error": "seq position 13: terms.handover is a seller's term: a deal where the user buys states none"
     },
     {
+      "name": "negative/neg-claim-authority-about-a-users-claim.json",
+      "stage": "chain",
+      "error": "seq position 19: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "negative/neg-claim-authority-after-an-old-shape-claim.json",
+      "stage": "chain",
+      "error": "seq position 10: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "negative/neg-claim-authority-another-class.json",
+      "stage": "chain",
+      "error": "seq position 10: the representation's class differs from the one checked"
+    },
+    {
+      "name": "negative/neg-claim-authority-both-forms.json",
+      "stage": "chain",
+      "error": "seq position 10: a seller's representation carries exactly one of authority_basis or unchecked"
+    },
+    {
+      "name": "negative/neg-claim-authority-check-used-twice.json",
+      "stage": "chain",
+      "error": "seq position 12: an evaluation authorizes at most one action or disclosure"
+    },
+    {
+      "name": "negative/neg-claim-authority-claim-after-valid-until.json",
+      "stage": "chain",
+      "error": "seq position 10: the evaluation was valid until 2026-10-08T09:17:00Z: a step after that needs a new check"
+    },
+    {
+      "name": "negative/neg-claim-authority-details-changed-after-the-check.json",
+      "stage": "chain",
+      "error": "seq position 11: details changed after the check; the representation needs a new check"
+    },
+    {
+      "name": "negative/neg-claim-authority-gate-after-an-unchecked-ordered-claim.json",
+      "stage": "chain",
+      "error": "seq position 7: the user ordered the agent to tell the buyer about condition first: no offer, commit, sign, pay or share goes ahead before it"
+    },
+    {
+      "name": "negative/neg-claim-authority-missing.json",
+      "stage": "chain",
+      "error": "seq position 17: a seller's representation is directly followed by its claim_authority"
+    },
+    {
+      "name": "negative/neg-claim-authority-not-after-its-claim.json",
+      "stage": "chain",
+      "error": "seq position 17: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "negative/neg-claim-authority-other-words.json",
+      "stage": "chain",
+      "error": "seq position 10: the representation's words differ from the ones checked"
+    },
+    {
+      "name": "negative/neg-claim-authority-twice.json",
+      "stage": "chain",
+      "error": "seq position 11: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "negative/neg-claim-authority-unchecked-names-an-authorization.json",
+      "stage": "chain",
+      "error": "seq position 17: an unchecked representation names nothing that authorized it"
+    },
+    {
+      "name": "negative/neg-claim-authority-unknown-rule.json",
+      "stage": "",
+      "error": ""
+    },
+    {
       "name": "negative/neg-confirm-limits-as-authority.json",
       "stage": "chain",
       "error": "seq position 10: a limits confirmation authorizes no action or disclosure; the step needs its own check"
@@ -405,6 +580,11 @@
       "name": "negative/neg-not-selected-after-an-action.json",
       "stage": "chain",
       "error": "seq position 18: not_selected means nothing was done on the deal, and an action is on record"
+    },
+    {
+      "name": "negative/neg-old-shape-claim-after-a-claim-authority.json",
+      "stage": "chain",
+      "error": "seq position 18: a seller's representation after a claim_authority carries no verdict of its own: its claim_authority does"
     },
     {
       "name": "negative/neg-outcome-note-before-close.json",
@@ -6486,6 +6666,2245 @@
       "value": "offerx",
       "stage": "chain",
       "error": "seq position 9: only an offer supersedes an earlier offer"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/1/body.intent.party_role/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 0,
+      "path": [
+        "body",
+        "intent",
+        "party_role"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 3: only a seller's representation under the representation rules carries an authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/1/body.intent.party_role/set=\"sellerx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 0,
+      "path": [
+        "body",
+        "intent",
+        "party_role"
+      ],
+      "op": "set",
+      "value": "sellerx",
+      "stage": "chain",
+      "error": "seq position 3: only a seller's representation under the representation rules carries an authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/1/body.intent.ordered_representations.0/set=\"conditionx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 0,
+      "path": [
+        "body",
+        "intent",
+        "ordered_representations",
+        0
+      ],
+      "op": "set",
+      "value": "conditionx",
+      "stage": "chain",
+      "error": "seq position 2: the task authority's ordered_representations is not the one asked at the baseline"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/1/body.intent.ordered_representations.0/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 0,
+      "path": [
+        "body",
+        "intent",
+        "ordered_representations",
+        0
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 2: the task authority's ordered_representations is not the one asked at the baseline"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/3/body.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 2,
+      "path": [
+        "body",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 3: a seller's representation names its class"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/3/body.unchecked/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 2,
+      "path": [
+        "body",
+        "unchecked"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 4: a seller's representation is directly followed by its claim_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/3/body.unchecked/set=false",
+      "chain": "positive-typed-seller-represent",
+      "index": 2,
+      "path": [
+        "body",
+        "unchecked"
+      ],
+      "op": "set",
+      "value": false,
+      "stage": "chain",
+      "error": "seq position 3: a seller's representation carries exactly one of authority_basis or unchecked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/4/body.action/set=\"representx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 3,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "representx",
+      "stage": "chain",
+      "error": "seq position 6: the representation differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/4/body.action/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 3,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 6: the representation differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/4/body.representing.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 3,
+      "path": [
+        "body",
+        "representing",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 6: the representation's class differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/4/body.representing.class/set=\"conditionx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 3,
+      "path": [
+        "body",
+        "representing",
+        "class"
+      ],
+      "op": "set",
+      "value": "conditionx",
+      "stage": "chain",
+      "error": "seq position 6: the representation's class differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/4/body.representing.text_commitment/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 3,
+      "path": [
+        "body",
+        "representing",
+        "text_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 6: the representation's words differ from the ones checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/4/body.representing.text_commitment/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 3,
+      "path": [
+        "body",
+        "representing",
+        "text_commitment"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 6: the representation's words differ from the ones checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/5/refs.0.rel/set=\"checksx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 4,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "checksx",
+      "stage": "chain",
+      "error": "seq position 5: rel 'checksx' is not allowed on a verdict record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/5/refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 4,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 5: rel '' is not allowed on a verdict record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/5/refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 4,
+      "path": [
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 5: ref checks does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/5/body.proposed_action_digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 4,
+      "path": [
+        "body",
+        "proposed_action_digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 5: proposed_action_digest is not the digest of the proposed action this evaluation evaluates"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/5/body.task_authority_ref.type/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 4,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "type"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 5: the evaluation's authority_basis is its task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/5/body.task_authority_ref.type/set=\"recordx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 4,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "type"
+      ],
+      "op": "set",
+      "value": "recordx",
+      "stage": "chain",
+      "error": "seq position 5: the evaluation's authority_basis is its task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/5/body.task_authority_ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 4,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 5: task_authority_ref is not the task authority in force at the evaluation"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/5/body.valid_until/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 4,
+      "path": [
+        "body",
+        "valid_until"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 6: the evaluation was valid until : a step after that needs a new check"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/x-deal-v0.record_type/set=\"claimx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "claimx",
+      "stage": "chain",
+      "error": "seq position 6: rel 'authorized_by' is not allowed on a claimx record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 6: rel 'authorized_by' is not allowed on a  record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/x-deal-v0.refs.0.rel/set=\"authorized_byx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "authorized_byx",
+      "stage": "chain",
+      "error": "seq position 6: rel 'authorized_byx' is not allowed on a claim record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/x-deal-v0.refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 6: rel '' is not allowed on a claim record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/x-deal-v0.refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 6: ref authorized_by does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/body.text_commitment/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "body",
+        "text_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 6: only a seller's representation under the representation rules carries an authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/body.source_kind/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "body",
+        "source_kind"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 6: only a seller's representation under the representation rules carries an authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/body.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "body",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 6: a seller's representation names its class"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/6/body.authority_basis.0.ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 5,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 6: task_authority is not the evaluation's task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/7/body.action/set=\"representx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 6,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "representx",
+      "stage": "chain",
+      "error": "seq position 10: the representation differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/7/body.action/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 6,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 10: the representation differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/7/body.representing.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 6,
+      "path": [
+        "body",
+        "representing",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 10: the representation's class differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/7/body.representing.class/set=\"conditionx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 6,
+      "path": [
+        "body",
+        "representing",
+        "class"
+      ],
+      "op": "set",
+      "value": "conditionx",
+      "stage": "chain",
+      "error": "seq position 10: the representation's class differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/7/body.representing.text_commitment/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 6,
+      "path": [
+        "body",
+        "representing",
+        "text_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 10: the representation's words differ from the ones checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/7/body.representing.text_commitment/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 6,
+      "path": [
+        "body",
+        "representing",
+        "text_commitment"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 10: the representation's words differ from the ones checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/8/refs.0.rel/set=\"checksx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 7,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "checksx",
+      "stage": "chain",
+      "error": "seq position 8: rel 'checksx' is not allowed on a verdict record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/8/refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 7,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 8: rel '' is not allowed on a verdict record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/8/refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 7,
+      "path": [
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 8: ref checks does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/8/body.proposed_action_digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 7,
+      "path": [
+        "body",
+        "proposed_action_digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 8: proposed_action_digest is not the digest of the proposed action this evaluation evaluates"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/8/body.task_authority_ref.type/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 7,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "type"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 8: the evaluation's authority_basis is its task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/8/body.task_authority_ref.type/set=\"recordx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 7,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "type"
+      ],
+      "op": "set",
+      "value": "recordx",
+      "stage": "chain",
+      "error": "seq position 8: the evaluation's authority_basis is its task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/8/body.task_authority_ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 7,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 8: task_authority_ref is not the task authority in force at the evaluation"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/8/body.valid_until/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 7,
+      "path": [
+        "body",
+        "valid_until"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 10: the evaluation was valid until : a step after that needs a new check"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/9/x-deal-v0.record_type/set=\"claimx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 8,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "claimx",
+      "stage": "chain",
+      "error": "seq position 10: 'about' must point at a claim record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/9/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 8,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 10: 'about' must point at a claim record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/9/body.text_commitment/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 8,
+      "path": [
+        "body",
+        "text_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 10: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/9/body.source_kind/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 8,
+      "path": [
+        "body",
+        "source_kind"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 10: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/9/body.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 8,
+      "path": [
+        "body",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 9: a seller's representation names its class"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/10/x-deal-v0.record_type/set=\"claim_authorityx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 9,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "claim_authorityx",
+      "stage": "chain",
+      "error": "seq position 10: a seller's representation is directly followed by its claim_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/10/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 9,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 10: a seller's representation is directly followed by its claim_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/10/x-deal-v0.refs.0.rel/set=\"aboutx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 9,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "aboutx",
+      "stage": "chain",
+      "error": "seq position 10: rel 'aboutx' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/10/x-deal-v0.refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 9,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 10: rel '' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/10/x-deal-v0.refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 9,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 10: ref about does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/10/x-deal-v0.refs.1.rel/set=\"authorized_byx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 9,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        1,
+        "rel"
+      ],
+      "op": "set",
+      "value": "authorized_byx",
+      "stage": "chain",
+      "error": "seq position 10: rel 'authorized_byx' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/10/x-deal-v0.refs.1.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 9,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        1,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 10: rel '' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/10/body.authority_basis.0.ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 9,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 10: task_authority is not the evaluation's task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/seq/set=12",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 12,
+      "stage": "chain",
+      "error": "seq position 11: seq gap: expected 11, got 12"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 11: seq regression: expected 11, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 11: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/body.action/set=\"representx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "representx",
+      "stage": "chain",
+      "error": "seq position 15: the representation differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/body.action/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: the representation differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/body.representing.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "body",
+        "representing",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 15: the representation's class differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/body.representing.class/set=\"warrantyx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "body",
+        "representing",
+        "class"
+      ],
+      "op": "set",
+      "value": "warrantyx",
+      "stage": "chain",
+      "error": "seq position 15: the representation's class differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/body.representing.text_commitment/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "body",
+        "representing",
+        "text_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 15: the representation's words differ from the ones checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/11/body.representing.text_commitment/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 10,
+      "path": [
+        "body",
+        "representing",
+        "text_commitment"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 15: the representation's words differ from the ones checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/seq/set=13",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 13,
+      "stage": "chain",
+      "error": "seq position 12: seq gap: expected 12, got 13"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 12: seq regression: expected 12, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 12: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/refs.0.rel/set=\"checksx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "checksx",
+      "stage": "chain",
+      "error": "seq position 12: rel 'checksx' is not allowed on a verdict record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 12: rel '' is not allowed on a verdict record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 12: ref checks does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.options.1/set=\"proceedx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "options",
+        1
+      ],
+      "op": "set",
+      "value": "proceedx",
+      "stage": "chain",
+      "error": "seq position 13: the user's choice is not one of the verdict's options"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.options.1/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "options",
+        1
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 13: the user's choice is not one of the verdict's options"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.proposed_action_digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "proposed_action_digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 12: proposed_action_digest is not the digest of the proposed action this evaluation evaluates"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.task_authority_ref.type/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "type"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 12: the evaluation's authority_basis is its task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.task_authority_ref.type/set=\"recordx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "type"
+      ],
+      "op": "set",
+      "value": "recordx",
+      "stage": "chain",
+      "error": "seq position 12: the evaluation's authority_basis is its task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.task_authority_ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 12: task_authority_ref is not the task authority in force at the evaluation"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.valid_until/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "valid_until"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: the evaluation was valid until : a step after that needs a new check"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.rendering_commitment/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "rendering_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 13: what was shown (rendering_commitment) is not what the evaluation rendered"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/12/body.rendering_commitment/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 11,
+      "path": [
+        "body",
+        "rendering_commitment"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 13: what was shown (rendering_commitment) is not what the evaluation rendered"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/seq/set=14",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 14,
+      "stage": "chain",
+      "error": "seq position 13: seq gap: expected 13, got 14"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 13: seq regression: expected 13, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 13: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/refs.0.rel/set=\"approvesx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "approvesx",
+      "stage": "chain",
+      "error": "seq position 13: rel 'approvesx' is not allowed on a approval record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 13: rel '' is not allowed on a approval record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 13: ref approves does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/body.authority/set=\"user_approvalx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "body",
+        "authority"
+      ],
+      "op": "set",
+      "value": "user_approvalx",
+      "stage": "chain",
+      "error": "seq position 13: rel 'approves' is not allowed on a user_approvalx record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/body.authority/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "body",
+        "authority"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 13: rel 'approves' is not allowed on a  record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/13/body.proceed/set=false",
+      "chain": "positive-typed-seller-represent",
+      "index": 12,
+      "path": [
+        "body",
+        "proceed"
+      ],
+      "op": "set",
+      "value": false,
+      "stage": "chain",
+      "error": "seq position 15: the referenced approval did not approve proceeding"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/14/x-deal-v0.record_type/set=\"claimx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "claimx",
+      "stage": "chain",
+      "error": "seq position 15: 'about' must point at a claim record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/14/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: 'about' must point at a claim record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/14/x-deal-v0.seq/set=15",
+      "chain": "positive-typed-seller-represent",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 15,
+      "stage": "chain",
+      "error": "seq position 14: seq gap: expected 14, got 15"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/14/x-deal-v0.seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 14: seq regression: expected 14, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/14/x-deal-v0.at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 14: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/14/body.text_commitment/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 13,
+      "path": [
+        "body",
+        "text_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 15: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/14/body.source_kind/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 13,
+      "path": [
+        "body",
+        "source_kind"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 15: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/14/body.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 13,
+      "path": [
+        "body",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 14: a seller's representation names its class"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.record_type/set=\"claim_authorityx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "claim_authorityx",
+      "stage": "chain",
+      "error": "seq position 15: a seller's representation is directly followed by its claim_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: a seller's representation is directly followed by its claim_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.seq/set=16",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 16,
+      "stage": "chain",
+      "error": "seq position 15: seq gap: expected 15, got 16"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 15: seq regression: expected 15, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.refs.0.rel/set=\"aboutx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "aboutx",
+      "stage": "chain",
+      "error": "seq position 15: rel 'aboutx' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: rel '' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 15: ref about does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.refs.1.rel/set=\"authorized_byx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        1,
+        "rel"
+      ],
+      "op": "set",
+      "value": "authorized_byx",
+      "stage": "chain",
+      "error": "seq position 15: rel 'authorized_byx' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.refs.1.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        1,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: rel '' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/x-deal-v0.refs.1.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        1,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 15: ref authorized_by does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/body.authority_basis.0.type/set=\"task_authorityx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "type"
+      ],
+      "op": "set",
+      "value": "task_authorityx",
+      "stage": "chain",
+      "error": "seq position 15: authority_basis starts with exactly one task_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/body.authority_basis.0.type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: authority_basis starts with exactly one task_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/body.authority_basis.0.ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 15: task_authority is not the evaluation's task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/body.authority_basis.1.type/set=\"user_approvalx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "body",
+        "authority_basis",
+        1,
+        "type"
+      ],
+      "op": "set",
+      "value": "user_approvalx",
+      "stage": "chain",
+      "error": "seq position 15: the user_approval entry is the user's answer the step cites (authorized_by)"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/body.authority_basis.1.type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "body",
+        "authority_basis",
+        1,
+        "type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: the user_approval entry is the user's answer the step cites (authorized_by)"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/body.evaluation_ref.digest/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "body",
+        "evaluation_ref",
+        "digest"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 15: evaluation_ref is not the evaluation the step relied on"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/15/body.evaluation_ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 14,
+      "path": [
+        "body",
+        "evaluation_ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 15: evaluation_ref is not the evaluation the step relied on"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/16/x-deal-v0.record_type/set=\"claimx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 15,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "claimx",
+      "stage": "chain",
+      "error": "seq position 17: 'about' must point at a claim record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/16/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 15,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 17: 'about' must point at a claim record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/16/x-deal-v0.seq/set=17",
+      "chain": "positive-typed-seller-represent",
+      "index": 15,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 17,
+      "stage": "chain",
+      "error": "seq position 16: seq gap: expected 16, got 17"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/16/x-deal-v0.seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 15,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 16: seq regression: expected 16, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/16/x-deal-v0.at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 15,
+      "path": [
+        "x-deal-v0",
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 16: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/16/body.text_commitment/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 15,
+      "path": [
+        "body",
+        "text_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 17: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/16/body.source_kind/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 15,
+      "path": [
+        "body",
+        "source_kind"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 17: a claim_authority directly follows the seller's representation it judges"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/16/body.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 15,
+      "path": [
+        "body",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 16: a seller's representation names its class"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/x-deal-v0.record_type/set=\"claim_authorityx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "claim_authorityx",
+      "stage": "chain",
+      "error": "seq position 17: a seller's representation is directly followed by its claim_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 17: a seller's representation is directly followed by its claim_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/x-deal-v0.seq/set=18",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 18,
+      "stage": "chain",
+      "error": "seq position 17: seq gap: expected 17, got 18"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/x-deal-v0.seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 17: seq regression: expected 17, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/x-deal-v0.at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "x-deal-v0",
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 17: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/x-deal-v0.refs.0.rel/set=\"aboutx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "aboutx",
+      "stage": "chain",
+      "error": "seq position 17: rel 'aboutx' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/x-deal-v0.refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 17: rel '' is not allowed on a claim_authority record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/x-deal-v0.refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 17: ref about does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/body.unchecked/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "body",
+        "unchecked"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 17: a seller's representation carries exactly one of authority_basis or unchecked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/17/body.unchecked/set=false",
+      "chain": "positive-typed-seller-represent",
+      "index": 16,
+      "path": [
+        "body",
+        "unchecked"
+      ],
+      "op": "set",
+      "value": false,
+      "stage": "chain",
+      "error": "seq position 17: a seller's representation carries exactly one of authority_basis or unchecked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/18/seq/set=19",
+      "chain": "positive-typed-seller-represent",
+      "index": 17,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 19,
+      "stage": "chain",
+      "error": "seq position 18: seq gap: expected 18, got 19"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/18/seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 17,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 18: seq regression: expected 18, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/18/at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 17,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 18: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/18/body.action/set=\"share_contactx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 17,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "share_contactx",
+      "stage": "chain",
+      "error": "seq position 20: the action differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/18/body.action/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 17,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 20: the action differs from the one checked"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/seq/set=20",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 20,
+      "stage": "chain",
+      "error": "seq position 19: seq gap: expected 19, got 20"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 19: seq regression: expected 19, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 19: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/refs.0.rel/set=\"checksx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "checksx",
+      "stage": "chain",
+      "error": "seq position 19: rel 'checksx' is not allowed on a verdict record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 19: rel '' is not allowed on a verdict record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 19: ref checks does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/body.proposed_action_digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "body",
+        "proposed_action_digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 19: proposed_action_digest is not the digest of the proposed action this evaluation evaluates"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/body.task_authority_ref.type/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "type"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 19: the evaluation's authority_basis is its task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/body.task_authority_ref.type/set=\"recordx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "type"
+      ],
+      "op": "set",
+      "value": "recordx",
+      "stage": "chain",
+      "error": "seq position 19: the evaluation's authority_basis is its task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/body.task_authority_ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 19: task_authority_ref is not the task authority in force at the evaluation"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/19/body.valid_until/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 18,
+      "path": [
+        "body",
+        "valid_until"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 20: the evaluation was valid until : a step after that needs a new check"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/seq/set=21",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 21,
+      "stage": "chain",
+      "error": "seq position 20: seq gap: expected 20, got 21"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 20: seq regression: expected 20, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 20: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/refs.0.rel/set=\"authorized_byx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "authorized_byx",
+      "stage": "chain",
+      "error": "seq position 20: rel 'authorized_byx' is not allowed on a action record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/refs.0.rel/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 20: rel '' is not allowed on a action record"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 20: ref authorized_by does not name an earlier record of this deal"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/body.evaluation_ref.digest/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "body",
+        "evaluation_ref",
+        "digest"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 20: evaluation_ref is not the evaluation the step relied on"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/body.evaluation_ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "body",
+        "evaluation_ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 20: evaluation_ref is not the evaluation the step relied on"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/body.authority_basis.0.type/set=\"task_authorityx\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "type"
+      ],
+      "op": "set",
+      "value": "task_authorityx",
+      "stage": "chain",
+      "error": "seq position 20: authority_basis starts with exactly one task_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/body.authority_basis.0.type/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 20: authority_basis starts with exactly one task_authority"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/20/body.authority_basis.0.ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 19,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 20: task_authority is not the evaluation's task_authority_ref"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/21/x-deal-v0.seq/set=22",
+      "chain": "positive-typed-seller-represent",
+      "index": 20,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 22,
+      "stage": "chain",
+      "error": "seq position 21: seq gap: expected 21, got 22"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/21/x-deal-v0.seq/set=0",
+      "chain": "positive-typed-seller-represent",
+      "index": 20,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 21: seq regression: expected 21, got 0"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/21/x-deal-v0.at/set=\"\"",
+      "chain": "positive-typed-seller-represent",
+      "index": 20,
+      "path": [
+        "x-deal-v0",
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 21: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive-typed-seller-represent/21/body.class/delete",
+      "chain": "positive-typed-seller-represent",
+      "index": 20,
+      "path": [
+        "body",
+        "class"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 21: a seller's representation names its class"
     },
     {
       "name": "mutation/positive-sale/1/x-deal-v0.deal_id/set=\"sale-3c9e1a7b5d2f8064x\"",

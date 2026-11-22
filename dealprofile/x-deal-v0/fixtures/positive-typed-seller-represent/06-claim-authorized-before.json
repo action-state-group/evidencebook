@@ -1,0 +1,54 @@
+{
+  "fixture": "06-claim-authorized-before.json",
+  "expect": "valid",
+  "story": "Its claim, sealed by an earlier producer with its verdict on it: authorized by the evaluation.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim",
+      "seq": 6,
+      "at": "2026-10-08T09:10:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "ad48ac2edc5d768ecf37b5123ea3d7e49fa3fe66ffea07bdb1cfa322ac8dd467"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      },
+      "refs": [
+        {
+          "rel": "authorized_by",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "ad48ac2edc5d768ecf37b5123ea3d7e49fa3fe66ffea07bdb1cfa322ac8dd467"
+        }
+      ]
+    },
+    "body": {
+      "text_commitment": "c7cd191cf2f24d30ddc77a067974d774369de0634c6c7b2ad20f7b520ba24245",
+      "source_kind": "agent",
+      "class": "condition",
+      "authority_basis": [
+        {
+          "type": "task_authority",
+          "ref": {
+            "type": "record",
+            "digest_alg": "SHA-256",
+            "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
+          }
+        }
+      ],
+      "evaluation_ref": {
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "ad48ac2edc5d768ecf37b5123ea3d7e49fa3fe66ffea07bdb1cfa322ac8dd467"
+      }
+    }
+  },
+  "expected_digest": "d8ed95c1adea7e572ef8c7bb3950ba585ad0ec05689d2f6b431bd1a7b9727aa2"
+}

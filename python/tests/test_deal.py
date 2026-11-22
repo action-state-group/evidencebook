@@ -141,7 +141,7 @@ def expected_digests() -> dict[str, str]:
     return out
 
 
-POSITIVE_CHAINS = ["positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"]
+POSITIVE_CHAINS = ["positive", "positive-typed", "positive-typed-seller", "positive-typed-seller-represent", "positive-sale", "positive-sale-unpost"]
 POSITIVE = [(d, f) for d in POSITIVE_CHAINS for f in sorted((FIXTURES / d).glob("*.json"))]
 
 
@@ -157,12 +157,16 @@ def test_positive_fixtures(chain, path):
 
 
 def test_positive_corpus_size():
-    assert len(POSITIVE) == 66
+    assert len(POSITIVE) == 87
 
 
 # Schema-stage negatives whose expected text is the reference validator's own
-# wording (jsonschema 4.23): this package reports the same wording, so none
-# needs another text.
+# wording (jsonschema 4.23): this package reports the same wording in its
+# failed leaves, except where the reference's message is the instance itself,
+# cut at 200 characters before any member it names.
+SCHEMA_WORDING_ONLY = {
+    "neg-claim-authority-both-forms.json": "('authority_basis', 'evaluation_ref' were unexpected)",
+}
 NEGATIVE = sorted((FIXTURES / "negative").glob("*.json"))
 
 
@@ -183,7 +187,8 @@ def test_negative_fixtures(path):
         return
     assert err is not None, path.name
     assert err.stage == fx["expected_stage"], f"{path.name}: {err}"
-    assert fx["expected_error_contains"] in str(err) + "\n" + "\n".join(err.causes), path.name
+    want = SCHEMA_WORDING_ONLY.get(path.name, fx["expected_error_contains"])
+    assert want in str(err) + "\n" + "\n".join(err.causes), path.name
 
 
 def test_positive_rule_inputs_4():

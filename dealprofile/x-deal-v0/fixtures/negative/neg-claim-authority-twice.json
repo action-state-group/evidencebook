@@ -1,0 +1,71 @@
+{
+  "fixture": "neg-claim-authority-twice",
+  "expect": "invalid",
+  "description": "A second claim_authority about the condition claim, right after its first.",
+  "expected_stage": "chain",
+  "expected_error_contains": "directly follows the seller's representation it judges",
+  "chain_dir": "positive-typed-seller-represent",
+  "chain_prefix": [
+    "01-baseline.json",
+    "02-task-authority.json",
+    "03-claim-sealed-before.json",
+    "04-proposed-action-represent-before.json",
+    "05-action-evaluation.json",
+    "06-claim-authorized-before.json",
+    "07-proposed-action-represent-condition.json",
+    "08-action-evaluation.json",
+    "09-claim-condition.json",
+    "10-claim-authority-condition.json"
+  ],
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim_authority",
+      "seq": 11,
+      "at": "2026-10-08T09:18:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "c3abe26c67548b56c8f9e788cf61d2b4e79ae54a5f0bfc49069c8799c232c7fc"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      },
+      "refs": [
+        {
+          "rel": "about",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "ba0adb7949ae9155296a1767ff8c6292dfe435274a47a40fc9e6ea19e2ded4b4"
+        },
+        {
+          "rel": "authorized_by",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "61a07c9d31772561ad4af15b172195163f748546fe4cce9e752cbd3c0246c805"
+        }
+      ]
+    },
+    "body": {
+      "authority_basis": [
+        {
+          "type": "task_authority",
+          "ref": {
+            "type": "record",
+            "digest_alg": "SHA-256",
+            "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
+          }
+        }
+      ],
+      "evaluation_ref": {
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "61a07c9d31772561ad4af15b172195163f748546fe4cce9e752cbd3c0246c805"
+      }
+    }
+  }
+}

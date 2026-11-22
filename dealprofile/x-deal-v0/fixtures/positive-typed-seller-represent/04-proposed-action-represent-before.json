@@ -1,0 +1,30 @@
+{
+  "fixture": "04-proposed-action-represent-before.json",
+  "expect": "valid",
+  "story": "An earlier condition statement, checked before the verdict moved off the claim.",
+  "record": {
+    "type": "proposed-action/v0",
+    "canonicalization": "jcs",
+    "chain_id": "deal-7e41b9c02d5a8f36",
+    "seq": 4,
+    "at": "2026-10-08T09:06:00Z",
+    "prev": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "758cb45db0a6c350c04115afb563efe983ca7fb323ea27d4a71b3201fa596020"
+    },
+    "chain_root": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+    },
+    "body": {
+      "action": "represent",
+      "representing": {
+        "class": "condition",
+        "text_commitment": "c7cd191cf2f24d30ddc77a067974d774369de0634c6c7b2ad20f7b520ba24245"
+      }
+    }
+  },
+  "expected_digest": "6a44da90fa114f1fc029dae2879772eb5beb1fdf0442239d33b3da6103e85b34"
+}
