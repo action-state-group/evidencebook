@@ -85,23 +85,28 @@ jobs:
           scripts/check-deal-view-archive.sh "$RUNNER_TEMP/dist/capsulectl-deal-v0.0.0-ci-linux-amd64" "$RUNNER_TEMP/dist/deal-view-v0.0.0-ci.tar.gz"
 
   tests:
-    # The race detector split by test name across eight jobs, and every case
+    # The race detector split by test name across ten jobs, and every case
     # without it across two (scripts/test.sh), as capsulectl-deal ran them in
     # evidencebook-deal and in capsule-cli before it, where the deal package
     # outgrew one race job's 15 minutes (capsule-cli#403, #407); six jobs left
-    # the first shard at 13m45s of the 15-minute limit, so eight.
+    # the first shard at 13m45s of the 15-minute limit, so eight; eight left
+    # shards at up to 14m on #715's head and one past 15m once its tests moved
+    # TestDealTickEveryMinuteFollowsTheJitter (170s) into a shard already
+    # holding two other slow cases (#717's run), so ten.
     strategy:
       fail-fast: false
       matrix:
         part:
-          - { pass: race, shard: 1/8 }
-          - { pass: race, shard: 2/8 }
-          - { pass: race, shard: 3/8 }
-          - { pass: race, shard: 4/8 }
-          - { pass: race, shard: 5/8 }
-          - { pass: race, shard: 6/8 }
-          - { pass: race, shard: 7/8 }
-          - { pass: race, shard: 8/8 }
+          - { pass: race, shard: 1/10 }
+          - { pass: race, shard: 2/10 }
+          - { pass: race, shard: 3/10 }
+          - { pass: race, shard: 4/10 }
+          - { pass: race, shard: 5/10 }
+          - { pass: race, shard: 6/10 }
+          - { pass: race, shard: 7/10 }
+          - { pass: race, shard: 8/10 }
+          - { pass: race, shard: 9/10 }
+          - { pass: race, shard: 10/10 }
           - { pass: plain, shard: 1/2 }
           - { pass: plain, shard: 2/2 }
     name: capsulectl test (${{ matrix.part.pass }} ${{ matrix.part.shard }})
