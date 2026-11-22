@@ -73,6 +73,10 @@ var checkedStapleSubjects = map[string]SubjectKind{
 // (the holder answers itself), so the holder's book records which standard
 // card it attached; history_card/1 is public and grows no record. The
 // book's own request is not counted by its limiter.
+//
+// Offer staples carry history_card/2 only (Steven u539). The history_card/1
+// and standard_history/1 staples stay for callers that have not moved yet
+// (Muse) and are deprecated; their removal is tracked with that move.
 func (b *Book) Staple(ctx context.Context, derivation string) (Staple, error) {
 	return b.StapleForDeal(ctx, derivation, "")
 }
