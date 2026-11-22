@@ -526,8 +526,11 @@ fn attach_checks_the_new_receipt_alone() {
         ),
         ("a vector's Receipt", foreign[0].clone()),
     ] {
-        attach_err(&card, &holder, &anchor, &statement, &receipt, &policy);
-        let _ = name;
+        let r = attach_card_receipt(&card, &holder, &anchor, &statement, &receipt, &policy);
+        assert!(
+            matches!(r, Err(CardRegistrationError::Invalid(_))),
+            "{name}: {r:?}"
+        );
     }
 
     // An earlier Receipt that is not a byte string leaves a statement that can
@@ -563,4 +566,54 @@ fn attach_checks_the_new_receipt_alone() {
     // A statement over this card does not pass for another card.
     let other = check_card_registered(b"{\"another\":\"card\"}", &env, &[statement], &policy);
     assert_eq!(other.status, "FAIL");
+}
+
+/// Malformed statements Go's lenient decoder may accept are refused here, and
+/// the merged statement's own size bound holds apart from the input's.
+#[test]
+fn attach_malformed_and_merged_size() {
+    let corpus = corpus();
+    let c = find(&corpus, "pass-eddsa-time");
+    let card = hex_of(&c["card"]);
+    let holder = c["holder"].as_str().unwrap();
+    let anchor = c["anchor"].as_str().unwrap();
+    let policy = policy_of(&corpus, &c);
+    let (receipts, bare) = split_receipts(&hex_of(&c["statements"][0]));
+
+    let mut items = parts(&bare);
+    items[1] = Cbor::Map(vec![(394.into(), Cbor::Null)]);
+    attach_err(
+        &card,
+        holder,
+        anchor,
+        &rebuild(items),
+        &receipts[0],
+        &policy,
+    );
+    let mut items = parts(&bare);
+    items[1] = Cbor::Null;
+    attach_err(
+        &card,
+        holder,
+        anchor,
+        &rebuild(items),
+        &receipts[0],
+        &policy,
+    );
+
+    // An input under the bound whose merge with a passing Receipt is over it.
+    let items = parts(&bare);
+    let max = evidencebook::card_registration::CARD_STATEMENT_MAX_LEN;
+    let with = |n: usize| {
+        let mut items = items.clone();
+        items[1] = Cbor::Map(vec![(
+            394.into(),
+            Cbor::Array(vec![Cbor::Bytes(vec![0; n])]),
+        )]);
+        rebuild(items)
+    };
+    let big = with(max - with(0).len() - 10);
+    assert!(big.len() <= evidencebook::card_registration::CARD_STATEMENT_MAX_LEN);
+    let m = attach_err(&card, holder, anchor, &big, &receipts[0], &policy);
+    assert!(m.contains("would be over"), "{m}");
 }
