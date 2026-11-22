@@ -255,11 +255,24 @@ func TestAV0DealIsUnchangedBesideAV1Offer(t *testing.T) {
 	before, err := invoke(t, "", "--profile", "deal", "deal", "report", "--deal", v0, "--read-only")
 	require.NoError(t, err)
 	dealRun(t, "set-version", "x-deal-v1", "--migrate")
-	dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", filepath.Join(t.TempDir(), "o.json"))
+	v1 := dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", filepath.Join(t.TempDir(), "o.json"))["deal_id"].(string)
 	after, err := invoke(t, "", "--profile", "deal", "deal", "report", "--deal", v0, "--read-only")
 	require.NoError(t, err)
 	assert.Equal(t, before, after)
-	assert.Equal(t, beforeList, list(), "a v1 offer is not a v0 deal on the list")
+	// The v0 deal's line is unchanged; the v1 offer has a line of its own
+	// (#626 B4a), with no log id until its book opens.
+	var v0Lines, v1Lines []string
+	for _, ln := range strings.Split(strings.TrimRight(list(), "\n"), "\n") {
+		switch {
+		case strings.HasPrefix(ln, v1+"\t"):
+			v1Lines = append(v1Lines, ln)
+		default:
+			v0Lines = append(v0Lines, ln)
+		}
+	}
+	assert.Equal(t, strings.TrimRight(beforeList, "\n"), strings.Join(v0Lines, "\n"), "the v0 deal reads as before")
+	require.Len(t, v1Lines, 1)
+	assert.True(t, strings.HasSuffix(v1Lines[0], "\t-\t"), v1Lines[0])
 }
 
 // The move first covers a step a crash left without its cut, at the step's

@@ -23,7 +23,9 @@ type dealListing struct {
 	OpenedAt     string `json:"opened_at"`
 	LastRecordAt string `json:"last_record_at"`
 	// CounterpartyFingerprint is the payee fingerprint of the deal's latest
-	// counterparty_profile step (dealprofile.ProfileKey), or null when it has none.
+	// counterparty_profile step (dealprofile.ProfileKey), or null when it has
+	// none; for an x-deal-v1 deal, the first 16 characters of the
+	// counterparty's key (shortKey), or null before one is known.
 	CounterpartyFingerprint *string `json:"counterparty_fingerprint"`
 	LogID                   string  `json:"log_id"`
 	// Result is a deal's result (dealResult): bought, sold, called_off,
@@ -40,8 +42,26 @@ type dealListing struct {
 	// Results state (dealReconcileFacts), or null; only `deal list --json`
 	// fills it.
 	Reconcile *dealReconcileFacts `json:"reconcile"`
-	// events are the steps the listing was read from.
+	// Version, Side, Role and CounterpartyKey are an x-deal-v1 deal's
+	// (absent for x-deal-v0); its counterparty is known by key, not by a
+	// payee fingerprint. PaymentRows is the number of payment rows of its
+	// offer when that is not one (the summary's amount is then null), and
+	// OutcomeAsOf the time its state was computed: now, never sealed.
+	Version         string `json:"version,omitempty"`
+	Side            string `json:"side,omitempty"`
+	Role            string `json:"role,omitempty"`
+	CounterpartyKey string `json:"counterparty_key,omitempty"`
+	PaymentRows     *int   `json:"payment_rows,omitempty"`
+	OutcomeAsOf     string `json:"outcome_as_of,omitempty"`
+	// SettledNote is said beside a settled v1 deal, and CheckpointNote
+	// explains not_checkpointed (Sherlock2, #733).
+	SettledNote    string `json:"settled_note,omitempty"`
+	CheckpointNote string `json:"checkpoint_note,omitempty"`
+	// events are the steps the listing was read from (none for x-deal-v1).
 	events []sealedEvent
+	// times are an x-deal-v1 deal's record times (its offer and own book),
+	// which --since and --until read.
+	times []string
 }
 
 // dealSummary is a deal in plain words: what the user asked (the words
@@ -60,7 +80,8 @@ type dealSummary struct {
 }
 
 // dealSummaryAmount is an amount as recorded, in minor units. Basis says
-// which: "paid" is the net of the sealed acts in the first act's currency
+// which: "offer_terms" is an x-deal-v1 offer's one payment row's owed (an
+// offer with any other number of payment rows gives none); "paid" is the net of the sealed acts in the first act's currency
 // (`deal report`'s money net_minor; acts in another currency are counted in
 // OtherCurrencyActs, as the report counts them, never summed), and
 // "opening_terms" the opening step's price when no act moved money (a later
@@ -75,7 +96,7 @@ type dealSummaryAmount struct {
 const dealNotRecorded = "not recorded"
 
 func dealListCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "list", Short: "One line per deal in the profile's store: deal id, kind, state, opened and last-record times, counterparty fingerprint, log id; --json adds a plain summary (what, with whom, amount, outcome); --since/--until pick the deals active in a range, and with --json add its totals and who was told what; read-only", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "list", Short: "One line per deal in the profile's store: deal id, kind, state, opened and last-record times, the counterparty's fingerprint (v0: payee fingerprint; v1: the first 16 characters of its key), log id; --json adds a plain summary (what, with whom, amount, outcome); --since/--until pick the deals active in a range, and with --json add its totals and who was told what; an x-deal-v1 deal shows its state computed now (settled, open, not_checkpointed, or offered, offer_received, agreeing, declined, cancelled before its book opens); read-only", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		since, _ := c.Flags().GetString("since")
 		until, _ := c.Flags().GetString("until")
 		bounds, ranged, err := listBounds(since, until)
@@ -96,11 +117,22 @@ func dealListCommand() *cobra.Command {
 			return err
 		}
 		asJSON, _ := c.Flags().GetBool("json")
+		var in *dealListBounds
+		if ranged {
+			in = &bounds
+		}
+		v1, err := s.v1Listings(c.Context(), p, in)
+		if err != nil {
+			return err
+		}
 		var list []dealListing
 		if ranged {
 			r, err := dealListInRange(logs, bounds)
 			if err != nil {
 				return err
+			}
+			if len(v1) > 0 {
+				r.Deals, r.V1Note = mergeListings(r.Deals, v1), v1RangeNote
 			}
 			if asJSON {
 				if err := s.fillReconcile(c.Context(), r.Deals, bounds.until); err != nil {
@@ -122,6 +154,7 @@ func dealListCommand() *cobra.Command {
 			for _, l := range logs {
 				list = append(list, dealListingOf(l.id, l.events))
 			}
+			list = mergeListings(list, v1)
 			if asJSON {
 				// A plain array carries no narration of its own: each
 				// listing has its line, with the words the profile pins.
@@ -142,6 +175,15 @@ func dealListCommand() *cobra.Command {
 				return err
 			}
 		}
+		notes := v1ListFooter(list)
+		if ranged && len(v1) > 0 {
+			notes = append(notes, v1RangeNote)
+		}
+		for _, note := range notes {
+			if _, err = fmt.Fprintln(c.ErrOrStderr(), note); err != nil {
+				return err
+			}
+		}
 		return nil
 	}}
 	cmd.Flags().Bool("json", false, "Emit the deals as one JSON array, each with a plain summary and its reconcile state (null until a verified sealed terms Result: then counterparty_half_held, halves_conflict, at), instead of tab-separated lines; with --since or --until, one object: the range, its deals, totals and disclosures")
@@ -153,6 +195,11 @@ func dealListCommand() *cobra.Command {
 // sayListings fills each listing's line.
 func sayListings(w cli.Wording, list []dealListing) {
 	for i := range list {
+		if len(list[i].events) == 0 {
+			// An x-deal-v1 deal has no line yet: its words go to the
+			// wording review with the default flip (#626 B5, #732).
+			continue
+		}
 		list[i].Say = listingSay(w, list[i], list[i].events)
 	}
 }
