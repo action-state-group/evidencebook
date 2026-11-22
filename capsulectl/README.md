@@ -2,7 +2,7 @@
 
 `capsulectl-book`, the `capsulectl` plugin over evidence books: the book verbs
 (`capsulectl book close`, `reconcile`, `request`, `respond`, `remote`,
-`result`, `report`, `backfill`, `migrate`, `doctor`, `policy`, `bundle-diff`) and a book profile's log, which the
+`result`, `report`, `backfill`, `migrate`, `doctor`, `policy`, `bundle-diff`, `card`) and a book profile's log, which the
 core hands to this plugin (`publish`, `cll`, `store init`, `bundle`). It is
 this library's command-line face, a nested Go module,
 `github.com/action-state-group/evidencebook/capsulectl`, with its own
@@ -36,7 +36,7 @@ its `subject_ref` or a `contract_ref` in its statement, whatever the record's ty
 [skills/capsulectl-book](skills/capsulectl-book/SKILL.md) is the agent skill for
 the verbs that ask for, answer, close, reconcile and report on evidence
 (`request`, `respond`, `close`, `reconcile`, `result build`, `report build`).
-`holder-page` writes the holder's own sharing pages and is not in the skill yet.
+`holder-page` writes the holder's own sharing pages, and `card register` and `card check` register a History card on a service the holder names and check `card_registered`; neither is in the skill yet.
 It extends capsule-cli's `capsulectl` skill, which keeps the core verbs. Its
 `AGENTS.md` is the same text for Codex. It is written by hand: capsule-cli's
 `skillgen` has `capsulectl`'s own sections built in, so `scripts/check-skill.sh`
