@@ -104,25 +104,12 @@ func TestDealNodeAppendOnceRepeatsSafely(t *testing.T) {
 	assert.Len(t, nodeRecords(t, "--book", "goose/node"), 3)
 }
 
-// A repeat after the process was killed between the seal and its output finds
-// the record on reopening, so it neither doubles nor loses it.
-func TestDealNodeAppendOnceAfterAReopen(t *testing.T) {
-	dealFixture(t)
-	args := []string{"--book", "goose/node", "--type", "goose_half_received", "--once", "capsule_id", "--statement", writeJSON(t, `{"capsule_id":"c1"}`)}
-	_, err := nodeAppend(t, args...)
-	require.NoError(t, err)
-	again, err := nodeAppend(t, args...)
-	require.NoError(t, err)
-	assert.True(t, again.Existing)
-	assert.Len(t, nodeRecords(t, "--book", "goose/node"), 1)
-}
-
 func TestDealNodeRefusesTheShelfsOwnLogs(t *testing.T) {
 	dealFixture(t)
 	dealID := retailDeal(t)
 	p, err := cli.LoadProfile("deal")
 	require.NoError(t, err)
-	for _, book := range []string{"deal/" + dealID, "deal/deal-0000000000000000", "deal-cadence/x", p.LogID, "journal", "sale/sale-1", ""} {
+	for _, book := range []string{"deal/" + dealID, "deal/deal-0000000000000000", "deal-cadence/x", p.LogID, "journal", "deal/" + dealID + "/results", ""} {
 		_, err := nodeAppend(t, "--book", book, "--type", "t", "--statement", writeJSON(t, `{"a":1}`))
 		require.ErrorIs(t, err, cli.ErrInput, "book %q", book)
 		_, err = invoke(t, "", "--profile", "deal", "deal", "node", "records", "--book", book)
@@ -142,6 +129,8 @@ func TestDealNodeAppendInputErrors(t *testing.T) {
 		"statement not an object":     {"--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `[1]`)},
 		"statement not json":          {"--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `nope`)},
 		"statement null":              {"--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `null`)},
+		"a library record type":       {"--book", "goose/node", "--type", "index_root", "--statement", good},
+		"payload from standard input": {"--book", "goose/node", "--type", "t", "--statement", good, "--payload", "-"},
 		"once names a missing member": {"--book", "goose/node", "--type", "t", "--statement", good, "--once", "b"},
 		"missing payload file":        {"--book", "goose/node", "--type", "t", "--statement", good, "--payload", "/nonexistent/file"},
 	} {
@@ -176,4 +165,36 @@ func TestDealNodeAppendKeepsTheStoreConsistentForDealVerbs(t *testing.T) {
 	assert.Contains(t, listed, first)
 	assert.Contains(t, listed, second)
 	assert.Len(t, nodeRecords(t, "--book", "goose/node"), 1)
+}
+
+func TestDealNodeAppendNamedLibraryTypesAreRefused(t *testing.T) {
+	dealFixture(t)
+	for typ := range libraryRecordTypes {
+		_, err := nodeAppend(t, "--book", "goose/node", "--type", typ, "--statement", writeJSON(t, `{"index":1}`))
+		require.ErrorIs(t, err, cli.ErrInput, typ)
+	}
+	_, err := nodeAppend(t, "--book", "goose/node", "--type", "goose_joined", "--statement", writeJSON(t, `{"a":1}`))
+	require.NoError(t, err, "the book still opens after the refused types")
+}
+
+// --once compares numbers exactly, as values: 1 and 1.0 are one value, and a
+// number is never rounded through a float64 (so a statement the library would
+// refuse for an unsafe integer is refused, not reported as already sealed).
+func TestDealNodeAppendOnceComparesNumbersAsValues(t *testing.T) {
+	dealFixture(t)
+	seal := func(statement string) (nodeAppendOut, error) {
+		return nodeAppend(t, "--book", "goose/node", "--type", "t", "--once", "id", "--statement", writeJSON(t, statement))
+	}
+	first, err := seal(`{"id":{"n":[1,9007199254740991]}}`)
+	require.NoError(t, err)
+	assert.False(t, first.Existing)
+	again, err := seal(`{"id":{"n":[1.0,9007199254740991]}}`)
+	require.NoError(t, err)
+	assert.True(t, again.Existing, "1 and 1.0 are the same value")
+	other, err := seal(`{"id":{"n":[1,9007199254740990]}}`)
+	require.NoError(t, err)
+	assert.False(t, other.Existing, "another number is another record")
+	_, err = seal(`{"id":{"n":[1,9007199254740992]}}`)
+	require.Error(t, err, "an unsafe integer is refused, not matched to 2^53-1")
+	assert.Len(t, nodeRecords(t, "--book", "goose/node"), 2)
 }

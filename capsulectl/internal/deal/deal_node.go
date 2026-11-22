@@ -1,10 +1,12 @@
 package deal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"math/big"
 	"reflect"
 	"sort"
 	"strings"
@@ -31,10 +33,22 @@ func nodeBookID(p cli.Profile, id string) error {
 	switch {
 	case id == "":
 		return cli.InputError("--book is required: the node's book on the shelf, such as goose/node")
-	case id == evidencebook.JournalLogID, id == p.LogID, strings.HasPrefix(id, "deal/"), strings.HasPrefix(id, "deal-cadence/"), strings.HasPrefix(id, "sale/"), strings.HasPrefix(id, "sale-"):
-		return cli.InputError("--book " + id + " is one of the shelf's own logs (a deal, a sale, the cadence or the journal): only the deal verbs write them")
+	case id == evidencebook.JournalLogID, id == p.LogID, strings.HasPrefix(id, "deal/"), strings.HasPrefix(id, "deal-cadence/"):
+		return cli.InputError("--book " + id + " is one of the shelf's own logs (a deal, a sale or a results book under deal/, the cadence or the journal): only the deal verbs write them")
 	}
 	return nil
+}
+
+// libraryRecordTypes are the record types the evidencebook package writes
+// itself, each with a meaning it reads back (an index_root is parsed on every
+// reopen, so a caller's would make the book unopenable). A node's types are its
+// own names, never these.
+var libraryRecordTypes = map[string]bool{
+	evidencebook.RecordTypeClose: true, evidencebook.RecordTypeDisclosure: true, evidencebook.RecordTypeLifecycle: true,
+	evidencebook.RecordTypeIndexRoot: true, evidencebook.RecordTypeRequest: true, evidencebook.RecordTypeRequestAnswered: true,
+	evidencebook.RecordTypeResponse: true, evidencebook.RecordTypeAbsence: true, evidencebook.RecordTypeAcknowledgement: true,
+	evidencebook.RecordTypeRebuttal: true, evidencebook.RecordTypeEvidenceResult: true, evidencebook.RecordTypePolicy: true,
+	evidencebook.RecordTypeRetentionCommitment: true, evidencebook.RecordTypeUnavailableWindow: true,
 }
 
 func dealNodeCommands() *cobra.Command {
@@ -74,9 +88,9 @@ something happened, signed under the profile's key. --type is the node's own nam
 
 --once MEMBER makes the call safe to repeat: when the book already holds a record of this --type whose
 statement has the same value for MEMBER, nothing is sealed and that record is returned with "existing":
-true. The check and the seal are one step under the shelf's writer lock, after any append an interrupted
-run left half written has been recovered, so a retry after a crash neither doubles nor loses a record.
-It is not a transaction: a verb that seals several records is resumed by repeating each with --once.`,
+true. The check and the seal are one step under the shelf's writer lock, and the shelf itself recovers an
+append an interrupted run left half written when it is next opened, before the check reads the book. It is
+not a transaction: a verb that seals several records is resumed by repeating each with --once.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
 			p, err := cli.Selected(c)
@@ -90,6 +104,9 @@ It is not a transaction: a verb that seals several records is resumed by repeati
 			recordType, _ := c.Flags().GetString("type")
 			if recordType == "" {
 				return cli.InputError("--type is required: the node's name for this kind of record")
+			}
+			if libraryRecordTypes[recordType] {
+				return cli.InputError("--type " + recordType + " is a record type the evidencebook library writes itself; a node's types are its own names")
 			}
 			path, _ := c.Flags().GetString("statement")
 			if path == "" {
@@ -115,6 +132,9 @@ It is not a transaction: a verb that seals several records is resumed by repeati
 			var payloads [][]byte
 			payloadPaths, _ := c.Flags().GetStringArray("payload")
 			for _, pp := range payloadPaths {
+				if pp == "-" {
+					return cli.InputError("--payload takes a file; standard input is for --statement")
+				}
 				octets, e := cli.ReadInput(pp)
 				if e != nil {
 					return e
@@ -231,10 +251,43 @@ func sameMember(statement json.RawMessage, name string, want json.RawMessage) bo
 		return false
 	}
 	var a, b any
-	if json.Unmarshal(have, &a) != nil || json.Unmarshal(want, &b) != nil {
+	if decodeKeepingNumbers(have, &a) != nil || decodeKeepingNumbers(want, &b) != nil {
 		return false
 	}
-	return reflect.DeepEqual(a, b)
+	return reflect.DeepEqual(normalizeNumbers(a), normalizeNumbers(b))
+}
+
+// normalizeNumbers rewrites every json.Number in v as its exact rational, so 1
+// and 1.0 are one value and no number is rounded through a float64.
+func normalizeNumbers(v any) any {
+	switch x := v.(type) {
+	case json.Number:
+		if r, ok := new(big.Rat).SetString(string(x)); ok {
+			return "number:" + r.RatString()
+		}
+		return "number:" + string(x)
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = normalizeNumbers(e)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = normalizeNumbers(e)
+		}
+		return out
+	}
+	return v
+}
+
+// decodeKeepingNumbers decodes JSON keeping numbers as their digits (json.Number),
+// so no number is rounded through a float64.
+func decodeKeepingNumbers(raw json.RawMessage, v *any) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	return dec.Decode(v)
 }
 
 func contains(list []string, want string) bool {
