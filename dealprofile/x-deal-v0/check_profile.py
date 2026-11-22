@@ -1829,6 +1829,11 @@ def clear_generated(d, keep):
             old.unlink()
 
 
+def missing_hand_written(d):
+    """The HAND_WRITTEN_NEGATIVES absent from d; regen checks this before it deletes anything."""
+    return sorted(n for n in HAND_WRITTEN_NEGATIVES if not (d / n).exists())
+
+
 def clear_generated_selftest():
     import tempfile
     fails = []
@@ -1840,9 +1845,13 @@ def clear_generated_selftest():
         left = sorted(p.name for p in d.glob("*.json"))
         if left != sorted(HAND_WRITTEN_NEGATIVES):
             fails.append(f"after clear_generated left {left}")
-    for n in sorted(HAND_WRITTEN_NEGATIVES):
-        if not (FIX / "negative" / n).exists():
-            fails.append(f"hand-written negative {n} is not in fixtures/negative")
+        if missing_hand_written(d):
+            fails.append("missing_hand_written reports a name that is present")
+        (d / "neg-preimage-uppercase.json").unlink()
+        if missing_hand_written(d) != ["neg-preimage-uppercase.json"]:
+            fails.append("missing_hand_written does not report a removed name")
+    for n in missing_hand_written(FIX / "negative"):
+        fails.append(f"hand-written negative {n} is not in fixtures/negative")
     return fails
 
 
@@ -1974,11 +1983,11 @@ def regen():
     add("outcome-note", "outcome_note", {"outcome": "did_not_hold", "reason": "not_delivered"}, refs=[("confirms", closed)])
     assert a2 and b == 0
 
+    missing = missing_hand_written(FIX / "negative")
+    assert not missing, f"hand-written negatives missing from fixtures/negative: {missing}"
     for d in (FIX / "positive", FIX / "negative"):
         d.mkdir(parents=True, exist_ok=True)
         clear_generated(d, HAND_WRITTEN_NEGATIVES if d.name == "negative" else frozenset())
-    missing = sorted(n for n in HAND_WRITTEN_NEGATIVES if not (FIX / "negative" / n).exists())
-    assert not missing, f"hand-written negatives missing from fixtures/negative: {missing}"
 
     def dump(path, obj):
         path.write_text(json.dumps(obj, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
