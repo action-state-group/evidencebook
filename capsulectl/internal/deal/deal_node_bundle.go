@@ -19,10 +19,6 @@ import (
 // witness, and gives the receipt back to `bundle`, which carries it only when
 // it verifies under the witness directory the host names.
 
-// cadenceExtension is the bundle extension that carries the witnessed cadence
-// chain for a checkpoint.
-const cadenceExtension = "x-cadence-witness/v0"
-
 // openExistingNodeBook opens a book the shelf already holds: a misspelled --book is an input error, not a new empty log the cadence would then commit.
 func openExistingNodeBook(ctx context.Context, s *dealSession, book string) (*evidencebook.Book, error) {
 	books, err := s.shelf.Books(ctx)
@@ -42,7 +38,8 @@ func dealNodeCheckpointCommand() *cobra.Command {
 		Long: `Print a node book's newest checkpoint: its id (the SHA-256 of its signed statement), the number of records it
 covers, its root and the key that signed it. It is cut now when the book has grown since the last one. --out writes the
 signed statement (COSE) to a new file, for a host to submit to its witness; deal node bundle --at names the checkpoint by
-its id. --list prints every checkpoint the book holds with whether a witnessed cadence tick carries it, and cuts none.`,
+its id. --list prints every checkpoint the book holds with whether a witnessed cadence tick covers it and how (cadence_extent: "all" when a tick carries that very checkpoint, "part"
+when it carries an earlier one), and cuts none.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
 			p, err := cli.Selected(c)
@@ -94,7 +91,7 @@ its id. --list prints every checkpoint the book holds with whether a witnessed c
 	}
 	cmd.Flags().String("book", "", "The node's book on the shelf (required)")
 	cmd.Flags().String("out", "", "Write the checkpoint's signed statement (COSE) to this new file")
-	cmd.Flags().Bool("list", false, "List every checkpoint of the book with whether a witnessed cadence tick carries it, and cut none")
+	cmd.Flags().Bool("list", false, "List every checkpoint of the book with whether a witnessed cadence tick covers it and how (cadence_extent), and cut none")
 	return cmd
 }
 
@@ -141,8 +138,9 @@ By default the bundle carries the record and what it commits, and withholds the 
 discloses, each by its digest. With --disclose it reveals the header of the record and of the records it links to (one
 hop, whatever the link type), and their payloads. Disclosing is a record of the book: the book commits a disclosure record
 naming what the bundle disclosed, so the book's own history says it was shown, and the book has grown: the next
-newest checkpoint is a new one that no witnessed tick carries yet, so pass --at with a checkpoint deal node checkpoint --list
-shows as carried when the cadence chain should travel.
+newest checkpoint is a new one, which a witnessed tick carries only as a later checkpoint of the book (the cadence chain
+then travels as "part": an earlier witnessed checkpoint and a consistency proof). To have the tick's own checkpoint ("all"),
+pass --at with a checkpoint whose cadence_extent deal node checkpoint --list shows as "all".
 
 --witness-receipt FILE (a checkpoint.witnesses entry: ts_url, entry_hash, receipt_b64, leaf_index, tree_size) with
 --witness-directory FILE (witnesses.json) and --at carries the witness's receipt for that checkpoint; the receipt must
@@ -245,7 +243,7 @@ position; it does not show the record's content is true.`,
 				if e != nil {
 					return e
 				}
-				extensions[cadenceExtension] = raw
+				extensions[evidencebook.CadenceExtension] = raw
 				cadenceExtent = chain["extent"]
 			} else if !errors.Is(e, evidencebook.ErrNotFound) {
 				return e
