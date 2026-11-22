@@ -19,7 +19,7 @@ import (
 // reasonBundle seals a Result whose claims carry the optional claim member
 // `reason` (AAC Evidence Result section 4.4, capsule-cli#612), discloses it
 // as a book-form bundle and returns the bundle's path.
-func reasonBundle(t *testing.T) (bundlePath string, built resultBuildResult) {
+func reasonBundle(t *testing.T) (bundlePath string) {
 	t.Helper()
 	b := newResultBook(t)
 	met := testClaim("claim-1", "met", b.capsules[0])
@@ -34,19 +34,20 @@ func reasonBundle(t *testing.T) (bundlePath string, built resultBuildResult) {
 	verified, err := verifyBundleOutput(t, bundlePath)
 	require.NoError(t, err)
 	require.Equal(t, "VALID", verified["verdict"])
-	return bundlePath, built
+	return bundlePath
 }
 
-// A sealed Result keeps each claim's reason in its statement, and the page
-// `report build` writes carries it to the viewer runtime, which holds the
-// words for the four core codes and for a pack's
-// `row.<ref>.reason.<code>` entries (capsule-viewer#345, #348).
-func TestReportBuildCarriesAClaimReason(t *testing.T) {
-	bundlePath, _ := reasonBundle(t)
+// A Result sealed by `result build` with a reason on its claims, disclosed
+// and built into a page by the report SDK with the contract report selected
+// (View.ContractReport; `report build` has no flag for it yet), shows each
+// reason in the viewer runtime's words: the pack's
+// `row.<ref>.reason.<code>` entry where it has one, the core words for the
+// four core codes otherwise (capsule-viewer#345, #348).
+func TestContractReportDrawsAClaimReason(t *testing.T) {
+	bundlePath := reasonBundle(t)
 	pack := `{"wording_pack_version":"aac.wording-pack/v0","id":"example.host/v0","locale":"en","entries":{"row.req-claim-1.reason.counterparty_leg_signer_not_trusted":"The other side signs with a key we have not been given."}}`
 	_, digest := wordingFixture(t, pack)
-	// `report build` has no flag for the contract report; the SDK it runs
-	// on does, and draws the generic Result page, which carries the reasons.
+	// The SDK draws the generic Result page, which carries the reasons.
 	built, err := report.Build(mustRead(t, bundlePath), report.View{Card: "outcome", ContractReport: true, Wording: &report.Wording{Pack: pack, SHA256: digest}})
 	require.NoError(t, err)
 	assert.Equal(t, "VALID", built.Verdict)
@@ -86,7 +87,7 @@ func reasonPageText(t *testing.T, page []byte) string {
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox",
-		"--user-data-dir="+filepath.Join(dir, "profile"), "--disable-dev-shm-usage", "--window-size=1280,1000", "--virtual-time-budget=30000",
+		"--use-mock-keychain", "--password-store=basic", "--user-data-dir="+filepath.Join(dir, "profile"), "--disable-dev-shm-usage", "--window-size=1280,1000", "--virtual-time-budget=30000",
 		"--dump-dom", "file://"+file)
 	cmd.Stdin = nil
 	out, err := cmd.Output()
