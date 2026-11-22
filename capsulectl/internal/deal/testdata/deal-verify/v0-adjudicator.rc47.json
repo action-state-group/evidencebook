@@ -1,0 +1,38 @@
+{
+  "verdict": "VALID",
+  "page_gate": "pass",
+  "extensions": [
+    {
+      "kind": "x-cadence-witness/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "kind": "x-deal-report/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); witnessed",
+      "kind": "x-deal-v0",
+      "report": "standalone",
+      "sealed_report": "eb1f59c4b9dbddc3357121a572a9aa2050ccdabf727db00b81e86421c8eaf63a",
+      "status": "pass"
+    }
+  ],
+  "witnesses": {
+    "findings": [],
+    "receipts": [
+      {
+        "binding": "cll",
+        "key_id": "11c37aed621e8c538efd25d7986ad7bfef6bd6fdbd6d0919f7848ed0698956e3",
+        "reason": "ok (receipt carries no grade label)",
+        "registration_time": null,
+        "registration_time_reason": "iat_absent",
+        "registration_time_text": "no signed time (iat_absent)",
+        "status": "pass",
+        "ts_url": "https://127.0.0.1:51907",
+        "via": "cadence"
+      }
+    ],
+    "status": "pass"
+  }
+}

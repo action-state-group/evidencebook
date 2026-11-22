@@ -1,0 +1,12 @@
+{
+  "verdict": "VALID",
+  "page_gate": "pass",
+  "extensions": [],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}

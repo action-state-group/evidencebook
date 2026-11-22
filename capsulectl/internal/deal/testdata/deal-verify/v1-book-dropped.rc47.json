@@ -1,0 +1,28 @@
+{
+  "verdict": "INVALID",
+  "page_gate": "refused: no page written: `verify --bundle` calls this bundle INVALID (verification failed: a record or disclosure did not check out), and a page must never claim more than that; write the bundle with --out and check it with `capsulectl verify --bundle`",
+  "extensions": [
+    {
+      "kind": "x-deal-report/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "as_of": "as of 2026-09-27T18:00:00Z (the holder's time, when it computed the report; no witness attests it)",
+      "findings": [
+        "report_rule_failed"
+      ],
+      "kind": "x-deal-v1",
+      "note": "the x-deal-v1 report rule failed: [report] the x-deal-v1 extension: the book carries an agreement and a relied_on object",
+      "report": "standalone",
+      "sealed_report": "9644f62a3ec7c929db695ea1dc674ce789dc214773fb94d3316905cc7ffd320a",
+      "status": "fail"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}

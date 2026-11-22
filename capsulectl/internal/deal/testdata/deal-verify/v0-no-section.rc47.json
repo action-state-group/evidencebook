@@ -1,0 +1,38 @@
+{
+  "verdict": "INVALID",
+  "page_gate": "refused: no page written: `verify --bundle` calls this bundle INVALID (verification failed: a record or disclosure did not check out), and a page must never claim more than that; write the bundle with --out and check it with `capsulectl verify --bundle`",
+  "extensions": [
+    {
+      "kind": "x-cadence-witness/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "kind": "x-deal-report/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "findings": [
+        "sealed_report_unverified"
+      ],
+      "kind": "x-deal-v0",
+      "status": "fail"
+    }
+  ],
+  "witnesses": {
+    "findings": [],
+    "receipts": [
+      {
+        "binding": "cll",
+        "key_id": "11c37aed621e8c538efd25d7986ad7bfef6bd6fdbd6d0919f7848ed0698956e3",
+        "reason": "ok (receipt carries no grade label)",
+        "registration_time": null,
+        "registration_time_reason": "iat_absent",
+        "registration_time_text": "no signed time (iat_absent)",
+        "status": "pass",
+        "ts_url": "https://127.0.0.1:51907",
+        "via": "cadence"
+      }
+    ],
+    "status": "pass"
+  }
+}

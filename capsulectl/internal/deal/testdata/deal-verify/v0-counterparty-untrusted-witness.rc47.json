@@ -1,0 +1,40 @@
+{
+  "verdict": "INVALID",
+  "page_gate": "pass",
+  "extensions": [
+    {
+      "kind": "x-cadence-witness/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "kind": "x-deal-report/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); its witness claim failed",
+      "kind": "x-deal-v0",
+      "report": "standalone",
+      "sealed_report": "280e537f7b73cbc4aab8484b19696b23a1ec22b88ecaa648f20cfbb97eda54a4",
+      "status": "pass"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_invalid:https://127.0.0.1:51907"
+    ],
+    "receipts": [
+      {
+        "binding": "cll",
+        "key_id": null,
+        "reason": "receipt signature did not verify over any reconstructed root",
+        "registration_time": null,
+        "registration_time_reason": "receipt_not_passed",
+        "registration_time_text": "no signed time (receipt_not_passed)",
+        "status": "fail",
+        "ts_url": "https://127.0.0.1:51907",
+        "via": "cadence"
+      }
+    ],
+    "status": "fail"
+  }
+}

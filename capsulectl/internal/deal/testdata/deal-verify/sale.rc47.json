@@ -1,0 +1,40 @@
+{
+  "verdict": "VALID",
+  "page_gate": "pass",
+  "extensions": [
+    {
+      "kind": "x-cadence-witness/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "findings": [],
+      "kind": "x-deal-sale/v0",
+      "status": "pass",
+      "threads": [
+        {
+          "member": "present",
+          "registration": "682000b649e77e514a431fc85918849bdbd06db327551af21293c13a9e77bc6e"
+        },
+        {
+          "member": "present",
+          "registration": "3459ffb4d9b08b2900bdc79a2d92fdb7681a5bdba8acb7325a168a0300e31196"
+        }
+      ]
+    },
+    {
+      "findings": [
+        "extension_unbound"
+      ],
+      "kind": "x-deal-v0",
+      "note": "a sale's section: its sale_threads openings are checked against the sealed registrations under x-deal-sale/v0",
+      "status": "uninterpreted"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}

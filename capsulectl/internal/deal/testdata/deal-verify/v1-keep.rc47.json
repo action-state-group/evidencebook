@@ -1,0 +1,24 @@
+{
+  "verdict": "VALID",
+  "page_gate": "pass",
+  "extensions": [
+    {
+      "kind": "x-deal-report/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "as_of": "as of 2026-09-27T18:00:00Z (the holder's time, when it computed the report; no witness attests it)",
+      "kind": "x-deal-v1",
+      "report": "standalone",
+      "sealed_report": "9644f62a3ec7c929db695ea1dc674ce789dc214773fb94d3316905cc7ffd320a",
+      "status": "pass"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}

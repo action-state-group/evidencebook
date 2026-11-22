@@ -1,0 +1,145 @@
+{
+  "verdict": "INVALID",
+  "page_gate": "refused: no page written: `verify --bundle` calls this bundle INVALID (verification failed: a record or disclosure did not check out), and a page must never claim more than that; write the bundle with --out and check it with `capsulectl verify --bundle`",
+  "extensions": [
+    {
+      "audience": "keep",
+      "deals": [
+        {
+          "deal_id": "deal-936a3be974fc4bdd",
+          "steps_after_checkpoint": 0,
+          "verdict": "INVALID"
+        },
+        {
+          "audience": "keep",
+          "deal_id": "deal-da63639d4db3e582",
+          "report": {
+            "bundle_digest": "fd224433594920bc1388a36607992fcb28028efbf12f267de6dae73881988f82",
+            "checked_against": {
+              "bundle_draft": "draft-mih-zhang-agent-disclosure-bundle-01",
+              "checks": "aac-strict"
+            },
+            "checkpoint": {
+              "findings": [],
+              "status": "pass"
+            },
+            "countersignatures": [],
+            "disclosures": [
+              {
+                "capsule_id": "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30",
+                "member": "agent_input",
+                "status": "disclosure_match"
+              },
+              {
+                "capsule_id": "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764",
+                "member": "agent_input",
+                "status": "disclosure_match"
+              },
+              {
+                "capsule_id": "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006",
+                "member": "agent_input",
+                "status": "disclosure_match"
+              },
+              {
+                "capsule_id": "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf",
+                "member": "agent_input",
+                "status": "disclosure_match"
+              },
+              {
+                "capsule_id": "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838",
+                "member": "agent_input",
+                "status": "disclosure_match"
+              },
+              {
+                "capsule_id": "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a",
+                "member": "agent_input",
+                "status": "disclosure_match"
+              }
+            ],
+            "extensions": [
+              {
+                "kind": "x-cadence-witness/v0",
+                "status": "uninterpreted"
+              },
+              {
+                "kind": "x-deal-report/v0",
+                "status": "uninterpreted"
+              },
+              {
+                "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed",
+                "kind": "x-deal-v0",
+                "report": "standalone",
+                "sealed_report": "bedcc5b368c3d289598ebb871d8c6b8397bc286834fbe94ed4f340703412e509",
+                "status": "pass"
+              }
+            ],
+            "graph_closure": {
+              "findings": [],
+              "status": "pass"
+            },
+            "interval_coverage": {
+              "findings": [],
+              "status": "pass"
+            },
+            "per_record_membership": {
+              "findings": [],
+              "status": "pass"
+            },
+            "producer_signatures": {
+              "findings": [],
+              "status": "pass"
+            },
+            "record_identity": {
+              "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30": "passed",
+              "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764": "passed",
+              "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006": "passed",
+              "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf": "passed",
+              "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838": "passed",
+              "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a": "passed"
+            },
+            "record_signatures": {
+              "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30": "authored",
+              "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764": "authored",
+              "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006": "authored",
+              "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf": "authored",
+              "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838": "authored",
+              "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a": "authored"
+            },
+            "verdict": "VALID",
+            "witnesses": {
+              "findings": [
+                "witness_receipt_absent"
+              ],
+              "receipts": [],
+              "status": "withheld"
+            }
+          },
+          "steps_after_checkpoint": 0,
+          "verdict": "VALID"
+        }
+      ],
+      "findings": [
+        "deal_missing:deal-936a3be974fc4bdd"
+      ],
+      "holder_key": "ae7e77f36c5fbf6f4ff242d211e78870b71b416bf3347255c3ba95a3279e560a",
+      "holder_stated": [
+        "recipient",
+        "steps_after_checkpoint"
+      ],
+      "kind": "x-history-selection/v0",
+      "signer_keys": {
+        "ae7e77f36c5fbf6f4ff242d211e78870b71b416bf3347255c3ba95a3279e560a": [
+          "deal-da63639d4db3e582"
+        ]
+      },
+      "status": "fail"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}

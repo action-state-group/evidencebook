@@ -1,0 +1,28 @@
+{
+  "verdict": "INVALID",
+  "page_gate": "refused: no page written: `verify --bundle` calls this bundle INVALID (verification failed: a record or disclosure did not check out), and a page must never claim more than that; write the bundle with --out and check it with `capsulectl verify --bundle`",
+  "extensions": [
+    {
+      "kind": "x-cadence-witness/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "kind": "x-deal-report/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); its witness claim failed",
+      "kind": "x-deal-v0",
+      "report": "standalone",
+      "sealed_report": "280e537f7b73cbc4aab8484b19696b23a1ec22b88ecaa648f20cfbb97eda54a4",
+      "status": "pass"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "cadence_entry_not_included"
+    ],
+    "receipts": [],
+    "status": "fail"
+  }
+}

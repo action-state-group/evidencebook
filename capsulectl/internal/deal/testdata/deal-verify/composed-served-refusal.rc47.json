@@ -1,0 +1,18 @@
+{
+  "verdict": "INCOMPLETE",
+  "page_gate": "pass",
+  "extensions": [
+    {
+      "kind": "x-deal-v0",
+      "sealed_report": "2cd740b5f188b658d04e17e0fd4fbaaab25c47119723887e4fe29e697680ccc3",
+      "status": "pass"
+    }
+  ],
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}
