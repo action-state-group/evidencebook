@@ -1,0 +1,312 @@
+package book
+
+import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	aacwitness "github.com/action-state-group/agent-action-capsule/go/witness"
+	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook"
+	"github.com/spf13/cobra"
+)
+
+// `capsulectl book card register|check` register a Standard History card on a
+// transparency service the holder names, and check card_registered over the
+// statements kept beside a card (agent-action-capsule
+// spec/standard-history-v0.md §13). Registration is opt-in and has no default:
+// without --service nothing is posted. What a pass shows is existence at a
+// time and nothing else (§13.3): never that the counts are right, never
+// anchor_inclusion (NOT_CHECKED for a card), never that the holder registered
+// no other card. The log is append-only, so a registration cannot be
+// withdrawn, or the link it makes between the holder key and the anchor
+// (§13.5): the Long text says so before the post.
+
+const (
+	// cardServiceMaxResponse bounds what a service may send back.
+	cardServiceMaxResponse = 1 << 20
+	// cardServiceTimeout ends the whole registration, connect to last byte.
+	cardServiceTimeout = 60 * time.Second
+)
+
+// cardService is the service file: the one service the holder chose, and the
+// relying party's transparency policy for it (its keys), never read from the
+// card or the service's own answer.
+type cardService struct {
+	Name     string   `json:"name"`
+	Operator string   `json:"operator"`
+	URL      string   `json:"url"`
+	Keys     []string `json:"keys"`
+}
+
+func (s cardService) policy() aacwitness.AnchorWitnessPolicy {
+	return aacwitness.AnchorWitnessPolicy{Witnesses: []aacwitness.AnchorWitness{{Name: s.Name, Keys: s.Keys}}}
+}
+
+// loadCardService reads a service file; every member is required, so nothing
+// is assumed. An empty path is the opt-in refusal.
+func loadCardService(path string) (cardService, error) {
+	var s cardService
+	if path == "" {
+		return s, cli.InputError("no transparency service is named: registration is opt-in and has no default; pass --service FILE naming the one you chose")
+	}
+	raw, err := cli.ReadInput(path)
+	if err != nil {
+		return s, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&s); err != nil {
+		return s, cli.InputError("service file " + path + ": " + err.Error())
+	}
+	if s.Name == "" || s.Operator == "" || s.URL == "" {
+		return s, cli.InputError("the service file needs name, operator and url, each a non-empty string")
+	}
+	if len(s.Keys) == 0 {
+		return s, cli.InputError("the service file needs keys: the hex DER public keys its Receipts verify under")
+	}
+	for _, k := range s.Keys {
+		if k == "" {
+			return s, cli.InputError("the service file's keys hold an empty entry")
+		}
+	}
+	u, err := url.Parse(s.URL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return s, cli.InputError("the service url is not an http or https URL")
+	}
+	s.URL = strings.TrimRight(s.URL, "/")
+	return s, nil
+}
+
+// anchorRegistrar is an evidencebook.CardStatementRegistrar for a
+// capsule-anchor service: POST /transparency/register-statement with
+// {"signed_statement_b64"}, answered {"receipt_b64"}. A redirect is not
+// followed (the one URL the host named); the answer is bounded in size and
+// time; the Receipt it returns is checked by evidencebook.RegisterCard under
+// the policy before it is kept, whatever the service says about its entry.
+type anchorRegistrar struct {
+	service cardService
+	client  *http.Client
+}
+
+func newAnchorRegistrar(s cardService) *anchorRegistrar {
+	return &anchorRegistrar{service: s, client: &http.Client{
+		Timeout:       cardServiceTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
+}
+
+func (r *anchorRegistrar) RegisterStatement(ctx context.Context, statement []byte) ([]byte, error) {
+	body, err := json.Marshal(map[string]string{"signed_statement_b64": base64.StdEncoding.EncodeToString(statement)})
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, cardServiceTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.service.URL+"/transparency/register-statement", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", r.service.URL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s: HTTP %d", r.service.URL, resp.StatusCode)
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, cardServiceMaxResponse+1))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", r.service.URL, err)
+	}
+	if len(raw) > cardServiceMaxResponse {
+		return nil, fmt.Errorf("%s: the answer is over %d bytes", r.service.URL, cardServiceMaxResponse)
+	}
+	var answer struct {
+		Receipt string `json:"receipt_b64"`
+	}
+	if err := json.Unmarshal(raw, &answer); err != nil || answer.Receipt == "" {
+		return nil, fmt.Errorf("%s: the answer holds no receipt_b64", r.service.URL)
+	}
+	receipt, err := base64.StdEncoding.DecodeString(answer.Receipt)
+	if err != nil {
+		return nil, fmt.Errorf("%s: receipt_b64 is not base64: %w", r.service.URL, err)
+	}
+	return receipt, nil
+}
+
+// cardStatementFile is the file `card register` writes and `card check`
+// reads: the statement with its Receipts, hex, as the host keeps it beside the
+// card (§13.3).
+type cardStatementFile struct {
+	Statement string `json:"statement"`
+}
+
+func cardCommands() *cobra.Command {
+	card := &cobra.Command{Use: "card", Short: "Register a History card on a transparency service you name, and check card_registered", Args: cli.NoArgs}
+	card.AddCommand(cardRegisterCommand(), cardCheckCommand())
+	return card
+}
+
+// cardInputs reads the flags `register` and `check` share.
+func cardInputs(c *cobra.Command) (card []byte, holder, anchor string, err error) {
+	path, _ := c.Flags().GetString("card")
+	holder, _ = c.Flags().GetString("holder")
+	anchor, _ = c.Flags().GetString("anchor")
+	if path == "" || holder == "" || anchor == "" {
+		return nil, "", "", cli.InputError("--card, --holder and --anchor are required")
+	}
+	if card, err = cli.ReadInput(path); err != nil {
+		return nil, "", "", err
+	}
+	return card, holder, anchor, nil
+}
+
+func cardFlags(cmd *cobra.Command) {
+	cmd.Flags().String("card", "", "The card's octets (the History card file) (required)")
+	cmd.Flags().String("holder", "", "The holder key: the 64-hex Ed25519 key id the card's answer was signed under (required)")
+	cmd.Flags().String("anchor", "", "The digest of the anchor the card was derived under (required)")
+	cmd.Flags().String("service", "", "The service file: name, operator, url and the keys its Receipts verify under. No default")
+}
+
+func cardRegisterCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "register",
+		Short: "Register the card on the service you name; keep the statement and its Receipt beside the card (signs; posts to the service)",
+		Long: `Register a History card on the transparency service --service names, as the holder.
+There is no default service: without --service nothing is posted.
+
+The post is permanent. The log is append-only, so a registration, and the link it makes
+between the holder key and the anchor, can never be withdrawn. The service and anyone who
+reads its log learn which holder key registered a card for which anchor, and when. A
+statement carries the card's digest, not the card. Register only on a service whose
+published policy you accept; not registering is no finding against a card or its holder.
+
+A pass shows only that this exact card existed by a time: not that its counts are right, not
+anchor_inclusion (it stays NOT_CHECKED), not that this is the holder's only card. A failed
+registration changes nothing about the card. The profile's signing key must be the holder key.`,
+		Args: cli.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			p, err := cli.Selected(c)
+			if err != nil {
+				return err
+			}
+			service, err := loadCardService(mustString(c, "service"))
+			if err != nil {
+				return err
+			}
+			cardOctets, holder, anchor, err := cardInputs(c)
+			if err != nil {
+				return err
+			}
+			private, err := cli.PrivateKey(p.Signing)
+			if err != nil {
+				return err
+			}
+			signer, err := evidencebook.NewEd25519Signer(ed25519.PrivateKey(private))
+			if err != nil {
+				return err
+			}
+			env := evidencebook.Envelope{Responder: holder, Anchor: evidencebook.Anchor{Digest: anchor}}
+			statement, err := evidencebook.RegisterCard(c.Context(), signer, cardOctets, env, newAnchorRegistrar(service), service.policy())
+			if err != nil {
+				if errors.Is(err, evidencebook.ErrInvalid) {
+					return cli.InputError("nothing was registered: " + err.Error())
+				}
+				return fmt.Errorf("the card is unchanged: %w", err)
+			}
+			file, err := json.Marshal(cardStatementFile{Statement: hex.EncodeToString(statement)})
+			if err != nil {
+				return err
+			}
+			if out, _ := c.Flags().GetString("out"); out != "" {
+				return writeFileAtomic(out, file)
+			}
+			_, err = c.OutOrStdout().Write(append(file, '\n'))
+			return err
+		},
+	}
+	cardFlags(cmd)
+	cmd.Flags().String("out", "", "Where to write the statement file (default: standard output)")
+	return cmd
+}
+
+func cardCheckCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "check",
+		Short: "Check card_registered over the statement files kept beside a card, under the service's keys (seals nothing)",
+		Long: `Check card_registered (SH §13.3) over the statement files kept beside a card, under the holder
+key and anchor and the policy the --service file's keys state, never one read from a statement.
+NOT_PRESENT when there is no statement. A pass says this exact card existed by a time at the
+service named: not that the counts are right, not anchor_inclusion, not that it is the only card.`,
+		Args: cli.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			service, err := loadCardService(mustString(c, "service"))
+			if err != nil {
+				return err
+			}
+			cardOctets, holder, anchor, err := cardInputs(c)
+			if err != nil {
+				return err
+			}
+			paths, _ := c.Flags().GetStringArray("statement")
+			var statements [][]byte
+			for _, path := range paths {
+				raw, err := cli.ReadInput(path)
+				if err != nil {
+					return err
+				}
+				var file cardStatementFile
+				if err := json.Unmarshal(raw, &file); err != nil {
+					return cli.InputError("statement file " + filepath.Base(path) + ": " + err.Error())
+				}
+				statement, err := hex.DecodeString(file.Statement)
+				if err != nil || len(statement) == 0 {
+					return cli.InputError("statement file " + filepath.Base(path) + ": the statement is not hex")
+				}
+				statements = append(statements, statement)
+			}
+			env := evidencebook.Envelope{Responder: holder, Anchor: evidencebook.Anchor{Digest: anchor}}
+			return cli.Output(c, evidencebook.CheckCardRegistered(cardOctets, env, statements, service.policy()))
+		},
+	}
+	cardFlags(cmd)
+	cmd.Flags().StringArray("statement", nil, "A statement file `card register` wrote (repeatable)")
+	return cmd
+}
+
+func mustString(c *cobra.Command, name string) string {
+	v, _ := c.Flags().GetString(name)
+	return v
+}
+
+// writeFileAtomic writes through a temp file in the destination's directory
+// and renames it, so a reader never sees a half-written statement.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".card-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		return errors.Join(err, tmp.Close())
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
