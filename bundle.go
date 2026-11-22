@@ -432,12 +432,12 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		}
 	}
 	statement.BundleDigest = digestBytes(data)
+	if req.DisclosureRecordedElsewhere {
+		return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor}, nil
+	}
 	body, err := json.Marshal(statement)
 	if err != nil {
 		return Bundle{}, err
-	}
-	if req.DisclosureRecordedElsewhere {
-		return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor}, nil
 	}
 	links := make([]Link, 0, len(disclosed))
 	for _, id := range disclosed {
