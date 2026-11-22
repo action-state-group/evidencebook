@@ -11,11 +11,6 @@ Every pull request merged since v0.25.0:
 - [#658](https://github.com/action-state-group/evidencebook/pull/658): feat(capsulectl): book card register and card check for History card registration (#624)
 - [#614](https://github.com/action-state-group/evidencebook/pull/614): feat(dealprofile): rule 12 counterparty copy withholds answers, tellings, share checks and the close (#613)
 
-A minor version: `dealprofile` gains `CounterpartyWithheld` and `RequiredDisclosed`, which give
-the records a rule 12 counterparty copy of an x-deal-v0 deal withholds and must disclose. No
-record type or check of a sealed record changes. capsulectl-book gains `book card register` and
-`card check` (released under its own `capsulectl/v*` tag).
-
 ### Added: what a rule 12 counterparty copy withholds, as vectors (#613)
 
 - `dealprofile`: PROFILE.md section 6 rule 12 "Copies" now lists every record a counterparty copy
