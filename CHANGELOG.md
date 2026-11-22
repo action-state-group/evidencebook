@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v0.25.0 (2026-11-21)
+
+Every pull request merged since v0.24.0:
+
+- [#612](https://github.com/action-state-group/evidencebook/pull/612): fix(dealprofile): check_profile.py --regen keeps the hand-written negative fixtures
+- [#617](https://github.com/action-state-group/evidencebook/pull/617): feat: register a Standard History card on a SCITT service and check card_registered (#616)
+
+A minor version: the root package gains the opt-in registration of a Standard History card and the `card_registered` check. Nothing existing changes, and nothing registers unless the host configures a service.
+
+### Added: registering a Standard History card (#616)
+
+- Register a Standard History card on a SCITT transparency service, opt-in and with no default service ([#616](https://github.com/action-state-group/evidencebook/issues/616), agent-action-capsule `spec/standard-history-v0.md` §13): `BuildCardStatement` signs a card statement over the card's digest, `RegisterCard` has the host's `CardStatementRegistrar` post it to the service the host chose and attaches the Receipt only when it passes under the relying party's transparency policy (`AttachCardReceipt` checks it, at most 16 per statement), and `CheckCardRegistered` reports `card_registered`. Registration shows that the card existed by a time and nothing else: `anchor_inclusion` stays `NOT_CHECKED`, nothing shows the holder registered no other card, and the check is never a card property or a level. The library reaches no service itself, and the host keeps the statement beside the card.
+
 ## v0.24.0 (2026-11-21)
 
 Every pull request merged since v0.23.0:
