@@ -436,8 +436,11 @@ change.
   per-act digests), and never counts the act as authorized. A receipt or report for such an act
   says the person's own key's signature is missing.
 - **The `payment_ref` member** of the check input keeps the record's name (PROFILE §5, check). It
-  is an opaque string: the reference the payment will be made under on its rail, such as a
-  Lightning payment hash or an x402 payment id. It is not a secret (Sherlock2, on #699).
+  is the reference fixed before paying: a Lightning payment hash, an ACP order id, or the x402
+  authorization nonce. A reference the rail learns only afterwards, such as an on-chain
+  transaction hash, goes on the payer leg as settlement evidence, not here. Every rail in use has
+  a pre-payment reference, so the refusal of a pay check without one stands. A rail with none
+  would be a profile question, filed when such a rail is used (Sherlock2, on #699).
 
 **Tests.**
 - **One input, two versions:** the same check input on a v0 deal and on an equivalent v1 deal
