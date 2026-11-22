@@ -668,12 +668,11 @@ and on §12's local event list.
           is held, and `deal status` names the payment in flight.
         - Only a re-run whose inputs match an already sealed leg rewrites its file (item 8).
    - **No detail change while a payment is in flight.** `CheckActs` refuses an act after a journal
-     record that changes the details sealed after its check (`authorization.go:122-125`). So while a
+     record that changes the details sealed after its check (the details loop in `CheckActs`). So while a
      deal has an open send, every verb that seals a journal record for the deal runs the library's
      own test on the built record, and refuses when it matches, naming the payment in flight, until
-     its payer leg is sealed. The library's test is `changesDetails` (`authorization.go:383-403`),
-     exported as `xdealv1.ChangesDetails(Record)` with the walk calling it, so there is no second
-     list. It matches:
+     its payer leg is sealed. The library's test is `xdealv1.ChangesDetails(Record)`, which the walk
+     calls, so there is no second list. It matches:
      - a `detail_change`;
      - a `message` with a counterparty;
      - an `evidence` with a counterparty or `counterparty_facts`;
