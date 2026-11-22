@@ -158,7 +158,11 @@ func runV1Report(c *cobra.Command) (err error) {
 		if err != nil {
 			return err
 		}
-		ag, ok := agreeOf(book[0])
+		var ag *xdealv1.AgreeBody
+		ok := len(book) > 0
+		if ok {
+			ag, ok = agreeOf(book[0])
+		}
 		if !ok || ag.Kind != xdealv1.KindAgreement {
 			return cli.InputError("the first record of your deal book is not your agreement")
 		}
@@ -282,16 +286,38 @@ func (s *dealSession) sealV1Report(p cli.Profile, r xdealv1.Report, at time.Time
 func writeNewFile(path string, data []byte) error { return writeNewFileAfter(path, data, nil) }
 
 // writeNewFileAfter writes data, exactly, to a file that must not exist yet,
-// running before (when set) between staging the bytes and putting them in
-// place. The bytes are written and synced to a temporary file beside path
-// first, so a full disk or an unwritable directory fails before `before` runs;
-// what can still fail after it is only the link into place (path appearing
-// meanwhile), and then the error says the copy is on record but not written.
+// running before (when set) once the bytes are staged and before they are put
+// in place. The name is reserved first (an empty file created exclusively),
+// so a file already there, a missing permission or an unwritable directory
+// fails before anything else; the bytes are written and synced to a
+// temporary file beside it, so a full disk fails before `before` runs too.
+// Only the rename over the reserved name and the directory's sync come
+// after it, and their error says the copy is on record. A rename, unlike a
+// hard link, works on every filesystem; it replaces only the placeholder
+// this function created.
 func writeNewFileAfter(path string, data []byte, before func() error) (err error) {
 	dir := filepath.Dir(path)
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	ph, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return cli.InputError(path + " exists: --out names a new file")
+		}
+		return err
+	}
+	if err = ph.Close(); err != nil {
+		return errors.Join(err, os.Remove(path))
+	}
+	placed := false
+	defer func() {
+		if !placed {
+			if e := os.Remove(path); e != nil && !errors.Is(e, os.ErrNotExist) {
+				err = errors.Join(err, e)
+			}
+		}
+	}()
 	f, err := os.CreateTemp(dir, ".capsulectl-deal-*")
 	if err != nil {
 		return err
@@ -302,8 +328,10 @@ func writeNewFileAfter(path string, data []byte, before func() error) (err error
 			err = errors.Join(err, e)
 		}
 	}()
-	if _, err = f.Write(data); err == nil {
-		err = f.Sync()
+	if err = f.Chmod(0o600); err == nil {
+		if _, err = f.Write(data); err == nil {
+			err = f.Sync()
+		}
 	}
 	if e := f.Close(); err == nil {
 		err = e
@@ -311,25 +339,32 @@ func writeNewFileAfter(path string, data []byte, before func() error) (err error
 	if err != nil {
 		return err
 	}
-	if err = os.Chmod(tmp, 0o600); err != nil {
-		return err
-	}
 	if before != nil {
 		if err = before(); err != nil {
 			return err
 		}
 	}
-	// A hard link, unlike a rename, never replaces a file at path.
-	if err = os.Link(tmp, path); err != nil {
-		if before != nil {
-			return fmt.Errorf("the shared copy is on record, but %s could not be written (%w): run deal report again to write and record a new copy", path, err)
+	onRecord := func(e error) error {
+		if e != nil && before != nil {
+			return fmt.Errorf("the shared copy is on record, but %s could not be written (%w): run deal report again to write and record a new copy", path, e)
 		}
-		if errors.Is(err, os.ErrExist) {
-			return cli.InputError(path + " exists: --out names a new file")
-		}
-		return err
+		return e
 	}
-	return nil
+	if err = os.Rename(tmp, path); err != nil {
+		return onRecord(err)
+	}
+	placed = true
+	// The directory entry is made durable too, so a crash cannot keep the
+	// record and lose the file.
+	d, err := os.Open(dir)
+	if err != nil {
+		return onRecord(err)
+	}
+	if err = d.Sync(); err != nil {
+		_ = d.Close()
+		return onRecord(err)
+	}
+	return onRecord(d.Close())
 }
 
 // v1ShareGate is dealShareGate, a seam for tests.

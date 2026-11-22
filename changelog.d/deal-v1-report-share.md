@@ -7,7 +7,7 @@
   - lists no rows, and carries no agent claims (an x-deal-v1 report has no claim fields).
 - As for an x-deal-v0 copy, the copy is a disclose act:
   1. its exact bytes are checked to contain none of the plain values kept only on this device (your words, your limits, the counterparty's details);
-  2. they are written to a temporary file beside `--out`;
+  2. `--out`'s name is reserved, and the bytes are written to a temporary file beside it;
   3. it is put on record: the audience, the recipient and the digest of the exact file;
-  4. only then is it linked into place.
-- A refused copy writes and records nothing. If a file appears at `--out` after the copy is put on record, nothing is overwritten, and the error says the copy is on record but was not written.
+  4. only then is it moved into place.
+- A refused copy writes and records nothing, and so does an existing `--out` or a folder that cannot be written to. If the final move fails after the copy is put on record, the error says so.

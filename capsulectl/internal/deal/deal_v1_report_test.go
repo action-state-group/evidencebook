@@ -238,7 +238,7 @@ func TestAV1AdjudicatorCopyNeedsTheAgreementsAdjudicator(t *testing.T) {
 // The bytes are staged before the record: a failed record leaves no file
 // (and no staging file), a failed staging runs no record, and a file that
 // appears at the path after the record is never replaced and the error says
-// the copy is on record.
+// the copy is on record; an existing file fails before the record.
 func TestWriteNewFileAfterStagesBeforeTheRecord(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "c.json")
@@ -254,11 +254,17 @@ func TestWriteNewFileAfterStagesBeforeTheRecord(t *testing.T) {
 	assert.Error(t, writeNewFileAfter(filepath.Join(ro, "c.json"), []byte("x\n"), func() error { ran = true; return nil }))
 	assert.False(t, ran, "an unwritable directory fails before the record")
 
-	err = writeNewFileAfter(out, []byte("mine\n"), func() error { return os.WriteFile(out, []byte("theirs"), 0o600) })
-	assert.ErrorContains(t, err, "on record")
+	require.NoError(t, os.WriteFile(out, []byte("theirs"), 0o600))
+	ran = false
+	assert.ErrorContains(t, writeNewFileAfter(out, []byte("mine\n"), func() error { ran = true; return nil }), "exists")
+	assert.False(t, ran, "an existing file fails before the record")
 	got, rerr := os.ReadFile(out)
 	require.NoError(t, rerr)
 	assert.Equal(t, "theirs", string(got), "never replaced")
+	require.NoError(t, os.Remove(out))
+	entries, err = os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "only ro/: no placeholder or staging file left")
 
 	fresh := filepath.Join(dir, "d.json")
 	require.NoError(t, writeNewFileAfter(fresh, []byte("y\n"), nil))
