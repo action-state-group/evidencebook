@@ -820,8 +820,9 @@ A verifier holding one deal's records in `seq` order checks:
         commit or share that rests on one. The buyer's copy then lacks those steps, which the buyer
         may know happened, and its end outcome compares the delivery with the terms in force
         without that offer (`mismatch` where an authorized deal says `completed`), as does a later
-        check's `material_fields_changed`. A buyer who knows
-        the steps happened can tell they were not authorized, never why. Closing this would mean
+        check's `material_fields_changed` and a share check in a later deal with the same party
+        (its rule inputs count only tellings given with authority). A buyer who knows the steps
+        happened can tell they were not authorized, never why. Closing this would mean
         withholding every act and outcome, including the offers rule 10 gives the buyer in full.
       - The buyer's "under the seller's terms, pack X" line (evidencebook-deal#145) is not in the
         copy: a report names the deal-terms pack a check ran under from the check's evaluation,

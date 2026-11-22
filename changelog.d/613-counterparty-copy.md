@@ -17,5 +17,6 @@
   in whether the ordered claim was authorized), which both are checked against. Known limit: an
   act the gate held that the agent did anyway is not in force, so the buyer's copy lacks the steps
   that rest on it (the offer, the buyer's acceptance, a commit) and its end outcome compares the
-  delivery with the terms without that offer, as does a later check's `material_fields_changed`; a
-  buyer who knows those steps happened can tell they were not authorized, never why.
+  delivery with the terms without that offer, as does a later check's `material_fields_changed`
+  and a share check in a later deal with the same party (Steven accepted this limit); a buyer who
+  knows those steps happened can tell they were not authorized, never why.

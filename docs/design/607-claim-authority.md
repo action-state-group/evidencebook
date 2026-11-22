@@ -220,7 +220,8 @@ offer's terms (evidencebook-deal `deal_rules.go:1178`), and an acceptance is rec
 offer act that was authorized (`deal.go:623-634`). So the unauthorized twin has no recorded
 acceptance, no commit or address share resting on one, and an end outcome that compares the
 delivery with the terms in force without that offer (`mismatch` where the authorized twin says
-`completed`), as does a later check's `material_fields_changed`. Its counterparty copy lacks steps the buyer may know happened. A buyer who knows they
+`completed`), as does a later check's `material_fields_changed` and a share check in a later
+deal with the same party. Its counterparty copy lacks steps the buyer may know happened. A buyer who knows they
 happened can tell they were not authorized, never why. Unlike the position hint, this can prove that a step was not
 authorized. Closing it would mean withholding every act and outcome, including the offers rule 10
 gives the buyer in full. Sherlock routed it to Steven with the recommendation to accept it as a
@@ -284,7 +285,11 @@ it runs the reference checker, the same tag's `check_profile.py`.
   ones, Sherlock's decision (withholding only the latter branches on the verdict); the report says
   "not shared" where no end outcome is disclosed
   (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dc33a5bc87d97eefbfca7fc7e858f7837d9ddaa2f57749752a296f695f9590c2&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
-  The second limit of section 7 is Steven's call, asked in the same message.
+  The second limit of section 7 was Steven's call, asked in the same message (with
+  `material_fields_changed` and a share check in a later deal with the same party added in
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=e847a49fa3d8c376391330275c0c5ad720b137e708b770d2f16ae762308f30c3&thread=0ff395c6f7124ca77b9172d4e78fb87cf249649b0b44d45667f4cf8b5e68878e);
+  Steven accepted it ("1 yes",
+  buzz://message?channel=0aa5b48e-4d4d-420a-a9b6-c14c2b4a3ec0&id=edb00af7bfb4bed00dbbc340c2e4f4a2693b74b6da45fb347864b7c3a88146a3&thread=e24765fd0b04cdf01a7cf4fc624478466c9a96bdcb56e204aee7c53c2c7d05d4).
 
 ## 10. Test plan
 
