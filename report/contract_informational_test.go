@@ -48,6 +48,7 @@ func pageText(t *testing.T, html []byte) string {
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox",
+		"--use-mock-keychain", "--password-store=basic",
 		"--user-data-dir="+filepath.Join(dir, "profile"), "--disable-dev-shm-usage", "--window-size=1280,1000", "--virtual-time-budget=30000",
 		"--dump-dom", "file://"+file)
 	cmd.Stdin = nil
