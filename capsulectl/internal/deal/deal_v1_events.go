@@ -211,13 +211,21 @@ func (s *dealSession) storeV1(ctx context.Context, dealID string, steps ...prepa
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	for k, p := range steps {
+	for _, p := range steps {
 		if p.payload == nil {
 			continue
 		}
 		if err := s.appendV1Journal(ctx, p.payload); err != nil {
-			for _, q := range steps[k:] {
-				if held, herr := s.journalHolds(ctx, q.se.Digest); herr == nil && !held {
+			// Withdraw every step of the batch the journal does not hold,
+			// the opening included (its local digest is never in the
+			// journal), so a deal is never left opened without its intent.
+			for _, q := range steps {
+				held, herr := s.journalHolds(ctx, q.se.Digest)
+				if herr != nil {
+					err = errors.Join(err, herr)
+					continue
+				}
+				if !held {
 					err = errors.Join(err, s.withdrawV1(ctx, dealID, q.se.Event.N))
 				}
 			}

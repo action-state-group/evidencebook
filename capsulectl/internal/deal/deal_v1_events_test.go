@@ -202,9 +202,14 @@ func TestAV1OpeningIsStoredWithItsIntentOrNotAtAll(t *testing.T) {
 	require.Error(t, err)
 	withSession(t, func(s *dealSession) {
 		var n int
-		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM deal_v1_events WHERE deal_id=? AND kind='intent'`, h.dealID).Scan(&n))
-		assert.Equal(t, 0, n, "the failed intent was withdrawn")
+		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM deal_v1_events WHERE deal_id=?`, h.dealID).Scan(&n))
+		assert.Equal(t, 0, n, "the opening and the failed intent were both withdrawn")
 	})
+	// The same command, run again, opens the deal.
+	res := dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
+	assert.Equal(t, true, res["opened"])
+	types, _ := journalTypes(t, h.dealID)
+	assert.Equal(t, []string{"intent"}, types)
 }
 
 func TestOpeningGoesOnlyOnAV1DealsFirstIntent(t *testing.T) {
