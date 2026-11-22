@@ -671,7 +671,7 @@ func sharedCopyGivesTheCompanionANeutralKind(t *testing.T, open func(t *testing.
 			assert.Equal(t, true, s["withheld"], "listed, and withheld")
 		}
 	}
-	assert.Equal(t, 1, private, "the companion is still accounted for")
+	assert.GreaterOrEqual(t, private, 1, "the companion is still accounted for (a sale under the representation rules withholds its checks too)")
 	assert.Len(t, b["records"], len(steps), "every step of the log; the report rides off it (capsule-cli#294)")
 	out, err = invoke(t, "", "verify", "--bundle", shared)
 	require.NoError(t, err, "the shared copy verifies: %s", out)

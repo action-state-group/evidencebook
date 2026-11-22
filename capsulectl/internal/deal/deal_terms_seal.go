@@ -436,7 +436,7 @@ func (s *dealSession) shareTermsResult(c *cobra.Command, dealID string, events [
 	if err = dealShareGate(encoded, events, cli.DealAudienceCounterparty); err != nil {
 		return err
 	}
-	share, err := s.recordShare(ctx, dealID, b, cli.DealAudienceCounterparty, recipient, dealRole(events), encoded, "")
+	share, err := s.recordShare(ctx, dealID, b, cli.DealAudienceCounterparty, recipient, events, encoded, "")
 	if err != nil {
 		return err
 	}

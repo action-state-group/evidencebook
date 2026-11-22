@@ -112,7 +112,7 @@ func claimBody(c dealClaim, textName, sourceName string, commit func(string) (st
 // by record digest (and, for the baseline's claims, index): each claim's
 // nonce and words, and its source note's. keep says whether a claim's
 // openings go in this copy.
-func claimOpenings(events []sealedEvent, keep func(dealClaim) bool) []interface{} {
+func claimOpenings(events []sealedEvent, hidden map[string]bool, keep func(dealClaim) bool) []interface{} {
 	out := []interface{}{}
 	add := func(se sealedEvent, c dealClaim, index int, textName, sourceName string) {
 		if !keep(c) {
@@ -131,7 +131,7 @@ func claimOpenings(events []sealedEvent, keep func(dealClaim) bool) []interface{
 		out = append(out, m)
 	}
 	for _, se := range events {
-		if se.Event.ClaimCommit == "" {
+		if se.Event.ClaimCommit == "" || hidden[se.CapsuleID] {
 			continue
 		}
 		switch {
@@ -152,7 +152,7 @@ func claimOpenings(events []sealedEvent, keep func(dealClaim) bool) []interface{
 // and its words with their nonce, so a page checks them against the sealed
 // text_commitment. keep says whether a claim is opened in this copy. A
 // buyer's deal has none: there, the agent's claims are its own notes.
-func representations(events []sealedEvent, keep func(dealClaim) bool) []interface{} {
+func representations(events []sealedEvent, hidden map[string]bool, keep func(dealClaim) bool) []interface{} {
 	out := []interface{}{}
 	if dealRole(events) != dealRoleSeller {
 		return out
@@ -171,7 +171,7 @@ func representations(events []sealedEvent, keep func(dealClaim) bool) []interfac
 		out = append(out, m)
 	}
 	for _, se := range events {
-		if se.Event.ClaimCommit == "" {
+		if se.Event.ClaimCommit == "" || hidden[se.CapsuleID] {
 			continue
 		}
 		switch {

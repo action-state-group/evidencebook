@@ -829,14 +829,23 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 		// A seller's representation under the representation rules carries
 		// what authorized it, in the check contract's shape (the evaluation
 		// and every authority layer), or that nothing did.
-		if cl := ev.Claim; cl.AuthorizedBy != "" {
-			if err = addAuthority(body, events, cl.AuthorizedBy, nil); err != nil {
-				return nil, err
+		// A claim sealed in the new shape (ClaimShape) carries none of it: its
+		// claim_authority step does.
+		if cl := ev.Claim; ev.ClaimShape == "" {
+			if cl.AuthorizedBy != "" {
+				if err = addAuthority(body, events, cl.AuthorizedBy, nil); err != nil {
+					return nil, err
+				}
+				block["refs"] = []interface{}{relRef("authorized_by", digestOf(cl.AuthorizedBy))}
+			} else if cl.Unchecked {
+				body["unchecked"] = true
+				body["rule"] = cl.Rule
 			}
-			block["refs"] = []interface{}{relRef("authorized_by", digestOf(cl.AuthorizedBy))}
-		} else if cl.Unchecked {
-			body["unchecked"] = true
-			body["rule"] = cl.Rule
+		}
+	case "claim_authority":
+		rtype = dealprofile.TypeClaimAuthority
+		if body, err = claimAuthorityBody(ev, events, block, digestOf); err != nil {
+			return nil, err
 		}
 	case "evidence":
 		rtype = "evidence"

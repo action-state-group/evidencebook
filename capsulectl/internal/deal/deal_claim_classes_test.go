@@ -88,9 +88,11 @@ func TestAClaimSealedAsADeliveryPromiseStillVerifies(t *testing.T) {
 
 	assert.Equal(t, []any{"delivery_promise"}, sealedClaimClasses(t, id))
 	checkerPasses(t, id)
+	// A claim sealed with its verdict on it (before the verdict had its own
+	// step) is withheld, whole, from a counterparty's copy of a sale under the
+	// representation rules, and none of its words are opened (#244).
 	b, shared := sharedCopy(t, id, cli.DealAudienceCounterparty, "the buyer")
-	reps := dealReportOf(b)["representations"].([]any)
-	require.Len(t, reps, 1)
-	assert.Equal(t, "delivery_promise", reps[0].(map[string]any)["class"])
-	assert.Contains(t, shared, `"class":"delivery_promise"`, "the shared copy keeps the class it was sealed with")
+	assert.Empty(t, dealReportOf(b)["representations"])
+	assert.NotContains(t, shared, "Ships within two days")
+	assert.NotContains(t, shared, `"class":"delivery_promise"`)
 }
