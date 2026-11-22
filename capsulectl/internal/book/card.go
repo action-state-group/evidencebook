@@ -99,6 +99,9 @@ func loadCardService(path string) (cardService, error) {
 type anchorRegistrar struct {
 	service cardService
 	client  *http.Client
+	// posted is set once the request is about to leave: from then on the
+	// service may have logged the statement for good, whatever follows.
+	posted bool
 }
 
 func newAnchorRegistrar(s cardService) *anchorRegistrar {
@@ -121,6 +124,7 @@ func (r *anchorRegistrar) RegisterStatement(ctx context.Context, statement []byt
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	r.posted = true
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", r.service.URL, err)
@@ -156,6 +160,21 @@ type cardStatementFile struct {
 	Statement string `json:"statement"`
 }
 
+// registerError words a failed registration by what is true of the service:
+// before the post nothing left this machine; after it the service may have
+// logged the statement, and the log is append-only (§13.5), so a bad Receipt
+// or a timeout leaves no statement file and the card unchanged, but not a
+// service that has seen nothing.
+func registerError(err error, posted bool) error {
+	if !posted {
+		if errors.Is(err, evidencebook.ErrInvalid) {
+			return cli.InputError("nothing was posted: " + err.Error())
+		}
+		return fmt.Errorf("nothing was posted: %w", err)
+	}
+	return fmt.Errorf("the service was sent the statement and may have logged it (the log is append-only, so it cannot be withdrawn); no statement file was written and the card is unchanged: %w", err)
+}
+
 func cardCommands() *cobra.Command {
 	card := &cobra.Command{Use: "card", Short: "Register a History card on a transparency service you name, and check card_registered", Args: cli.NoArgs}
 	card.AddCommand(cardRegisterCommand(), cardCheckCommand())
@@ -180,7 +199,7 @@ func cardFlags(cmd *cobra.Command) {
 	cmd.Flags().String("card", "", "The card's octets (the History card file) (required)")
 	cmd.Flags().String("holder", "", "The holder key: the 64-hex Ed25519 key id the card's answer was signed under (required)")
 	cmd.Flags().String("anchor", "", "The digest of the anchor the card was derived under (required)")
-	cmd.Flags().String("service", "", "The service file: name, operator, url and the keys its Receipts verify under. No default")
+	cmd.Flags().String("service", "", "The service file: name, operator, url (a service answering POST /transparency/register-statement) and the keys its Receipts verify under. No default")
 }
 
 func cardRegisterCommand() *cobra.Command {
@@ -188,17 +207,23 @@ func cardRegisterCommand() *cobra.Command {
 		Use:   "register",
 		Short: "Register the card on the service you name; keep the statement and its Receipt beside the card (signs; posts to the service)",
 		Long: `Register a History card on the transparency service --service names, as the holder.
-There is no default service: without --service nothing is posted.
+There is no default service: without --service nothing is posted. The client speaks one
+protocol, capsule-anchor's statement registration (POST /transparency/register-statement,
+answered with receipt_b64); a service must answer it.
 
 The post is permanent. The log is append-only, so a registration, and the link it makes
 between the holder key and the anchor, can never be withdrawn. The service and anyone who
 reads its log learn which holder key registered a card for which anchor, and when. A
-statement carries the card's digest, not the card. Register only on a service whose
-published policy you accept; not registering is no finding against a card or its holder.
+statement carries the card's digest, not the card, but a digest does not hide a small card:
+a party that holds the anchor can test guesses of its counts against it. A service the holder
+operates confers nothing. Register only on a service whose published policy you accept; not
+registering is no finding against a card or its holder.
 
-A pass shows only that this exact card existed by a time: not that its counts are right, not
-anchor_inclusion (it stays NOT_CHECKED), not that this is the holder's only card. A failed
-registration changes nothing about the card. The profile's signing key must be the holder key.`,
+A pass shows that this exact card existed by the Receipt's registration time, when it carries
+one (without one, only that the service logged the statement, not by when): not that its counts
+are right, not anchor_inclusion (it stays NOT_CHECKED), not that this is the holder's only card.
+A failed registration changes nothing about the card; if the post was made, the service may have
+logged the statement anyway, and the error says so. The profile's signing key must be the holder key.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			p, err := cli.Selected(c)
@@ -222,12 +247,10 @@ registration changes nothing about the card. The profile's signing key must be t
 				return err
 			}
 			env := evidencebook.Envelope{Responder: holder, Anchor: evidencebook.Anchor{Digest: anchor}}
-			statement, err := evidencebook.RegisterCard(c.Context(), signer, cardOctets, env, newAnchorRegistrar(service), service.policy())
+			registrar := newAnchorRegistrar(service)
+			statement, err := evidencebook.RegisterCard(c.Context(), signer, cardOctets, env, registrar, service.policy())
 			if err != nil {
-				if errors.Is(err, evidencebook.ErrInvalid) {
-					return cli.InputError("nothing was registered: " + err.Error())
-				}
-				return fmt.Errorf("the card is unchanged: %w", err)
+				return registerError(err, registrar.posted)
 			}
 			file, err := json.Marshal(cardStatementFile{Statement: hex.EncodeToString(statement)})
 			if err != nil {
@@ -251,8 +274,14 @@ func cardCheckCommand() *cobra.Command {
 		Short: "Check card_registered over the statement files kept beside a card, under the service's keys (seals nothing)",
 		Long: `Check card_registered (SH §13.3) over the statement files kept beside a card, under the holder
 key and anchor and the policy the --service file's keys state, never one read from a statement.
-NOT_PRESENT when there is no statement. A pass says this exact card existed by a time at the
-service named: not that the counts are right, not anchor_inclusion, not that it is the only card.`,
+--service is your own service file, listing only services you hold independent of the holder,
+not one the holder gave you: the policy is the relying party's.
+
+NOT_PRESENT when there is no statement. A pass says the holder key registered this exact card
+with the service named, at the registration time: a Receipt that carries no time shows only that
+the statement was logged, not by when. It does not say the counts are right, it is not
+anchor_inclusion (it stays NOT_CHECKED), and it does not say this is the holder's only card. A
+FAIL is no finding against the card or the holder: anyone can place octets beside a card.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			service, err := loadCardService(mustString(c, "service"))

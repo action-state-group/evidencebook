@@ -204,7 +204,7 @@ func TestCardRegisterPostsNothingWhenRefused(t *testing.T) {
 		args := []string{"--profile", "holder", "card", "register", "--card", card, "--holder", other, "--anchor", v.Anchor, "--service", svc}
 		_, err := invoke(t, "", args...)
 		require.ErrorIs(t, err, cli.ErrInput)
-		assert.Contains(t, err.Error(), "nothing was registered")
+		assert.Contains(t, err.Error(), "nothing was posted")
 	})
 	t.Run("a malformed anchor", func(t *testing.T) {
 		_, err := invoke(t, "", "--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", "zz", "--service", svc)
@@ -244,6 +244,9 @@ func TestCardRegisterFailuresLeaveNothing(t *testing.T) {
 			out := filepath.Join(t.TempDir(), "statement.json")
 			got, err := invoke(t, "", "--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", v.Anchor, "--service", serviceFile(t, service), "--out", out)
 			require.Error(t, err, got)
+			assert.Contains(t, err.Error(), "may have logged it", "after the post, the error does not say nothing was posted")
+			assert.NotContains(t, err.Error(), "nothing was posted")
+			assert.EqualValues(t, 1, anchor.posts.Load())
 			_, statErr := os.Stat(out)
 			assert.True(t, os.IsNotExist(statErr), "no statement file is kept on a failed registration")
 			assert.NotContains(t, got, v.Statements[0])
