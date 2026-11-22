@@ -2794,7 +2794,7 @@ func dealCloseCommand() *cobra.Command {
 }
 
 func dealReportCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "report", Short: "Report the deal in three parts (what you asked, what the agent did, anomalies); --html writes one local page", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "report", Short: "Report the deal in three parts (what you asked, what the agent did, anomalies); --html writes one local page. An x-deal-v1 deal's report is each row's status; --out seals it", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		// An x-deal-v1 deal has its own report (deal_v1_report.go), read
 		// before any of the x-deal-v0 flag rules below.
 		if v1, err := v1DealOfFlag(c); err != nil {

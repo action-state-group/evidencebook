@@ -18,14 +18,26 @@ import (
 func TestAV1ReportPrintsAndSealsOnOut(t *testing.T) {
 	h := agreedBoth(t, offerTo)
 	h.buyer.act(t)
+	db := v1Profile(t).Connection.Database
+	files := func() map[string][]byte {
+		got := map[string][]byte{}
+		for _, f := range []string{db, db + "-wal"} {
+			if b, err := os.ReadFile(f); err == nil {
+				got[f] = b
+			}
+		}
+		return got
+	}
+	before := files()
 	out := dealRun(t, "report", "--deal", h.dealID)
+	assert.Equal(t, before, files(), "printing a report writes nothing to the store or its log")
 	report, ok := out["report"].(map[string]any)
 	require.True(t, ok, "%v", out)
 	assert.Equal(t, "keep", report["audience"])
 	assert.Nil(t, out["sealed_report"], "printing seals nothing")
 
 	file := filepath.Join(t.TempDir(), "report.json")
-	sealed := dealRun(t, "report", "--deal", h.dealID, "--out", file)
+	sealed := dealRun(t, "report", "--deal", h.dealID, "--read-only=false", "--out", file)
 	require.NotEmpty(t, sealed["sealed_report"])
 	pair, err := os.ReadFile(file)
 	require.NoError(t, err)
@@ -46,17 +58,21 @@ func TestAV1ReportRefusals(t *testing.T) {
 	h.buyer.act(t)
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID), "the next `deal tick` covers it")
-	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "not served yet", "--bundle": "not served yet"} {
+	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "not served yet", "--bundle": "not served yet",
+		"--email": "receipt email", "--from-bundle": "countersignatures", "--directory": "countersignatures"} {
 		arg := filepath.Join(t.TempDir(), "x")
 		if flag == "--share" {
 			arg = "counterparty"
 		}
 		assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, flag, arg), want, flag)
 	}
+	for _, flag := range []string{"--" + includeAgentClaimsFlag, "--" + includeUnauthorizedFlag} {
+		assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, flag), "does not apply to an x-deal-v1 report", flag)
+	}
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--read-only", "--out", filepath.Join(t.TempDir(), "r.json")), "writes nothing")
 
 	r := receivedOffer(t)
-	assert.Contains(t, v1Err(t, "report", "--deal", r.dealID), "has no deal book yet")
+	assert.Contains(t, v1Err(t, "report", "--deal", r.dealID), "has no agreement of yours recorded yet")
 }
 
 // --out is an x-deal-v1 report's; an x-deal-v0 deal refuses it.
