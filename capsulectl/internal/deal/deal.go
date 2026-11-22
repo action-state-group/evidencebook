@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/x509"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -1013,6 +1015,53 @@ func writeSeed(path string) (ed25519.PrivateKey, error) {
 	return private, nil
 }
 
+// seedFrom is writeSeed, or, when from names an existing key, that key written
+// to path as a hex seed: the same key id under a new profile. A PKCS#8 PEM (the
+// form a Python Goose node's producer.key and checkpoint.key are in) or a
+// 64-hex seed; anything else is refused, and the source is never changed.
+func seedFrom(from, path string) (ed25519.PrivateKey, error) {
+	if from == "" {
+		return writeSeed(path)
+	}
+	raw, err := cli.ReadInput(from)
+	if err != nil {
+		return nil, err
+	}
+	key, err := parseKeyFile(raw)
+	if err != nil {
+		return nil, cli.InputError("key file " + from + ": " + err.Error())
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return nil, cli.InputError("cannot create key file (it must not already exist): " + path)
+	}
+	_, werr := f.WriteString(hex.EncodeToString(key.Seed()))
+	if err = errors.Join(werr, f.Sync(), f.Close()); err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
+// parseKeyFile reads an Ed25519 private key from a PKCS#8 PEM or a 64-hex seed.
+func parseKeyFile(raw []byte) (ed25519.PrivateKey, error) {
+	if block, _ := pem.Decode(raw); block != nil {
+		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, errors.New("not a PKCS#8 private key")
+		}
+		key, ok := parsed.(ed25519.PrivateKey)
+		if !ok {
+			return nil, errors.New("not an Ed25519 key")
+		}
+		return key, nil
+	}
+	seed, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil || len(seed) != ed25519.SeedSize {
+		return nil, errors.New("neither a PKCS#8 PEM nor a 64-hex Ed25519 seed")
+	}
+	return ed25519.NewKeyFromSeed(seed), nil
+}
+
 func dealInitCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "init", Short: "Create a local deal profile: SQLite store, 0600 signing and checkpoint seeds", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		name, _ := c.Flags().GetString("profile")
@@ -1031,11 +1080,13 @@ func dealInitCommand() *cobra.Command {
 		if err = os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
-		signing, err := writeSeed(filepath.Join(dir, "signing.seed"))
+		signingFrom, _ := c.Flags().GetString("signing-key-file")
+		checkpointFrom, _ := c.Flags().GetString("checkpoint-key-file")
+		signing, err := seedFrom(signingFrom, filepath.Join(dir, "signing.seed"))
 		if err != nil {
 			return err
 		}
-		cpKey, err := writeSeed(filepath.Join(dir, "checkpoint.seed"))
+		cpKey, err := seedFrom(checkpointFrom, filepath.Join(dir, "checkpoint.seed"))
 		if err != nil {
 			return err
 		}
@@ -1131,6 +1182,8 @@ func dealInitCommand() *cobra.Command {
 		return cli.Output(c, out)
 	}}
 	cmd.Flags().String("dir", "", "Directory for the store and seeds (created 0700)")
+	cmd.Flags().String("signing-key-file", "", "Keep an existing signing key (a PKCS#8 PEM or a 64-hex seed) instead of making one, so its key id stays; the key is copied into --dir as a hex seed")
+	cmd.Flags().String("checkpoint-key-file", "", "Keep an existing checkpoint signing key (a PKCS#8 PEM or a 64-hex seed) instead of making one; copied into --dir as a hex seed")
 	cmd.Flags().Bool("no-witness", false, "Do not configure the default public witness; deals are sealed on this device only")
 	cmd.Flags().String("materiality", "", "A materiality predicate (a materiality-predicate/v0 JSON file, or builtin:neutral) for this profile's checks to evaluate, pinned by its digest; without one, every attribute the agent picks pauses the check")
 	return cmd
