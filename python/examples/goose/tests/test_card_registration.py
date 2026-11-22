@@ -106,6 +106,7 @@ def test_a_service_that_misbehaves_leaves_the_card_as_it_was(nodes, clock, tmp_p
 @pytest.mark.parametrize("mode", ["slow", "slow-headers"])
 def test_a_service_that_drips_is_cut_off_at_the_total_deadline(nodes, clock, tmp_path, monkeypatch, mode):
     """A socket timeout bounds one read; the total deadline ends the whole call, headers or body."""
+    import threading
     import time
 
     monkeypatch.setattr(cs, "TOTAL_SECONDS", 1)
@@ -117,8 +118,23 @@ def test_a_service_that_drips_is_cut_off_at_the_total_deadline(nodes, clock, tmp
         with pytest.raises(cs.ServiceError, match="no complete answer"):
             buyer.register_card(cs.AnchorRegistrar(service), service.policy)
         assert time.monotonic() - started < 4
+        assert not [t for t in threading.enumerate() if t.name == "card-registration"], "the worker ended"
     finally:
         slow.close()
+
+
+@pytest.mark.parametrize("missing", ["check_card_statement", "check_card_registered"])
+def test_nothing_is_posted_when_the_receipt_cannot_be_checked(nodes, clock, anchor, tmp_path, monkeypatch, missing):
+    """With an agent-action-capsule that lacks either card check, registration refuses before the
+    permanent post, not after it."""
+    import card_registration as cr
+
+    buyer = ticked(nodes, clock)
+    service = cs.load_service(service_file(tmp_path, anchor))
+    monkeypatch.delattr(cr._witness, missing)
+    with pytest.raises(gn.Refused, match="0.19.0"):
+        buyer.register_card(cs.AnchorRegistrar(service), service.policy)
+    assert anchor.posted == []
 
 
 def test_the_tool_checks_where_it_writes_before_it_posts(nodes, clock, anchor, tmp_path, monkeypatch):
@@ -260,3 +276,45 @@ def test_the_scripted_run_goes_on_when_a_registration_fails(tmp_path):
     for node in ("buyer", "seller"):
         assert (out / f"{node}-card.json").exists() and (out / f"{node}-history-card.json").exists()
         assert not (out / f"{node}-card-statement.json").exists()
+
+
+def test_a_write_that_fails_after_the_post_returns_the_statement_even_if_closing_fails(nodes, clock, anchor, tmp_path, monkeypatch):
+    """A full disk fails the buffered flush and then the close: the refusal must still carry the statement."""
+    import loop_server
+
+    class FullDisk:
+        closed = False
+
+        def write(self, data):
+            raise OSError("no space left on device")
+
+        def flush(self):
+            raise OSError("no space left on device")
+
+        def close(self):
+            raise OSError("no space left on device")
+
+    buyer = ticked(nodes, clock)
+    monkeypatch.setattr(loop_server, "_node", buyer)
+    monkeypatch.setenv("GOOSE_CARD_SERVICE", str(service_file(tmp_path, anchor)))
+    monkeypatch.setattr(cs, "reserve_out_file", lambda path: (tmp_path / "card.json", FullDisk()))
+    refused = json.loads(loop_server.loop_register_card(out_path=str(tmp_path / "card.json")))
+    assert refused["ok"] is False and "keep this statement: " in refused["error"]
+    assert refused["error"].split("keep this statement: ")[1] == anchor_statement_hex(anchor, buyer)
+
+
+def anchor_statement_hex(anchor, buyer):
+    """The statement the service was sent, with the Receipt the service gave: what the node returned."""
+    import card_registration as cr
+    from fake_anchor import FakeAnchor as F
+
+    sent = anchor.posted[-1]
+    receipt = anchor.receipt_for(F.entry_of(sent))
+    return cr.attach_card_receipt.__wrapped__(sent, receipt) if hasattr(cr.attach_card_receipt, "__wrapped__") else _attached(sent, receipt)
+
+
+def _attached(sent, receipt):
+    import cbor2
+
+    protected, _, payload, signature = cbor2.loads(sent).value
+    return cbor2.dumps(cbor2.CBORTag(18, [protected, {394: [receipt]}, payload, signature]), canonical=True).hex()

@@ -27,12 +27,12 @@ from __future__ import annotations
 
 import base64
 import binascii
+import http.client
 import json
 import os
+import socket
 import threading
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -80,48 +80,61 @@ def load_service(path: str | Path) -> Service:
     return Service(name, operator, url.rstrip("/"), tuple(keys))
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):  # a registration goes to the one URL the host named
-        return None
-
-
 class AnchorRegistrar:
     """A :class:`card_registration.CardStatementRegistrar` for a
     capsule-anchor service."""
 
     def __init__(self, service: Service):
         self._service = service
-        self._opener = urllib.request.build_opener(_NoRedirect)
 
     def register_statement(self, statement: bytes) -> bytes:
+        url = urllib.parse.urlsplit(self._service.url)
+        make = http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection
+        conn = make(url.netloc, timeout=TIMEOUT_SECONDS)
+        path = (url.path.rstrip("/") or "") + "/transparency/register-statement"
         body = json.dumps({"signed_statement_b64": base64.b64encode(statement).decode()}).encode()
-        request = urllib.request.Request(
-            self._service.url + "/transparency/register-statement", data=body, method="POST",
-            headers={"Content-Type": "application/json", "Accept": "application/json"})
         outcome: list[Any] = []
+        sockets: list[socket.socket] = []  # http.client lets go of conn.sock once a response owns it
 
         def post() -> None:
             try:
-                with self._opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-                    raw = b""
-                    while len(raw) <= MAX_RESPONSE_BYTES:
-                        chunk = response.read(8192)
-                        if not chunk:
-                            break
-                        raw += chunk
+                conn.connect()
+                sockets.append(conn.sock)
+                conn.request("POST", path, body=body,
+                             headers={"Content-Type": "application/json", "Accept": "application/json"})
+                response = conn.getresponse()
+                if response.status != 200:  # a redirect is not followed: the one URL the host named
+                    raise ServiceError(f"{self._service.url}: HTTP {response.status}")
+                raw = b""
+                while len(raw) <= MAX_RESPONSE_BYTES:
+                    chunk = response.read(8192)
+                    if not chunk:
+                        break
+                    raw += chunk
                 outcome.append(raw)
             except BaseException as exc:  # handed to the caller below
                 outcome.append(exc)
 
         # The whole registration, connect to last byte, ends at TOTAL_SECONDS: a socket timeout bounds one
-        # read, not a service that drips bytes. The worker is a daemon, so a stuck one never holds the process.
-        worker = threading.Thread(target=post, daemon=True)
+        # read, not a service that drips bytes. At the deadline the connection is shut down, which ends the
+        # worker's blocked read, and the worker is joined.
+        worker = threading.Thread(target=post, name="card-registration", daemon=True)
         worker.start()
         worker.join(TOTAL_SECONDS)
-        if not outcome:
+        if worker.is_alive():
+            for sock in sockets:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+            conn.close()
+            worker.join(5)
             raise ServiceError(f"{self._service.url}: no complete answer in {TOTAL_SECONDS} seconds")
+        conn.close()
         raw = outcome[0]
-        if isinstance(raw, (urllib.error.URLError, OSError)):
+        if isinstance(raw, ServiceError):
+            raise raw
+        if isinstance(raw, (http.client.HTTPException, OSError)):
             raise ServiceError(f"{self._service.url}: {raw}") from None
         if isinstance(raw, BaseException):
             raise raw

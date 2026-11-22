@@ -662,12 +662,22 @@ def loop_register_card(out_path: str, tick: int = 0) -> str:
         try:
             handle.write(json.dumps(result, sort_keys=True, indent=2).encode())
             handle.flush()
+            handle.close()
         except OSError as exc:
-            # The service already has the statement: never drop its only copy.
+            # The service already has the statement: never drop its only copy. Closing can fail too (a
+            # full disk fails the buffered flush again), so every way the write ends is this refusal.
+            try:
+                handle.close()
+            except OSError:
+                pass
             raise gn.Refused(f"the card was registered but {out} could not be written ({exc}); "
                              f"keep this statement: {result['statement']}") from None
     finally:
-        handle.close()
+        if not handle.closed:
+            try:
+                handle.close()
+            except OSError:
+                pass
     return _out(ok=True, tick=result["tick"], anchor=result["anchor"], service=service.name,
                 operator=service.operator, file=out_path)
 
