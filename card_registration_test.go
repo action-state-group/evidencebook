@@ -147,6 +147,10 @@ func TestBuildCardStatementMatchesVector(t *testing.T) {
 	assert.Equal(t, vector, attached)
 }
 
+func vectorEnv(c cardRegistrationCase) Envelope {
+	return Envelope{Responder: c.Holder, Anchor: Anchor{Digest: c.Anchor}}
+}
+
 func TestBuildCardStatementErrors(t *testing.T) {
 	signer := vectorHolderSigner(t)
 	anchor := hex.EncodeToString(make([]byte, 32))
@@ -233,7 +237,7 @@ func TestRegisterCard(t *testing.T) {
 
 	t.Run("registers and the card_registered check passes", func(t *testing.T) {
 		registrar := &stubRegistrar{receipt: receipts[0]}
-		statement, err := RegisterCard(t.Context(), signer, card, c.Anchor, registrar, policy)
+		statement, err := RegisterCard(t.Context(), signer, card, vectorEnv(c), registrar, policy)
 		require.NoError(t, err)
 		assert.Equal(t, [][]byte{bare}, registrar.posted, "the service is sent the statement with no Receipt")
 		assert.Equal(t, vector, statement)
@@ -243,18 +247,25 @@ func TestRegisterCard(t *testing.T) {
 		assert.Equal(t, "service-a", *report.Service)
 	})
 	t.Run("no service configured is an error, never a default", func(t *testing.T) {
-		_, err := RegisterCard(t.Context(), signer, card, c.Anchor, nil, policy)
+		_, err := RegisterCard(t.Context(), signer, card, vectorEnv(c), nil, policy)
 		require.ErrorIs(t, err, ErrInvalid)
 		assert.Contains(t, err.Error(), "no default")
 	})
+	t.Run("a signer that is not the responder posts nothing", func(t *testing.T) {
+		registrar := &stubRegistrar{receipt: receipts[0]}
+		other := Envelope{Responder: hex.EncodeToString(bytes32(1)), Anchor: Anchor{Digest: c.Anchor}}
+		_, err := RegisterCard(t.Context(), signer, card, other, registrar, policy)
+		require.ErrorIs(t, err, ErrInvalid)
+		assert.Empty(t, registrar.posted)
+	})
 	t.Run("a service that is down leaves nothing", func(t *testing.T) {
 		down := errors.New("service unavailable")
-		statement, err := RegisterCard(t.Context(), signer, card, c.Anchor, &stubRegistrar{err: down}, policy)
+		statement, err := RegisterCard(t.Context(), signer, card, vectorEnv(c), &stubRegistrar{err: down}, policy)
 		require.ErrorIs(t, err, down)
 		assert.Nil(t, statement)
 	})
 	t.Run("a Receipt that does not pass is refused", func(t *testing.T) {
-		statement, err := RegisterCard(t.Context(), signer, card, c.Anchor, &stubRegistrar{receipt: []byte("junk")}, policy)
+		statement, err := RegisterCard(t.Context(), signer, card, vectorEnv(c), &stubRegistrar{receipt: []byte("junk")}, policy)
 		require.ErrorIs(t, err, ErrInvalid)
 		assert.Nil(t, statement)
 	})
@@ -268,7 +279,6 @@ func TestRegisterCard(t *testing.T) {
 // (SH §13.3): a standard card's property set does not name it.
 func TestCardRegisteredIsNotACardProperty(t *testing.T) {
 	assert.False(t, slices.Contains(standardhistory.Properties, aacwitness.CardRegisteredProperty))
-	assert.False(t, slices.Contains(standardhistory.Properties, "anchor_inclusion"))
 }
 
 // TestCardRegisteredRecordedAnchorReceipt checks a statement and Receipt
@@ -299,4 +309,145 @@ func TestCardRegisteredRecordedAnchorReceipt(t *testing.T) {
 	// a pass: a service the relying party does not accept confers nothing.
 	report = CheckCardRegistered(mustHex(t, rec.Card), env, statements, aacwitness.AnchorWitnessPolicy{})
 	assert.NotEqual(t, aacwitness.AnchorPass, report.Status)
+}
+
+// testReceiptService issues RFC 9942 Receipts in the one form of IP1 §6.2.2
+// (a one-leaf tree, EdDSA) for the leaf entry of a card statement, so a
+// statement built over a real card can be registered without a network.
+type testReceiptService struct {
+	key  ed25519.PrivateKey
+	iat  int64
+	name string
+}
+
+func newTestReceiptService(seed byte) testReceiptService {
+	return testReceiptService{key: ed25519.NewKeyFromSeed(bytes32(seed)), iat: 1_795_000_000, name: "test-service"}
+}
+
+func bytes32(b byte) []byte {
+	out := make([]byte, 32)
+	for i := range out {
+		out[i] = b
+	}
+	return out
+}
+
+func (s testReceiptService) policy() aacwitness.AnchorWitnessPolicy {
+	spki := "302a300506032b6570032100" + hex.EncodeToString(s.key.Public().(ed25519.PublicKey))
+	return aacwitness.AnchorWitnessPolicy{Witnesses: []aacwitness.AnchorWitness{{Name: s.name, Keys: []string{spki}}}}
+}
+
+// receiptFor issues a Receipt over entry, which is what a service that logged
+// the statement's Sig_structure digest signs.
+func (s testReceiptService) receiptFor(t *testing.T, entry []byte) []byte {
+	t.Helper()
+	leaf := sha256.Sum256(append([]byte{0x00}, entry...))
+	protected, err := cardCBOR.Marshal(map[int64]any{1: -8, 395: 1, 15: map[int64]any{6: s.iat}})
+	require.NoError(t, err)
+	toSign, err := cardSigStructure(protected, leaf[:])
+	require.NoError(t, err)
+	proof, err := cardCBOR.Marshal([]any{1, 0, []any{}})
+	require.NoError(t, err)
+	receipt, err := cardCBOR.Marshal(cbor.RawTag{Number: coseSign1Tag, Content: mustMarshal([]any{
+		protected,
+		map[int64]any{396: map[int64]any{-1: [][]byte{proof}}},
+		nil,
+		ed25519.Sign(s.key, toSign),
+	})})
+	require.NoError(t, err)
+	return receipt
+}
+
+// RegisterStatement lets the service act as the host's CardStatementRegistrar.
+func (s testReceiptService) registrar(t *testing.T) CardStatementRegistrar {
+	return registrarFunc(func(_ context.Context, statement []byte) ([]byte, error) {
+		return s.receiptFor(t, statementEntry(t, statement)), nil
+	})
+}
+
+type registrarFunc func(context.Context, []byte) ([]byte, error)
+
+func (f registrarFunc) RegisterStatement(ctx context.Context, statement []byte) ([]byte, error) {
+	return f(ctx, statement)
+}
+
+// statementEntry is E of a card statement: SHA-256 over its Sig_structure.
+func statementEntry(t *testing.T, statement []byte) []byte {
+	t.Helper()
+	var tagged cbor.RawTag
+	require.NoError(t, cbor.Unmarshal(statement, &tagged))
+	var parsed coseSign1
+	require.NoError(t, cbor.Unmarshal(tagged.Content, &parsed))
+	sig, err := cardSigStructure(parsed.Protected, parsed.Payload)
+	require.NoError(t, err)
+	entry := sha256.Sum256(sig)
+	return entry[:]
+}
+
+// An existing passing Receipt must not let a bad one be kept: card_registered
+// passes when any Receipt does, so AttachCardReceipt checks the new one alone.
+func TestAttachCardReceiptChecksTheNewReceiptAlone(t *testing.T) {
+	signer := vectorHolderSigner(t)
+	service := newTestReceiptService(7)
+	anchor := hex.EncodeToString(bytes32(3))
+	card := []byte(`{"card":"x"}`)
+	statement, err := RegisterCard(t.Context(), signer, card, Envelope{Responder: KeyID(signer), Anchor: Anchor{Digest: anchor}}, service.registrar(t), service.policy())
+	require.NoError(t, err)
+
+	v := loadCardRegistrationVectors(t)
+	c := v.find(t, "pass-eddsa-time")
+	foreign, _ := splitReceipts(t, mustHex(t, c.Statements[0]))
+	for name, receipt := range map[string][]byte{
+		"junk":                             []byte("junk"),
+		"a Receipt over another entry":     service.receiptFor(t, bytes32(9)),
+		"a Receipt of an unlisted service": newTestReceiptService(8).receiptFor(t, statementEntry(t, statement)),
+		"a vector's Receipt":               foreign[0],
+	} {
+		_, err := AttachCardReceipt(card, KeyID(signer), anchor, statement, receipt, service.policy())
+		require.ErrorIs(t, err, ErrInvalid, name)
+	}
+	// A second good Receipt is kept beside the first.
+	two, err := AttachCardReceipt(card, KeyID(signer), anchor, statement, service.receiptFor(t, statementEntry(t, statement)), service.policy())
+	require.NoError(t, err)
+	assert.NotEqual(t, statement, two)
+}
+
+// Registering a card changes nothing about the card, the answer or what the
+// requester records: the card is built, answered and recorded exactly as
+// before, anchor_inclusion stays NOT_CHECKED, and card_registered is a
+// separate report over the card's octets (SH §13.3, §13.4).
+func TestRegisteringACardChangesNothingAboutTheAnswer(t *testing.T) {
+	ctx := context.Background()
+	responder := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	pin := anchorPin(t, responder)
+	requester := newFixture(t, "requester", 31).open(t)
+	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory, Coverage: Coverage{ExpectedPin: pin}}, "book-sh")
+	require.NoError(t, err)
+	reply := respondAs(t, responder, sent.Message(), "requester")
+	env := mustEnvelope(t, reply)
+	card := env.Artifact
+
+	service := newTestReceiptService(5)
+	before := CheckCardRegistered(card, env, nil, service.policy())
+	assert.Equal(t, aacwitness.AnchorNotPresent, before.Status)
+
+	statement, err := RegisterCard(ctx, responder.signer, card, env, service.registrar(t), service.policy())
+	require.NoError(t, err)
+	after := CheckCardRegistered(card, env, [][]byte{statement}, service.policy())
+	require.Equal(t, aacwitness.AnchorPass, after.Status)
+	require.NotNil(t, after.Service)
+	assert.Equal(t, "test-service", *after.Service)
+	require.NotNil(t, after.RegistrationTime)
+	assert.Equal(t, service.iat, *after.RegistrationTime)
+
+	// The requester records the same answer, and anchor_inclusion is still
+	// the one check it could not make.
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, reply.Message, responderKeys(responder, 9))
+	require.NoError(t, err)
+	assert.Contains(t, string(recorded.Header.Statement), `"not_checked":["anchor_inclusion"]`)
+	assert.Equal(t, env.Artifact, card, "the card's octets are untouched")
+
+	// A statement over this card does not pass for another card.
+	other := CheckCardRegistered([]byte(`{"another":"card"}`), env, [][]byte{statement}, service.policy())
+	assert.Equal(t, aacwitness.AnchorFail, other.Status)
 }

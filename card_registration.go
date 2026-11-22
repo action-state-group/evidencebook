@@ -134,11 +134,11 @@ func BuildCardStatement(ctx context.Context, signer Signer, card []byte, anchor 
 }
 
 // AttachCardReceipt adds receipt, the octets of one service Receipt, to
-// statement and returns the statement with it. It first checks the result
-// under the relying party's transparency policy with the card, the holder key
-// identifier and the anchor, and refuses a Receipt that does not make the
-// statement PASS, so only a Receipt of a listed service over this statement
-// is ever kept. A card statement holds 1 to 16 Receipts (SH §13.1); a
+// statement and returns the statement with it. It first checks the Receipt
+// alone, on the statement, under the relying party's transparency policy with
+// the card, the holder key identifier and the anchor, and refuses a Receipt
+// that does not make that statement PASS, so only a Receipt of a listed
+// service over this statement is ever kept, even beside Receipts that pass. A card statement holds 1 to 16 Receipts (SH §13.1); a
 // seventeenth is refused, and a holder registers a second statement instead.
 func AttachCardReceipt(card []byte, holder, anchor string, statement, receipt []byte, policy aacwitness.AnchorWitnessPolicy) ([]byte, error) {
 	if len(statement) > cardStatementMaxLen {
@@ -160,28 +160,47 @@ func AttachCardReceipt(card []byte, holder, anchor string, statement, receipt []
 	if len(parsed.Unprotected[coseLabelReceipts]) >= maxCardReceipts {
 		return nil, fmt.Errorf("%w: a card statement holds at most %d Receipts", ErrInvalid, maxCardReceipts)
 	}
-	parsed.Unprotected = map[int64][][]byte{coseLabelReceipts: append(parsed.Unprotected[coseLabelReceipts], receipt)}
+	existing := parsed.Unprotected[coseLabelReceipts]
+	// The new Receipt is checked alone: card_registered passes when any one
+	// Receipt does, so checking the whole statement would let a Receipt that
+	// passes hide one that does not.
+	parsed.Unprotected = map[int64][][]byte{coseLabelReceipts: {receipt}}
+	alone, err := encodeCardStatement(parsed)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if report := aacwitness.CheckCardStatement(card, holder, anchor, alone, policy); report.Status != aacwitness.AnchorPass {
+		return nil, fmt.Errorf("%w: the Receipt does not make the card statement pass (%s): %s", ErrInvalid, report.Status, report.Detail)
+	}
+	parsed.Unprotected = map[int64][][]byte{coseLabelReceipts: append(existing[:len(existing):len(existing)], receipt)}
 	candidate, err := encodeCardStatement(parsed)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	if report := aacwitness.CheckCardStatement(card, holder, anchor, candidate, policy); report.Status != aacwitness.AnchorPass {
-		return nil, fmt.Errorf("%w: the Receipt does not make the card statement pass (%s): %s", ErrInvalid, report.Status, report.Detail)
+	if len(candidate) > cardStatementMaxLen {
+		return nil, fmt.Errorf("%w: the card statement would be over %d octets", ErrInvalid, cardStatementMaxLen)
 	}
 	return candidate, nil
 }
 
-// RegisterCard builds the card statement for card (as of anchor), has the
-// host's registrar post it to the service the host chose, and returns the
-// statement with the service's Receipt attached, checked under policy. It is
-// a call of its own: a card is complete without it, and an error here (the
-// service is down, or its Receipt does not pass) leaves the card exactly as
-// it was. The host keeps the returned octets beside the card (SH §13.3).
-func RegisterCard(ctx context.Context, signer Signer, card []byte, anchor string, registrar CardStatementRegistrar, policy aacwitness.AnchorWitnessPolicy) ([]byte, error) {
+// RegisterCard builds the card statement for card, the artifact of env (the
+// answer it was derived in), has the host's registrar post it to the service
+// the host chose, and returns the statement with the service's Receipt
+// attached, checked under policy. The signer must be the envelope's
+// responder: a statement under another key would be logged for good, append
+// only, and then fail SH §13.3 step 2 at every reader, so it is refused
+// before anything is posted. It is a call of its own: a card is complete
+// without it, and an error here (the service is down, or its Receipt does not
+// pass) leaves the card exactly as it was. The host keeps the returned octets
+// beside the card (SH §13.3).
+func RegisterCard(ctx context.Context, signer Signer, card []byte, env Envelope, registrar CardStatementRegistrar, policy aacwitness.AnchorWitnessPolicy) ([]byte, error) {
 	if registrar == nil {
 		return nil, fmt.Errorf("%w: no transparency service is configured; registration is opt-in and has no default", ErrInvalid)
 	}
-	statement, err := BuildCardStatement(ctx, signer, card, anchor)
+	if signer == nil || KeyID(signer) != env.Responder {
+		return nil, fmt.Errorf("%w: the signer is not the envelope's responder, the holder key", ErrInvalid)
+	}
+	statement, err := BuildCardStatement(ctx, signer, card, env.Anchor.Digest)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +208,7 @@ func RegisterCard(ctx context.Context, signer Signer, card []byte, anchor string
 	if err != nil {
 		return nil, fmt.Errorf("card registration: %w", err)
 	}
-	return AttachCardReceipt(card, KeyID(signer), anchor, statement, receipt, policy)
+	return AttachCardReceipt(card, env.Responder, env.Anchor.Digest, statement, receipt, policy)
 }
 
 // CheckCardRegistered is card_registered (SH §13.3) over the card statements
