@@ -64,11 +64,11 @@ func v1NoteRefusal(kind, dealID string) error {
 	head := "deal " + dealID + " is an x-deal-v1 deal: `deal note --kind " + kind + "` "
 	switch kind {
 	case "act":
-		return cli.InputError(head + "has no x-deal-v1 form; an act will be recorded with `deal perform` or `deal settle` (not yet available: evidencebook#626)")
+		return cli.InputError(head + "has no x-deal-v1 form; an act is recorded with `deal perform`, and a payment will be with `deal settle` (not yet available: evidencebook#626)")
 	case "payment_received":
 		return cli.InputError(head + "has no x-deal-v1 form; it will be recorded with `deal settle` (not yet available: evidencebook#626)")
 	case "delivered":
-		return cli.InputError(head + "has no x-deal-v1 form; it will be recorded with `deal perform` (not yet available: evidencebook#626)")
+		return cli.InputError(head + "has no x-deal-v1 form; it is recorded with `deal perform`")
 	case noteKindDispute:
 		return cli.InputError(head + "has no x-deal-v1 form; a dispute is recorded with `deal dispute`")
 	case noteKindRuling:

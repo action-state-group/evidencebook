@@ -137,7 +137,7 @@ func TestTheAcceptorAgreesAndTheOffererReceivesItsProof(t *testing.T) {
 	buyerAgree := filepath.Join(t.TempDir(), "buyer-agreement.json")
 	admit := sealAdmit(t, "GO")
 	out := dealRun(t, "agree", h.offer, "--admit", admit, "--out", buyerAgree)
-	assert.Equal(t, false, out["stamp_proof"], "the offerer stamps with its first act")
+	assert.Equal(t, true, out["stamp_proof"], "the offerer stamps right after its agreement too (§13 item 7)")
 	own, err := xdealv1.VerifyBook(readPush(t, buyerAgree).Record)
 	require.NoError(t, err)
 	ownAg, _ := agreeOf(own.Record)
@@ -287,18 +287,32 @@ func TestTheFirstActWaitsForTheOtherSidesStampProof(t *testing.T) {
 	named, _ := agreeOf(sellerAgreement.Record)
 	assert.True(t, gate(named.ShelfLogID).Allowed, "a commitment naming the agreement's own shelf log keeps it open")
 
-	// The acceptor's own first act is gated on the offerer's proof too, which
-	// the offerer has not sent: refused.
+	// The acceptor's own first act is gated on the offerer's proof too: the
+	// offerer's agreement alone leaves it refused, and the stamp proof the
+	// offerer's agreement file carries opens it (xdealv1-write-path §13 item 7).
+	offererPush := readPush(t, buyerAgree)
+	require.NotNil(t, offererPush.StampProof, "the offerer stamps right after its agreement")
+	offererRecord := filepath.Join(t.TempDir(), "offerer-record.json")
+	data, err = json.Marshal(v1Push{Record: offererPush.Record})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(offererRecord, data, 0o600))
 	h.seller.act(t)
-	dealRun(t, "receive", buyerAgree)
-	ctx := context.WithValue(t.Context(), v1ReceiveKey{}, true)
-	s, err := openDealSession(ctx, dealProfile(t))
-	require.NoError(t, err)
-	defer func() { require.NoError(t, s.close()) }()
-	g, err = s.gateFirstAct(ctx, h.dealID, performAct(h.dealID), "")
-	require.NoError(t, err)
+	dealRun(t, "receive", offererRecord)
+	sellerGate := func() xdealv1.ActGate {
+		ctx := context.WithValue(t.Context(), v1ReceiveKey{}, true)
+		s, err := openDealSession(ctx, dealProfile(t))
+		require.NoError(t, err)
+		defer func() { require.NoError(t, s.close()) }()
+		g, err := s.gateFirstAct(ctx, h.dealID, performAct(h.dealID), "")
+		require.NoError(t, err)
+		return g
+	}
+	g = sellerGate()
 	assert.False(t, g.Allowed)
 	assert.Equal(t, xdealv1.GateNoProof, g.Reason)
+	got = dealRun(t, "receive", buyerAgree)
+	assert.Equal(t, "kept", got["stamp_proof"], "%v", got)
+	assert.True(t, sellerGate().Allowed, "the offerer's proof covers its agreement")
 }
 
 // The writer chains every later record of the deal book: seq, prev (the record
