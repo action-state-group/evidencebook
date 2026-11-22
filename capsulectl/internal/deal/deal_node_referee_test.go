@@ -211,6 +211,7 @@ func TestRefereeReceiveRefusalsAreSealedOnceWithTheirCode(t *testing.T) {
 		{"a party that is not an object", self, []byte(f.Doc), []byte(`{"buyer":[],"seller":{}}`), referee.CodeNotAResult},
 		{"a party with no action", self, []byte(f.Doc), f.parties(t, func(p map[string]map[string]json.RawMessage) { delete(p["buyer"], "action") }), referee.CodeNotAResult},
 		{"an action that is not text", self, []byte(f.Doc), setBuyer("action", `7`), referee.CodeNotAResult},
+		{"an action that is null", self, []byte(f.Doc), setBuyer("action", `null`), referee.CodeNotAResult},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

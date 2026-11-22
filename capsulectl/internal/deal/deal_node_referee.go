@@ -67,11 +67,11 @@ func readParties(raw []byte) (map[string]refereeParty, *referee.Error) {
 			return nil, notAResult("the delivery is not a Result with both parties' openings")
 		}
 		half, terms, action := members["half"], members["terms"], members["action"]
-		var actionText string
-		if len(half) == 0 || len(terms) == 0 || len(action) == 0 || json.Unmarshal(action, &actionText) != nil {
+		var actionText *string // a pointer: JSON null decodes to nil, and null is not text
+		if len(half) == 0 || len(terms) == 0 || len(action) == 0 || json.Unmarshal(action, &actionText) != nil || actionText == nil {
 			return nil, notAResult("the %s's half, action and terms are not all present", role)
 		}
-		parties[role] = refereeParty{Half: half, Action: actionText, Terms: terms}
+		parties[role] = refereeParty{Half: half, Action: *actionText, Terms: terms}
 	}
 	return parties, nil
 }
