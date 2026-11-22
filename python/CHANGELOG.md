@@ -380,3 +380,14 @@ The Go shelf's hooks from #484, #490, #517, #525, #526, #528 and #530, which the
 - `evidencebook.deal.v1`: a payment row's `relied_on` in the v1 report lists each settle leg the
   payment check read, as Go does (evidencebook#588); `build_report` refuses a payment result that
   does not begin with the offer's digest or names a record the books do not hold.
+
+- `evidencebook.deal`: the x-deal-v0 `claim_authority` record type (`TYPE_CLAIM_AUTHORITY`), the
+  seller's verdict on its agent's claim sealed apart from the claim; the reference checker
+  `check_profile.py` holds section 6 rule 12 on it (evidencebook#607). What each copy carries, and
+  the known limit on withheld records' places in the log, are in PROFILE.md section 6 rule 12.
+
+- `evidencebook.deal.v1`: `verify_report_bundle` checks a sealed v1 report with the x-deal-v1
+  bundle extension that carries it (`ReportBundle`, `ReportBook`), as Go's `VerifyReportBundle`
+  does, replaying `testdata/deal-v1/report-bundle/vectors.json`; `StatusProvider.report_with_book`
+  gives a report and its book pairs from one snapshot (evidencebook#598). The x-deal-v1
+  differential check compares the verifier with Go's.

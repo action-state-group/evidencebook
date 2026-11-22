@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.0.25 (2026-11-21)
+
+Every pull request merged since 0.0.24:
+
+- [#600](https://github.com/action-state-group/evidencebook/pull/600): feat(rust): x-deal-v1 verify_report_bundle and DealStatus::report_with_book (#598)
+- [#608](https://github.com/action-state-group/evidencebook/pull/608): feat(dealprofile): seal the seller's verdict on an agent claim apart from the claim (#607)
+
+- `deal`: the x-deal-v0 `claim_authority` record (`TYPE_CLAIM_AUTHORITY`, `ClaimAuthorityBody`,
+  `Body::ClaimAuthority`), the seller's verdict on its agent's claim sealed apart from the claim,
+  and the chain check's section 6 rule 12 on it, as Go's `CheckChain` does (evidencebook#607).
+- `deal::v1`: `verify_report_bundle` checks a sealed v1 report with the x-deal-v1 bundle extension
+  that carries it (`ReportBundle`, `ReportBook`), as Go's `VerifyReportBundle` does, replaying
+  `testdata/deal-v1/report-bundle/vectors.json`; `DealStatus::report_with_book` gives a report and
+  its book pairs from one snapshot (evidencebook#598). The x-deal-v1 differential check compares
+  the verifier with Go's.
+- `deal::v1`: the text check refuses a number that overflows a float64, as Go's `checkText` does
+  (`check`, `verify_sent`, `verify_book`, `verify_report` and the extension), at the
+  canonicalization stage; it read such a number before and failed later or not at all.
+
 ## 0.0.24 (2026-11-21)
 
 Every pull request merged since 0.0.23:

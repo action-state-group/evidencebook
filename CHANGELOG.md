@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## v0.24.0 (2026-11-21)
+
+Every pull request merged since v0.23.0:
+
+- [#608](https://github.com/action-state-group/evidencebook/pull/608): feat(dealprofile): seal the seller's verdict on an agent claim apart from the claim (#607)
+
+A minor version: x-deal-v0 gains a record type, `claim_authority`, and a claim shape without a verdict. A checker older than this release refuses a book holding one, so a producer that seals it (evidencebook-deal#244) needs this version. Books and copies made before still verify unchanged.
+
+### Added: the seller's verdict sealed apart from the claim (#607)
+
+- `dealprofile`: a seller's verdict on its agent's claim moves off the claim into a new x-deal-v0
+  record, `claim_authority` (`TypeClaimAuthority`, `ClaimAuthorityBody`), sealed right after it,
+  so a counterparty copy can carry the claim's words without saying whether the claim was
+  authorized (evidencebook#607). `CheckChain` holds section 6 rule 12 on
+  the new record, compares the check's `valid_until` with the claim's time, accepts a deal that
+  ends at a claim whose verdict is not sealed yet, keeps the claims sealed before (verdict on the
+  claim) valid, and refuses such a claim once the deal holds a `claim_authority`. PROFILE.md rule
+  12 says what each copy carries. A checker older than this refuses a book holding a
+  `claim_authority`. Copies already shared still carry the verdicts they carried. New fixtures in
+  `x-deal-v0/fixtures/positive-typed-seller-represent/` and `testdata/chain-vectors.json`.
+  Known limit, accepted by Steven: a copy never carries the verdict, but a withheld record keeps
+  its place in the log, so counting the withheld records before a claim can suggest, never prove,
+  that the claim had no check.
+
 ## v0.23.0 (2026-11-21)
 
 Every pull request merged since v0.22.0:
