@@ -1,7 +1,6 @@
 package deal
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -47,8 +46,39 @@ func notAResult(format string, args ...any) *referee.Error {
 	return &referee.Error{Code: referee.CodeNotAResult, Detail: fmt.Sprintf(format, args...)}
 }
 
+type refereeParty struct {
+	Half   json.RawMessage
+	Action string
+	Terms  json.RawMessage
+}
+
+// readParties reads the delivery's parties, loosely: a shape that is not both
+// parties' half, action and terms is a delivery that is no Result
+// (not_a_result), which is sealed, as the Python node seals it.
+func readParties(raw []byte) (map[string]refereeParty, *referee.Error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil || top == nil {
+		return nil, notAResult("the delivery is not a Result with both parties' openings")
+	}
+	parties := map[string]refereeParty{}
+	for _, role := range []string{"buyer", "seller"} {
+		var members map[string]json.RawMessage
+		if err := json.Unmarshal(top[role], &members); err != nil || members == nil {
+			return nil, notAResult("the delivery is not a Result with both parties' openings")
+		}
+		half, terms, action := members["half"], members["terms"], members["action"]
+		var actionText string
+		if len(half) == 0 || len(terms) == 0 || len(action) == 0 || json.Unmarshal(action, &actionText) != nil {
+			return nil, notAResult("the %s's half, action and terms are not all present", role)
+		}
+		parties[role] = refereeParty{Half: half, Action: actionText, Terms: terms}
+	}
+	return parties, nil
+}
+
 type halfInfo struct{ capsuleID, keyID string }
 
+// readHalf reads the ids of a half that BindOpenings has authenticated.
 func readHalf(raw json.RawMessage) (halfInfo, *referee.Error) {
 	var h map[string]any
 	if err := json.Unmarshal(raw, &h); err != nil {
@@ -63,21 +93,10 @@ func readHalf(raw json.RawMessage) (halfInfo, *referee.Error) {
 }
 
 // checkRefereeResult is the whole receive check, in the order the Python node
-// makes it, returning nil or the refusal.
+// makes it (_open_parties, then _check_dispute_result), returning nil or the
+// refusal and the judged halves' ids.
 func checkRefereeResult(selfKeyID string, capsule json.RawMessage, octets []byte, parties map[string]refereeParty) (*referee.Error, map[string]halfInfo) {
-	buyer, okB := parties["buyer"]
-	seller, okS := parties["seller"]
-	if !okB || !okS {
-		return notAResult("the delivery is not a Result with both parties' openings"), nil
-	}
-	infos := map[string]halfInfo{}
-	for role, p := range map[string]refereeParty{"buyer": buyer, "seller": seller} {
-		info, refusal := readHalf(p.Half)
-		if refusal != nil {
-			return refusal, nil
-		}
-		infos[role] = info
-	}
+	buyer, seller := parties["buyer"], parties["seller"]
 	bindErr := referee.BindOpenings(
 		referee.Party{Half: buyer.Half, Action: buyer.Action, Terms: buyer.Terms},
 		referee.Party{Half: seller.Half, Action: seller.Action, Terms: seller.Terms})
@@ -91,6 +110,15 @@ func checkRefereeResult(selfKeyID string, capsule json.RawMessage, octets []byte
 			return re, nil
 		}
 	}
+	// Both halves are authentic here, so their ids are present.
+	infos := map[string]halfInfo{}
+	for _, role := range []string{"buyer", "seller"} {
+		info, refusal := readHalf(parties[role].Half)
+		if refusal != nil {
+			return refusal, nil
+		}
+		infos[role] = info
+	}
 	if selfKeyID != infos["buyer"].keyID && selfKeyID != infos["seller"].keyID {
 		return &referee.Error{Code: "not_a_party", Detail: "this node's key sealed neither half the Result judges"}, nil
 	}
@@ -98,15 +126,12 @@ func checkRefereeResult(selfKeyID string, capsule json.RawMessage, octets []byte
 		return re, nil
 	}
 	// The octets are the referee's JCS bytes, so every party's book holds one digest.
-	var doc any
-	dec := json.NewDecoder(bytes.NewReader(octets))
-	dec.UseNumber()
-	if err := dec.Decode(&doc); err != nil {
-		return notAResult("the delivery is not a Result document"), nil
+	want, err := referee.ResultDigest(octets)
+	if err != nil {
+		return notAResult("the delivery is not a Result document: %v", err), nil
 	}
-	if jcs, err := canonical.JCS(doc); err != nil {
-		return notAResult("the delivery cannot be read: %v", err), nil
-	} else if !bytes.Equal(jcs, octets) {
+	sum := sha256.Sum256(octets)
+	if want != hex.EncodeToString(sum[:]) {
 		return &referee.Error{Code: referee.CodeResultMismatch, Detail: "the Result octets are not the referee's JCS bytes"}, nil
 	}
 	if err := referee.VerifyResult(capsule, octets, referee.Inputs{
@@ -119,30 +144,24 @@ func checkRefereeResult(selfKeyID string, capsule json.RawMessage, octets []byte
 	return nil, infos
 }
 
-type refereeParty struct {
-	Half   json.RawMessage `json:"half"`
-	Action string          `json:"action"`
-	Terms  json.RawMessage `json:"terms"`
-}
-
 // receiveRefereeResult runs the check and seals what follows from it into b,
 // each record once: a repeat of the same delivery finds its records and seals
-// nothing, so a retry after an interruption resumes.
-func receiveRefereeResult(ctx context.Context, b *evidencebook.Book, selfKeyID string, types refereeTypes, capsule json.RawMessage, octets []byte, parties map[string]refereeParty) (refereeOutcome, error) {
+// nothing, so a retry after an interruption resumes. rawParties is the
+// delivery's parties as the file holds them.
+func receiveRefereeResult(ctx context.Context, b *evidencebook.Book, selfKeyID string, types refereeTypes, capsule json.RawMessage, octets []byte, rawParties []byte) (refereeOutcome, error) {
 	sum := sha256.Sum256(octets)
 	digest := hex.EncodeToString(sum[:])
-	refusal, infos := checkRefereeResult(selfKeyID, capsule, octets, parties)
+	parties, refusal := readParties(rawParties)
+	var infos map[string]halfInfo
+	if refusal == nil {
+		refusal, infos = checkRefereeResult(selfKeyID, capsule, octets, parties)
+	}
 	if refusal != nil {
-		record, err := sealOnce(ctx, b, types.Refused, "result_digest", json.RawMessage(quote(digest)), map[string]any{"result_digest": digest, "code": refusal.Code}, digest, nil, nil, "code", refusal.Code)
+		record, err := sealOnce(ctx, b, types.Refused, map[string]string{"result_digest": digest, "code": refusal.Code}, digest, nil, nil)
 		if err != nil {
 			return refereeOutcome{}, err
 		}
 		return refereeOutcome{Refusal: refusal, Refused: record.Record}, nil
-	}
-	if existing, err := findRecord(ctx, b, types.Received, "result_digest", digest); err != nil {
-		return refereeOutcome{}, err
-	} else if existing != nil {
-		return refereeOutcome{Existing: true, Record: *existing}, nil
 	}
 	var held []string
 	ids := map[string]string{}
@@ -151,8 +170,8 @@ func receiveRefereeResult(ctx context.Context, b *evidencebook.Book, selfKeyID s
 		if err != nil {
 			return refereeOutcome{}, err
 		}
-		record, err := sealOnce(ctx, b, types.Half, "capsule_id", json.RawMessage(quote(infos[role].capsuleID)),
-			map[string]any{"role": role, "capsule_id": infos[role].capsuleID, "key_id": infos[role].keyID}, infos[role].capsuleID, nil, [][]byte{octetsOfHalf})
+		record, err := sealOnce(ctx, b, types.Half, map[string]string{"capsule_id": infos[role].capsuleID},
+			infos[role].capsuleID, nil, [][]byte{octetsOfHalf}, "role", role, "key_id", infos[role].keyID)
 		if err != nil {
 			return refereeOutcome{}, err
 		}
@@ -163,23 +182,18 @@ func receiveRefereeResult(ctx context.Context, b *evidencebook.Book, selfKeyID s
 	if err := json.Unmarshal(capsule, &c); err != nil {
 		return refereeOutcome{}, err
 	}
-	received, err := sealOnce(ctx, b, types.Received, "result_digest", json.RawMessage(quote(digest)), map[string]any{
-		"result_digest": digest, "result_capsule_id": c["capsule_id"], "referee": c["key_id"],
-		"buyer_half": ids["buyer"], "seller_half": ids["seller"],
-	}, digest, held, nil)
+	received, err := sealOnce(ctx, b, types.Received, map[string]string{"result_digest": digest}, digest, held, nil,
+		"result_capsule_id", fmt.Sprint(c["capsule_id"]), "referee", fmt.Sprint(c["key_id"]), "buyer_half", ids["buyer"], "seller_half", ids["seller"])
 	if err != nil {
 		return refereeOutcome{}, err
 	}
-	return refereeOutcome{Record: received.Record}, nil
+	return refereeOutcome{Existing: received.Existing, Record: received.Record}, nil
 }
 
-func quote(s string) string { b, _ := json.Marshal(s); return string(b) }
-
+// halfJCS is a half's canonical (JCS) bytes.
 func halfJCS(raw json.RawMessage) ([]byte, error) {
 	var v any
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
+	if err := decodeKeepingNumbers(raw, &v); err != nil {
 		return nil, err
 	}
 	return canonical.JCS(v)
@@ -190,41 +204,32 @@ type sealed struct {
 	Record   nodeRecord
 }
 
-// findRecord is the first record of recordType whose statement member holds value, or nil.
-func findRecord(ctx context.Context, b *evidencebook.Book, recordType, member, value string) (*nodeRecord, error) {
-	records, err := nodeRecordsOf(ctx, b, recordType)
-	if err != nil {
-		return nil, err
-	}
-	for _, r := range records {
-		if sameMember(r.Statement, member, json.RawMessage(quote(value))) {
-			return &r, nil
-		}
-	}
-	return nil, nil
-}
-
 // sealOnce appends a producer-claim record of recordType unless one already
-// holds the same value for onceMember (and, for each extra name/value pair, the
-// same members): a repeat seals nothing and returns the record it finds.
-func sealOnce(ctx context.Context, b *evidencebook.Book, recordType, onceMember string, onceValue json.RawMessage, statement map[string]any, subject string, cites []string, payloads [][]byte, extra ...string) (sealed, error) {
+// holds every member of match: a repeat seals nothing and returns the record it
+// finds. members are further statement members, as name/value string pairs, written
+// with the record.
+func sealOnce(ctx context.Context, b *evidencebook.Book, recordType string, match map[string]string, subject string, cites []string, payloads [][]byte, members ...string) (sealed, error) {
 	records, err := nodeRecordsOf(ctx, b, recordType)
 	if err != nil {
 		return sealed{}, err
 	}
 	for _, r := range records {
-		if !sameMember(r.Statement, onceMember, onceValue) {
-			continue
-		}
-		matches := true
-		for i := 0; i+1 < len(extra); i += 2 {
-			if !sameMember(r.Statement, extra[i], json.RawMessage(quote(extra[i+1]))) {
-				matches = false
+		all := true
+		for name, value := range match {
+			if !sameMember(r.Statement, name, json.RawMessage(quote(value))) {
+				all = false
 			}
 		}
-		if matches {
+		if all {
 			return sealed{Existing: true, Record: r}, nil
 		}
+	}
+	statement := map[string]any{}
+	for name, value := range match {
+		statement[name] = value
+	}
+	for i := 0; i+1 < len(members); i += 2 {
+		statement[members[i]] = members[i+1]
 	}
 	raw, err := json.Marshal(statement)
 	if err != nil {
@@ -240,6 +245,8 @@ func sealOnce(ctx context.Context, b *evidencebook.Book, recordType, onceMember 
 	}
 	return sealed{Record: nodeRecordOf(record)}, nil
 }
+
+func quote(s string) string { b, _ := json.Marshal(s); return string(b) }
 
 func dealNodeRefereeCommands() *cobra.Command {
 	group := &cobra.Command{Use: "referee", Short: "A referee's Result, received into a node book", Args: cli.NoArgs}
@@ -286,6 +293,9 @@ and the halves say; it does not show the referee's judgment is right.`,
 					return cli.InputError("record type " + t + " is one the evidencebook library writes itself; a node's types are its own names")
 				}
 			}
+			if types.Received == types.Refused || types.Received == types.Half || types.Refused == types.Half {
+				return cli.InputError("--received-type, --refused-type and --half-type must be three different names: a refusal must never be taken for a receipt")
+			}
 			resultPath, _ := c.Flags().GetString("result")
 			partiesPath, _ := c.Flags().GetString("parties")
 			if resultPath == "" || partiesPath == "" {
@@ -310,9 +320,8 @@ and the halves say; it does not show the referee's judgment is right.`,
 			if err != nil {
 				return err
 			}
-			var parties map[string]refereeParty
-			if err = json.Unmarshal(rawParties, &parties); err != nil {
-				return cli.InputError("--parties must be {\"buyer\": {...}, \"seller\": {...}}: " + err.Error())
+			if !json.Valid(rawParties) {
+				return cli.InputError("--parties is not JSON")
 			}
 			ctx := c.Context()
 			s, err := openDealSession(ctx, p)
@@ -325,7 +334,7 @@ and the halves say; it does not show the referee's judgment is right.`,
 				return err
 			}
 			selfKeyID := hex.EncodeToString(s.key.Public().(ed25519.PublicKey))
-			outcome, err := receiveRefereeResult(ctx, b, selfKeyID, types, container.Capsule, octets, parties)
+			outcome, err := receiveRefereeResult(ctx, b, selfKeyID, types, container.Capsule, octets, rawParties)
 			if err != nil {
 				return err
 			}
