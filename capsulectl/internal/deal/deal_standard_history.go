@@ -1,0 +1,773 @@
+package deal
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
+	"github.com/action-state-group/agent-action-capsule/go/witness"
+	"github.com/action-state-group/capsule-cli/cli"
+	emit "github.com/action-state-group/capsule-emit/go"
+	"github.com/action-state-group/capsule-emit/go/artifact"
+	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
+	"github.com/spf13/cobra"
+)
+
+// The History card (standard_history/1, agent-action-capsule's
+// spec/standard-history-v0.md, cited as SH) over this profile's shelf
+// (evidencebook-deal#85). The library derives the card and maps a deal's sealed
+// records to an SH §5.2 entry (evidencebook.DeriveStandardHistory,
+// dealprofile.StandardHistoryDeal, x-deal-v0 PROFILE.md §11); this file reads
+// the shelf under a cadence tick, keeps the holder's declaration and policy,
+// and writes the card's bundle.
+
+// Settings sit beside the deal database: the holder's declaration, and the
+// standard-history policy, which is never part of the share policy.
+const (
+	shSettingsFile = "standard-history.json"
+	shPolicyFile   = "standard-history-policy.json"
+	// shCutFile holds the full-precision time of the newest tick this profile
+	// cut. A tick's stored time is coarsened to the minute, so a declaration
+	// made earlier in that minute would read as later than the tick.
+	shCutFile = "standard-history-cut.json"
+	// shDefaultPolicy is the policy a holder who sets none has: the last 3
+	// months (9b frame 4, F4.8: "default 3").
+	shDefaultPolicy = `{"months":3}`
+	// shLogPrefix names the log a card's Capsule is sealed on: one log per
+	// card, as a History's.
+	shLogPrefix  = "standard-history/"
+	shActionID   = "capsulectl-deal-standard-history"
+	shExtension  = "x-standard-history/v0"
+	shSetupNotes = "This node answers History card requests from any requester you name to `deal respond`: the card counts your deals and carries no deal's content. Turn that off with `deal standard-history declare --holder-kind node --no-answer`."
+)
+
+// shSettings is the holder's declaration. HolderKind is explicit and set
+// once: a profile that never declared one has no card, never a default.
+// Answer is the holder's own choice of whether `deal respond` answers the
+// card; unset, a node answers (Steven u56) and a person does not.
+//
+// ChangedAt and PolicyChangedAt are when the declaration and the policy last
+// changed (the deal clock). SH §3 reads both at the anchor, so a card is only
+// built as of a tick cut after the latest change: an older anchor would carry
+// today's policy, not the one then in force.
+type shSettings struct {
+	HolderKind string `json:"holder_kind"`
+	Answer     *bool  `json:"answer,omitempty"`
+	// ShareRulesVerdict is the holder's own choice of whether a counterparty
+	// copy carries its rules_verdict record (evidencebook-deal#191); unset, a
+	// node shares it and a person does not, as the History card is answered.
+	ShareRulesVerdict *bool  `json:"share_rules_verdict,omitempty"`
+	ChangedAt         string `json:"changed_at,omitempty"`
+	PolicyChangedAt   string `json:"policy_changed_at,omitempty"`
+}
+
+// changedAfter is whether a declaration or policy change is not before t.
+func (s shSettings) changedAfter(t time.Time) bool {
+	for _, at := range []string{s.ChangedAt, s.PolicyChangedAt} {
+		if c, err := time.Parse(time.RFC3339Nano, at); err == nil && !c.Before(t) {
+			return true
+		}
+	}
+	return false
+}
+
+// shCut is when a tick was actually cut, on the deal clock.
+type shCut struct {
+	Tick uint64 `json:"tick"`
+	At   string `json:"at"`
+}
+
+// recordSHCut keeps the cut time of the tick just made (the newest only: a
+// card as of an older tick falls back to that tick's coarsened time).
+func recordSHCut(p cli.Profile, n uint64, at time.Time) error {
+	dir, err := shDir(p)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(shCut{Tick: n, At: at.UTC().Format(time.RFC3339Nano)})
+	if err != nil {
+		return err
+	}
+	return putSetting(filepath.Join(dir, shCutFile), raw)
+}
+
+// cutOf is when tick n was cut: the recorded full-precision time when it is
+// n's and lies in the minute the tick's time was coarsened to, otherwise the
+// tick's own (minute-coarsened) time, which can only make a
+// change look later than the cut, never earlier.
+func cutOf(p cli.Profile, n uint64, coarse time.Time) time.Time {
+	dir, err := shDir(p)
+	if err != nil {
+		return coarse
+	}
+	raw, err := readSetting(filepath.Join(dir, shCutFile))
+	if err != nil {
+		return coarse
+	}
+	var c shCut
+	if cli.DecodeJSON(raw, &c) != nil || c.Tick != n {
+		return coarse
+	}
+	if at, err := time.Parse(time.RFC3339Nano, c.At); err == nil && !at.Before(coarse) && at.Before(coarse.Add(time.Minute)) {
+		return at
+	}
+	return coarse
+}
+
+// answers is whether `deal respond` answers a card request.
+func (s shSettings) answers() bool {
+	if s.Answer != nil {
+		return *s.Answer
+	}
+	return s.HolderKind == "node"
+}
+
+// sharesRulesVerdict is whether a counterparty copy carries the holder's
+// rules verdict. A profile that never declared a holder kind shares nothing.
+func (s shSettings) sharesRulesVerdict() bool {
+	if s.ShareRulesVerdict != nil {
+		return *s.ShareRulesVerdict
+	}
+	return s.HolderKind == "node"
+}
+
+// errNoHolderKind is the refusal of a card with no declaration.
+func errNoHolderKind() error {
+	return cli.InputError("no holder kind is declared, so there is no History card: run `deal standard-history declare --holder-kind person|node`")
+}
+
+func shDir(p cli.Profile) (string, error) {
+	db, err := filepath.Abs(p.Connection.Database)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(db), nil
+}
+
+// readSHSettings reads the declaration; ok is false before the first
+// `declare`.
+func readSHSettings(p cli.Profile) (s shSettings, ok bool, err error) {
+	dir, err := shDir(p)
+	if err != nil {
+		return s, false, err
+	}
+	raw, err := readSetting(filepath.Join(dir, shSettingsFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return s, false, nil
+	}
+	if err != nil {
+		return s, false, err
+	}
+	if err = cli.DecodeJSON(raw, &s); err != nil || (s.HolderKind != "person" && s.HolderKind != "node") {
+		return shSettings{}, false, cli.InputError("the " + shSettingsFile + " beside the deal store is not a declaration (holder_kind person or node): declare again")
+	}
+	return s, true, nil
+}
+
+func writeSHSettings(p cli.Profile, s shSettings) error {
+	dir, err := shDir(p)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	return putSetting(filepath.Join(dir, shSettingsFile), raw)
+}
+
+// readSHPolicy reads the policy file's octets as held, and its window. The
+// card's policy digest is the SHA-256 of these octets (SH §5.1), so a
+// holder who never set one has the default octets, not a missing policy.
+func readSHPolicy(p cli.Profile) (standardhistory.Policy, error) {
+	dir, err := shDir(p)
+	if err != nil {
+		return standardhistory.Policy{}, err
+	}
+	raw, err := readSetting(filepath.Join(dir, shPolicyFile))
+	if errors.Is(err, os.ErrNotExist) {
+		raw = []byte(shDefaultPolicy)
+	} else if err != nil {
+		return standardhistory.Policy{}, err
+	}
+	var doc struct {
+		Months *int  `json:"months"`
+		All    *bool `json:"all"`
+	}
+	if err = cli.DecodeJSON(raw, &doc); err != nil {
+		return standardhistory.Policy{}, cli.InputError("the " + shPolicyFile + " beside the deal store is not JSON: " + err.Error())
+	}
+	var window standardhistory.Window
+	switch {
+	case doc.Months != nil && doc.All == nil && *doc.Months > 0:
+		window.Months = *doc.Months
+	case doc.All != nil && *doc.All && doc.Months == nil:
+		window.All = true
+	default:
+		return standardhistory.Policy{}, cli.InputError(`the ` + shPolicyFile + ` beside the deal store must be {"months": N} with N a positive whole number, or {"all": true}`)
+	}
+	sum := sha256.Sum256(raw)
+	return standardhistory.Policy{Digest: hex.EncodeToString(sum[:]), Window: window}, nil
+}
+
+// shPolicyOctets is the policy file's octets for a window.
+func shPolicyOctets(months int, all bool) ([]byte, error) {
+	doc := map[string]any{"months": months}
+	if all {
+		doc = map[string]any{"all": true}
+	}
+	return json.Marshal(doc)
+}
+
+// currentSHPolicyOctets are the octets in force: the file's, or the default's.
+func currentSHPolicyOctets(p cli.Profile) ([]byte, error) {
+	dir, err := shDir(p)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := readSetting(filepath.Join(dir, shPolicyFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return []byte(shDefaultPolicy), nil
+	}
+	return raw, err
+}
+
+func writeSHPolicy(p cli.Profile, months int, all bool) error {
+	dir, err := shDir(p)
+	if err != nil {
+		return err
+	}
+	raw, err := shPolicyOctets(months, all)
+	if err != nil {
+		return err
+	}
+	return putSetting(filepath.Join(dir, shPolicyFile), raw)
+}
+
+func dealStandardHistoryCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "standard-history", Short: "The History card: a count of your deals as of a checkpoint, that carries no deal's content (declare who holds it, set its window, write its bundle, staple it to a message)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
+	cmd.AddCommand(shDeclareCommand(), shPolicyCommand(), shCardCommand(), shStapleCommand())
+	return cmd
+}
+
+func shDeclareCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "declare", Short: "Declare once whether this profile is a person's or a node's, and whether `deal respond` answers a History card request", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		kind, _ := c.Flags().GetString("holder-kind")
+		answer, _ := c.Flags().GetBool("answer")
+		noAnswer, _ := c.Flags().GetBool("no-answer")
+		if kind != "person" && kind != "node" {
+			return cli.InputError("--holder-kind must be person or node: it is declared, never defaulted")
+		}
+		if answer && noAnswer {
+			return cli.InputError("--answer and --no-answer are opposites")
+		}
+		p, err := cli.Selected(c)
+		if err != nil {
+			return err
+		}
+		s := shSettings{HolderKind: kind}
+		if old, declared, err := readSHSettings(p); err != nil {
+			return err
+		} else if declared {
+			if old.HolderKind != kind {
+				return cli.InputError("this profile declared itself a " + old.HolderKind + ": the holder kind is set once, and a card's holder_kind does not change between anchors")
+			}
+			// Declaring again confirms; it never turns answering back on.
+			s = old
+		}
+		// Only the first declaration changes what a card says (its holder kind);
+		// whether `deal respond` answers is not in the card.
+		if s.ChangedAt == "" {
+			s.ChangedAt = cli.DealClock().UTC().Format(time.RFC3339Nano)
+		}
+		switch {
+		case answer:
+			s.Answer = new(bool)
+			*s.Answer = true
+		case noAnswer:
+			s.Answer = new(bool)
+		}
+		if err = writeSHSettings(p, s); err != nil {
+			return err
+		}
+		result := map[string]any{"holder_kind": kind, "answers": s.answers()}
+		if kind == "node" && s.answers() {
+			result["notice"] = shSetupNotes
+		}
+		return cli.Output(c, result)
+	}}
+	cmd.Flags().String("holder-kind", "", "person or node (required)")
+	cmd.Flags().Bool("answer", false, "Answer History card requests (a person's default is not to)")
+	cmd.Flags().Bool("no-answer", false, "Do not answer History card requests (a node's default is to)")
+	return cmd
+}
+
+func shPolicyCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "policy", Short: "Set the History card's window: the last N months (default 3) or all deals; with no flag, show it", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		months, _ := c.Flags().GetInt("months")
+		all, _ := c.Flags().GetBool("all")
+		p, err := cli.Selected(c)
+		if err != nil {
+			return err
+		}
+		switch {
+		case months != 0 && all:
+			return cli.InputError("--months and --all are opposites")
+		case months < 0:
+			return cli.InputError("--months is a positive whole number")
+		case months > 0 || all:
+			raw, err := shPolicyOctets(months, all)
+			if err != nil {
+				return err
+			}
+			// The same policy again changes nothing, so it makes no anchor stale.
+			if current, err := currentSHPolicyOctets(p); err != nil {
+				return err
+			} else if string(current) == string(raw) {
+				break
+			}
+			// The change time is written before the policy: a failure between
+			// the two leaves an anchor refused as stale, never a card that
+			// carries a policy newer than its anchor. A policy set before
+			// declaring is stamped by the declaration.
+			if old, declared, err := readSHSettings(p); err != nil {
+				return err
+			} else if declared {
+				old.PolicyChangedAt = cli.DealClock().UTC().Format(time.RFC3339Nano)
+				if err = writeSHSettings(p, old); err != nil {
+					return err
+				}
+			}
+			if err = writeSHPolicy(p, months, all); err != nil {
+				return err
+			}
+		}
+		policy, err := readSHPolicy(p)
+		if err != nil {
+			return err
+		}
+		return cli.Output(c, map[string]any{"window": policy.Window, "policy_digest": policy.Digest})
+	}}
+	cmd.Flags().Int("months", 0, "Count deals from the last N months")
+	cmd.Flags().Bool("all", false, "Count every deal (only when you choose it)")
+	return cmd
+}
+
+func shCardCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "card", Short: "Write the History card as a bundle `verify --bundle` checks and the History page draws, as of the newest checkpoint of the profile's cadence", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+		out, _ := c.Flags().GetString("out")
+		shared, _ := c.Flags().GetBool("shared")
+		derivation, _ := c.Flags().GetString("derivation")
+		if out == "" {
+			return cli.InputError("--out is required")
+		}
+		if derivation != standardhistory.Derivation && derivation != standardhistory.Derivation3 && derivation != standardhistory.Derivation4 {
+			return cli.InputError("--derivation is " + standardhistory.Derivation + " (the default, for x-deal-v0 deals), " + standardhistory.Derivation3 + " or " + standardhistory.Derivation4 + " (for x-deal-v1 deals; /4 counts a deal with no witnessed time)")
+		}
+		p, err := cli.Selected(c)
+		if err != nil {
+			return err
+		}
+		s, err := openDealSession(c.Context(), p)
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, s.close()) }()
+		b, err := s.standardHistoryBundle(c.Context(), shared, derivation)
+		if err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(b)
+		if err != nil {
+			return err
+		}
+		// Decoded as the verifier decodes the file, and checked before it is written.
+		value, err := cli.DecodeBundleJSON(encoded)
+		if err != nil {
+			return err
+		}
+		if err = cli.VerifyProducedBundle(value, true); err != nil {
+			return err
+		}
+		if err = cli.AtomicFile(out, encoded, false); err != nil {
+			return err
+		}
+		return cli.Output(c, map[string]any{"out": out, "shared": shared})
+	}}
+	cmd.Flags().String("out", "", "New file for the bundle")
+	cmd.Flags().String("derivation", standardhistory.Derivation, "standard_history/1 counts x-deal-v0 deals; standard_history/3 and /4 count x-deal-v1 deals from the shelf's book facts (/4 also counts a deal with no witnessed time)")
+	cmd.Flags().Bool("shared", false, "The copy to send: the card, its policy and its anchor, without the deal entries it counts (your own copy has them)")
+	return cmd
+}
+
+// standardHistoryCard is the card as of the newest finished tick of the
+// profile's cadence, in its JCS octets, with the block a receiver holds
+// beside it.
+type standardHistoryCard struct {
+	Card   []byte
+	Policy standardhistory.Policy
+	AsOf   standardhistory.AsOf
+	Deals  []standardhistory.Deal
+	// Tick is the cadence tick the card is as of: its checkpoint statement
+	// is the anchor's octets, and its receipt the witness's.
+	Tick evidencebook.CadenceTick
+	// Derivation is the card's token: standard_history/3 or /4 for a card counted
+	// from v1 deal books, empty for /1.
+	Derivation string
+}
+
+// errNoTick is a card with no checkpoint to be as of.
+var errNoTick = errors.New("no finished cadence tick")
+
+// errStaleAnchor is a card as of a tick cut before the declaration or the
+// policy last changed.
+var errStaleAnchor = errors.New("the declaration or policy changed after that checkpoint (run `deal tick`, then ask again)")
+
+// errLegacyDeal is a deal still on the old SQLite index, whose records the
+// card does not read: it is refused, never counted as no deal.
+var errLegacyDeal = fmt.Errorf("%w: a deal kept on the old index cannot be counted by the card", cli.ErrConflict)
+
+// shRefusal is a cause the card cannot be built for, said to the operator.
+// msg is written to be shown (SafeError prints it where it masks every other
+// error), so it holds no value from the records: at most a deal id. The cause
+// stays in the chain, so `errors.Is` on it still decides `deal respond`.
+func shRefusal(msg string, cause error) error {
+	return fmt.Errorf("%w: %w", cli.Hint(errCardNotBuilt, msg), cause)
+}
+
+// errCardNotBuilt is the class SafeError prints before a refusal's message.
+// It is no host class, so the exit code stays the cause's own (1, or 5 for a
+// legacy deal's ErrConflict).
+var errCardNotBuilt = errors.New("the History card was not built")
+
+// errCardNotYet is errCardNotBuilt for a card that can be built once the next
+// checkpoint is cut: it is the pending class (exit 4, said as "still waiting
+// on something"), not a fault of the device, and prints as errCardNotBuilt.
+type errCardNotYet struct{}
+
+func (errCardNotYet) Error() string        { return errCardNotBuilt.Error() }
+func (errCardNotYet) Is(target error) bool { return target == cli.ErrPending }
+
+// shNoTick is errNoTick said to the operator, wherever it is found.
+func shNoTick(cause error) error {
+	return shRefusal("no finished checkpoint yet: run `deal tick`, then ask again", cause)
+}
+
+// standardHistory derives the card as of tick n, or the newest finished tick when n is 0. The anchor is the profile's cadence
+// checkpoint, never one deal book's: it commits every book's checkpoint
+// and is the one a witness sees. A deal's records, and the Results on its
+// results book, are read only up to the extent that anchor commits for
+// their book, so the card is as of the anchor and the same whenever it is
+// derived (x-deal-v0 PROFILE.md §11).
+func (s *dealSession) standardHistory(ctx context.Context, tick uint64) (standardHistoryCard, error) {
+	settings, ok, err := readSHSettings(s.p)
+	if err != nil {
+		return standardHistoryCard{}, err
+	}
+	if !ok {
+		return standardHistoryCard{}, errNoHolderKind()
+	}
+	policy, err := readSHPolicy(s.p)
+	if err != nil {
+		return standardHistoryCard{}, err
+	}
+	cadence, _, err := s.cadenceOf(ctx)
+	if err != nil {
+		return standardHistoryCard{}, err
+	}
+	anchor, err := cadence.StandardHistoryAnchor(ctx, tick)
+	if errors.Is(err, evidencebook.ErrNotFound) {
+		return standardHistoryCard{}, shNoTick(fmt.Errorf("%w (run `deal tick` first)", errNoTick))
+	}
+	if err != nil {
+		return standardHistoryCard{}, err
+	}
+	if settings.changedAfter(cutOf(s.p, anchor.Tick.N, anchor.Tick.At)) {
+		msg := "the declaration or policy changed after the last checkpoint: run `deal tick`, then ask again"
+		if last, ok, err := cadence.Last(ctx); err == nil && ok && last.DueNext.After(cli.DealClock()) {
+			msg = "the declaration or policy changed after the last checkpoint. The next checkpoint can be cut at " + last.DueNext.UTC().Format(time.RFC3339) + "; run `deal tick` then and ask again"
+		}
+		return standardHistoryCard{}, fmt.Errorf("%w: %w", cli.Hint(errCardNotYet{}, msg), errStaleAnchor)
+	}
+	x := s.books()
+	var deals []standardhistory.Deal
+	for logID, extent := range anchor.Extents {
+		dealID, ok := dealOfBook(logID)
+		if !ok || !cli.DealIDPattern.MatchString(dealID) {
+			continue
+		}
+		in, err := x.historyInput(ctx, s.keys, dealID, extent, anchor.Extents[dealResultsLogID(dealID)])
+		if err != nil {
+			return standardHistoryCard{}, err
+		}
+		deal, isDeal, err := dealprofile.StandardHistoryDeal(in)
+		if errors.Is(err, dealprofile.ErrUnpriced) {
+			// No currency or amount: the cause says which, the operator needs only the deal.
+			return standardHistoryCard{}, shRefusal("deal "+dealID+" can't be counted yet: its agreed amount isn't recorded, or its currency is one the card can't count", err)
+		}
+		if err != nil {
+			return standardHistoryCard{}, err
+		}
+		if isDeal {
+			deal.Disputes = disputesOf(in.Records, deal.Role)
+			deals = append(deals, deal)
+		}
+	}
+	// The extents are a map: the deals are in deal id order, so the own copy
+	// is the same bytes whenever it is made.
+	slices.SortFunc(deals, func(a, b standardhistory.Deal) int { return strings.Compare(a.Deal, b.Deal) })
+	card, err := evidencebook.DeriveStandardHistory(settings.HolderKind, anchor.AsOf, policy, deals)
+	if err != nil {
+		return standardHistoryCard{}, err
+	}
+	return standardHistoryCard{Card: card, Policy: policy, AsOf: anchor.AsOf, Deals: deals, Tick: anchor.Tick}, nil
+}
+
+// historyInput is one deal's sealed records through the extent its book's
+// checkpoint under the anchor commits, and its Results through the
+// extent of its results book.
+func (x shelfDealIndex) historyInput(ctx context.Context, keys []ed25519.PublicKey, dealID string, extent, resultsExtent uint64) (dealprofile.HistoryInput, error) {
+	var in dealprofile.HistoryInput
+	if legacy, err := x.isLegacy(ctx, dealID); err != nil {
+		return in, err
+	} else if legacy {
+		return in, shRefusal("deal "+dealID+" was recorded in an older format and can't be counted", fmt.Errorf("deal %s: %w", dealID, errLegacyDeal))
+	}
+	records, err := x.records(ctx, dealID)
+	if err != nil {
+		return in, err
+	}
+	for _, r := range records {
+		if r.Seq > extent {
+			continue
+		}
+		payload, verified, err := x.sealedPayload(ctx, keys, r)
+		if err != nil {
+			return in, err
+		}
+		if !verified {
+			return in, fmt.Errorf("%w: record %s of %s does not verify under the profile's keys", cli.ErrConflict, r.RecordID, dealID)
+		}
+		at, err := time.Parse(time.RFC3339Nano, r.Header.CommittedAt)
+		if err != nil {
+			return in, fmt.Errorf("%w: record %s has no commit time", cli.ErrConflict, r.RecordID)
+		}
+		in.Records = append(in.Records, dealprofile.HistoryRecord{Payload: payload, CommittedAt: at})
+	}
+	if resultsExtent == 0 {
+		return in, nil
+	}
+	read, err := x.shelf.Records(ctx, dealResultsLogID(dealID))
+	if err != nil {
+		return in, err
+	}
+	for _, r := range read.Records {
+		if r.Seq > resultsExtent || r.Header.RecordType != evidencebook.RecordTypeEvidenceResult {
+			continue
+		}
+		payload, verified, err := x.sealedPayload(ctx, keys, r)
+		if err != nil {
+			return in, err
+		}
+		doc, err := termsPayloadResult(payload)
+		if err != nil {
+			// A Result the card cannot read counts as none.
+			in.Results = append(in.Results, dealprofile.HistoryResult{})
+			continue
+		}
+		raw, err := json.Marshal(doc)
+		if err != nil {
+			return in, err
+		}
+		in.Results = append(in.Results, dealprofile.HistoryResult{Result: raw, Verified: verified})
+		if verified && citesTwoHalves(raw) {
+			in.CounterpartyHalfVerified = true
+		}
+	}
+	return in, nil
+}
+
+// sealedPayload is a record's payload from its held Capsule, and whether
+// the Capsule verifies under the profile's keys with its payload bound.
+func (x shelfDealIndex) sealedPayload(ctx context.Context, keys []ed25519.PublicKey, r evidencebook.ShelfRecord) (payload []byte, verified bool, err error) {
+	held, err := x.held(ctx, r)
+	if err != nil {
+		return nil, false, err
+	}
+	return payloadOf(held, keys)
+}
+
+// standardHistoryBundle seals the card as a Capsule on a log of its own,
+// cuts that log's checkpoint, and assembles the Evidence Bundle around it,
+// disclosed, with the x-standard-history/v0 block a receiver holds beside
+// the card. The deal entries are in the holder's own copy only.
+func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool, derivation string) (_ map[string]interface{}, err error) {
+	if s.p.Checkpoint.Signing == (cli.Secret{}) {
+		return nil, cli.InputError("a History card needs the profile's checkpoint key (see `deal init`)")
+	}
+	var h standardHistoryCard
+	if derivation == standardhistory.Derivation3 || derivation == standardhistory.Derivation4 {
+		h, err = s.standardHistoryV1(ctx, 0, derivation)
+	} else {
+		h, err = s.standardHistory(ctx, 0)
+	}
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, 32)
+	if _, err = rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	request := cli.Request{
+		Version: "capsule-seal-request/v1",
+		Capsule: emit.Input{
+			ActionID: shActionID, ActionType: emit.ActionTypeFYI, Operator: s.p.Name, Developer: "capsulectl-deal",
+			Timestamp: cli.DealClock().UTC().Truncate(time.Second),
+		},
+		Payload: h.Card,
+	}
+	s.dp = s.p
+	s.dp.LogID = shLogPrefix + hex.EncodeToString(nonce)
+	if s.t, err = openOwnedTarget(ctx, s.dp, cli.UseInitialization, s); err != nil {
+		return nil, err
+	}
+	defer func() {
+		err = errors.Join(err, s.t.Close())
+		s.t = nil
+	}()
+	pub, err := s.t.Publish(ctx, request, s.key)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = cli.CutCheckpoint(ctx, localOnly(s.dp), s.t.Log); err != nil {
+		return nil, err
+	}
+	b, err := cli.AssembleBundle(ctx, s.t.Artifacts, s.t.Log, s.dp.LogID, cli.BundleOptions{
+		Root: pub.CapsuleID, Payloads: "all", WithDisclosure: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	block := map[string]interface{}{"policy": h.Policy, "as_of": shAsOfBlock(h)}
+	if !shared {
+		block["deals"] = h.Deals
+	}
+	extensions, _ := b["extensions"].(map[string]interface{})
+	if extensions == nil {
+		extensions = map[string]interface{}{}
+	}
+	extensions[shExtension] = block
+	b["extensions"] = extensions
+	return b, nil
+}
+
+// shAsOfBlock is the block's as_of: the card's three members, the anchor's
+// cll-checkpoint octets (lowercase hex; their SHA-256 is the anchor), and
+// the anchor's witness Receipts when the tick holds one (capsule-viewer
+// spec/presentation-contract-v0.md §3). A Receipt goes in only when its leaf
+// is the anchor digest (IP1 §6.2.2): that is a scrapi+https:// witness's,
+// which the cadence verified before it marked the tick witnessed. A cll
+// witness's leaf is SHA-256 of the checkpoint payload's digest, so its
+// receipt does not cover the anchor and is never written. Both copies carry
+// them: they name no deal.
+func shAsOfBlock(h standardHistoryCard) map[string]interface{} {
+	asOf := map[string]interface{}{
+		"anchor": h.AsOf.Anchor, "anchor_time": h.AsOf.AnchorTime, "first_checkpoint_time": h.AsOf.FirstCheckpointTime,
+		"checkpoint": hex.EncodeToString(h.Tick.Checkpoint),
+	}
+	if h.AsOf.CoverageStartTime != "" {
+		asOf["coverage_start_time"] = h.AsOf.CoverageStartTime
+	}
+	if r := h.Tick.Receipt; h.Tick.Witnessed && r != nil && witness.BindingOf(r.TSURL) == witness.BindingSCRAPI && r.EntryHash == h.AsOf.Anchor {
+		asOf["receipts"] = []string{hex.EncodeToString(r.Receipt)}
+	}
+	return asOf
+}
+
+// payloadOf is a held Capsule's payload, and whether the Capsule verifies
+// under keys with that payload bound.
+func payloadOf(held artifact.Record, keys []ed25519.PublicKey) ([]byte, bool, error) {
+	checks, err := artifact.Verify(held, keys)
+	if err != nil {
+		return nil, false, fmt.Errorf("%w: a held Capsule: %v", cli.ErrConflict, err)
+	}
+	for _, a := range held.Artifacts {
+		if a.Binding == artifact.PayloadDigest && a.State == artifact.Present {
+			return a.Content, checks["payload"].Verified, nil
+		}
+	}
+	return nil, false, fmt.Errorf("%w: a record's payload is not held", cli.ErrConflict)
+}
+
+// putSetting writes a settings file, creating it or replacing the one there
+// (AtomicFile admits either, never both).
+func putSetting(path string, raw []byte) error {
+	_, err := os.Lstat(path)
+	if err == nil {
+		if err = checkSettingFile(path); err != nil {
+			return err
+		}
+	}
+	return cli.AtomicFile(path, raw, err == nil)
+}
+
+// checkSettingFile refuses a settings file that is not an owner-protected
+// regular file, as a profile file is: these files decide what `deal respond`
+// discloses, so one another user can write, or a link, is not trusted.
+func checkSettingFile(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return cli.InputError(path + " is not an owner-protected regular file: run `chmod 600 " + path + "` (it must not be a link)")
+	}
+	return nil
+}
+
+// readSetting reads a settings file after checkSettingFile.
+func readSetting(path string) ([]byte, error) {
+	if err := checkSettingFile(path); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(path)
+}
+
+// citesTwoHalves is whether a Result names two distinct halves as evidence.
+// `deal terms-result` seals a Result only over the halves it admitted: the
+// holder's own final close and, once admitPeerHalf has checked it (signed
+// under the key the response pinned, a step of this deal, under the copy's
+// verified checkpoint, its final close), the counterparty's. Each claim's
+// evidence is the digest of every admitted half in the Result's period (DR
+// section 7.3; a period narrowed to one half cites one digest, and the card
+// then reads receipt_only, the safe side), so two distinct digests mean the counterparty's half was received and verified,
+// and the sealed Result on the results book is under the anchor.
+func citesTwoHalves(result []byte) bool {
+	var doc struct {
+		Claims []struct {
+			Evidence []evidencebook.EvidenceRef `json:"evidence"`
+		} `json:"claims"`
+	}
+	if json.Unmarshal(result, &doc) != nil {
+		return false
+	}
+	digests := map[string]bool{}
+	for _, c := range doc.Claims {
+		for _, e := range c.Evidence {
+			digests[e.Digest] = true
+		}
+	}
+	return len(digests) >= 2
+}

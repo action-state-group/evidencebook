@@ -1,0 +1,7 @@
+{
+  "emitted_by": "capsulectl deal compose --deal ID --member BUYER_REQUEST --member SELLER_REQUEST --output bundle.json, then capsulectl presentation build --bundle bundle.json --out page.html",
+  "kind": "bilateral-composed",
+  "page": "written",
+  "rerender": "presentation-build",
+  "verify": "VALID"
+}
