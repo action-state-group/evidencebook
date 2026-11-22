@@ -198,3 +198,19 @@ func TestDealNodeAppendOnceComparesNumbersAsValues(t *testing.T) {
 	require.Error(t, err, "an unsafe integer is refused, not matched to 2^53-1")
 	assert.Len(t, nodeRecords(t, "--book", "goose/node"), 2)
 }
+
+// A number is never the string that spells it, at any depth.
+func TestDealNodeAppendOnceDoesNotMatchANumberToItsText(t *testing.T) {
+	dealFixture(t)
+	seal := func(statement string) nodeAppendOut {
+		got, err := nodeAppend(t, "--book", "goose/node", "--type", "t", "--once", "id", "--statement", writeJSON(t, statement))
+		require.NoError(t, err)
+		return got
+	}
+	assert.False(t, seal(`{"id":1}`).Existing)
+	assert.False(t, seal(`{"id":"number:1"}`).Existing)
+	assert.False(t, seal(`{"id":"1"}`).Existing)
+	assert.False(t, seal(`{"id":[2]}`).Existing)
+	assert.False(t, seal(`{"id":["number:2"]}`).Existing)
+	assert.True(t, seal(`{"id":[2.0]}`).Existing)
+}

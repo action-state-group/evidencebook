@@ -257,15 +257,18 @@ func sameMember(statement json.RawMessage, name string, want json.RawMessage) bo
 	return reflect.DeepEqual(normalizeNumbers(a), normalizeNumbers(b))
 }
 
+// exactNumber is a number's exact value, a type of its own so no string is ever equal to one.
+type exactNumber string
+
 // normalizeNumbers rewrites every json.Number in v as its exact rational, so 1
 // and 1.0 are one value and no number is rounded through a float64.
 func normalizeNumbers(v any) any {
 	switch x := v.(type) {
 	case json.Number:
 		if r, ok := new(big.Rat).SetString(string(x)); ok {
-			return "number:" + r.RatString()
+			return exactNumber(r.RatString())
 		}
-		return "number:" + string(x)
+		return exactNumber(x)
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
