@@ -45,7 +45,17 @@ from the positional limit in section 7.
   2. the represent check's `representing.text_commitment`, which equals an authorized claim's
      `text_commitment` because the claim is sealed under the check's nonce (`PROFILE.md:742-745`),
      so equal values say "these words were checked";
-  3. the check, evaluation and approval records themselves, and the report lines naming them.
+  3. the check, evaluation and approval records themselves, and the report lines naming them;
+  4. the gate on ordered classes. A second probe (an ordered `condition` claim made with no check,
+     then an offer check) gives a disclosed offer evaluation carrying the finding
+     `required_representation_missing` right after the disclosed claim: the claim of an ordered
+     class was not authorized. The finding sits on the evaluation of every gated check (`offer`,
+     `commit`, `sign`, `pay`, `share_contact`, `share_credentials`, `PROFILE.md:758-763`), and an act
+     the gate holds is sealed unchecked with that rule (evidencebook-deal `internal/deal/deal.go:1724-1746`).
+- **The rule inputs read the verdict off the claim too.** On a seller's check, `deal_claims` gives
+  each earlier agent claim with "the claim's own `authority_basis`, exactly as sealed, or
+  `unchecked: true`" (`PROFILE.md:978-984`); evidencebook-deal builds it from the sealed claim
+  (`internal/deal/rules_checker.go:727-749`).
 - **x-deal-v1 is not affected.** Its claims are journal records only (`x-deal-v1/PROFILE.md:95`,
   `122`), and no shared copy carries the journal.
 
@@ -78,7 +88,7 @@ authorized its agent's claim, or that nothing did.
 | Body | exactly one of: `{authority_basis, evaluation_ref}` (as the claim carried them), or `{unchecked: true, rule}` (`rule` from rule 12's two lists). No other member. |
 | Refs | exactly one `about` → the claim it judges; with `authority_basis`, exactly one `authorized_by` → the evaluation (DO) or the user's approval (ASK), as on the claim today. No other ref. |
 | Block | no `counterparty`, no `channel`. |
-| Place | the record right after its claim (`seq` + 1). Every claim under rule 12 that carries no verdict of its own has exactly one, and no other record has one. |
+| Place | the record right after its claim (`seq` + 1). Every claim under rule 12 that carries no verdict of its own has exactly one, and no other record has one. A deal whose last record is such a claim is valid (its verdict is not sealed yet, and its class is not stated); any record after it must be its `claim_authority`. |
 
 **The claim** (`source_kind: agent`, under rule 12) then carries `text_commitment`,
 `source_kind`, `class` and optionally `source_ref_commitment`, and no `authority_basis`,
@@ -91,9 +101,22 @@ verdict.
 verdict names no `authorized_by`; an authorized one rests on a `represent` check whose class and
 commitments equal the claim's; the check is unused, within `valid_until`, under the task authority
 in force, with no detail change between the check and the claim (the claim's position, as now);
-an unordered class or `attributed_to: "user"` needs the user's own approval. An ordered class
-counts as stated (the `required_representation_missing` gate) from its authorized
-`claim_authority`. The failure messages stay the same where the rule is the same.
+an unordered class or `attributed_to: "user"` needs the user's own approval. The check's
+`valid_until` is compared with the claim's `at`, not the `claim_authority`'s: the words were said
+when the claim was sealed, and a `claim_authority` sealed later (below) must not expire a valid
+authorization or revive an expired one. An ordered class counts as stated (the
+`required_representation_missing` gate) from its authorized `claim_authority`, never from the
+claim. The failure messages stay the same where the rule is the same.
+
+**Sealing the pair.** A producer appends one record at a time, so it can stop between the claim and
+its `claim_authority`. Before it seals any other record of the deal, a producer seals the missing
+`claim_authority` of a trailing new-shape claim, with the verdict as of the claim: the check and
+approval the claim was noted with, the claim's `at` for `valid_until`. The verdict is computed when
+the claim is noted and depends on nothing sealed after it, so the recovery seals the same verdict.
+
+**The rule inputs.** `deal_claims` keeps its shape. For a claim in the new shape, its
+`authority_basis` or `unchecked: true` is read from the claim's `claim_authority`; for an old-shape
+claim, from the claim, as now.
 
 ## 5. The copy rules (normative, for producers)
 
@@ -111,6 +134,10 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
   - names a withheld record of these kinds by no kind, line or count of its own beyond its place in
     the log (as a shared copy already treats the counterparty-profile step), and carries no
     "unapproved" or "without authority" item;
+  - where the deal follows rule 12, withholds every `action-evaluation/v0` (the seller's check of
+    any step, whatever its disposition) and every outcome whose `status` is `unchecked_action`, so
+    the `required_representation_missing` finding (leak 4) is in no disclosed record. Withholding
+    only the records that carry that finding would single them out;
   - withholds every agent claim sealed in the old shape (carrying a verdict), all of them,
     authorized or not, and opens none of their words (there is no disclosed record to check them
     against). Section 6 says why.
@@ -135,8 +162,9 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
   checkpoints others hold. Old-shape claims exist only in seller deals opened since rule 12
   (capsule-cli#269). Their counterparty copies withhold every old-shape agent claim, uniformly, so
   the buyer loses the word check on those claims and learns nothing about which were authorized;
-  the page says the claims sealed before this change are not shown. New claims in the same deal
-  are shown. This is the only change a buyer sees on an existing deal.
+  the page says the claims sealed before this change are "not shared" (u615's word). New claims in
+  the same deal are shown. Copies already shared before this change still carry the verdict
+  fields and cannot be recalled; the CHANGELOG says so.
 
 ## 7. Known limit: positions
 
@@ -148,9 +176,9 @@ records are withheld too (messages, evidence and notes with private details), a 
 can follow any of them, and `not_approved`, `differs_from_check`, `changed_after_check`,
 `authority_changed` and `check_expired` claims follow a check exactly as authorized ones do.
 Closing it would mean hiding log positions, which every copy's verification rests on. The same
-residual was accepted for the adjudicator copy in evidencebook-deal#231's plan review. Sherlock2's
-door confirmation is asked whether this limit stays inside u615; if not, it goes to Steven as the
-brief says (the buyer loses the check, or sees the flag).
+residual was kept, stated, as a reviewer's finding in evidencebook-deal#231's plan review (not a
+ruling). Sherlock put this limit to Steven with the recommendation to accept it and state it in
+PROFILE.md and the CHANGELOG (section 9).
 
 ## 8. Work in evidencebook
 
@@ -158,11 +186,20 @@ brief says (the buyer loses the check, or sees the flag).
 |---|---|
 | Profile text | `PROFILE.md`: section 2 (24 types), section 3 table (`claim` row, new `claim_authority` row), section 4 (where openings travel), rule 12 (the verdict record, the copy rules, old and new shape) |
 | Schema | `x-deal-v0.schema.json`: the `claim_authority` record type, its body and refs; the claim's verdict members kept for the old shape |
-| Go | `names.go` (`TypeClaimAuthority`), `types.go` (`ClaimAuthorityBody`), `chain_steps.go` (the checks move to the new record; the old-shape branch stays; old shape after a `claim_authority` is refused), `record.go`/`schema.go` where types are listed |
-| Rust | `deal/names.rs`, `deal/types.rs`, `deal/chain.rs`, the same three changes |
-| Python | `check_profile.py` (the reference checker), `python/evidencebook/deal/names.py` and schema data; `x-deal-v1-types.json` only if `TestTypesTable` regenerates it |
-| Vectors | new fixtures run by all three (`fixtures_test.go`, `rust/evidencebook/tests/deal_chain.rs`, `python/tests/test_deal.py`): a positive seller thread with an ordered claim (DO), an approved claim (ASK) and an unchecked claim, each followed by its `claim_authority`; a positive deal holding old-shape claims; negatives: a new-shape claim with no `claim_authority` after it, a `claim_authority` not right after its claim, one `about` a non-agent claim, an unchecked one with `authorized_by`, two for one claim, verdict members on both the claim and its `claim_authority`, an old-shape claim after a `claim_authority`, and each rule 12 failure on the new record (wrong class, other words, used check, expired check). `expected-digests.txt` gains the new records. |
+| Go | `names.go` (`TypeClaimAuthority`), `types.go` (`ClaimAuthorityBody`), `record.go` (the body type), `chain.go` (the rel table: `claim_authority` takes `about` and `authorized_by`, `claim` keeps `authorized_by` for the old shape; `verifyBasis` takes the claim's `at`), `chain_steps.go` (one rule 12 routine called from the old-shape claim and from `claim_authority`; the trailing-claim and old-after-new rules) |
+| Rust | `deal/names.rs`, `deal/types.rs`, `deal/record.rs`, `deal/chain.rs` (rel table and the same routine), and the vendored schema `rust/evidencebook/schemas/vendor/x-deal-v0/` |
+| Python | `check_profile.py` (the reference checker, which also generates the fixtures and `testdata/chain-vectors.json`), `python/evidencebook/deal/names.py`, the vendored schema `python/evidencebook/deal/_data/schemas/`; `x-deal-v1-types.json` only if `TestTypesTable` regenerates it |
+| Vectors | new fixtures run by all three (`fixtures_test.go`, `rust/evidencebook/tests/deal_chain.rs`, `python/tests/test_deal.py`): a positive seller thread with an ordered claim (DO), an approved claim (ASK) and an unchecked claim, each followed by its `claim_authority`; a positive deal holding old-shape claims; a positive deal ending at a new-shape claim (verdict not sealed yet); a positive deal holding
+old-shape claims then new-shape ones; the gate: an authorized ordered `claim_authority` then a
+gated check that passes, and an unchecked one then a gated act that fails with the gate message;
+`valid_until`: a claim inside it whose `claim_authority` is sealed after it (valid) and a claim
+after it (refused, `check_expired`); negatives: a new-shape claim followed by any other record, a `claim_authority` not right after its claim, one `about` a non-agent claim, an unchecked one with `authorized_by`, two for one claim, verdict members on both the claim and its `claim_authority`, an old-shape claim after a `claim_authority`, and each rule 12 failure on the new record (wrong class, other words, used check, expired check). `expected-digests.txt` gains the new records. |
 | Changelog | `changelog.d/` fragments for Go, Rust and Python |
+
+**Copies and the checkers.** The chain checks take a whole book (the holder's own records: nothing
+in `dealprofile/chain*.go` reads a withheld record, and no production code runs them on a copy). A
+shared copy is verified as a bundle (disclosures and positions), so a withheld `claim_authority`
+or represent trail is never read as missing by them.
 
 **Not in evidencebook:** the copy rules of section 5 are carried out by evidencebook-deal#244
 (`dealWithholdRecords`, the report's step kinds, the old-shape withholding), and sealing the two
@@ -179,8 +216,13 @@ it runs the reference checker, the same tag's `check_profile.py`.
 - The copy rule that withholds the represent trail from the counterparty copy changes what the
   buyer sees (today it sees the seller's checks and approvals of representations). It is needed for
   u615 (section 2, leaks 2 and 3), and it is part of the same door confirmation.
-- The old-shape claims a buyer no longer sees on existing deals (section 6): part of the same
-  confirmation.
+- Sherlock confirmed the first two (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=0597a2f1589b5578d4ff3f083c97e4f482f480aa344bbcbf1cfaa1714bb8579e&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
+- Two calls are Steven's, each with Sherlock's recommendation "yes" (same thread): the old-shape
+  claims a buyer no longer sees on existing deals (section 6), since no format change can reach
+  them (Sherlock2's rule in 2abeb751), and the positional limit (section 7). Built as recommended;
+  the PR merges only after his reply.
+- Withholding every evaluation and every unchecked act's outcome from a rule 12 deal's
+  counterparty copy (leak 4) is put to Sherlock in the same thread.
 
 ## 10. Test plan
 
