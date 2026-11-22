@@ -3,7 +3,9 @@
 package deal
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -43,12 +45,24 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 			given = includeUnauthorizedFlag
 		}
 		return cli.InputError("--" + given + " chooses what an x-deal-v0 adjudicator's copy carries; it does not apply to an x-deal-v1 report")
-	case f.Changed("share") || f.Changed("to"):
-		return cli.InputError("a shared copy of an x-deal-v1 report is not served yet: deal report --out writes your own copy")
 	case f.Changed("bundle"):
 		return cli.InputError("the Evidence Bundle of an x-deal-v1 report is not served yet: deal report --out writes the sealed report")
-	case readOnly && f.Changed("out"):
-		return cli.InputError("--read-only writes nothing: it takes no --out")
+	case readOnly && (f.Changed("out") || f.Changed("share") || f.Changed("to")):
+		return cli.InputError("--read-only writes nothing: it takes no --out, --share or --to")
+	}
+	share, _ := f.GetString("share")
+	to, _ := f.GetString("to")
+	switch share {
+	case dealprofile.AudienceKeep:
+		if strings.TrimSpace(to) != "" {
+			return cli.InputError("--to names who a shared copy is for; use it with --share counterparty or adjudicator")
+		}
+	case dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator:
+		if !f.Changed("out") || strings.TrimSpace(to) == "" {
+			return cli.InputError("--share writes a copy for someone else: it needs --out FILE and --to (who it is for; for an adjudicator, the referee's name)")
+		}
+	default:
+		return cli.InputError("--share must be keep, counterparty or adjudicator")
 	}
 	return nil
 }
@@ -88,8 +102,18 @@ func runV1Report(c *cobra.Command) (err error) {
 	if err != nil {
 		return err
 	}
+	share, _ := c.Flags().GetString("share")
+	to, _ := c.Flags().GetString("to")
+	to = strings.TrimSpace(to)
+	shared := share != dealprofile.AudienceKeep
 	ctx := c.Context()
-	s, err := openDealStoreRead(ctx, p)
+	// A shared copy is a disclose act, put on record before the file is
+	// written, so it needs the writable store; your own copy reads only.
+	open := openDealStoreRead
+	if shared {
+		open = openDealSession
+	}
+	s, err := open(ctx, p)
 	if err != nil {
 		return err
 	}
@@ -110,7 +134,11 @@ func runV1Report(c *cobra.Command) (err error) {
 	}
 	at := cli.DealClock().UTC().Truncate(time.Second)
 	prov := &xdealv1.StatusProvider{Shelf: s.shelf, OfferPair: s.sentOfferPair}
-	snap, err := prov.ReportSnapshot(ctx, d.OwnLogID, xdealv1.ReportCopy{Audience: dealprofile.AudienceKeep, Nonce: hex.EncodeToString(nonce), AsOf: at.Format("2006-01-02T15:04:05Z")})
+	rc := xdealv1.ReportCopy{Audience: share, Nonce: hex.EncodeToString(nonce), AsOf: at.Format("2006-01-02T15:04:05Z")}
+	if share == dealprofile.AudienceAdjudicator {
+		rc.Referee = dealprofile.NormalizeReferee(to)
+	}
+	snap, err := prov.ReportSnapshot(ctx, d.OwnLogID, rc)
 	if err != nil {
 		return v1ReportError(dealID, p, err)
 	}
@@ -127,6 +155,24 @@ func runV1Report(c *cobra.Command) (err error) {
 		// the key that signed the deal's agreement, or refused.
 		if _, err := xdealv1.VerifyReport(pair, snap.Book.Agreement); err != nil {
 			return cli.InputError("the report sealed with this profile's signing key does not verify against your agreement (" + err.Error() + "): the key that signed the agreement must sign the report; run it with the profile you agreed with (--profile)")
+		}
+		if shared {
+			// The exact bytes are checked against the deal's own plain
+			// values (the person's words, the bounds, the counterparty's
+			// details, kept only on this device), then put on record, and
+			// only then written.
+			events, err := s.v1Events(ctx, dealID)
+			if err != nil {
+				return err
+			}
+			if err := v1ShareGate(pair, events, share); err != nil {
+				return err
+			}
+			rec, err := s.recordV1Share(ctx, p, dealID, share, to, pair)
+			if err != nil {
+				return err
+			}
+			result["share"] = rec
 		}
 		if err := writeNewFile(out, pair); err != nil {
 			return err
@@ -194,4 +240,28 @@ func writeNewFile(path string, data []byte) error {
 		return err
 	}
 	return cli.AtomicFile(path, append(append([]byte{}, data...), '\n'), false)
+}
+
+// v1ShareGate is dealShareGate, a seam for tests.
+var v1ShareGate = dealShareGate
+
+// recordV1Share puts a shared copy of an x-deal-v1 report on record before
+// it is written (persistShare): the deal, the audience, the recipient, the
+// digest of the exact bytes, the time and a fresh nonce. It carries none of
+// an x-deal-v0 copy's receipt-page fields: a report pair is no bundle page.
+func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, audience, recipient string, data []byte) (map[string]any, error) {
+	nonce := make([]byte, 32)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(data)
+	record := map[string]interface{}{
+		"profile": xdealv1.Profile, "kind": "report", "deal_id": dealID, "audience": audience, "recipient": recipient,
+		"receipt_sha256": hex.EncodeToString(sum[:]),
+		"at":             cli.DealClock().UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z"),
+		"nonce":          hex.EncodeToString(nonce),
+	}
+	s.dp = p
+	s.dp.LogID = cli.DealLogID(dealID)
+	return s.persistShare(ctx, dealID, record, audience, recipient)
 }

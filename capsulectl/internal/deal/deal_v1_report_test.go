@@ -4,7 +4,9 @@ package deal
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -63,7 +65,7 @@ func TestAV1ReportRefusals(t *testing.T) {
 	h.buyer.act(t)
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID), "the next cadence tick covers it")
-	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "not served yet", "--bundle": "not served yet",
+	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "needs --out FILE and --to", "--bundle": "not served yet",
 		"--email": "receipt email", "--from-bundle": "countersignatures", "--directory": "countersignatures"} {
 		arg := filepath.Join(t.TempDir(), "x")
 		if flag == "--share" {
@@ -126,4 +128,61 @@ func TestAV1ReportAfterADueTick(t *testing.T) {
 	assert.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	out := dealRun(t, "report", "--deal", h.dealID)
 	assert.NotNil(t, out["report"], "%v", out)
+}
+
+// A shared copy is put on record before it is written: the disclosure record
+// names the audience, the recipient and the digest of the exact file; an
+// adjudicator's copy names its referee. A failed share gate writes and
+// records nothing.
+func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	disclosures := func() []map[string]any {
+		var out []map[string]any
+		rows, err := v1DB(t).Query(`SELECT record FROM deal_disclosures WHERE deal_id=? ORDER BY n`, h.dealID)
+		require.NoError(t, err)
+		defer rows.Close()
+		for rows.Next() {
+			var raw string
+			require.NoError(t, rows.Scan(&raw))
+			var m map[string]any
+			require.NoError(t, json.Unmarshal([]byte(raw), &m))
+			out = append(out, m)
+		}
+		require.NoError(t, rows.Err())
+		return out
+	}
+	file := filepath.Join(t.TempDir(), "cp.json")
+	out := dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--out", file)
+	data, err := os.ReadFile(file)
+	require.NoError(t, err)
+	read, err := xdealv1.VerifyReport(data[:len(data)-1], readPush(t, h.buyerAgr).Record)
+	require.NoError(t, err)
+	assert.Equal(t, out["sealed_report"], read.CapsuleID)
+	recs := disclosures()
+	require.Len(t, recs, 1)
+	assert.Equal(t, "counterparty", recs[0]["audience"])
+	assert.Equal(t, "Kettle Shop", recs[0]["recipient"])
+	sum := sha256.Sum256(data[:len(data)-1])
+	assert.Equal(t, hex.EncodeToString(sum[:]), recs[0]["receipt_sha256"], "the digest of the exact copy written")
+
+	adj := filepath.Join(t.TempDir(), "adj.json")
+	got := dealRun(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", adj)
+	report := got["report"].(map[string]any)
+	assert.Equal(t, "Lamp Court", report["referee"])
+	assert.Len(t, disclosures(), 2)
+
+	v1ShareGate = func([]byte, []sealedEvent, string) error {
+		return cli.InputError("the copy would spell out a private value")
+	}
+	t.Cleanup(func() { v1ShareGate = dealShareGate })
+	refused := filepath.Join(t.TempDir(), "refused.json")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--out", refused), "private value")
+	_, err = os.Lstat(refused)
+	assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
+	assert.Len(t, disclosures(), 2, "nothing recorded")
+
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--out", filepath.Join(t.TempDir(), "x.json")), "needs --out FILE and --to")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--to", "Kettle Shop"), "use it with --share counterparty or adjudicator")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--read-only", "--share", "counterparty", "--to", "x"), "writes nothing")
 }
