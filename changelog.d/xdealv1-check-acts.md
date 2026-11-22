@@ -1,0 +1,3 @@
+### Added: `xdealv1.CheckActs`, which holds a settled amount to the checked one (#626)
+
+- x-deal-v1 §8 keeps x-deal-v0's authorization rules 5 and 6 unchanged. Rule 5 requires an act's amount and currency to equal the checked ones where both carry them. `CheckAuthorizations` reads records, and a settle's leg travels in its Capsule's `settlement` member, which the record does not carry, so it could not compare them. `CheckActs(journal, []ActIn{{Record, Settlement}})` reads the leg's `amount` (or a payee leg's `received`) and refuses an act whose value, asset code or scale differs from its check's `amount_minor` and `currency`, in the currency's minor units. `CheckAuthorizations` is unchanged and reads an act with no settlement member.

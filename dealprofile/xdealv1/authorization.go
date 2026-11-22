@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -63,6 +64,32 @@ type ActAuthorization struct {
 // none is not gated (a payer settle always cites one, which the schema
 // requires).
 func CheckAuthorizations(journal, acts []Record) ([]ActAuthorization, error) {
+	in := make([]ActIn, len(acts))
+	for i, a := range acts {
+		in[i] = ActIn{Record: a}
+	}
+	return CheckActs(journal, in)
+}
+
+// ActIn is an act as CheckActs reads it: its record and, for a settle, the
+// Capsule's settlement member the leg travels in (PROFILE §5), which the
+// record itself does not carry.
+type ActIn struct {
+	Record     Record
+	Settlement json.RawMessage
+}
+
+// CheckActs is CheckAuthorizations, and also x-deal-v0's rule 5 on the
+// amount (PROFILE §8 keeps rules 5 and 6 unchanged): where both the act's
+// settlement member and its check carry them, the settled amount and its
+// currency equal the checked amount_minor and currency, in the currency's
+// minor units (dealprofile.AssetScale). An act given no settlement member is
+// read as CheckAuthorizations reads it.
+func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
+	acts := make([]Record, len(ins))
+	for i, in := range ins {
+		acts[i] = in.Record
+	}
 	w, err := walkJournal(journal)
 	if err != nil {
 		return nil, err
@@ -92,6 +119,9 @@ func CheckAuthorizations(journal, acts []Record) ([]ActAuthorization, error) {
 			return nil, bad("its check serves another deal")
 		}
 		cb := w.check[ci]
+		if err := settledAmountMatches(ins[i].Settlement, cb); err != nil {
+			return nil, bad("%v", err)
+		}
 		if want := kind.checkAction(); cb.Action != want {
 			return nil, bad("the act differs from the one checked: a %s rests on a %q check, not %q", kind, want, cb.Action)
 		}
@@ -581,4 +611,44 @@ func nonceOf(r Record) string {
 		return b.Nonce
 	}
 	return ""
+}
+
+// settledAmountMatches is rule 5's amount condition for one act: the leg's
+// amount (a payer leg's amount, a payee leg's received) and its asset code
+// equal the check's amount_minor and currency, where both carry them.
+func settledAmountMatches(member json.RawMessage, cb *CheckBody) error {
+	if len(member) == 0 || cb == nil || cb.AmountMinor == nil {
+		return nil
+	}
+	var leg struct {
+		Amount   *legAmount `json:"amount"`
+		Received *legAmount `json:"received"`
+	}
+	if err := json.Unmarshal(member, &leg); err != nil {
+		return fmt.Errorf("its settlement member: %v", err)
+	}
+	a := leg.Amount
+	if a == nil {
+		a = leg.Received
+	}
+	if a == nil {
+		return nil
+	}
+	if cb.Currency != "" && a.AssetCode != cb.Currency {
+		return fmt.Errorf("the settled currency %s differs from the checked %s: a new check is needed", a.AssetCode, cb.Currency)
+	}
+	if scale, ok := dealprofile.AssetScale(a.AssetCode); ok && a.AssetScale != scale {
+		return fmt.Errorf("the settled amount's scale %d is not %s's %d", a.AssetScale, a.AssetCode, scale)
+	}
+	if a.Value != strconv.FormatInt(*cb.AmountMinor, 10) {
+		return fmt.Errorf("the settled amount %s differs from the checked %d: a new check is needed", a.Value, *cb.AmountMinor)
+	}
+	return nil
+}
+
+// legAmount is a settlement leg's amount (draft-mih-agent-settlement-records-01).
+type legAmount struct {
+	Value      string `json:"value"`
+	AssetCode  string `json:"assetCode"`
+	AssetScale int    `json:"assetScale"`
 }

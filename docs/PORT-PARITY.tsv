@@ -427,6 +427,7 @@ dealprofile/xdealv1	func	BookPair	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	BuildReport	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	BuildStatus	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Check	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CheckActs	x-deal-v1	frozen #710	frozen #710
 dealprofile/xdealv1	func	CheckAgreement	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckAuthorizations	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckDispute	x-deal-v1	ported	ported
@@ -464,6 +465,7 @@ dealprofile/xdealv1	func	VerifySent	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	ActAuthorization	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	ActGate	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	ActGateInput	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ActIn	x-deal-v1	frozen #710	frozen #710
 dealprofile/xdealv1	type	Adjudicator	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	AdmitBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	AgreeBody	x-deal-v1	ported	not needed
