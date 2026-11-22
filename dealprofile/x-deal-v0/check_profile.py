@@ -892,6 +892,69 @@ def listing_classes_selftest() -> list[str]:
     return fails
 
 
+def _under_rule12(views):
+    """A deal whose baseline intent says the user sells and orders representations."""
+    if not views or views[0]["x-deal-v0"].get("record_type") != "baseline":
+        return False
+    intent = (views[0].get("body") or {}).get("intent") or {}
+    return intent.get("party_role") == "seller" and intent.get("ordered_representations") is not None
+
+
+def _claim_carries_verdict(body):
+    return "authority_basis" in body or "unchecked" in body
+
+
+def counterparty_withheld(records):
+    """Section 6 rule 12 "Copies": the positions (0-based) of the records a
+    counterparty copy of a deal under rule 12 withholds, by kind and uniformly,
+    never by a record's result or answer (evidencebook#607, #613): every
+    claim_authority, represent or share check, evaluation, answer to a check
+    (user_approval, card_answer), unchecked_action outcome, telling (a
+    disclosure, or an action-record/v0 that discloses) and close, and every
+    agent claim carrying its own verdict. The rule 12 part only: other copy
+    rules withhold more. Empty for any other deal."""
+    views = [typed_view(r) if is_typed(r) else r for r in records]
+    if not _under_rule12(views):
+        return []
+    out = []
+    for i, v in enumerate(views):
+        b, body = v["x-deal-v0"], v.get("body") or {}
+        t = b.get("record_type")
+        if b.get("typed") == "action-approval/v0":
+            withheld = body.get("authority") in ("user_approval", "card_answer")
+        else:
+            withheld = (t in ("claim_authority", "verdict", "close", "disclosure")
+                        or (t == "check" and body.get("action") in ("represent", "share_contact", "share_credentials"))
+                        or (t == "action" and "disclosed" in body)
+                        or (t == "outcome" and body.get("status") == "unchecked_action")
+                        or (t == "claim" and body.get("source_kind") == "agent" and _claim_carries_verdict(body)))
+        if withheld:
+            out.append(i)
+    return out
+
+
+def required_disclosed(records):
+    """Section 6 rule 12 "Copies": the positions of the records a counterparty
+    copy of a deal under rule 12 discloses: every agent claim sealed in the new
+    shape (no verdict of its own), and the outcome each close refs when its
+    status is not unchecked_action. Empty for any other deal."""
+    views = [typed_view(r) if is_typed(r) else r for r in records]
+    if not _under_rule12(views):
+        return []
+    by_digest = {record_digest(r): i for i, r in enumerate(records)}
+    need = set()
+    for i, v in enumerate(views):
+        b, body = v["x-deal-v0"], v.get("body") or {}
+        if b.get("record_type") == "claim" and body.get("source_kind") == "agent" and not _claim_carries_verdict(body):
+            need.add(i)
+        elif b.get("record_type") == "close":
+            for r in b.get("refs") or []:
+                j = by_digest.get(r.get("digest")) if r.get("rel") == "outcome" else None
+                if j is not None and (views[j].get("body") or {}).get("status") != "unchecked_action":
+                    need.add(j)
+    return sorted(need)
+
+
 def check_chain(records):
     """Profile section 6 rules over one deal, in seq order. Raises StageError('chain')."""
     def fail(i, msg):
@@ -1644,6 +1707,18 @@ def run_fixtures() -> int:
         ok = commitment(x["nonce"], x["text"]) == x["commitment"]
         bad += not ok
         print(f"{'ok  ' if ok else 'FAIL'} commitment {x['label']:<18} {x['commitment'][:16]}…")
+    # Section 6 rule 12 "Copies": each case is a valid deal, and gives the
+    # positions this checker computes (Go's are checked against the same file).
+    for c in load(FIX / "counterparty-copy-vectors.json")["cases"]:
+        recs = c.get("records") or [load(p)["record"] for p in sorted((FIX / c["chain_dir"]).glob("*.json"))]
+        try:
+            check_chain(recs)
+            ok = counterparty_withheld(recs) == c["withheld"] and required_disclosed(recs) == c["required_disclosed"]
+        except StageError as e:
+            print(f"FAIL counterparty copy {c['name']}: {e}")
+            ok = False
+        bad += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} counterparty copy {c['name']}")
     for x in load(FIX / "commercial-bounds-vectors.json")["vectors"]:
         ok = jcs(x["document"]).decode("utf-8") == x["text"] and commitment(x["nonce"], x["text"]) == x["bounds_commitment"]
         bad += not ok
@@ -1853,6 +1928,172 @@ def clear_generated_selftest():
     for n in missing_hand_written(FIX / "negative"):
         fails.append(f"hand-written negative {n} is not in fixtures/negative")
     return fails
+
+
+def write_counterparty_copy_vectors(nonce, rules, materiality):
+    """fixtures/counterparty-copy-vectors.json: rule 12 "Copies" (section 6)
+    on twin seller deals that differ only in whether the ordered claim was
+    authorized, each with a gated offer, a gated share, a close and late
+    records confirming it; one closing on an unchecked outcome; and the
+    existing chains. Each case gives the positions a counterparty copy
+    withholds under rule 12 and the positions it must disclose."""
+    texts = {"cc-intent": "Sell my example bicycle; ask 1900. Tell them about the scratch.",
+             "cc-condition": "The frame has one small scratch by the seat",
+             "cc-accept": "Deal, 1850 works for me",
+             "cc-phone": "+1 512 555 0142",
+             "cc-hold": "not yet",
+             "cc-card": "Make the offer of 1850 to Example Buyer? Tell them about the condition first. [Hold]"}
+
+    def build(chain_id, authorized, close_on_unchecked=False):
+        records, clock = [], iter([f"2026-10-09T10:{m:02d}:00Z" for m in range(0, 60, 2)])
+
+        def tref(j):
+            return {"type": "record", "digest_alg": "SHA-256", "digest": record_digest(records[j])}
+
+        def typed(type_name, body, refs=None):
+            r = {"type": type_name, "canonicalization": "jcs", "chain_id": chain_id, "seq": len(records) + 1,
+                 "at": next(clock), "prev": tref(len(records) - 1), "chain_root": tref(0)}
+            if refs:
+                r["refs"] = [{"rel": rel, **tref(j)} for rel, j in refs]
+            r["body"] = body
+            records.append(r)
+            return len(records) - 1
+
+        def v0(rtype, body, refs=None):
+            r = {"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": chain_id,
+                               "record_type": rtype, "seq": len(records) + 1, "at": next(clock),
+                               "prev": _ref(record_digest(records[-1])), "baseline_ref": _ref(record_digest(records[0]))},
+                 "body": body}
+            if refs:
+                r["x-deal-v0"]["refs"] = [{"rel": rel, **_ref(record_digest(records[j]))} for rel, j in refs]
+            records.append(r)
+            return len(records) - 1
+
+        def com(label):
+            return commitment(nonce(f"{chain_id}/{label}"), texts[label])
+
+        records.append({"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": chain_id,
+                                      "record_type": "baseline", "seq": 1, "at": next(clock), "channel": "marketplace"},
+                        "body": {"deal_type": "purchase", "demo": True,
+                                 "intent": {"verbatim_commitment": com("cc-intent"), "party_role": "seller",
+                                            "allowed": ["offer", "commit", "share_contact"],
+                                            "ordered_representations": ["condition"]},
+                                 "terms": {"item": "example bicycle", "quantity": 1, "price_minor": 190000, "currency": "USD"},
+                                 "recourse": {"rail": "card", "refundable": False}}})
+        ta = typed("task-authority/v0", {"verbatim_commitment": com("cc-intent"), "allowed": ["offer", "commit", "share_contact"],
+                                         "ordered_representations": ["condition"]}, refs=[("source", 0)])
+
+        def evaluation(check, disposition, findings, options):
+            card = {"rendering_commitment": com("cc-card")} if disposition == "ASK" and check == oc_at[0] else {}
+            body = {**card, "disposition": disposition, "findings": findings, "options": options, "judge": {"kind": "rules"},
+                    "proposed_action_digest": record_digest(records[check]), "task_authority_ref": tref(ta),
+                    "ruleset_digest": record_digest(rules), "materiality": "predicate", "materiality_digest": materiality,
+                    "valid_until": "2026-10-09T11:30:00Z", "authority_basis": [{"type": "task_authority", "ref": tref(ta)}]}
+            return typed("action-evaluation/v0", body, refs=[("checks", check)])
+
+        oc_at = [None]
+        basis = [{"type": "task_authority", "ref": tref(ta)}]
+        gate = [{"question": "what", "rule": "required_representation_missing", "field": "condition"}]
+        if authorized:
+            rc = typed("proposed-action/v0", {"action": "represent",
+                                              "representing": {"class": "condition", "text_commitment": com("cc-condition")}})
+            rv = evaluation(rc, "DO", [], [])
+            claim = v0("claim", {"text_commitment": com("cc-condition"), "source_kind": "agent", "class": "condition"})
+            v0("claim_authority", {"authority_basis": basis, "evaluation_ref": tref(rv)},
+               refs=[("about", claim), ("authorized_by", rv)])
+        else:
+            claim = v0("claim", {"text_commitment": com("cc-condition"), "source_kind": "agent", "class": "condition"})
+            v0("claim_authority", {"unchecked": True, "rule": "no_check"}, refs=[("about", claim)])
+        offer = {"action": "offer", "amount_minor": 185000, "currency": "USD",
+                 "terms": {"item": "example bicycle", "quantity": 1, "price_minor": 185000}}
+        oc = typed("proposed-action/v0", dict(offer, no_proposal=True))
+        oc_at[0] = oc
+        act = {"action": "offer", "amount_minor": 185000, "currency": "USD"}
+        share = {"action": "share_contact", "disclosing": ["phone"], "disclosing_to": "counterparty",
+                 "recipient_role": "buyer", "repeat_disclosures": [], "recipient_told_before": False}
+        if authorized:
+            ov = evaluation(oc, "DO", [], [])
+            typed("action-record/v0", dict(act, evaluation_ref=tref(ov), authority_basis=basis), refs=[("authorized_by", ov)])
+            typed("action-approval/v0", {"authority": "counterparty_acceptance", "kind": "counterparty-acceptance-observation",
+                                         "proposed_action_ref": tref(oc), "observed_at": records[-1]["at"],
+                                         "content_commitment": com("cc-accept")})
+            sc = typed("proposed-action/v0", share)
+            sv = evaluation(sc, "DO", [], [])
+            typed("action-record/v0", {"action": "share_contact",
+                                       "disclosed": {"to": "counterparty", "fields": [{"class": "phone", "value_commitment": com("cc-phone")}]},
+                                       "evaluation_ref": tref(sv), "authority_basis": basis}, refs=[("authorized_by", sv)])
+            # A second share to the same buyer: its memory counts the phone as told.
+            evaluation(typed("proposed-action/v0", dict(share, repeat_disclosures=["phone"], recipient_told_before=True)), "DO", [], [])
+            end = typed("action-outcome/v0", {"status": "received", "outcome": "completed", "findings": [],
+                                              "actor": "agent", "reason": "completed"})
+            close = {"outcome": "completed", "unchecked_actions": 0, "actor": "agent", "reason": "completed"}
+        else:
+            ov = evaluation(oc, "ASK", gate, ["hold"])
+            typed("action-approval/v0", {"authority": "user_approval", "choice": "hold", "proceed": False,
+                                         "said_commitment": com("cc-hold"), "rendering_commitment": com("cc-card")},
+                  refs=[("approves", ov)])
+            unchecked = typed("action-outcome/v0", {"status": "unchecked_action", "outcome": "mismatch",
+                                                    "findings": [{"question": "asked", "rule": "required_representation_missing"}],
+                                                    "attempted": act})
+            if close_on_unchecked:
+                end = unchecked
+                close = {"outcome": "mismatch", "unchecked_actions": 1}
+            else:
+                sc = typed("proposed-action/v0", share)
+                evaluation(sc, "ASK", gate, ["hold"])
+                v0("disclosure", {"to": "counterparty", "authority": "none", "rule": "required_representation_missing",
+                                  "fields": [{"class": "phone", "value_commitment": com("cc-phone")}]})
+                # The same second share: a telling given without authority is not told.
+                evaluation(typed("proposed-action/v0", share), "ASK", gate, ["hold"])
+                diff = [{"question": "delivered", "rule": "delivered_differs", "field": "price_minor"}]
+                end = typed("action-outcome/v0", {"status": "received", "outcome": "mismatch", "findings": diff,
+                                                  "actor": "agent", "reason": "delivered_mismatch"})
+                close = {"outcome": "mismatch", "unchecked_actions": 1, "differences": diff,
+                         "actor": "agent", "reason": "delivered_mismatch"}
+        closed = v0("close", close, refs=[("outcome", end)])
+        v0("evidence", {"source": "listing_photo", "verified": True}, refs=[("about", claim), ("confirms", closed)])
+        v0("rules_verdict", {"word": "met", "pack_digest": "cd" * 32}, refs=[("confirms", closed)])
+        return records
+
+    cases = []
+
+    def case(name, story, records=None, chain_dir=None):
+        if chain_dir:
+            records = [load(p)["record"] for p in sorted((FIX / chain_dir).glob("*.json"))]
+        for r in records:
+            check_record(r)
+        check_chain(records)
+        c = {"name": name, "story": story}
+        if chain_dir:
+            c["chain_dir"] = chain_dir
+        else:
+            c["records"] = records
+        c["withheld"] = counterparty_withheld(records)
+        c["required_disclosed"] = required_disclosed(records)
+        cases.append(c)
+
+    case("authorized", "A seller's deal ordering a condition statement: the claim is checked (DO) and authorized, then "
+         "the gated offer is made (DO) and accepted, the buyer's phone shared (DO), the deal closed completed, and later "
+         "evidence and the rules verdict confirm the close.", build("deal-cc0a7e5b3f9d2164", True))
+    case("unauthorized", "Its twin: the condition claim is said with no check (unchecked), so the gate holds the offer "
+         "(ASK, required_representation_missing, the user's hold), the agent makes it anyway (an unchecked outcome) and "
+         "shares the phone anyway (a disclosure with authority none); the close compares the delivery with the opening "
+         "terms (mismatch). A copy of the two differs in its withheld records and the steps resting on the held offer "
+         "(the acceptance, the end outcome), never in a disclosed verdict.", build("deal-cc1b8f6c4a0e3275", False))
+    case("close-on-unchecked", "A close that refs an unchecked outcome directly, with no outcome of its own: both are "
+         "withheld, so the copy shows no end outcome (its report says \"not shared\").",
+         build("deal-cc2c9a7d5b1f4386", False, close_on_unchecked=True))
+    case("represent-shapes", "The existing seller chain with old-shape claims (verdict on the claim, withheld with no "
+         "words opened) and new-shape claims with their claim_authority.", chain_dir="positive-typed-seller-represent")
+    case("buyer-deal", "A buyer's deal: rule 12 does not apply, so nothing is withheld under it.", chain_dir="positive")
+    case("seller-before-rule-12", "A seller's deal with no ordered_representations: rule 12 does not apply.",
+         chain_dir="positive-typed-seller")
+    (FIX / "counterparty-copy-vectors.json").write_text(json.dumps({
+        "note": "Generated by check_profile.py --regen. Section 6 rule 12 \"Copies\": for each deal, the 0-based "
+                "positions of the records a counterparty copy withholds under rule 12 (other copy rules may withhold "
+                "more: a message with private details, a rules verdict the holder does not share) and the positions "
+                "it must disclose. Go's CounterpartyWithheld and RequiredDisclosed are checked against it.",
+        "cases": cases}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def regen():
@@ -2839,6 +3080,8 @@ def regen():
     r["body"].update({"unchecked": True, "rule": "no_check"})
     neg3("neg-claim-authority-both-forms", "body: {'authority_basis'", "A claim_authority carrying both authority_basis and unchecked.",
          rca, r, stage="schema")
+
+    write_counterparty_copy_vectors(nonce, rules, materiality)
 
     (FIX / "expected-digests.txt").write_text(
         "# SHA-256 over the RFC 8785 (JCS) bytes of each positive record (the `record` member only)\n"

@@ -166,3 +166,20 @@ fn edge_inputs() {
         "[chain] seq position 1: a record is a JSON object"
     );
 }
+
+/// The rule 12 copy vectors' own deals (evidencebook#613), which Go and the
+/// reference checker also check: each inline case is a valid deal.
+#[test]
+fn counterparty_copy_vector_chains() {
+    let v = read(&root().join("x-deal-v0/fixtures/counterparty-copy-vectors.json"));
+    let mut checked = 0;
+    for c in v["cases"].as_array().unwrap() {
+        let Some(records) = c["records"].as_array() else {
+            continue; // a chain directory the fixture tests already run
+        };
+        check_chain_values(records)
+            .unwrap_or_else(|e| panic!("{}: {e}", c["name"].as_str().unwrap()));
+        checked += 1;
+    }
+    assert!(checked >= 3, "the inline cases ran");
+}
