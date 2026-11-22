@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/capsule-cli/cli"
@@ -23,7 +24,6 @@ import (
 // transport (the Nostr mailbox, a relay, a pipe) is the host's; these verbs
 // read and write files and record.
 
-// nodeBookError words a book refusal as an input error, as `book` does.
 // nodeResponseResult is what `request --response` prints: the core's result plus
 // the answer's witness standing, as `book request --response` prints it.
 type nodeResponseResult struct {
@@ -31,6 +31,7 @@ type nodeResponseResult struct {
 	Witness string `json:"witness,omitempty"`
 }
 
+// nodeBookError words a book refusal as an input error, as `book` does.
 func nodeBookError(err error) error {
 	if errors.Is(err, evidencebook.ErrNotFound) {
 		return errors.Join(cli.InputError("not found in the node book: "+err.Error()), err)
@@ -187,21 +188,26 @@ func dealNodeRespondCommand() *cobra.Command {
 	})
 	cmd.Flags().String("book", "", "The node's book on the shelf (required)")
 	cmd.Short = "Answer a request addressed to a node book with a signed reply, and record it"
-	cmd.Long += `
+	cmd.Long = strings.TrimSpace(cmd.Long + `
 
 On a node book. This is the one verb that can answer a requester from a node's own book, so it says what it can show.
-To anyone, with no --requester: only the public questions (the checkpoints subject and the history_card/1
-derivation); everything else gets a signed refusal. With --requester and the default policy (history_segments
-"counterparties"): a record, exchange or correlation subject only when every record it names has that requester as
-its counterparty, and the records deal node append and seal-model-call seal name none, so by default they go to no
-one. With a policy that sets history_segments to "peers", any requester you authenticated can ask for any record of
-the node book by its subject: the answer carries the record's Capsule (its digests), not its payload originals, so a
-sealed prompt does not leave with it, and it does carry the record's statement members. The refusal and every
-answer are records of the node book.
+To anyone, with no --requester: only the public questions (the checkpoints and checkpoint_range subjects and the
+history_card/1 and history_card/2 derivations); everything else gets a signed refusal. A requester you authenticated
+with --requester is also answered the standard_history/1 derivation (counts only, the same for every requester) unless
+the policy turns it off. With the default policy (history_segments "counterparties") a record, exchange or
+correlation subject is served only when every record it names has that requester as its counterparty, and the
+records deal node append and seal-model-call seal name none, so by default they go to no one. With a policy that sets
+history_segments to "peers", any requester you authenticated can ask for any record of the node book by its subject:
+the answer carries the record's Capsule (its digests), not its payload originals, so a sealed prompt does not leave
+with it, and it does carry the record's statement members.
+
+Recording: an answer or a refusal to a well-formed request from a requester you authenticated is a signed record of the
+node book. A malformed request, or one with no --requester, is answered without a record, so the book is not an audit
+of every reply sent.
 
 --requester is for an identity your transport authenticated (a verified signature over the request, mutual TLS), never
 a name the requester declared: it is the only input to what that requester may be served. Pass --policy only to serve
-more, and only for a book whose records you would show that requester.`
+more, and only for a book whose records you would show that requester.`)
 	return cmd
 }
 

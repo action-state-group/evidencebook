@@ -181,8 +181,8 @@ func TestDealNodeReplyCheck(t *testing.T) {
 	other := flipLast(signer)
 	for name, args := range map[string][]string{
 		"another signer":           {"--reply", filepath.Join(dir, "artifact.json"), "--request-digest", digest, "--signer", other},
-		"another request":          {"--reply", filepath.Join(dir, "artifact.json"), "--request-digest", digest[:63] + "0", "--signer", signer},
-		"a refusal of another":     {"--reply", filepath.Join(dir, "refusal.json"), "--request-digest", digest[:63] + "0", "--signer", signer},
+		"another request":          {"--reply", filepath.Join(dir, "artifact.json"), "--request-digest", flipLast(digest), "--signer", signer},
+		"a refusal of another":     {"--reply", filepath.Join(dir, "refusal.json"), "--request-digest", flipLast(digest), "--signer", signer},
 		"a refusal by another":     {"--reply", filepath.Join(dir, "refusal.json"), "--request-digest", digest, "--signer", other},
 		"a reply that is no reply": {"--reply", writeJSON(t, `{"nope":1}`), "--request-digest", digest, "--signer", signer},
 	} {
@@ -194,8 +194,8 @@ func TestDealNodeReplyCheck(t *testing.T) {
 	require.ErrorIs(t, err, cli.ErrInput, "a mistyped signer is an input error, not signed: false")
 	assert.Equal(t, true, replyCheck(t, "--reply", filepath.Join(dir, "artifact.json"), "--request-digest", digest, "--signer", strings.ToUpper(signer))["signed"], "the signer key is read as a key, so its case does not matter")
 
-	// signed is the signature and the request only: a refusal with a reason that is not a registered token, and an
-	// envelope whose artifact no longer matches its signed digest, are both still signed by the responder.
+	// signed is the signature and the request only: a refusal with a reason that is not a registered token is still
+	// the responder's signed refusal.
 	key, err := cli.PrivateKey(p.Signing)
 	require.NoError(t, err)
 	edSigner, err := evidencebook.NewEd25519Signer(key)
