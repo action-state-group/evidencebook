@@ -25,6 +25,9 @@ type dealListRange struct {
 	Deals  []dealListing  `json:"deals"`
 	Totals dealListTotals `json:"totals"`
 	Told   []dealListTold `json:"disclosures"`
+	// V1Note says how x-deal-v1 deals are listed in a range (v1RangeNote),
+	// when any is.
+	V1Note string `json:"x_deal_v1_note,omitempty"`
 	// What the agent says about it: "Your receipts" (capsule-cli#345).
 	cli.Narration
 }

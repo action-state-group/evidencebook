@@ -1,0 +1,214 @@
+package deal
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
+)
+
+// v1 deal states in `deal list` (evidencebook#626 B4a). A deal with no own
+// book passes deal_versions.state through (offered, offer_received,
+// agreeing, declined, cancelled). A deal with a book is settled or open as
+// the report computed now says, or not_checkpointed while the book has
+// records after its last checkpoint, which a report rests on.
+const (
+	v1ListSettled         = "settled"
+	v1ListOpen            = "open"
+	v1ListNotCheckpointed = "not_checkpointed"
+)
+
+// v1Listings lists the store's x-deal-v1 deals, in deal id order. It
+// writes nothing: a deal's own book is opened only once the shelf shows it
+// holds records (Shelf.Open creates a missing log), and its status is a
+// keep copy computed now and never sealed.
+func (s *dealSession) v1Listings(ctx context.Context) ([]dealListing, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT deal_id FROM deal_versions WHERE version=? ORDER BY deal_id`, dealVersionV1)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	books, err := s.shelf.Books(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dealListing, 0, len(ids))
+	for _, id := range ids {
+		l, err := s.v1ListingOf(ctx, id, books)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, nil
+}
+
+// v1ListingOf is one x-deal-v1 deal's listing: v0's columns (kind deal; the
+// opened time is the offer's; the last record time is the own book's last
+// record's, or the offer's with no book; the log id is empty with no book),
+// and for --json the version, side, role, counterparty key and the offer's
+// summary. books are the shelf's logs that hold records.
+func (s *dealSession) v1ListingOf(ctx context.Context, dealID string, books []string) (dealListing, error) {
+	d, err := s.v1DealOf(ctx, dealID)
+	if err != nil {
+		return dealListing{}, err
+	}
+	l := dealListing{DealID: dealID, Kind: "deal", Version: dealVersionV1, Side: d.Side, Role: d.Role, CounterpartyKey: d.CounterpartyKey, State: d.State}
+	sum := dealSummary{What: dealNotRecorded, Counterparty: dealNotRecorded, Outcome: d.State}
+	if d.OfferDigest != "" {
+		offer, err := s.offerByDigest(ctx, d.OfferDigest)
+		if err != nil {
+			return dealListing{}, err
+		}
+		if offer != nil {
+			l.OpenedAt, l.LastRecordAt = offer.Record.Block.At, offer.Record.Block.At
+			l.times = append(l.times, offer.Record.Block.At)
+			if of, ok := proposeOf(offer.Record); ok {
+				v1OfferSummary(&l, &sum, of)
+			}
+		}
+	}
+	if d.OwnLogID != "" && slices.Contains(books, d.OwnLogID) {
+		book, err := s.ownBookV1(ctx, d)
+		if err != nil {
+			return dealListing{}, err
+		}
+		if len(book) > 0 {
+			l.LogID, l.LastRecordAt = d.OwnLogID, book[len(book)-1].Block.At
+			for _, r := range book {
+				l.times = append(l.times, r.Block.At)
+			}
+			state, asOf, err := s.v1ListState(ctx, d)
+			if err != nil {
+				return dealListing{}, err
+			}
+			l.State, sum.Outcome, l.OutcomeAsOf = state, state, asOf
+		}
+	}
+	sum.Text = v1SummaryText(sum, l.PaymentRows)
+	l.Summary = sum
+	return l, nil
+}
+
+// v1OfferSummary fills what the offer says: the item, and the amount only
+// when the offer has exactly one payment row (xdealv1.PaymentRows), else
+// payment_rows.
+func v1OfferSummary(l *dealListing, sum *dealSummary, of *xdealv1.ProposeBody) {
+	if item := strings.TrimSpace(of.Terms.Item); item != "" {
+		sum.What = item
+	}
+	rows := xdealv1.PaymentRows(of.TermsRows)
+	if len(rows) != 1 {
+		n := len(rows)
+		l.PaymentRows = &n
+		return
+	}
+	for _, row := range of.TermsRows.Rows {
+		if row.ID != rows[0] {
+			continue
+		}
+		var owed struct {
+			AmountMinor int64  `json:"amount_minor"`
+			Currency    string `json:"currency"`
+		}
+		if json.Unmarshal(row.Owed, &owed) == nil {
+			sum.Amount = &dealSummaryAmount{AmountMinor: owed.AmountMinor, Currency: strings.ToUpper(owed.Currency), Basis: "offer_terms"}
+		}
+	}
+}
+
+// v1ListState computes the deal's status now from a keep copy that is never
+// sealed: settled or open, or not_checkpointed while the book is past its
+// checkpoint. Any other failure (a corrupt book, a record timed after now)
+// is an error, never a state.
+func (s *dealSession) v1ListState(ctx context.Context, d *v1Deal) (string, string, error) {
+	nonce := make([]byte, 32)
+	if _, err := rand.Read(nonce); err != nil {
+		return "", "", err
+	}
+	asOf := cli.DealClock().UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z")
+	prov := &xdealv1.StatusProvider{Shelf: s.shelf, OfferPair: s.sentOfferPair}
+	snap, err := v1ListSnapshot(ctx, prov, d.OwnLogID, xdealv1.ReportCopy{Audience: dealprofile.AudienceKeep, Nonce: hex.EncodeToString(nonce), AsOf: asOf})
+	if err != nil {
+		if strings.Contains(err.Error(), "has no checkpoint at its size") {
+			return v1ListNotCheckpointed, asOf, nil
+		}
+		return "", "", err
+	}
+	if snap.Report.Settled {
+		return v1ListSettled, asOf, nil
+	}
+	return v1ListOpen, asOf, nil
+}
+
+// v1SummaryText is the summary's line, as dealSummaryOf writes v0's.
+func v1SummaryText(sum dealSummary, paymentRows *int) string {
+	amount := "amount not recorded"
+	switch {
+	case sum.Amount != nil:
+		amount = formatMoney(sum.Amount.AmountMinor, sum.Amount.Currency) + " in the offer"
+	case paymentRows != nil && *paymentRows > 1:
+		amount = "several payments in the offer"
+	}
+	return strings.Join([]string{sum.What, "counterparty by key only", amount, sum.Outcome}, " · ")
+}
+
+// v1InRange says whether any of an x-deal-v1 deal's records (its offer, its
+// own book) falls in the range, Since inclusive and Until exclusive.
+func v1InRange(l dealListing, b dealListBounds) bool {
+	for _, at := range l.times {
+		ts, err := time.Parse(time.RFC3339, at)
+		if err != nil {
+			continue
+		}
+		if (b.since.IsZero() || !ts.Before(b.since)) && (b.until.IsZero() || ts.Before(b.until)) {
+			return true
+		}
+	}
+	return false
+}
+
+// v1RangeNote is the range object's word on x-deal-v1 deals (#626 B4a): a
+// historical v1 report cannot be computed, so each is listed with its state
+// now, and none is in the totals or the disclosures yet (evidencebook#732).
+const v1RangeNote = "x-deal-v1 deals are listed when any of their records falls in the range, each with its state now (outcome_as_of); they are not yet counted in the totals or the disclosures"
+
+// mergeListings puts v1 listings among v0's, in deal id order.
+func mergeListings(v0, v1 []dealListing) []dealListing {
+	out := append(append([]dealListing{}, v0...), v1...)
+	slices.SortStableFunc(out, func(a, b dealListing) int { return strings.Compare(a.DealID, b.DealID) })
+	return out
+}
+
+// v1ListSnapshot is the provider's ReportSnapshot, a seam for tests.
+var v1ListSnapshot = func(ctx context.Context, p *xdealv1.StatusProvider, logID string, c xdealv1.ReportCopy) (xdealv1.ReportSnapshot, error) {
+	return p.ReportSnapshot(ctx, logID, c)
+}
