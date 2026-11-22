@@ -32,6 +32,13 @@ func TestASellersRepresentationsAreOpenedForTheBuyer(t *testing.T) {
 	for _, audience := range []string{cli.DealAudienceCounterparty, cli.DealAudienceAdjudicator} {
 		b, shared := sharedCopy(t, id, audience, "the buyer")
 		ext := dealReportOf(b)
+		if audience == cli.DealAudienceAdjudicator {
+			// By default an adjudicator's copy leaves the agent's claims to the
+			// seller's choice (evidencebook-deal#231).
+			assert.Nil(t, ext["representations"])
+			assert.NotContains(t, shared, "one small scratch")
+			continue
+		}
 		reps := ext["representations"].([]any)
 		require.Len(t, reps, 2, audience)
 		first := reps[0].(map[string]any)

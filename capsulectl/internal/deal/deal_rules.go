@@ -2227,6 +2227,10 @@ type dealReportItem struct {
 	// check's line without the user's and the agent's choices (the items go
 	// only to an adjudicator).
 	Shared string `json:"-"`
+	// AgentClaim marks an "unverified_claim" item whose claim the seller's agent
+	// made: a shared copy leaves it out where the seller has not chosen to show
+	// those claims (evidencebook-deal#231).
+	AgentClaim bool `json:"-"`
 	// SharedPack is what a counterparty's copy adds after its scrubbing when the check was
 	// judged under the party's pinned deal terms: the pack's shown fingerprint, which the
 	// scrubber would take for a code. Empty for any other pack.
@@ -2731,11 +2735,15 @@ func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealRepo
 		}
 		step := openID
 		for _, se := range events {
-			if se.Event.Kind == "claim" && se.Event.Claim.Text == c.Text {
+			// The claim itself, not only its words: two claims can say the
+			// same thing from different sources, and a shared copy decides
+			// what to show by the step this names.
+			if cl := se.Event.Claim; se.Event.Kind == "claim" && cl.Text == c.Text && cl.Source == c.Source && cl.SourceKind == c.SourceKind {
 				step = se.CapsuleID
 			}
 		}
 		counterparty("unverified_claim", "Unverified: "+c.Text+" (from "+strings.ReplaceAll(c.Source, "_", " ")+")", step)
+		r.Anomalies[len(r.Anomalies)-1].AgentClaim = c.SourceKind == "agent"
 	}
 	var merchant []dealReportItem
 	r.Merchant, merchant = merchantReport(events, state)
