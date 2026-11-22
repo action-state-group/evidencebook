@@ -1177,14 +1177,13 @@ func dealInitCommand() *cobra.Command {
 		}
 		if signingFrom != "" || checkpointFrom != "" {
 			var copied []string
-			for from, to := range map[string]string{signingFrom: "signing.seed", checkpointFrom: "checkpoint.seed"} {
-				if from != "" {
-					copied = append(copied, from+" -> "+filepath.Join(dir, to))
+			for _, kept := range []struct{ from, to string }{{signingFrom, "signing.seed"}, {checkpointFrom, "checkpoint.seed"}} {
+				if kept.from != "" {
+					copied = append(copied, kept.from+" -> "+filepath.Join(dir, kept.to))
 				}
 			}
-			slices.Sort(copied)
 			out["kept_keys"] = copied
-			out["kept_keys_note"] = "each kept key now exists in two places, the file it came from and the seed copied into --dir, re-encoded as a hex seed: the source stays yours to keep or delete, so secure or remove it once the earlier home is retired. A peer that knows the key id sees a new log from it that starts empty; stop the earlier home from sealing and checkpointing first, or it and this profile answer under one key over two different histories"
+			out["kept_keys_note"] = "each kept key now exists in the file it came from and again as a seed copied into --dir, re-encoded as a hex seed (listed above, one line per copy): the source stays yours to keep or delete, so secure or remove it once the earlier home is retired. A peer that knows the key id sees a new log from it that starts empty; stop the earlier home from sealing and checkpointing first, or it and this profile answer under one key over two different histories"
 		}
 		if witness == "scheduled" {
 			out["witness_endpoint"], out["witness_sees"] = cli.DealDefaultWitness, dealWitnessSees

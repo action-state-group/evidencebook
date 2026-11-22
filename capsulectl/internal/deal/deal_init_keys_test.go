@@ -174,7 +174,7 @@ func TestDealInitSaysWhereAKeptKeyNowLives(t *testing.T) {
 	out, dir, err := initWith(t, "--signing-key-file", file)
 	require.NoError(t, err)
 	assert.Equal(t, []any{file + " -> " + filepath.Join(dir, "signing.seed")}, out["kept_keys"])
-	assert.Contains(t, out["kept_keys_note"], "two places")
+	assert.Contains(t, out["kept_keys_note"], "again as a seed")
 	fresh, _, err := initWith(t)
 	require.NoError(t, err)
 	assert.NotContains(t, fresh, "kept_keys", "a profile with no kept key says nothing of the kind")
@@ -185,4 +185,14 @@ func mustHexBytes(t *testing.T, s string) []byte {
 	b, err := hex.DecodeString(s)
 	require.NoError(t, err)
 	return b
+}
+
+// One file that supplies both keys is two copies in --dir, and the result lists both.
+func TestDealInitListsEveryCopyWhenOneFileSuppliesBothKeys(t *testing.T) {
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	file := writeKeyFile(t, pemOf(t, key))
+	out, dir, err := initWith(t, "--signing-key-file", file, "--checkpoint-key-file", file)
+	require.NoError(t, err)
+	assert.Equal(t, []any{file + " -> " + filepath.Join(dir, "signing.seed"), file + " -> " + filepath.Join(dir, "checkpoint.seed")}, out["kept_keys"])
 }
