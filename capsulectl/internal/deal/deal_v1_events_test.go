@@ -15,7 +15,7 @@ import (
 // v1Opening is the first intent note's input on a v1 deal: v0's opening
 // without terms, which come from the offer.
 const (
-	v1Opening = `{"type": "purchase", "who": {"name": "Kettle Shop"}, "recourse": {"rail": "card", "refundable": true}}`
+	v1Opening = `{"type": "purchase", "who": {"name": "Kettle Shop", "domain": "kettle.example"}, "recourse": {"rail": "card", "refundable": true}}`
 	v1Intent  = `{"verbatim": "sell the kettle, at least 40 dollars"}`
 )
 

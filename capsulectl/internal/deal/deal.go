@@ -990,6 +990,15 @@ func runDeal(c *cobra.Command, needDeal bool, fn func(ctx context.Context, s *de
 			if c.Name() == "note" && kind == noteKindDispute {
 				return cli.InputError("deal " + dealID + " is an x-deal-v1 deal: its disputes are sealed with `deal dispute`, not `deal note --kind dispute`")
 			}
+			if c.Name() == "check" {
+				// A check on a v1 deal runs the v0 check code over the deal's
+				// local event list (xdealv1-write-path §12 items 5-6).
+				events, verr := s.useV1Check(ctx, dealID)
+				if verr != nil {
+					return verr
+				}
+				return fn(ctx, s, dealID, events)
+			}
 			if c.Name() != "note" {
 				return v1Refusal(c.Name(), dealID)
 			}
@@ -1812,6 +1821,13 @@ func dealNoteCommand() *cobra.Command {
 				if err := shownCardMatches(events, *ev.Approval); err != nil {
 					return err
 				}
+				// x-deal-v1: the library refuses a user or agent_card approval
+				// with no card_commitment, and reads the whole journal, so one
+				// sealed without its card would break every later
+				// authorization of the deal (xdealv1-write-path §12 item 7).
+				if s.v1 && (ev.Approval.Approver == "user" || ev.Approval.Approver == "agent_card") && ev.Approval.ShownCard == "" {
+					return cli.InputError("on an x-deal-v1 deal the user's answer to a check is bound to the card it was given on: pass that card with --shown-card")
+				}
 				// Typed records: the user's answer to an ask is bound to what
 				// they were shown, so it can stand as the check's approval.
 				if verdict, _, ok := checkedCard(events, ev.Approval.Check); ok && dealRecordSet(dealEvent{}, events) == recordsTyped &&
@@ -2259,6 +2275,13 @@ func dealCheckCommand() *cobra.Command {
 					return cli.InputError("--received goes with a check on a deal; a sale's post check runs no rules checker")
 				}
 				return s.checkPost(ctx, c, dealID, events, snap, staleAfter)
+			}
+			if s.v1 {
+				if err := v1PayCheckRef(snap); err != nil {
+					return err
+				}
+			} else if snap.PaymentRef != "" {
+				return cli.InputError("payment_ref goes on an x-deal-v1 deal's pay check; this deal is an x-deal-v0 deal")
 			}
 			if dealFinallyClosed(events) {
 				return cli.InputError("this deal is closed and takes no more steps; start a new one with `deal open`")
