@@ -141,7 +141,7 @@ func TestTheSellerMayShowAnAdjudicatorTheClaimsMadeWithoutAuthority(t *testing.T
 			assert.Equal(t, "agent", a["side"], "the page draws an anomaly only under its side")
 		}
 	}
-	assert.Equal(t, []string{"Shared by the seller's choice: every claim their agent made without their authority (2)"}, marks)
+	assert.Equal(t, []string{"Shared by the seller's choice: every claim their agent made, 2 of them without their authority"}, marks)
 
 	// The page of an opted-in copy draws them; the default page does not.
 	page := filepath.Join(t.TempDir(), "adj.html")
@@ -149,7 +149,7 @@ func TestTheSellerMayShowAnAdjudicatorTheClaimsMadeWithoutAuthority(t *testing.T
 	assert.Contains(t, string(mustRead(t, page)), "Shared by the seller's choice")
 	own := filepath.Join(t.TempDir(), "adj-default.html")
 	dealRun(t, "report", "--deal", id, "--share", "adjudicator", "--to", "the referee", "--html", own)
-	assert.Contains(t, string(mustRead(t, own)), "Not shared: whether the seller's agent made any claim")
+	assert.Contains(t, string(mustRead(t, own)), "Not shared: the claims the seller's agent made, and whether any was made")
 	assert.NotContains(t, string(mustRead(t, own)), "without your authority")
 
 	// Never for a counterparty, and never silently dropped: it is refused.

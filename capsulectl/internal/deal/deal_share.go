@@ -52,18 +52,21 @@ var dealWithheldFields = map[string][]string{
 
 // dealWithheldFieldsFor is dealWithheldFields for one deal: a seller's copy
 // names what it leaves out as the user's bounds (both of them are withheld
-// whatever the role; the role changes only the words).
-func dealWithheldFieldsFor(audience, role string) []string {
+// whatever the role; the role changes only the words). agentClaims says the
+// copy also leaves out the claims the seller's agent made (hidesAgentClaims),
+// so the sealed list says so wherever the "Not shared" marker does
+// (evidencebook-deal#231).
+func dealWithheldFieldsFor(audience, role string, agentClaims bool) []string {
 	fields := dealWithheldFields[audience]
-	if role != dealRoleSeller {
-		return fields
-	}
-	out := make([]string, 0, len(fields))
+	out := make([]string, 0, len(fields)+1)
 	for _, f := range fields {
-		if f == "your spending limit" {
+		if f == "your spending limit" && role == dealRoleSeller {
 			f = "the lowest price you will take, and any limit you set"
 		}
 		out = append(out, f)
+	}
+	if agentClaims {
+		out = append(out, "the claims your agent made (their words and whether you authorized them)")
 	}
 	return out
 }
@@ -971,9 +974,42 @@ func shareableMateriality(v interface{}) bool {
 	return false
 }
 
+// hidesAgentClaims says whether a shared copy leaves out the claims the
+// seller's agent made: an adjudicator's copy of a sale, unless the seller
+// chose to show them (--include-agent-claims). Steven's ruling
+// 2026-11-21 (evidencebook-deal#231): the sealed unchecked and rule fields
+// and the claim words are the seller's to show.
+func hidesAgentClaims(events []sealedEvent, audience string, includeUnchecked bool) bool {
+	return audience == cli.DealAudienceAdjudicator && !includeUnchecked && dealRole(events) == dealRoleSeller
+}
+
+// representTrail is the set of records that lead up to a represent check's
+// outcome: the snapshot naming what the agent is about to say, the check, and
+// the approval that answered it. Where the agent's claims are withheld they go
+// too: a claim with this trail before it was authorized and one without was
+// not, which is the fact the seller's choice covers.
+func representTrail(events []sealedEvent) map[string]bool {
+	trail := map[string]bool{}
+	for _, se := range events {
+		if ck := se.Event.Check; se.Event.Kind == "check" && ck != nil && ck.Action == representAction {
+			trail[se.CapsuleID], trail[ck.Snapshot] = true, true
+		}
+	}
+	for _, se := range events {
+		if ap := se.Event.Approval; se.Event.Kind == "approval" && ap != nil && trail[ap.Check] {
+			trail[se.CapsuleID] = true
+		}
+	}
+	return trail
+}
+
 // dealWithholdRecords picks the records a shared copy withholds.
 func (s *dealSession) dealWithholdRecords(events []sealedEvent, audience string, p dealPrivate) (map[string]bool, error) {
 	withhold := map[string]bool{}
+	var trail map[string]bool
+	if hidesAgentClaims(events, audience, s.shareUnchecked) {
+		trail = representTrail(events)
+	}
 	var before []sealedEvent
 	for _, se := range events {
 		payload, _, err := encodeDealRecord(se.Event, before, s.dkey)
@@ -986,6 +1022,12 @@ func (s *dealSession) dealWithholdRecords(events []sealedEvent, audience string,
 			return nil, err
 		}
 		if !dealRecordShareable(record, "", audience, p) {
+			withhold[se.CapsuleID] = true
+		}
+		// A seller's agent claims (authorized or not, so a withheld record does
+		// not say which were unchecked) are in an adjudicator's copy only by the
+		// seller's choice (evidencebook-deal#231).
+		if trail != nil && (se.Event.Kind == "claim" && se.Event.Claim.SourceKind == "agent" || trail[se.CapsuleID]) {
 			withhold[se.CapsuleID] = true
 		}
 		// TEMPORARY (evidencebook#462): the holder's own note is in no shared copy.
@@ -1194,24 +1236,33 @@ func dealShareAct(a dealAct, currency string) string {
 	return actText(a, currency)
 }
 
-// The adjudicator copy's line on the claims the seller's agent made without
-// the seller's authority: the seller's own choice either way.
+// The adjudicator copy's line on the claims the seller's agent made: their
+// words and whether any was made without the seller's authority are the
+// seller's own choice either way (evidencebook-deal#231).
 const (
-	unauthorizedClaimsNotShared  = "Not shared: whether the seller's agent made any claim without the seller's authority. The seller did not choose to show this on this page."
-	unauthorizedClaimsSharedNone = "Shared by the seller's choice: their agent made no claim without their authority"
-	unauthorizedClaimsShared     = "Shared by the seller's choice: every claim their agent made without their authority (%d)"
+	unauthorizedClaimsNotShared  = "Not shared: the claims the seller's agent made, and whether any was made without the seller's authority. The seller did not choose to show them in this copy."
+	unauthorizedClaimsSharedNone = "Shared by the seller's choice: every claim their agent made; none was made without their authority"
+	unauthorizedClaimsShared     = "Shared by the seller's choice: every claim their agent made, %d of them without their authority"
 )
 
 // dealShareExtension is the x-deal-v0 extension of a shared copy: the steps,
 // what the agent did and the anomalies, rewritten for the audience.
 func dealShareExtension(events []sealedEvent, report dealReport, audience string, p dealPrivate, withhold map[string]bool, includeUnchecked bool) map[string]interface{} {
 	currency := events[0].Event.Open.Terms.Currency
+	hideAgent := hidesAgentClaims(events, audience, includeUnchecked)
+	var trail map[string]bool
+	if hideAgent {
+		trail = representTrail(events)
+	}
 	byID := map[string]dealEvent{}
 	steps := make([]interface{}, len(events))
 	restated := restatedIntents(events)
 	for i, se := range events {
 		byID[se.CapsuleID] = se.Event
 		line := dealShareStepLine(se.Event, audience, p, currency)
+		if hideAgent && se.Event.Kind == "claim" && se.Event.Claim.SourceKind == "agent" {
+			line = "Claim recorded (withheld)"
+		}
 		if restated[se.CapsuleID] {
 			line = "You said again what you asked, unchanged (your words withheld)"
 		}
@@ -1227,6 +1278,9 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 			} else {
 				line = "The party's own rules check (their rules): " + strings.ReplaceAll(se.Event.RulesVerdict.Word, "_", " ")
 			}
+		}
+		if hideAgent && trail[se.CapsuleID] {
+			kind, line = dealSharePrivateKind, "A record kept for the user only (withheld)"
 		}
 		steps[i] = map[string]interface{}{
 			"n": cli.Integer(uint64(se.Event.N)), "kind": kind, "capsule_id": se.CapsuleID, "at": se.Event.At,
@@ -1250,6 +1304,14 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 			// seller chose to show an adjudicator (includeUnchecked), and then
 			// every such claim, never a few (evidencebook-deal#207).
 			if item.Kind == "unapproved_representation" && audience != cli.DealAudienceKeep && !(includeUnchecked && audience == cli.DealAudienceAdjudicator) {
+				continue
+			}
+			// An item read from the represent trail (a difference that quotes the
+			// words a represent check was about) says what the withheld claim said.
+			if hideAgent && slices.ContainsFunc(item.Steps, func(id string) bool { return trail[id] }) {
+				continue
+			}
+			if hideAgent && item.Kind == "unverified_claim" && item.AgentClaim {
 				continue
 			}
 			ids := make([]interface{}, len(item.Steps))
@@ -1397,7 +1459,7 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 		anomalyList = append([]interface{}{marker}, anomalyList...)
 	}
 	withheld := make([]interface{}, 0, len(dealWithheldFields[audience]))
-	for _, f := range dealWithheldFieldsFor(audience, dealRole(events)) {
+	for _, f := range dealWithheldFieldsFor(audience, dealRole(events), hideAgent) {
 		withheld = append(withheld, f)
 	}
 	ext := map[string]interface{}{
@@ -1412,7 +1474,7 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 	// scrubbed and still check); a counterparty's opens none.
 	clean := func(c dealClaim) bool { return p.clean(c.Text) && p.clean(c.Source) }
 	if audience == cli.DealAudienceAdjudicator {
-		ext["claim_openings"] = claimOpenings(events, clean)
+		ext["claim_openings"] = claimOpenings(events, func(c dealClaim) bool { return !(hideAgent && c.SourceKind == "agent") && clean(c) })
 		// The adjudicator can tie a sale's thread to its sale; the buyer
 		// cannot.
 		if opening := saleAuthorityOpening(events); opening != nil {
@@ -1422,7 +1484,7 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 	// Where the user sells, the agent's own claims are what it represented
 	// to the buyer: both shared copies open those whose words carry none of
 	// the user's private details. The buyer's copy opens no other claim.
-	if dealRole(events) == dealRoleSeller {
+	if dealRole(events) == dealRoleSeller && !hideAgent {
 		ext["representations"] = representations(events, clean)
 		if audience == cli.DealAudienceCounterparty {
 			ext["claim_openings"] = claimOpenings(events, func(c dealClaim) bool { return c.SourceKind == "agent" && clean(c) })
@@ -1485,7 +1547,7 @@ func (s *dealSession) recordShare(ctx context.Context, dealID string, b map[stri
 	}
 	sort.Slice(withheld, func(i, j int) bool { return withheld[i].(string) < withheld[j].(string) })
 	fields := make([]interface{}, 0, len(dealWithheldFields[audience]))
-	for _, f := range dealWithheldFieldsFor(audience, role) {
+	for _, f := range dealWithheldFieldsFor(audience, role, audience == cli.DealAudienceAdjudicator && !s.shareUnchecked && role == dealRoleSeller) {
 		fields = append(fields, f)
 	}
 	nonce := make([]byte, 32)

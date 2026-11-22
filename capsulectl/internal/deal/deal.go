@@ -2860,7 +2860,7 @@ func dealReportCommand() *cobra.Command {
 	cmd.Flags().String("bundle", "", "Write the deal's Evidence Bundle (for `capsulectl verify --bundle`) to this new file")
 	cmd.Flags().String("share", cli.DealAudienceKeep, "Who the page is for: keep (your own copy, nothing withheld), counterparty or adjudicator (a shared copy, put on record first)")
 	cmd.Flags().String("to", "", "With --share: who the shared copy is for, as sealed in the disclosure record")
-	cmd.Flags().Bool(includeUnauthorizedFlag, false, includeUnauthorizedHelp)
+	addIncludeAgentClaimsFlag(cmd.Flags())
 	cmd.Flags().String("from-bundle", "", "Render from this deal's earlier bundle file instead of a new one, with any countersignatures it carries (see `deal countersign`)")
 	cmd.Flags().String("directory", "", "With --from-bundle: the countersigner directory (HTTPS URL or file) that resolves who countersigned; default: the profile's countersign.directory")
 	cmd.Flags().Bool("read-only", false, "Read the deal as it stands and write nothing: no checkpoint cut, nothing sealed, no file (for a History built over many deals)")
