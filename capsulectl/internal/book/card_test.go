@@ -342,6 +342,9 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("stdout closed") }
 
+// The Sync in statementDest.commit (evidencebook#697) is not observable here: a test cannot crash the
+// machine between the write and the link, nor make a healthy temp file's Sync fail.
+//
 // A statement that cannot be saved after the post is not lost: the error says
 // the card is registered and carries the statement to keep beside the card.
 func TestCardRegisterKeepsTheStatementWhenSavingFails(t *testing.T) {
