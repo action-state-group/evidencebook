@@ -935,7 +935,7 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 	// §13 item 9): every act that cites a check, a payment counted from its
 	// send, a perform or a failed payment with no amount. Each is read as the
 	// v0-shaped record of its own deal's events, never the current deal's.
-	v1Acts, err := s.v1RulesActs(ctx)
+	v1Acts, v1Incomplete, err := s.v1RulesActs(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -946,7 +946,7 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 		acts = append(acts, act{va.deal, va.id, va.at, true})
 	}
 	sort.SliceStable(acts, func(i, j int) bool { return acts[i].at.After(acts[j].at) })
-	scope := &dealRulesHistory{Days: cli.RulesHistoryDays, Complete: true, Since: since}
+	scope := &dealRulesHistory{Days: cli.RulesHistoryDays, Complete: !v1Incomplete, Since: since}
 	if len(acts) > rulesHistoryMax {
 		acts, scope.Complete = acts[:rulesHistoryMax], false
 	}
@@ -1150,17 +1150,18 @@ type v1RulesAct struct {
 // reaches only the money fold. Each deal's book is reconciled first, so an
 // act a stopped run sealed but did not record locally (or a payment whose
 // failed leg did not yet clear its amount) is read as it stands.
-func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, error) {
+func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, bool, error) {
 	var exists int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='deal_v1_events'`).Scan(&exists); err != nil || exists == 0 {
-		return nil, err
+		return nil, false, err
 	}
-	if err := s.reconcileAllV1(ctx); err != nil {
-		return nil, err
+	incomplete, err := s.reconcileAllV1(ctx)
+	if err != nil {
+		return nil, false, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT deal_id, n, local FROM deal_v1_events WHERE kind='act' ORDER BY deal_id, n`)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 	var out []v1RulesAct
@@ -1168,7 +1169,7 @@ func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, error) {
 		var deal, local string
 		var n int64
 		if err := rows.Scan(&deal, &n, &local); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		var ev dealEvent
 		if json.Unmarshal([]byte(local), &ev) != nil || ev.Act == nil || ev.Act.AuthorizedBy == "" {
@@ -1180,40 +1181,46 @@ func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, error) {
 		}
 		out = append(out, v1RulesAct{deal, v1EventID(deal, n), at})
 	}
-	return out, rows.Err()
+	return out, incomplete, rows.Err()
 }
 
 // reconcileAllV1 reconciles every x-deal-v1 deal whose book this profile holds
-// (reconcileV1Acts).
-func (s *dealSession) reconcileAllV1(ctx context.Context) error {
+// (reconcileV1Acts). A deal that cannot be reconciled does not stop the
+// others or the check that asked: the history is then marked incomplete, as
+// for a record it cannot read.
+func (s *dealSession) reconcileAllV1(ctx context.Context) (incomplete bool, err error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT deal_id FROM deal_v1 WHERE own_agreement_id != ''`)
 	if err != nil {
-		return err
+		return false, err
 	}
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return err
+			return false, err
 		}
 		ids = append(ids, id)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return err
+		return false, err
 	}
 	for _, id := range ids {
 		d, err := s.v1DealOf(ctx, id)
-		if err != nil || d == nil {
-			return err
+		if err != nil {
+			incomplete = true
+			continue
+		}
+		if d == nil {
+			continue
 		}
 		book, err := s.ownBookV1(ctx, d)
-		if err != nil {
-			return err
+		if err == nil {
+			_, err = s.reconcileV1Acts(ctx, id, book)
 		}
-		if _, err := s.reconcileV1Acts(ctx, id, book); err != nil {
-			return err
+		if err != nil {
+			incomplete = true
 		}
 	}
-	return nil
+	return incomplete, nil
 }

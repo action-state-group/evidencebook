@@ -125,7 +125,7 @@ func (s *dealSession) refuseWhileInFlight(ctx context.Context, dealID string, pa
 		return err
 	}
 	return cli.InputError("a payment of deal " + dealID + " is in flight (check " + open[0].Check + "): a " + rec.Block.RecordType +
-		" record that changes the deal's details would void its authorization, so it waits until the payment is settled or failed (`deal settle --deal " + dealID + " --check " + open[0].Check + " --status settled|failed`)")
+		" record that changes the deal's details would void its authorization, so it waits until the payment is settled or failed (`" + statusHint(dealID, open[0].Check, open[0].Reverses, open[0].RefType) + "`)")
 }
 
 // equalRefTypes are the payment reference types whose value is fixed before
@@ -294,8 +294,7 @@ func (s *dealSession) legFor(ctx context.Context, a *v1ActDeal, row *xdealv1.Row
 		return xdealv1.LegPayee, nil
 	}
 	var target *xdealv1.SettleBody
-	seq := 0
-	for i, r := range a.book {
+	for _, r := range a.book {
 		b, ok := settleOf(r)
 		if !ok {
 			continue
@@ -305,13 +304,16 @@ func (s *dealSession) legFor(ctx context.Context, a *v1ActDeal, row *xdealv1.Row
 			return "", err
 		}
 		if d == reverses {
-			target, seq = b, i+1
+			target = b
 		}
 	}
 	if target == nil {
 		return "", cli.InputError("--reverses must name a settle record of your own deal book: " + reverses + " is not one")
 	}
-	status, err := s.legStatusAt(ctx, a.d, seq)
+	// A payee leg may be superseded by a later observation of the same
+	// payment: the latest one says whether money moved.
+	latest := latestInChain(a.book, reverses)
+	status, err := s.legStatusAt(ctx, a.d, latest)
 	if err != nil {
 		return "", err
 	}
@@ -340,26 +342,31 @@ func (s *dealSession) legStatusAt(ctx context.Context, d *v1Deal, seq int) (stri
 	return m.Status, nil
 }
 
-// refundTaken refuses a new refund of a leg that is already being refunded: a
-// payer refund when another send reverses it (open, or closed by a leg that
-// did not fail); a payee refund received when a leg of the holder's book that
-// did not fail already reverses it (a later observation of that refund names
-// it with --supersedes instead).
+// refundTaken refuses a new refund of a leg that is already being refunded.
+// The leg is its whole supersedes chain (a payee leg's later observations of
+// one payment): a payer refund is refused when another send reverses any leg
+// of the chain (open, or closed by a leg that did not fail); a payee refund
+// received is refused when a refund received of the chain, at its latest
+// observation, did not fail (a later observation of that refund names it
+// with --supersedes instead).
 func (s *dealSession) refundTaken(ctx context.Context, a *v1ActDeal, target string, payer bool) error {
 	taken := cli.InputError("leg " + target + " is already refunded: a later observation of that refund names it with --supersedes, and a failed refund leaves the leg free to refund again")
+	chain := legChain(a.book, target)
 	if payer {
-		rows, err := s.db.QueryContext(ctx, `SELECT leg_digest FROM deal_v1_sends WHERE deal_id=? AND reverses=?`, a.d.DealID, target)
+		rows, err := s.db.QueryContext(ctx, `SELECT reverses, leg_digest FROM deal_v1_sends WHERE deal_id=?`, a.d.DealID)
 		if err != nil {
 			return err
 		}
 		var legs []string
 		for rows.Next() {
-			var l string
-			if err := rows.Scan(&l); err != nil {
+			var rev, l string
+			if err := rows.Scan(&rev, &l); err != nil {
 				rows.Close()
 				return err
 			}
-			legs = append(legs, l)
+			if chain[rev] {
+				legs = append(legs, l)
+			}
 		}
 		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 			return err
@@ -382,7 +389,14 @@ func (s *dealSession) refundTaken(ctx context.Context, a *v1ActDeal, target stri
 	}
 	for i, r := range a.book {
 		b, ok := settleOf(r)
-		if !ok || b.Leg != xdealv1.LegPayee || b.Reverses == nil || b.Reverses.Digest != target {
+		if !ok || b.Leg != xdealv1.LegPayee || b.Reverses == nil || !chain[b.Reverses.Digest] {
+			continue
+		}
+		d, err := xdealv1.Digest(r)
+		if err != nil {
+			return err
+		}
+		if latestInChain(a.book, d) != i+1 {
 			continue
 		}
 		if st, err := s.legStatusAt(ctx, a.d, i+1); err != nil {
@@ -392,6 +406,42 @@ func (s *dealSession) refundTaken(ctx context.Context, a *v1ActDeal, target stri
 		}
 	}
 	return nil
+}
+
+// legChain is the set of digests of the settle records linked to digest by
+// supersedes, in either direction: one payment's observations.
+func legChain(book []xdealv1.Record, digest string) map[string]bool {
+	links := map[string]string{} // record -> the record it supersedes
+	for _, r := range book {
+		if b, ok := settleOf(r); ok && b.Supersedes != nil {
+			if d, err := xdealv1.Digest(r); err == nil {
+				links[d] = b.Supersedes.Digest
+			}
+		}
+	}
+	chain := map[string]bool{digest: true}
+	for changed := true; changed; {
+		changed = false
+		for from, to := range links {
+			if chain[from] != chain[to] {
+				chain[from], chain[to], changed = true, true, true
+			}
+		}
+	}
+	return chain
+}
+
+// latestInChain is the place (seq) of the latest settle record of digest's
+// chain: the one no later record supersedes.
+func latestInChain(book []xdealv1.Record, digest string) int {
+	chain := legChain(book, digest)
+	latest := 0
+	for i, r := range book {
+		if d, err := xdealv1.Digest(r); err == nil && chain[d] {
+			latest = i + 1
+		}
+	}
+	return latest
 }
 
 // checkRecord is the deal's journal check of digest, with its body.
@@ -769,11 +819,15 @@ func statusHint(dealID, check, reverses, refType string) string {
 		h += " --reverses " + reverses
 	}
 	h += " --status settled|failed --out FILE"
-	if !equalRefTypes[refType] && reverses == "" {
+	switch {
+	case equalRefTypes[refType]:
+	case reverses == "":
 		h += " --payment-ref THE_RAILS_REFERENCE"
-		if refType == "x402.transaction" {
-			h += " (the transaction)"
-		}
+	default:
+		h += " [--payment-ref THE_RAILS_REFERENCE]"
+	}
+	if refType == "x402.transaction" {
+		h += " (on x402, the transaction)"
 	}
 	return h
 }
@@ -963,19 +1017,23 @@ func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]a
 	if in.ref.Type != "" && in.ref.Type != send.RefType {
 		return nil, cli.InputError("the payment was sent under " + send.RefType + ", and --payment-ref-type is " + in.ref.Type)
 	}
-	for flag, name := range map[string]string{in.ref.Network: "network", in.ref.Method: "method", in.ref.DebtorAgent: "debtor_agent"} {
+	for name, flag := range map[string]string{"network": in.ref.Network, "method": in.ref.Method, "debtor_agent": in.ref.DebtorAgent} {
 		if flag != "" && flag != bound[name] {
 			return nil, cli.InputError("the payment was sent with " + name + " " + fmt.Sprint(bound[name]) + ", and --payment-ref-" + strings.ReplaceAll(name, "_", "-") + " differs")
 		}
 	}
-	keepsValue := equalRefTypes[send.RefType] || cb.Action != "pay"
+	// On an equal type the value is fixed before paying. On the other types
+	// the rail's own reference comes back with its answer: a payment, whose
+	// send bound the check's pre-payment reference, must give it; a refund,
+	// whose send bound what the refunder knew then, may.
 	switch {
-	case keepsValue && in.ref.Value != "" && in.ref.Value != send.Ref:
+	case equalRefTypes[send.RefType] && in.ref.Value != "" && in.ref.Value != send.Ref:
 		return nil, cli.InputError("on " + send.RefType + " the leg's reference is the one the payment was sent under (" + send.Ref + "), and --payment-ref differs")
-	case !keepsValue && in.ref.Value == "":
-		return nil, cli.InputError("--payment-ref is required: on " + send.RefType + " the leg carries the rail's own reference (the transaction on x402), not the " + send.Ref + " the check recorded before paying")
-	case !keepsValue:
+	case equalRefTypes[send.RefType]:
+	case in.ref.Value != "":
 		bound["value"] = in.ref.Value
+	case cb.Action == "pay":
+		return nil, cli.InputError("--payment-ref is required: on " + send.RefType + " the leg carries the rail's own reference (the transaction on x402), not the " + send.Ref + " the check recorded before paying")
 	}
 	return bound, nil
 }

@@ -410,3 +410,133 @@ func TestAFailedPaymentCannotBeRefunded(t *testing.T) {
 	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--reverses", failed["digest"].(string), "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
 		"--received", "4500", "--receive-fee", "0", "--status", "settled", "--out", filepath.Join(t.TempDir(), "r.json")), "nothing to refund")
 }
+
+// sellerCancelChecks is the seller acting on h's deal with its intent, and a
+// way to seal a passing cancel check of 4500 USD.
+func sellerCancelChecks(t *testing.T, h *handshakeV1) func() string {
+	t.Helper()
+	h.seller.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
+	return func() string {
+		out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"cancel","amount_minor":4500,"terms":{"item":"lamp","price_minor":4500,"currency":"USD"}}`))
+		require.Equal(t, "pass", out["verdict"], "%v", out)
+		var d string
+		withSession(t, func(s *dealSession) {
+			journal, err := s.v1DealJournal(t.Context(), h.dealID)
+			require.NoError(t, err)
+			d = checkDigest(t, journal)
+		})
+		return d
+	}
+}
+
+func payeeLeg(t *testing.T, h *handshakeV1, status string, extra ...string) string {
+	t.Helper()
+	args := append([]string{"settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
+		"--received", "4500", "--receive-fee", "0", "--status", status, "--out", filepath.Join(t.TempDir(), status+".json")}, extra...)
+	return dealRun(t, args...)["digest"].(string)
+}
+
+// A payee leg is one payment's observations: a refund reads the latest one,
+// and a refund of any observation counts for the whole payment.
+func TestARefundReadsTheLatestObservation(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	cancel := sellerCancelChecks(t, h)
+	pending := payeeLeg(t, h, "pending")
+	payeeLeg(t, h, "failed", "--supersedes", pending)
+	refund := func(check, target, ref string) []string {
+		return []string{"settle", "--deal", h.dealID, "--check", check, "--reverses", target, "--payment-ref-type", "ln.payment_hash", "--payment-ref", ref, "--sent"}
+	}
+	assert.Contains(t, v1Err(t, refund(cancel(), pending, strings.Repeat("71", 32))...), "nothing to refund", "the payment failed at its latest observation")
+
+	h2 := agreedBoth(t, offerTo)
+	cancel2 := sellerCancelChecks(t, h2)
+	p2 := payeeLeg(t, h2, "pending")
+	s2 := payeeLeg(t, h2, "settled", "--supersedes", p2)
+	h = h2
+	dealRun(t, refund(cancel2(), s2, strings.Repeat("71", 32))...)
+	assert.Contains(t, v1Err(t, refund(cancel2(), p2, strings.Repeat("72", 32))...), "already refunded", "one payment, one refund")
+}
+
+// The buyer's refund received that failed at its latest observation leaves the
+// payment free for the next refund received.
+func TestAFailedRefundReceivedFreesThePayment(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	paid := dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))["digest"].(string)
+	base := []string{"settle", "--deal", h.dealID, "--reverses", paid, "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32), "--received", "4500", "--receive-fee", "0"}
+	p := dealRun(t, append(base, "--status", "pending", "--out", filepath.Join(t.TempDir(), "p.json"))...)["digest"].(string)
+	dealRun(t, append(base, "--status", "failed", "--supersedes", p, "--out", filepath.Join(t.TempDir(), "f.json"))...)
+	again := []string{"settle", "--deal", h.dealID, "--reverses", paid, "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("72", 32), "--received", "4500", "--receive-fee", "0", "--status", "settled", "--out", filepath.Join(t.TempDir(), "s.json")}
+	dealRun(t, again...)
+}
+
+// A qualifier flag the send did not bind is refused even when its value is
+// another qualifier's; an x402 refund records the rail's transaction when it
+// answers.
+func TestQualifiersAndAnX402Refund(t *testing.T) {
+	nonce := strings.Repeat("0f", 32)
+	h, check := buyerChecked(t, nonce)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "x402.transaction", "--payment-ref-network", "base")
+	tx := "0x" + strings.Repeat("9a", 32)
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--payment-ref", tx, "--payment-ref-network", "base", "--payment-ref-method", "base", "--out", filepath.Join(t.TempDir(), "x.json")), "sent with method")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--payment-ref", tx, "--out", filepath.Join(t.TempDir(), "paid.json"))
+
+	cancel := sellerCancelChecks(t, h)
+	received := dealRun(t, "settle", "--deal", h.dealID, "--payment-ref-type", "x402.transaction", "--payment-ref", tx, "--payment-ref-network", "base",
+		"--received", "4500", "--receive-fee", "0", "--status", "settled", "--out", filepath.Join(t.TempDir(), "rcv.json"))["digest"].(string)
+	c := cancel()
+	dealRun(t, "settle", "--deal", h.dealID, "--check", c, "--reverses", received, "--payment-ref-type", "x402.transaction", "--payment-ref", "pending-authorization", "--payment-ref-network", "base", "--sent")
+	file := filepath.Join(t.TempDir(), "refund.json")
+	refundTx := "0x" + strings.Repeat("5b", 32)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", c, "--reverses", received, "--status", "settled", "--payment-ref", refundTx, "--out", file)
+	assert.Equal(t, map[string]any{"type": "x402.transaction", "value": refundTx, "network": "base"}, settlementOf(t, file)["payment_ref"])
+}
+
+// A run whose evidence append was stored but reported failed keeps the send
+// and its act event; the evidence is in the journal once and the payment is
+// counted once.
+func TestASendWhoseAppendFailedAfterStoringIsKept(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	appendV1JournalAfterHook = func() error { return fmt.Errorf("stopped after storing") }
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "stopped after storing")
+	appendV1JournalAfterHook = nil
+	require.NotNil(t, sendRow(t, h.dealID, check), "the send is kept: its record is in the journal")
+	assert.Len(t, v1ActEvents(t, h.dealID), 1, "counted once")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "is in flight")
+	n := 0
+	withSession(t, func(s *dealSession) {
+		all, err := s.v1JournalRecords(t.Context())
+		require.NoError(t, err)
+		for _, jr := range all {
+			if jr.rec.Block.RecordType == xdealv1.TypeEvidence && jr.rec.Block.DealID == h.dealID {
+				n++
+			}
+		}
+	})
+	assert.Equal(t, 1, n, "the payment-sent evidence is in the journal once")
+}
+
+// The rules history reconciles every v1 deal first: a failed leg sealed before
+// its send closed stops counting, and a deal that cannot be reconciled marks
+// the history incomplete instead of failing it.
+func TestTheRulesHistoryReconcilesEveryDeal(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	afterLegSealedHook = func() error { return fmt.Errorf("stopped") }
+	v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--status", "failed", "--out", filepath.Join(t.TempDir(), "f.json"))
+	afterLegSealedHook = nil
+	withSession(t, func(s *dealSession) {
+		history, scope, err := s.rulesHistory(t.Context())
+		require.NoError(t, err)
+		assert.True(t, scope.Complete)
+		raw, err := json.Marshal(history)
+		require.NoError(t, err)
+		assert.NotContains(t, string(raw), `"amount_minor":4500`, "the failed payment no longer counts")
+		_, err = s.db.ExecContext(t.Context(), `DELETE FROM deal_v1_sends WHERE deal_id=?`, h.dealID)
+		require.NoError(t, err)
+		_, scope, err = s.rulesHistory(t.Context())
+		require.NoError(t, err, "one broken deal does not fail the history")
+		assert.False(t, scope.Complete)
+	})
+}
