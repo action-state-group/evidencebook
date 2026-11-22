@@ -16,8 +16,15 @@ import (
 // (a settle that reverses a payment) of leg on a cancel check.
 func amountFlow(t *testing.T, action string, amount *int64, currency, leg string) (*authFlow, Record) {
 	t.Helper()
+	return amountFlowOf(t, dealprofile.CheckBody{Action: action, AmountMinor: amount, Currency: currency}, leg)
+}
+
+// amountFlowOf is amountFlow on the check body cb.
+func amountFlowOf(t *testing.T, cb dealprofile.CheckBody, leg string) (*authFlow, Record) {
+	t.Helper()
+	action := cb.Action
 	f := &authFlow{t: t}
-	c := f.seal(TypeCheck, true, &CheckBody{CheckBody: dealprofile.CheckBody{Action: action, AmountMinor: amount, Currency: currency}, PaymentRef: "invoice-17", Nonce: label("amount check nonce")})
+	c := f.seal(TypeCheck, true, &CheckBody{CheckBody: cb, PaymentRef: "invoice-17", Nonce: label("amount check nonce")})
 	f.approve(f.verdict(c, "pass"), "user", true)
 	b := inBook(TypeSettle, 2)
 	b.At = f.at()
@@ -122,4 +129,41 @@ func TestCheckActsRefusesAnAmountInAnUnknownCurrency(t *testing.T) {
 	err := checkLeg(t, f, act, `{"amount":{"value":"10","assetCode":"XQQ","assetScale":0}}`)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "has no known minor units")
+}
+
+// A seller's cancel check records the refund as cancelled_amount_minor when
+// it states no amount_minor (x-deal-v0's sealCancelAmount): a refund leg is
+// held to that amount (evidencebook#719). amount_minor, when stated, is the
+// one held to, and only a cancel check is read this way.
+func TestCheckActsHoldsARefundToItsCancelledAmount(t *testing.T) {
+	refund := int64(6000)
+	usd := func(v string) string { return `{"amount":{"value":"` + v + `","assetCode":"USD","assetScale":2}}` }
+
+	f, act := amountFlowOf(t, dealprofile.CheckBody{Action: "cancel", CancelledAmountMinor: &refund, Currency: "USD"}, LegPayer)
+	require.NoError(t, checkLeg(t, f, act, usd("6000")))
+	err := checkLeg(t, f, act, usd("6500"))
+	require.Error(t, err, "a refund other than the cancelled amount")
+	assert.Contains(t, err.Error(), "differs from the checked 6000 USD")
+
+	f, payee := amountFlowOf(t, dealprofile.CheckBody{Action: "cancel", CancelledAmountMinor: &refund, Currency: "USD"}, LegPayee)
+	require.NoError(t, checkLeg(t, f, payee, `{"received":{"value":"5970","assetCode":"USD","assetScale":2},"receive_fee":{"value":"30","assetCode":"USD","assetScale":2}}`))
+	err = checkLeg(t, f, payee, `{"received":{"value":"6000","assetCode":"USD","assetScale":2}}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "states no receive_fee", "a payee refund leg must state its fee to be held to the cancelled amount")
+
+	other := int64(4500)
+	f, act = amountFlowOf(t, dealprofile.CheckBody{Action: "cancel", AmountMinor: &other, CancelledAmountMinor: &refund, Currency: "USD"}, LegPayer)
+	require.NoError(t, checkLeg(t, f, act, usd("4500")), "amount_minor, when stated, is the one held to")
+	require.Error(t, checkLeg(t, f, act, usd("6000")))
+}
+
+// Only a cancel check is read for cancelled_amount_minor: a pay check that
+// carries one and no amount_minor holds no amount.
+func TestCheckActsReadsTheCancelledAmountOnlyOnACancelCheck(t *testing.T) {
+	refund := int64(6000)
+	cb := &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay", CancelledAmountMinor: &refund}}
+	assert.NoError(t, settledAmountMatches(json.RawMessage(`{"amount":{"value":"9900","assetCode":"USD","assetScale":2}}`), LegPayer, cb))
+	assert.Nil(t, checkedAmount(cb))
+	cb.Action = "cancel"
+	assert.Equal(t, &refund, checkedAmount(cb))
 }

@@ -628,7 +628,11 @@ func nonceOf(r Record) string {
 // receive_fee is refused. A member carrying the other leg's amount field is
 // refused.
 func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) error {
-	if len(member) == 0 || cb == nil || (cb.AmountMinor == nil && cb.Currency == "") {
+	if cb == nil {
+		return nil
+	}
+	checkedMinor := checkedAmount(cb)
+	if len(member) == 0 || (checkedMinor == nil && cb.Currency == "") {
 		return nil
 	}
 	var m struct {
@@ -652,7 +656,7 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 	// zero only where it is shown not to apply (an x402 exact scheme, read
 	// from wrapped objects this member does not carry), so it is refused
 	// here rather than guessed.
-	if leg == LegPayee && m.ReceiveFee == nil && m.Received != nil && cb.AmountMinor != nil {
+	if leg == LegPayee && m.ReceiveFee == nil && m.Received != nil && checkedMinor != nil {
 		return fmt.Errorf("its settlement member states no receive_fee, so the amount it settles cannot be held to the checked one: state the fee, 0 when none was taken")
 	}
 	if parts[0] == nil {
@@ -679,23 +683,36 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 		}
 		sum.Add(sum, v)
 	}
-	if cb.AmountMinor == nil {
+	if checkedMinor == nil {
 		return nil
 	}
 	checkScale, ok := dealprofile.AssetScale(parts[0].AssetCode)
 	if !ok {
 		return fmt.Errorf("the checked amount's currency %s has no known minor units, so the settled amount cannot be held to it", parts[0].AssetCode)
 	}
-	checked := new(big.Int).SetInt64(*cb.AmountMinor)
+	checked := new(big.Int).SetInt64(*checkedMinor)
 	if checkScale > scale {
 		sum.Mul(sum, pow10(checkScale-scale))
 	} else {
 		checked.Mul(checked, pow10(scale-checkScale))
 	}
 	if sum.Cmp(checked) != 0 {
-		return fmt.Errorf("the settled amount differs from the checked %d %s: a new check is needed", *cb.AmountMinor, parts[0].AssetCode)
+		return fmt.Errorf("the settled amount differs from the checked %d %s: a new check is needed", *checkedMinor, parts[0].AssetCode)
 	}
 	return nil
+}
+
+// checkedAmount is the amount a settled leg is held to: the check's
+// amount_minor, or, on a cancel check that states none, its
+// cancelled_amount_minor (evidencebook#719). A seller's cancel check records
+// the refund there when the cancel returns no payment of the holder's own
+// (x-deal-v0's sealCancelAmount), so a refund leg answering it is held to
+// that amount.
+func checkedAmount(cb *CheckBody) *int64 {
+	if cb.AmountMinor == nil && cb.Action == "cancel" {
+		return cb.CancelledAmountMinor
+	}
+	return cb.AmountMinor
 }
 
 // legAmount is a settlement leg's amount (draft-mih-agent-settlement-records-01).
