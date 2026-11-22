@@ -116,7 +116,9 @@ func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events [
 func failingTexts(r *dealRules, approved map[[2]string]bool) []string {
 	var out []string
 	for _, f := range r.Findings {
-		if f.Verdict != "fail" && f.Verdict != "not_evaluable" {
+		// A rule the ruleset declares but does not measure never changes
+		// the verdict or reaches the card (isDeclaredRule): it is no failure.
+		if (f.Verdict != "fail" && f.Verdict != "not_evaluable") || isDeclaredRule(f) {
 			continue
 		}
 		if approved[[2]string{f.ID, f.Verdict}] {

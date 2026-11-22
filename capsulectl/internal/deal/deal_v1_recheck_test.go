@@ -128,4 +128,10 @@ func TestARuleThatWasNotEvaluatedAndNowFailsIsRefused(t *testing.T) {
 
 	h, check = buyerPaused(t, "exit 3", "exit 3")
 	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+
+	// Approved with the checker down, which then answers allow with a rule
+	// it declares but does not measure: that rule is no failure.
+	declared := `{"id":"monthly","check":"caps/1","verdict":"not_evaluable","reason":"` + rulesDeclaredNotMeasured + `"}`
+	h, check = buyerPaused(t, "exit 3", checkerPrints("allow", declared))
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
 }
