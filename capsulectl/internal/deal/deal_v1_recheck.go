@@ -97,7 +97,10 @@ func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events [
 	approved := map[[2]string]bool{}
 	if checked {
 		for _, f := range orig.Rules.Findings {
-			approved[[2]string{f.ID, f.Verdict}] = true
+			// A declared, not measured rule was never shown or approved.
+			if !isDeclaredRule(f) {
+				approved[[2]string{f.ID, f.Verdict}] = true
+			}
 		}
 	}
 	origRules := ""

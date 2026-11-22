@@ -134,4 +134,11 @@ func TestARuleThatWasNotEvaluatedAndNowFailsIsRefused(t *testing.T) {
 	declared := `{"id":"monthly","check":"caps/1","verdict":"not_evaluable","reason":"` + rulesDeclaredNotMeasured + `"}`
 	h, check = buyerPaused(t, "exit 3", checkerPrints("allow", declared))
 	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+
+	// Approved on an escalation that also carried that declared rule; the
+	// same rule id now cannot be evaluated for real: that was never
+	// approved.
+	realNotEval := `{"id":"monthly","check":"caps/1","verdict":"not_evaluable","reason":"the record carries no month of history"}`
+	h, check = buyerPaused(t, checkerPrints("escalate", newMerchant+","+declared), checkerPrints("escalate", newMerchant+","+realNotEval))
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "no month of history")
 }
