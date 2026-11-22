@@ -67,7 +67,9 @@ func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events [
 		}
 	}
 	if checkRank(now.Verdict) > checkRank(orig.Verdict) || len(added) > 0 {
-		return recheckRefusal(dealID, now.Verdict, added)
+		// What the deal's own evaluation reads changed (the counterparty
+		// memory, the pinned materiality), not what was paid.
+		return recheckRefusal(dealID, "your check no longer passes now", now.Verdict, added)
 	}
 	if len(s.p.RulesChecker.Command) == 0 {
 		return nil
@@ -77,29 +79,56 @@ func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events [
 		return err
 	}
 	rules := runRulesChecker(ctx, s.p, dealRole(events), input, history)
+	checked := orig.Rules != nil && orig.Rules.Status == "evaluated"
 	if rules.Status != "evaluated" {
-		return recheckRefusal(dealID, "rules not evaluated", []string{rules.Reason})
-	}
-	approved := map[string]bool{}
-	if orig.Rules != nil && orig.Rules.Status == "evaluated" {
-		for _, d := range rulesDifferences(orig.Rules) {
-			approved[d.Field] = true
+		if !checked {
+			// The user approved paying with the rules unchecked, and they are
+			// still unchecked: the send is what was approved.
+			return nil
 		}
+		return cli.InputError("your rules checker could not answer (" + rules.Reason + "), so the payment cannot be checked against what was paid since. Nothing was sent: run deal settle --sent again once the checker answers")
 	}
-	var newly []string
-	for _, d := range rulesDifferences(&rules) {
-		if !approved[d.Field] {
-			newly = append(newly, d.Text)
+	if rules.Verdict == "deny" {
+		return recheckRefusal(dealID, paidSince, "denied by your rules", failingTexts(&rules, nil))
+	}
+	// A rule the user approved is one the check's rules failed or could not
+	// evaluate, by its id and that state; any rule failing now that the
+	// check did not fail is new.
+	approved := map[[2]string]bool{}
+	if checked {
+		for _, f := range orig.Rules.Findings {
+			approved[[2]string{f.ID, f.Verdict}] = true
 		}
 	}
 	origRules := ""
-	if orig.Rules != nil {
+	if checked {
 		origRules = orig.Rules.Verdict
 	}
+	newly := failingTexts(&rules, approved)
 	if rulesRank(rules.Verdict) > rulesRank(origRules) || len(newly) > 0 {
-		return recheckRefusal(dealID, "rules: "+rules.Verdict, newly)
+		return recheckRefusal(dealID, paidSince, "rules: "+rules.Verdict, newly)
 	}
 	return nil
+}
+
+// failingTexts are the words of each rule the rules failed or could not
+// evaluate that is not in approved (by id and state), as the card words them.
+func failingTexts(r *dealRules, approved map[[2]string]bool) []string {
+	var out []string
+	for _, f := range r.Findings {
+		if f.Verdict != "fail" && f.Verdict != "not_evaluable" {
+			continue
+		}
+		if approved[[2]string{f.ID, f.Verdict}] {
+			continue
+		}
+		text := f.ID
+		if f.Reason != "" {
+			text += ": " + f.Reason
+		}
+		out = append(out, text)
+	}
+	return out
 }
 
 // checkRank orders a check's verdicts from the most permissive.
@@ -114,23 +143,28 @@ func checkRank(v string) int {
 }
 
 // rulesRank orders the rules checker's verdicts (external-check-result/v0:
-// allow, escalate, deny) from the most permissive; an unknown one ranks as
-// deny. A check whose rules were not evaluated ranks as allow, so any
-// verdict the re-run gives is compared by its findings.
+// allow; escalate and not_evaluable, which both ask; deny) from the most
+// permissive; an unknown one ranks as deny. A check whose rules were not
+// evaluated ranks as allow, so any verdict the re-run gives is compared by
+// its findings.
 func rulesRank(v string) int {
 	switch v {
 	case "allow", "":
 		return 0
-	case "escalate":
+	case "escalate", "not_evaluable":
 		return 1
 	}
 	return 2
 }
 
-func recheckRefusal(dealID, verdict string, why []string) error {
-	msg := "the check no longer holds against what was paid since it was sealed (now " + verdict + ")"
+// paidSince leads a refusal the rules give over the history, which holds the
+// payments made since the check.
+const paidSince = "your check no longer passes: payments made since it was sealed change the result"
+
+func recheckRefusal(dealID, lead, verdict string, why []string) error {
+	msg := lead + " (now " + verdict + ")"
 	if len(why) > 0 {
 		msg += ": " + strings.Join(why, "; ")
 	}
-	return cli.InputError(msg + ". Nothing was sent: run deal check --deal " + dealID + " again")
+	return cli.InputError(msg + ". Nothing was sent. Run deal check --deal " + dealID + " again")
 }

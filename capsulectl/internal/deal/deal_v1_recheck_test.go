@@ -37,7 +37,7 @@ func TestASecondSendOverTheCapIsRefused(t *testing.T) {
 	a, b := check(strings.Repeat("a1", 32)), check(strings.Repeat("b2", 32))
 	dealRun(t, "settle", "--deal", h.dealID, "--check", a, "--sent", "--payment-ref-type", "ln.payment_hash")
 	msg := v1Err(t, "settle", "--deal", h.dealID, "--check", b, "--sent", "--payment-ref-type", "ln.payment_hash")
-	assert.Contains(t, msg, "no longer holds")
+	assert.Contains(t, msg, "no longer passes")
 	assert.Contains(t, msg, "Nothing was sent")
 	assert.Nil(t, sendRow(t, h.dealID, b))
 	assert.Len(t, v1ActEvents(t, h.dealID), 1)
@@ -90,9 +90,10 @@ func TestAnApprovedEscalationIsAskedAgainAtTheSend(t *testing.T) {
 	for name, c := range map[string]struct {
 		later, want string
 	}{
-		"now denies":         {checkerPrints("deny", denyFinding), "no longer holds"},
+		"now denies":         {checkerPrints("deny", denyFinding), "denied by your rules"},
 		"a new failing rule": {checkerPrints("escalate", newMerchant+","+weekly), "over the 7-day limit"},
-		"cannot answer":      {"exit 3", "rules not evaluated"},
+		"cannot answer":      {"exit 3", "could not answer"},
+		"the same id fails":  {checkerPrints("escalate", strings.Replace(newMerchant, `"id":"new-merchant"`, `"id":"new_merchant"`, 1)), "new_merchant"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h, check := buyerPaused(t, esc, c.later)
@@ -113,4 +114,18 @@ func TestAnApprovedEscalationIsAskedAgainAtTheSend(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(again), `"counterparty_profile"`, "the re-run reads the same payee companion")
 	})
+}
+
+// A check whose rule could not be evaluated, approved as it was, is refused
+// at --sent when that rule now fails; a check approved with the rules
+// unchecked sends while the checker is still down.
+func TestARuleThatWasNotEvaluatedAndNowFailsIsRefused(t *testing.T) {
+	notEval := `{"id":"weekly","check":"caps/1","verdict":"not_evaluable","reason":"the record carries no week of history"}`
+	fails := `{"id":"weekly","check":"caps/1","verdict":"fail","reason":"over the 7-day limit","limit":5000,"value":7500}`
+	h, check := buyerPaused(t, checkerPrints("not_evaluable", notEval), checkerPrints("escalate", fails))
+	msg := v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	assert.Contains(t, msg, "over the 7-day limit")
+
+	h, check = buyerPaused(t, "exit 3", "exit 3")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
 }
