@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -334,4 +335,51 @@ func TestLoadCardServiceRefuses(t *testing.T) {
 	}
 	_, err = loadCardService("")
 	require.ErrorIs(t, err, cli.ErrInput)
+}
+
+// failingWriter is a stdout that takes no output.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("stdout closed") }
+
+// A statement that cannot be saved after the post is not lost: the error says
+// the card is registered and carries the statement to keep beside the card.
+func TestCardRegisterKeepsTheStatementWhenSavingFails(t *testing.T) {
+	v, service := loadCardVector(t)
+	holderProfile(t, "holder")
+	vector, _ := hex.DecodeString(v.Statements[0])
+	receipt := receiptOf(t, vector)
+	card := cardFile(t, v)
+
+	t.Run("the --out path appeared during the post", func(t *testing.T) {
+		out := filepath.Join(t.TempDir(), "statement.json")
+		anchor := newFakeAnchor(t, func(w http.ResponseWriter, r *http.Request) {
+			_ = os.WriteFile(out, []byte("someone else's file"), 0o600)
+			receiptAnswer(receipt)(w, r)
+		})
+		service.URL = anchor.URL
+		_, err := invoke(t, "", "--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", v.Anchor, "--service", serviceFile(t, service), "--out", out)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "registered, but its statement was not saved")
+		assert.Contains(t, err.Error(), v.Statements[0])
+		kept, readErr := os.ReadFile(out)
+		require.NoError(t, readErr)
+		assert.Equal(t, "someone else's file", string(kept), "the file that appeared is left as it was")
+		left, globErr := filepath.Glob(filepath.Join(filepath.Dir(out), ".card-*"))
+		require.NoError(t, globErr)
+		assert.Empty(t, left, "no temp file is left")
+	})
+	t.Run("standard output cannot be written", func(t *testing.T) {
+		anchor := newFakeAnchor(t, receiptAnswer(receipt))
+		service.URL = anchor.URL
+		c := testCommand()
+		c.SetIn(strings.NewReader(""))
+		c.SetOut(failingWriter{})
+		c.SetErr(failingWriter{})
+		c.SetArgs([]string{"--profile", "holder", "card", "register", "--card", card, "--holder", v.Holder, "--anchor", v.Anchor, "--service", serviceFile(t, service)})
+		err := c.ExecuteContext(t.Context())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "registered, but its statement was not saved")
+		assert.Contains(t, err.Error(), v.Statements[0])
+	})
 }
