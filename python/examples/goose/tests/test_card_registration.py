@@ -318,3 +318,27 @@ def _attached(sent, receipt):
 
     protected, _, payload, signature = cbor2.loads(sent).value
     return cbor2.dumps(cbor2.CBORTag(18, [protected, {394: [receipt]}, payload, signature]), canonical=True).hex()
+
+
+def test_a_connect_that_outlasts_the_deadline_never_posts(nodes, clock, anchor, tmp_path, monkeypatch):
+    """If connecting takes longer than the total deadline, the caller has given up: the worker, once its
+    connect finally returns, must not send the permanent post (nothing would receive the Receipt)."""
+    import http.client
+    import threading
+    import time
+
+    real_connect = http.client.HTTPConnection.connect
+
+    def slow_connect(self):
+        time.sleep(2.5)
+        real_connect(self)
+
+    monkeypatch.setattr(http.client.HTTPConnection, "connect", slow_connect)
+    monkeypatch.setattr(cs, "TOTAL_SECONDS", 1)
+    buyer = ticked(nodes, clock)
+    service = cs.load_service(service_file(tmp_path, anchor))
+    with pytest.raises(cs.ServiceError, match="no complete answer"):
+        buyer.register_card(cs.AnchorRegistrar(service), service.policy)
+    time.sleep(3)
+    assert anchor.posted == []
+    assert not [t for t in threading.enumerate() if t.name == "card-registration"], "the worker ended"

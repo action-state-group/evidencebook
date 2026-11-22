@@ -95,11 +95,14 @@ class AnchorRegistrar:
         body = json.dumps({"signed_statement_b64": base64.b64encode(statement).decode()}).encode()
         outcome: list[Any] = []
         sockets: list[socket.socket] = []  # http.client lets go of conn.sock once a response owns it
+        cancelled = threading.Event()  # set at the deadline: a worker still connecting then must not post
 
         def post() -> None:
             try:
                 conn.connect()
                 sockets.append(conn.sock)
+                if cancelled.is_set():
+                    raise ServiceError("cancelled at the deadline, before anything was sent")
                 conn.request("POST", path, body=body,
                              headers={"Content-Type": "application/json", "Accept": "application/json"})
                 response = conn.getresponse()
@@ -122,6 +125,7 @@ class AnchorRegistrar:
         worker.start()
         worker.join(TOTAL_SECONDS)
         if worker.is_alive():
+            cancelled.set()
             for sock in sockets:
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
@@ -129,6 +133,11 @@ class AnchorRegistrar:
                     pass
             conn.close()
             worker.join(5)
+            for sock in sockets:  # a connect that finished while the deadline passed
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
             raise ServiceError(f"{self._service.url}: no complete answer in {TOTAL_SECONDS} seconds")
         conn.close()
         raw = outcome[0]
