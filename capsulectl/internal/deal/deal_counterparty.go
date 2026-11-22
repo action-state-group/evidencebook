@@ -154,10 +154,19 @@ func recipientKeys(to string, w dealWho, channel string) []string {
 // dealID is the deal being checked: its own opening is not an earlier
 // dealing, but its own earlier disclosures are earlier tellings.
 func (s *dealSession) counterpartyMemory(ctx context.Context, dealID string) (_ *dealCounterpartyMemory, err error) {
-	steps, err := s.index.steps(ctx, stepFilter{Kinds: []string{"open", "disclosure", "check", "intent", "agent_move"}})
+	kinds := []string{"open", "disclosure", "check", "intent", "agent_move"}
+	steps, err := s.index.steps(ctx, stepFilter{Kinds: kinds})
 	if err != nil {
 		return nil, err
 	}
+	// x-deal-v1 deals keep their plain steps in their local event list
+	// (deal_v1_events.go): read them too, so an earlier v1 dealing or telling
+	// counts as a v0 one does (xdealv1-write-path §12 item 4).
+	v1, err := s.v1MemorySteps(ctx, kinds)
+	if err != nil {
+		return nil, err
+	}
+	steps = append(steps, v1...)
 	m := &dealCounterpartyMemory{}
 	opened := map[string]*dealOpen{}
 	// Each deal's leg in force as its steps are read: a telling to the

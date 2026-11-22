@@ -86,8 +86,11 @@ type dealSession struct {
 	// and book is that book, opened by a writer only (opening a book can
 	// commit a pending record); legacy is nil then. inFlight is the time the
 	// shelf's clock gives while a record is appended (appendBook).
-	onBook   bool
-	book     *evidencebook.Book
+	onBook bool
+	book   *evidencebook.Book
+	// v1 is set when the current deal is an x-deal-v1 deal whose steps go to
+	// its local event list and the journal (deal_v1_events.go).
+	v1       bool
 	inFlight time.Time
 	// reportAt, when set, is the time a copy's report is computed at: the
 	// bound checkpoint's, for a report off the deal's log (capsule-cli#294),
@@ -889,6 +892,9 @@ func (s *dealSession) recoverStep(ctx context.Context, events []sealedEvent, ev 
 // that is not sealed was not checked. If the step never reached
 // the log, its index row is withdrawn; if it did, the next read recovers it.
 func (s *dealSession) seal(ctx context.Context, dealID string, events []sealedEvent, ev dealEvent) (sealedEvent, error) {
+	if s.v1 {
+		return s.sealV1Step(ctx, dealID, events, ev)
+	}
 	if s.onBook {
 		if s.book == nil {
 			return sealedEvent{}, cli.ErrReadOnlyCLL
@@ -915,6 +921,11 @@ func (s *dealSession) seal(ctx context.Context, dealID string, events []sealedEv
 // witness when deals happen. The deal's checkpoint reaches the witness inside
 // the next cadence tick (`deal tick`), so its witness state is "scheduled".
 func (s *dealSession) milestone(ctx context.Context) (map[string]any, error) {
+	// An x-deal-v1 deal has no log of its own to cut: its records are in the
+	// journal, which the cadence checkpoints at each tick.
+	if s.v1 {
+		return map[string]any{"state": "not_configured"}, nil
+	}
 	if s.p.Checkpoint.Signing == (cli.Secret{}) {
 		return map[string]any{"state": "not_configured"}, nil
 	}
@@ -975,10 +986,48 @@ func runDeal(c *cobra.Command, needDeal bool, fn func(ctx context.Context, s *de
 		if v1, verr := s.isV1Deal(ctx, dealID); verr != nil {
 			return verr
 		} else if v1 {
-			if kind, _ := c.Flags().GetString("kind"); c.Name() == "note" && kind == noteKindDispute {
+			kind, _ := c.Flags().GetString("kind")
+			if c.Name() == "note" && kind == noteKindDispute {
 				return cli.InputError("deal " + dealID + " is an x-deal-v1 deal: its disputes are sealed with `deal dispute`, not `deal note --kind dispute`")
 			}
-			return v1Refusal(c.Name(), dealID)
+			if c.Name() != "note" {
+				return v1Refusal(c.Name(), dealID)
+			}
+			if path, _ := c.Flags().GetString("opening"); path != "" && kind != "intent" {
+				return cli.InputError("--opening goes only on an x-deal-v1 deal's first intent note, which opens it")
+			}
+			// A note on a v1 deal runs the v0 note code over the deal's
+			// local event list; the first intent note seals the opening
+			// (xdealv1-write-path §12).
+			var raw, opening []byte
+			if kind == "intent" {
+				if path, _ := c.Flags().GetString("input"); path != "" {
+					if raw, err = cli.ReadInput(path); err != nil {
+						return err
+					}
+				}
+				if path, _ := c.Flags().GetString("opening"); path != "" {
+					if opening, err = cli.ReadInput(path); err != nil {
+						return err
+					}
+				}
+			}
+			events, opened, verr := s.useV1Note(ctx, dealID, kind, raw, opening)
+			if verr == nil && !opened && opening != nil {
+				return cli.InputError("--opening goes only on an x-deal-v1 deal's first intent note, which opens it; this deal is already open")
+			}
+			if verr != nil {
+				return verr
+			}
+			if opened {
+				return cli.Output(c, map[string]any{"deal_id": dealID, "kind": "intent", "opened": true, "step": events[len(events)-1].Event.N, "intent": events[len(events)-1].Digest})
+			}
+			return fn(ctx, s, dealID, events)
+		}
+		if c.Name() == "note" {
+			if path, _ := c.Flags().GetString("opening"); path != "" {
+				return cli.InputError("--opening goes only on an x-deal-v1 deal's first intent note; deal " + dealID + " is an x-deal-v0 deal, opened with `deal open`")
+			}
 		}
 		if err = s.useDeal(ctx, dealID, false); err != nil {
 			return err
@@ -1713,7 +1762,12 @@ func dealNoteCommand() *cobra.Command {
 					cl := ev.Claim
 					cl.AuthorizedBy, cl.Reason, cl.Rule = authorizeClaim(events, *cl, cli.DealClock().UTC())
 					cl.Unchecked = cl.AuthorizedBy == ""
-					ev.ClaimShape = dealClaimShapeVersion
+					// x-deal-v1 has no claim_authority record: a v1 deal's claim
+					// carries its authority in its own journal body, which is
+					// never sent (deal_v1_events.go).
+					if !s.v1 {
+						ev.ClaimShape = dealClaimShapeVersion
+					}
 				}
 			case "intent":
 				if open.Sale != "" {
@@ -1904,6 +1958,9 @@ func dealNoteCommand() *cobra.Command {
 					d.AuthorizedBy, d.Reason, d.Rule = "", "the check did not name your "+classWord(class), "class_not_checked"
 				}
 			}
+			if deferred != nil && s.v1 {
+				return cli.InputError("the email's sender check could not reach DNS: on an x-deal-v1 deal the email is not held for the tick; note it again when DNS answers")
+			}
 			if deferred != nil {
 				// Nothing is sealed yet, so the receipt has not changed: the
 				// page waits for the tick that seals the email.
@@ -1945,6 +2002,10 @@ func dealNoteCommand() *cobra.Command {
 					out["next"] = "this note asks for a higher limit or a new action: it is recorded as a proposal and not applied. " +
 						"Ask the user; only on their explicit yes, seal deal note --kind approval --check " + se.CapsuleID +
 						" --choice confirm_limits --said \"<their words>\""
+					if s.v1 {
+						out["next"] = "this note asks for a higher limit or a new action: it is recorded as a proposal and not applied. " +
+							"Confirming it (deal note --kind approval --choice confirm_limits) is not available on an x-deal-v1 deal yet (evidencebook#626, part 2)"
+					}
 				}
 			case "acceptance":
 				out["accepts"] = ev.Acceptance.Offer
@@ -2062,6 +2123,7 @@ func dealNoteCommand() *cobra.Command {
 	cmd.Flags().String("words", "", "acceptance: the counterparty's words accepting the offer, exactly as given (committed, never stored); dispute: what the buyer says was wrong")
 	cmd.Flags().String("channel", "", "acceptance: the channel the counterparty accepted on (x-deal-v0's channel set)")
 	cmd.Flags().String("input", "", "JSON body for message, claim, evidence, change, intent or act (optional for evidence with --email)")
+	cmd.Flags().String("opening", "", "On an x-deal-v1 deal's first intent note: JSON of the deal's type, optional channel, who and recourse (the terms are the offer's)")
 	cmd.Flags().String("email", "", "evidence: a merchant's email as a raw RFC 822 file (.eml), headers intact; sealed with its DKIM key records")
 	cmd.Flags().String("key-record", "", "evidence: the DKIM key record to check --email against instead of DNS (marked supplied)")
 	cmd.Flags().String("dmarc-record", "", "evidence: the sender's DMARC record, with --key-record (marked supplied)")
