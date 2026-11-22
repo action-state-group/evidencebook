@@ -5,7 +5,7 @@
   - `payment.check`: the payment check on the legs, as the library reads your records now (`pass` or `fail`, or `""` with a `reason` when the check ran without a verdict, such as legs not yet agreed or several payments; with `checked_over`, and, when present, `excluded` and the derived settlement);
   - or `not_run`, when the check did not run, with a plain `not_run_note`:
     - `no_offer_pair`: this store holds the offer but not its signed copy, so the payment check cannot run here; receive the offer file again (`deal receive`) to keep it;
-    - `no_acceptor_key`: your agreement names no key for the accepting side (the other side runs no layer), so the payment check cannot run on this deal;
+    - `no_acceptor_key`: your agreement names no key for the other side (it keeps no signed records of its own), so the payment check cannot run on this deal;
     - `not_recomputed`: the row is not recomputed, as its verdict says.
 - `rows_state` says whether the rows are listed. Before the deal starts, `rows_note` says so instead of an empty list.
 - Nothing is computed in the plugin, and nothing is written.

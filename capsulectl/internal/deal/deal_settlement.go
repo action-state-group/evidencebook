@@ -294,7 +294,7 @@ func (s *dealSession) dealSettlementLegs(ctx context.Context, events []sealedEve
 // dealSettlementCommand is `deal settlement`: the deal's own legs, with the
 // other side's legs the user holds, checked and read like `settlement status`.
 func dealSettlementCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "settlement", Short: "Derive the payment and delivery state of a deal's settlement legs, with the other side's legs you hold; on an x-deal-v1 deal, each amount row's report_check (the report row's verdict) and payment.check (the payment check on the legs) as your records read it now, or why it did not run: no_offer_pair (this store holds the offer but not its signed copy: receive the offer file again), no_acceptor_key (your agreement names no key for the accepting side, which runs no layer, so the check cannot run on this deal)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "settlement", Short: "Derive the payment and delivery state of a deal's settlement legs, with the other side's legs you hold; on an x-deal-v1 deal, each amount row's report_check (the report row's verdict) and payment.check (the payment check on the legs) as your records read it now, or why it did not run: no_offer_pair (this store holds the offer but not its signed copy: receive the offer file again), no_acceptor_key (your agreement names no key for the other side (it keeps no signed records of its own), so the payment check cannot run on this deal)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		if v1, err := v1DealOfFlag(c); err != nil {
 			return err
 		} else if v1 {
