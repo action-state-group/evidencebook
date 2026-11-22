@@ -23,9 +23,8 @@ func cadenceCard2(t *testing.T, staple Staple, holder string) (StapleCheck, []ui
 	return got, positions, window
 }
 
-// The cadence's history_card/2 is a staple CheckStaple accepts at any
-// length (u539 removes the 35-tick cap): it lists the sampled positions
-// P(n-1, window) of the finished ticks, as of tick n.
+// The cadence's history_card/2 is a staple CheckStaple accepts: it lists the
+// sampled positions P(n-1, window) of the finished ticks, as of tick n.
 func TestCadenceHistoryCard2SamplesTheTicks(t *testing.T) {
 	ctx := context.Background()
 	fixture := newShelfFixture(t)
@@ -132,4 +131,22 @@ func TestCadenceHistoryCard2SpansTheMove(t *testing.T) {
 	got, positions, _ := cadenceCard2(t, staple, KeyID(fixture.cfg.Signer))
 	assert.Equal(t, digestBytes(last.Tick.Checkpoint), got.Anchor)
 	assert.Equal(t, evidencerequest.HistoryPositions(last.Tick.N-1, DefaultHistoryWindow), positions)
+}
+
+// HistoryCard2 has no tick cap (u539): asked past DefaultMaxAnswerItems ticks
+// it goes on to read the ticks (ErrNotFound: they are not there) where the
+// /1 card is refused before reading any (ErrOverLimit). Sealing that many
+// ticks to show a passing card would take minutes; the sampled read is
+// covered by TestCadenceHistoryCard2SamplesTheTicks.
+func TestCadenceHistoryCard2HasNoTickCap(t *testing.T) {
+	ctx := context.Background()
+	fixture := newShelfFixture(t)
+	shelf := fixture.open(t)
+	c, _ := newCadence(t, shelf)
+	mustTick(t, c, tickTime)
+	_, err := c.HistoryCard(ctx, DefaultMaxAnswerItems+1)
+	require.ErrorIs(t, err, ErrOverLimit)
+	_, err = c.HistoryCard2(ctx, DefaultMaxAnswerItems+1, 0)
+	require.ErrorIs(t, err, ErrNotFound)
+	assert.NotErrorIs(t, err, ErrOverLimit)
 }
