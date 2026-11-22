@@ -362,3 +362,89 @@ wiring), `deal agree` and the deal-book writer, and the first-act gate on eviden
   must not reach a release until a user can produce a v1 `admit` (its own verb or the admission
   flow, question 2 of section 10), and its `--admit is required` refusal must then name the verb or
   command that shows the digest. Nothing ships from this slice (no release).
+
+## 12. Slice 3, proposed: `deal check` and `deal note` on a v1 deal (evidencebook#626, B1b)
+
+**Status: proposed, for review before code.** x-deal-v1 becomes the default once a v1 deal can
+go from agreement to report through plugin commands (evidencebook#626). `deal admit` (#688) seals
+the admission decision that the agreement cites. This slice gives a v1 deal the checks an act
+needs. Section 5 says only "`deal check`, `deal note`: unchanged flags; on a v1 deal they seal the
+v1 records". This section says how.
+
+**The problem.** On main, both verbs refuse a v1 deal before anything loads (`deal.go:971-979`,
+`v1Refusal`). Their v0 path folds the deal's sealed v0 steps into a `dealState` (`foldDeal`,
+`deal_rules.go:1085`), starting from the opening's intent, counterparty, terms, claims and
+recourse. It evaluates the check input against that state (`evaluateDeal`), runs the pinned rules
+checker (`runRulesChecker`), builds the card, and seals v0 steps. A v1 deal has no opening: its
+book starts at the agreement, and the journal holds its intent, check, verdict, approval and
+journey records (x-deal-v1 PROFILE §4).
+
+**Approach: one adapter, not a second checker.** The card, the rules and the materiality predicate
+are the product. A v1 deal reuses all of them, and only the source of the state and the writer
+change.
+
+1. **`v1DealState(ctx, dealID)`** builds the `dealState` that `evaluateDeal` and the rules checker
+   take, from v1 records:
+
+   | `dealState` part | v0 source | v1 source |
+   |---|---|---|
+   | intent (verbatim, limits, allowed) | the opening's intent, later `intent` steps | the latest journal `intent` sealed for this deal, then the `confirm_limits` approvals, as v0 folds them |
+   | agreed terms, terms | the opening's terms; a `change` overlays `terms` | the offer's `terms` (`dealprofile.Terms`, mapped field by field to `dealTerms`); a journal `detail_change` overlays them as v0's `change` does |
+   | who | the opening's counterparty; messages and evidence overlay | the offer's counterparty (`to`, or the received offer's signer key) and its `counterparty_profile` record; journey records overlay as in v0 |
+   | recourse | the opening's recourse | the agreement's `adjudicator` and `forums` |
+   | claims, messages, evidence, agent moves | v0 steps | the journal's journey records for this deal, in journal order |
+   | checks and approvals already made | v0 `check` and `approval` steps | the journal's `check`, `verdict` and `approval` records for this deal |
+
+   The fold reuses `foldDeal`'s per-kind folds (`foldIntentJourney`, `foldAgentMove`,
+   `overlayWho`, `overlayTerms`, the approval fold) on a synthetic opening plus events read from
+   the journal. So the v0 and v1 paths share every rule, and a test runs one input through both
+   and compares the card.
+2. **`deal check` on a v1 deal** runs `evaluateDeal` and the rules checker on that state. It then
+   seals, in the journal, the `check` record (v0's body, plus `payment_ref` on a pay and a fresh
+   `nonce`, with the deal's `deal_id`) and the `verdict` (one `checks` ref, with a `nonce`). Same
+   flags, same card, same output. The input gains `payment_ref`, the reference a payment will be
+   made under, which `deal settle` (B2) cites. A pay check without it is refused, because x-deal-v1
+   §8's payer leg rests on it.
+3. **`deal note` on a v1 deal.**
+   - These kinds seal their journal record (journal overlay or journey overlay), with `deal_id`
+     placed by `SealContext`: `intent`, `approval` (its `approves` ref names the verdict, or the
+     intent on `confirm_limits`, with a `nonce`), `message`, `claim`, `evidence`, `change` (as
+     `detail_change`) and `disclosure`.
+   - These kinds have no v1 note form and refuse, naming the v1 verb: `act`, `payment_received`
+     and `delivered` (`deal perform`, `deal settle`, B2); `dispute` (`deal dispute`; already
+     refused); `ruling` (the adjudicator's case book); `acceptance` and `platform_approval` (the
+     sale overlay, B3).
+4. **Authorization stays in the library.** B1b seals what x-deal-v1 §8 reads. It decides no act.
+   B2's `perform` and `settle` run `xdealv1.CheckAuthorizations` over the journal and the act
+   before sealing.
+5. **Per-deal binding.** A journal record carries `deal_id` exactly where PROFILE §3 says. An
+   `intent` sealed before any offer carries none, so the plugin binds it locally to the deal whose
+   offer follows. This is the pattern `deal admit` uses (`deal_v1_admits`): an intent is bound once,
+   and `deal agree --intent` defaults to it.
+
+**What is not decided here, and who decides.**
+- **The person's signature** (x-deal-v1 §8). An act must not be relied on until the person's
+  signature over the approval digest is held, and that signature travels beside the approval
+  (Steven, evidencebook#500 option b; the plugin's door is evidencebook-deal#98, which carries over
+  to evidencebook). B1b seals the approval. How the person signs, and where the plugin keeps the
+  signature, is #98's.
+  - Until #98 is decided, B2 seals an act whose authorization the library accepts. It reports
+    which digests still need the person's signature (`CheckAuthorizations`'s per-act digests) and
+    marks the act as not to be relied on yet.
+  - This is a product question. It goes to Sherlock2, and to Steven if Sherlock2 routes it there.
+- **The `payment_ref` member** of the check input: its name and form. The record member exists
+  (PROFILE §5, check). Only the input file's member is new, and it is a wording question for
+  Sherlock2.
+
+**Tests.**
+- **One input, two versions:** the same check input on a v0 deal and on an equivalent v1 deal
+  gives the same card and verdict, for pass, pause and deny, with a confirmed-limits approval and
+  with a detail change.
+- **Record placement:** each sealed v1 record passes `xdealv1.CheckSealed` with its context, has a
+  fresh nonce, and carries `deal_id` exactly where PROFILE §3 says.
+- **Refusals:** a v1 pay check with no `payment_ref`; each v1 note kind with no form, naming its
+  verb.
+- **Old deals:** the v0 suite is unchanged, with v1 deals and v0 deals in one store.
+- **Authorization joint test, after B2:** `CheckAuthorizations` accepts a journal B1b sealed for a
+  checked, approved act, and refuses it for a reused approval, a changed detail and a wrong-deal
+  check.
