@@ -71,6 +71,15 @@ type BundleRequest struct {
 	Withhold []string
 	// At pins the coverage anchor; nil checkpoints the book now.
 	At *Checkpoint
+	// DisclosureRecordedElsewhere leaves the book unchanged: the bundle is
+	// built and returned, and no disclosure record is appended (Bundle's
+	// Disclosure is then the zero Record). It is for a host that records the
+	// disclosure itself, outside this book, as a book that holds only one
+	// profile's records must (an x-deal-v1 deal book: a disclosure record in
+	// it is not an x-deal-v1 record, and every later report of the book
+	// would refuse it). It requires At, so the anchor is a checkpoint the
+	// book already has and nothing is written.
+	DisclosureRecordedElsewhere bool
 	// ConductPacks are the pack ids the book's owner holds as conduct packs
 	// (scope.kind conduct): private, judged only for the owner. A scoped
 	// bundle whose selected set holds a record of any type whose subject_ref
@@ -181,6 +190,9 @@ func (b *Book) Bundle(ctx context.Context, req BundleRequest) (Bundle, error) {
 }
 
 func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, error) {
+	if req.DisclosureRecordedElsewhere && req.At == nil {
+		return Bundle{}, fmt.Errorf("%w: a bundle whose disclosure is recorded elsewhere needs At, a checkpoint the book has: it writes nothing", ErrInvalid)
+	}
 	if req.Payloads == "" {
 		req.Payloads = PayloadsSelected
 	}
@@ -423,6 +435,9 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	body, err := json.Marshal(statement)
 	if err != nil {
 		return Bundle{}, err
+	}
+	if req.DisclosureRecordedElsewhere {
+		return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor}, nil
 	}
 	links := make([]Link, 0, len(disclosed))
 	for _, id := range disclosed {
