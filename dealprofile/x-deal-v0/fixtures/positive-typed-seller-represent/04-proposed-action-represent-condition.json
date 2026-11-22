@@ -1,0 +1,30 @@
+{
+  "fixture": "04-proposed-action-represent-condition.json",
+  "expect": "valid",
+  "story": "The agent is about to tell the buyer about the condition: its class in the clear, its words committed.",
+  "record": {
+    "type": "proposed-action/v0",
+    "canonicalization": "jcs",
+    "chain_id": "deal-7e41b9c02d5a8f36",
+    "seq": 4,
+    "at": "2026-10-08T09:06:00Z",
+    "prev": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "758cb45db0a6c350c04115afb563efe983ca7fb323ea27d4a71b3201fa596020"
+    },
+    "chain_root": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+    },
+    "body": {
+      "action": "represent",
+      "representing": {
+        "class": "condition",
+        "text_commitment": "61856d5898d148c9e0904e565f69e2ad274e49426fb9bdc0b8089c85353817af"
+      }
+    }
+  },
+  "expected_digest": "83de19e5d88c0932fd8fa31eba7897b2ec9db536ec608447da46fd8ed29baada"
+}

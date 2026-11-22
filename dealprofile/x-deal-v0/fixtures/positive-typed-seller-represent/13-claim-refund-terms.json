@@ -1,0 +1,31 @@
+{
+  "fixture": "13-claim-refund-terms.json",
+  "expect": "valid",
+  "story": "A refund promise the agent said with no check: still sealed, since the words were said.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim",
+      "seq": 13,
+      "at": "2026-10-08T09:24:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "447a89246fc88ca4e9893d96efcb2164387ff20bf2684a5e9e7b137ef11f3194"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      }
+    },
+    "body": {
+      "text_commitment": "1040abb28fa8d36486bb5df234dda0282f0c822e226c8c0c82fbe2bab6cf420a",
+      "source_kind": "agent",
+      "class": "refund_terms"
+    }
+  },
+  "expected_digest": "b6003bd0bc23e78f7c2d4ceeab100d1e82ffe6dbc4ae0918fa977852af799dfa"
+}

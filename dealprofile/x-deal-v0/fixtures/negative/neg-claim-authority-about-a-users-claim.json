@@ -1,0 +1,82 @@
+{
+  "fixture": "neg-claim-authority-about-a-users-claim",
+  "expect": "invalid",
+  "description": "A claim_authority after a claim the user made: only a seller's agent's representation has one.",
+  "expected_stage": "chain",
+  "expected_error_contains": "directly follows the seller's representation it judges",
+  "chain_dir": "positive-typed-seller-represent",
+  "chain_prefix": [
+    "01-baseline.json",
+    "02-task-authority.json",
+    "03-claim-sealed-before.json",
+    "04-proposed-action-represent-condition.json",
+    "05-action-evaluation.json",
+    "06-claim-condition.json",
+    "07-claim-authority-condition.json",
+    "08-proposed-action-represent-warranty.json",
+    "09-action-evaluation.json",
+    "10-approval-of-the-warranty.json",
+    "11-claim-warranty.json",
+    "12-claim-authority-warranty.json",
+    "13-claim-refund-terms.json",
+    "14-claim-authority-refund-terms.json"
+  ],
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim_authority",
+      "seq": 16,
+      "at": "2026-10-08T09:34:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "f2cc8207bcb70b97943437a3fa54acf1d27480c51fdc01e2958e1cd3063f17d5"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      },
+      "refs": [
+        {
+          "rel": "about",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "f2cc8207bcb70b97943437a3fa54acf1d27480c51fdc01e2958e1cd3063f17d5"
+        }
+      ]
+    },
+    "body": {
+      "unchecked": true,
+      "rule": "no_check"
+    }
+  },
+  "chain_between": [
+    {
+      "x-deal-v0": {
+        "profile": "x-deal-v0",
+        "canonicalization": "jcs",
+        "deal_id": "deal-7e41b9c02d5a8f36",
+        "record_type": "claim",
+        "seq": 15,
+        "at": "2026-10-08T09:34:00Z",
+        "prev": {
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "e294637357f7301e5beb6dc0b76680fb685eb87a9f4d28b1e8d0efe6915ef737"
+        },
+        "baseline_ref": {
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+        }
+      },
+      "body": {
+        "text_commitment": "6156577c34c6dad4d6b384917a0283c05954c77c5e79d05b1882f08a84d76cae",
+        "source_kind": "user"
+      }
+    }
+  ]
+}

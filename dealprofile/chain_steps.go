@@ -254,47 +254,29 @@ func (c *dealChain) step(typed bool) {
 		}
 	case t == TypeClaim:
 		if c.repRules && body["source_kind"] == "agent" && has(body, "text_commitment") {
-			class := str(body["class"])
 			if !has(body, "class") {
 				c.fail("a seller's representation names its class")
 			}
-			if has(body, "authority_basis") == (body["unchecked"] == true) {
-				c.fail("a seller's representation carries exactly one of authority_basis or unchecked")
-			}
-			if body["unchecked"] == true {
-				if byRelHas("authorized_by") {
-					c.fail("an unchecked representation names nothing that authorized it")
-				}
+			if !has(body, "authority_basis") && !has(body, "unchecked") && !byRelHas("authorized_by") {
+				// The verdict is sealed apart, in the claim_authority that
+				// directly follows (evidencebook#607).
+				c.pendingClaim = i
 			} else {
-				jt := asOne("authorized_by", TypeApproval, TypeVerdict)
-				jv, ja, chk := c.authorizeTyped(jt, "represent", "representation")
-				c.verifyBasis(jv, ja, nil)
-				rep := mp(c.bodyOf(chk)["representing"])
-				if rep["class"] != body["class"] {
-					c.fail("the representation's class differs from the one checked")
+				if c.claimAuthoritySeen {
+					c.fail("a seller's representation after a claim_authority carries no verdict of its own: its claim_authority does")
 				}
-				// Sealed under the check's own nonces: equal commitments
-				// mean the words said are the words checked.
-				if !same(rep["text_commitment"], body["text_commitment"]) || !same(rep["source_ref_commitment"], body["source_ref_commitment"]) {
-					c.fail("the representation's words differ from the ones checked")
-				}
-				if tk, ok := c.taskAtVerdict[jv]; !ok || tk != c.taskIdx {
-					c.fail("the task authority changed after the check: the representation needs a new check")
-				}
-				if ja < 0 && !contains(c.bodyOf(c.taskIdx)["ordered_representations"], body["class"]) {
-					c.fail("a representation the task authority does not order needs the user's own approval")
-				}
-				// The user's own claim (capsule-engine#189): whatever the
-				// task authority orders, only the user's own approval, in
-				// their words, says the words are theirs.
-				if rep["attributed_to"] == "user" && ja < 0 {
-					c.fail("a representation attributed to the user needs the user's own approval")
-				}
-				c.stated[class] = true
+				c.represented(body, body, "")
 			}
 		} else if has(body, "authority_basis") || has(body, "unchecked") || byRelHas("authorized_by") {
 			c.fail("only a seller's representation under the representation rules carries an authority")
 		}
+	case t == TypeClaimAuthority:
+		j := asOne("about", TypeClaim)
+		if j != c.pendingClaim || j != i-1 {
+			c.fail("a claim_authority directly follows the seller's representation it judges")
+		}
+		c.pendingClaim, c.claimAuthoritySeen = -1, true
+		c.represented(body, c.bodyOf(j), str(block(records[j])["at"]))
 	case t == TypeDetailChange:
 		asOpt("source", TypeMessage, TypeEvidence)
 		kinds := map[string]bool{}
@@ -465,6 +447,48 @@ func anyNotIn(list, in any) bool {
 	return false
 }
 
+// represented is section 6 rule 12 on a seller's representation: the verdict
+// (on the claim itself, or on the claim_authority that follows it) carries
+// exactly one of authority_basis or unchecked, and an authorized one rests on
+// a represent check of the claim's exact words. at is the claim's time, ""
+// when the verdict is on the claim.
+func (c *dealChain) represented(verdict, claim obj, at string) {
+	if has(verdict, "authority_basis") == (verdict["unchecked"] == true) {
+		c.fail("a seller's representation carries exactly one of authority_basis or unchecked")
+	}
+	if verdict["unchecked"] == true {
+		if _, ok := c.byRel["authorized_by"]; ok {
+			c.fail("an unchecked representation names nothing that authorized it")
+		}
+		return
+	}
+	jt := c.one("authorized_by", []string{TypeApproval, TypeVerdict}, true)
+	jv, ja, chk := c.authorizeTyped(jt, "represent", "representation")
+	c.verifyBasis(jv, ja, nil, at)
+	rep := mp(c.bodyOf(chk)["representing"])
+	if rep["class"] != claim["class"] {
+		c.fail("the representation's class differs from the one checked")
+	}
+	// Sealed under the check's own nonces: equal commitments mean the words
+	// said are the words checked.
+	if !same(rep["text_commitment"], claim["text_commitment"]) || !same(rep["source_ref_commitment"], claim["source_ref_commitment"]) {
+		c.fail("the representation's words differ from the ones checked")
+	}
+	if tk, ok := c.taskAtVerdict[jv]; !ok || tk != c.taskIdx {
+		c.fail("the task authority changed after the check: the representation needs a new check")
+	}
+	if ja < 0 && !contains(c.bodyOf(c.taskIdx)["ordered_representations"], claim["class"]) {
+		c.fail("a representation the task authority does not order needs the user's own approval")
+	}
+	// The user's own claim (capsule-engine#189): whatever the task authority
+	// orders, only the user's own approval, in their words, says the words are
+	// theirs.
+	if rep["attributed_to"] == "user" && ja < 0 {
+		c.fail("a representation attributed to the user needs the user's own approval")
+	}
+	c.stated[str(claim["class"])] = true
+}
+
 func (c *dealChain) confirmLimits(j int) {
 	body := c.body
 	prop := c.bodyOf(j)
@@ -537,7 +561,7 @@ func (c *dealChain) action(typed bool) {
 	if typed {
 		var jv, ja int
 		jv, ja, chk = c.authorizeTyped(c.one("authorized_by", []string{TypeApproval, TypeVerdict}, true), str(body["action"]), "action")
-		c.verifyBasis(jv, ja, body["amount_minor"])
+		c.verifyBasis(jv, ja, body["amount_minor"], "")
 		if c.repRules && slices.Contains(representationGated, str(body["action"])) {
 			var missing []string
 			for _, o := range sl(c.ordered) {

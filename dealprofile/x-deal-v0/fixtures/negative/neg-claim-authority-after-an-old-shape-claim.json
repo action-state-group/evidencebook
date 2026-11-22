@@ -1,0 +1,95 @@
+{
+  "fixture": "neg-claim-authority-after-an-old-shape-claim",
+  "expect": "invalid",
+  "description": "A claim carrying its own verdict, then a claim_authority for it as well.",
+  "expected_stage": "chain",
+  "expected_error_contains": "directly follows the seller's representation it judges",
+  "chain_dir": "positive-typed-seller-represent",
+  "chain_prefix": [
+    "01-baseline.json",
+    "02-task-authority.json",
+    "03-claim-sealed-before.json",
+    "04-proposed-action-represent-condition.json",
+    "05-action-evaluation.json"
+  ],
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim_authority",
+      "seq": 7,
+      "at": "2026-10-08T09:12:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "3ab87231ef0d7debeb05cea3a2e297928a95a65a99893fcb4dac707f2bbb509e"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      },
+      "refs": [
+        {
+          "rel": "about",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "3ab87231ef0d7debeb05cea3a2e297928a95a65a99893fcb4dac707f2bbb509e"
+        },
+        {
+          "rel": "authorized_by",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "17349fd9c0361177f8c5d9d854ca8cbcd49ecad869650f017c9b3e9edd4fb9e5"
+        }
+      ]
+    },
+    "body": {
+      "authority_basis": [
+        {
+          "type": "task_authority",
+          "ref": {
+            "type": "record",
+            "digest_alg": "SHA-256",
+            "digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
+          }
+        }
+      ],
+      "evaluation_ref": {
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "17349fd9c0361177f8c5d9d854ca8cbcd49ecad869650f017c9b3e9edd4fb9e5"
+      }
+    }
+  },
+  "chain_between": [
+    {
+      "x-deal-v0": {
+        "profile": "x-deal-v0",
+        "canonicalization": "jcs",
+        "deal_id": "deal-7e41b9c02d5a8f36",
+        "record_type": "claim",
+        "seq": 6,
+        "at": "2026-10-08T09:10:00Z",
+        "prev": {
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "17349fd9c0361177f8c5d9d854ca8cbcd49ecad869650f017c9b3e9edd4fb9e5"
+        },
+        "baseline_ref": {
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+        }
+      },
+      "body": {
+        "text_commitment": "61856d5898d148c9e0904e565f69e2ad274e49426fb9bdc0b8089c85353817af",
+        "source_kind": "agent",
+        "class": "condition",
+        "unchecked": true,
+        "rule": "no_check"
+      }
+    }
+  ]
+}

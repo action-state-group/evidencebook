@@ -770,6 +770,24 @@ pub struct RulesVerdictBody {
     pub pack_id: Option<String>,
 }
 
+/// ClaimAuthorityBody is `body_claim_authority` in the schema: the seller's
+/// verdict on its agent's representation, sealed right after the claim it
+/// judges so a copy can withhold it apart from the claim's words
+/// (evidencebook#607). It carries exactly one of `authority_basis` with
+/// `evaluation_ref`, or `unchecked` with `rule`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClaimAuthorityBody {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_basis: Option<Vec<AuthorityEntry>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evaluation_ref: Option<TypedRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unchecked: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+}
+
 /// OutcomeNoteBody is `body_outcome_note` in the schema. TEMPORARY
 /// (evidencebook#462; evidencebook#461's computed row status supersedes it):
 /// the book owner's own note, sealed after the final close, that an outcome

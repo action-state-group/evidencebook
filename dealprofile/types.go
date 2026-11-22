@@ -475,6 +475,18 @@ type RulesVerdictBody struct {
 	PackID     string `json:"pack_id,omitzero"`
 }
 
+// ClaimAuthorityBody is body_claim_authority in the schema: the seller's
+// verdict on its agent's representation, sealed right after the claim it
+// judges so a copy can withhold it apart from the claim's words
+// (evidencebook#607). It carries exactly one of AuthorityBasis with
+// EvaluationRef, or Unchecked with Rule.
+type ClaimAuthorityBody struct {
+	AuthorityBasis []AuthorityEntry `json:"authority_basis,omitzero"`
+	EvaluationRef  *TypedRef        `json:"evaluation_ref,omitzero"`
+	Unchecked      *bool            `json:"unchecked,omitzero"`
+	Rule           string           `json:"rule,omitzero"`
+}
+
 // OutcomeNoteBody is body_outcome_note in the schema. TEMPORARY
 // (evidencebook#462; evidencebook#461's computed row status supersedes it):
 // the book owner's own note, sealed after the final close, that an outcome

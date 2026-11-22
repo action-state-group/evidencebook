@@ -297,6 +297,7 @@ fn allowed_rels(t: &str) -> &'static [&'static str] {
         "check" => &["supersedes", "source"],
         "counterparty_profile" => &["about"],
         "rules_verdict" | "outcome_note" => &["confirms"],
+        "claim_authority" => &["about", "authorized_by"],
         _ => &[],
     }
 }
@@ -680,6 +681,11 @@ struct Chain {
     ordered: Value,
     rep_rules: bool,
     stated: HashSet<String>,
+    // evidencebook#607: a representation sealed without its verdict, waiting
+    // for the claim_authority that directly follows it; once a deal holds a
+    // claim_authority, no later representation carries its own verdict.
+    pending_claim: Option<usize>,
+    claim_authority_seen: bool,
     confirmed: HashSet<usize>,
     used_approvals: HashSet<usize>,
     verdict_for_check: HashSet<usize>,
@@ -874,15 +880,97 @@ impl Chain {
         Ok((self.first_ref_index(jt), Some(jt), chk))
     }
 
+    /// Section 6 rule 12 on a seller's representation: the verdict (on the
+    /// claim itself, or on the claim_authority that follows it) carries exactly
+    /// one of authority_basis or unchecked, and an authorized one rests on a
+    /// represent check of the claim's exact words. `at` is the claim's time,
+    /// `None` when the verdict is on the claim.
+    fn represented(&mut self, verdict: &Value, claim: &Value, at: Option<&str>) -> R<()> {
+        let unchecked = g(verdict, "unchecked") == &Value::Bool(true);
+        if has(verdict, "authority_basis") == unchecked {
+            bail!(
+                self,
+                "a seller's representation carries exactly one of authority_basis or unchecked"
+            );
+        }
+        if unchecked {
+            if self.by_rel.contains_key("authorized_by") {
+                bail!(
+                    self,
+                    "an unchecked representation names nothing that authorized it"
+                );
+            }
+            return Ok(());
+        }
+        let jt = self
+            .one("authorized_by", &[TYPE_APPROVAL, TYPE_VERDICT], true)?
+            .unwrap_or_default();
+        let (jv, ja, chk) = self.authorize_typed(jt, "represent", "representation")?;
+        self.verify_basis(jv, ja, &Value::Null, at)?;
+        let rep = g(self.body_of(chk), "representing").clone();
+        if g(&rep, "class") != g(claim, "class") {
+            bail!(
+                self,
+                "the representation's class differs from the one checked"
+            );
+        }
+        // Sealed under the check's own nonces: equal commitments mean the
+        // words said are the words checked.
+        if g(&rep, "text_commitment") != g(claim, "text_commitment")
+            || g(&rep, "source_ref_commitment") != g(claim, "source_ref_commitment")
+        {
+            bail!(
+                self,
+                "the representation's words differ from the ones checked"
+            );
+        }
+        if self.task_at_verdict.get(&jv) != Some(&self.task_idx) {
+            bail!(
+                self,
+                "the task authority changed after the check: the representation needs a new check"
+            );
+        }
+        if ja.is_none()
+            && !contains(
+                g(self.body_of(self.task_idx), "ordered_representations"),
+                g(claim, "class"),
+            )
+        {
+            bail!(
+                self,
+                "a representation the task authority does not order needs the user's own approval"
+            );
+        }
+        // The user's own claim (capsule-engine#189): whatever the task
+        // authority orders, only the user's own approval, in their words, says
+        // the words are theirs.
+        if string_is(g(&rep, "attributed_to"), "user") && ja.is_none() {
+            bail!(
+                self,
+                "a representation attributed to the user needs the user's own approval"
+            );
+        }
+        self.stated.insert(s(g(claim, "class")).to_string());
+        Ok(())
+    }
+
     /// The executed phase of the check contract: the evaluation relied on
     /// still valid, and every authority layer in order, each a ref to its
-    /// record.
-    fn verify_basis(&self, jv: usize, ja: Option<usize>, amount: &Value) -> R<()> {
+    /// record. `at` is the time the step was taken, `None` for the record's
+    /// own: a claim_authority is held to its claim's time, since the words
+    /// were said then, whenever the verdict was sealed.
+    fn verify_basis(
+        &self,
+        jv: usize,
+        ja: Option<usize>,
+        amount: &Value,
+        at: Option<&str>,
+    ) -> R<()> {
         let v = self.body_of(jv);
         let body = g(&self.docs[self.i], "body");
         let b = block(&self.docs[self.i]);
         let until = s(g(v, "valid_until"));
-        if s(g(b, "at")) > until {
+        if at.unwrap_or(s(g(b, "at"))) > until {
             bail!(
                 self,
                 "the evaluation was valid until {until}: a step after that needs a new check"
@@ -1025,6 +1113,8 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
         ordered: Value::Null,
         rep_rules: false,
         stated: HashSet::new(),
+        pending_claim: None,
+        claim_authority_seen: false,
         confirmed: HashSet::new(),
         used_approvals: HashSet::new(),
         verdict_for_check: HashSet::new(),
@@ -1086,6 +1176,12 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
             bail!(
                 c,
                 "a typed record in a chain that did not open with a task authority"
+            );
+        }
+        if c.pending_claim.is_some() && t != TYPE_CLAIM_AUTHORITY {
+            bail!(
+                c,
+                "a seller's representation is directly followed by its claim_authority"
             );
         }
         if t == TYPE_CHECK
@@ -1584,61 +1680,18 @@ impl Chain {
                 if !has(body, "class") {
                     bail!(self, "a seller's representation names its class");
                 }
-                let unchecked = g(body, "unchecked") == &Value::Bool(true);
-                if has(body, "authority_basis") == unchecked {
-                    bail!(self, "a seller's representation carries exactly one of authority_basis or unchecked");
-                }
-                if unchecked {
-                    if by_rel_has(self, "authorized_by") {
-                        bail!(
-                            self,
-                            "an unchecked representation names nothing that authorized it"
-                        );
-                    }
+                if !has(body, "authority_basis")
+                    && !has(body, "unchecked")
+                    && !by_rel_has(self, "authorized_by")
+                {
+                    // The verdict is sealed apart, in the claim_authority that
+                    // directly follows (evidencebook#607).
+                    self.pending_claim = Some(i);
                 } else {
-                    let jt = self
-                        .one("authorized_by", &[TYPE_APPROVAL, TYPE_VERDICT], true)?
-                        .unwrap_or_default();
-                    let (jv, ja, chk) = self.authorize_typed(jt, "represent", "representation")?;
-                    self.verify_basis(jv, ja, &Value::Null)?;
-                    let rep = g(self.body_of(chk), "representing").clone();
-                    if g(&rep, "class") != g(body, "class") {
-                        bail!(
-                            self,
-                            "the representation's class differs from the one checked"
-                        );
+                    if self.claim_authority_seen {
+                        bail!(self, "a seller's representation after a claim_authority carries no verdict of its own: its claim_authority does");
                     }
-                    // Sealed under the check's own nonces: equal commitments
-                    // mean the words said are the words checked.
-                    if g(&rep, "text_commitment") != g(body, "text_commitment")
-                        || g(&rep, "source_ref_commitment") != g(body, "source_ref_commitment")
-                    {
-                        bail!(
-                            self,
-                            "the representation's words differ from the ones checked"
-                        );
-                    }
-                    if self.task_at_verdict.get(&jv) != Some(&self.task_idx) {
-                        bail!(self, "the task authority changed after the check: the representation needs a new check");
-                    }
-                    if ja.is_none()
-                        && !contains(
-                            g(self.body_of(self.task_idx), "ordered_representations"),
-                            g(body, "class"),
-                        )
-                    {
-                        bail!(self, "a representation the task authority does not order needs the user's own approval");
-                    }
-                    // The user's own claim (capsule-engine#189): whatever the
-                    // task authority orders, only the user's own approval, in
-                    // their words, says the words are theirs.
-                    if string_is(g(&rep, "attributed_to"), "user") && ja.is_none() {
-                        bail!(
-                            self,
-                            "a representation attributed to the user needs the user's own approval"
-                        );
-                    }
-                    self.stated.insert(s(g(body, "class")).to_string());
+                    self.represented(body, body, None)?;
                 }
             } else if has(body, "authority_basis")
                 || has(body, "unchecked")
@@ -1646,6 +1699,19 @@ impl Chain {
             {
                 bail!(self, "only a seller's representation under the representation rules carries an authority");
             }
+        } else if t == TYPE_CLAIM_AUTHORITY {
+            let j = self.one("about", &[TYPE_CLAIM], true)?.unwrap_or_default();
+            if self.pending_claim != Some(j) || j + 1 != i {
+                bail!(
+                    self,
+                    "a claim_authority directly follows the seller's representation it judges"
+                );
+            }
+            self.pending_claim = None;
+            self.claim_authority_seen = true;
+            let claim = self.body_of(j).clone();
+            let at = s(g(block(&self.docs[j]), "at")).to_string();
+            self.represented(body, &claim, Some(&at))?;
         } else if t == TYPE_DETAIL_CHANGE {
             self.one("source", &[TYPE_MESSAGE, TYPE_EVIDENCE], false)?;
             let kinds: BTreeSet<&str> = g(g(b, "counterparty"), "ids")
@@ -1951,7 +2017,7 @@ impl Chain {
                 .unwrap_or_default();
             let (jv, ja, c) = self.authorize_typed(jt, &action, "action")?;
             chk = c;
-            self.verify_basis(jv, ja, g(body, "amount_minor"))?;
+            self.verify_basis(jv, ja, g(body, "amount_minor"), None)?;
             if self.rep_rules && REPRESENTATION_GATED.contains(&action.as_str()) {
                 let missing: Vec<&str> = list(&self.ordered)
                     .iter()

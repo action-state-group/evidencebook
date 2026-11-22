@@ -132,7 +132,7 @@ func TestRecordTypesAreTheSchemas(t *testing.T) {
 }
 
 // positiveChains are the fixtures' four positive chains.
-var positiveChains = []string{"positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"}
+var positiveChains = []string{"positive", "positive-typed", "positive-typed-seller", "positive-typed-seller-represent", "positive-sale", "positive-sale-unpost"}
 
 func TestPositiveFixtures(t *testing.T) {
 	store := localStoreValues(loadFingerprints(t))
@@ -231,9 +231,11 @@ func expectedDigests(t *testing.T) map[string]string {
 // name or location in another validator's report carries, to the text this
 // package's validator reports for the same failure.
 var schemaWordingOnly = map[string]string{
-	"neg-agent-card-with-words.json":                        "/body: 'not' failed",                 // there: "should not be valid under ... said_commitment"
-	"neg-typed-seller-offer-no-proposal-beside-source.json": "/body: 'not' failed",                 // there: "should not be valid under"
-	"neg-typed-seller-source-on-a-commit.json":              "/body/action: value must be 'offer'", // there: "'offer' was expected"
+	"neg-agent-card-with-words.json":                        "/body: 'not' failed",                                                   // there: "should not be valid under ... said_commitment"
+	"neg-typed-seller-offer-no-proposal-beside-source.json": "/body: 'not' failed",                                                   // there: "should not be valid under"
+	"neg-typed-seller-source-on-a-commit.json":              "/body/action: value must be 'offer'",                                   // there: "'offer' was expected"
+	"neg-claim-authority-unknown-rule.json":                 "/body/rule: value must be one of",                                      // there: "'because' is not one of"
+	"neg-claim-authority-both-forms.json":                   "additional properties 'authority_basis', 'evaluation_ref' not allowed", // there: the body, not valid under any of the forms
 }
 
 // TestNegativeFixtures checks that every negative the reference checker

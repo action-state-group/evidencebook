@@ -313,6 +313,7 @@ fn positive_fixtures() {
         "positive",
         "positive-typed",
         "positive-typed-seller",
+        "positive-typed-seller-represent",
         "positive-sale",
         "positive-sale-unpost",
     ] {
@@ -351,6 +352,15 @@ const SCHEMA_WORDING_ONLY: &[(&str, &str)] = &[
     (
         "neg-typed-seller-source-on-a-commit.json",
         "/body/action: value must be 'offer'",
+    ),
+    (
+        "neg-claim-authority-unknown-rule.json",
+        "/body/rule: value must be one of",
+    ),
+    // There: the body, not valid under any of claim_authority's two forms.
+    (
+        "neg-claim-authority-both-forms.json",
+        "additionalProperties 'authority_basis', 'evaluation_ref' not allowed",
     ),
 ];
 

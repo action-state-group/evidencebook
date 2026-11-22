@@ -31,6 +31,8 @@
       "then": { "properties": { "body": { "$ref": "#/$defs/body_sale_unpost" }, "x-deal-v0": { "required": ["refs"], "properties": { "deal_id": { "pattern": "^sale-[0-9a-f]{16}$" }, "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "unposts" } } } } }, "not": { "required": ["counterparty"] } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "rules_verdict" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_rules_verdict" }, "x-deal-v0": { "not": { "required": ["counterparty"] }, "required": ["refs"], "properties": { "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "confirms" } } } } } } } } },
+    { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "claim_authority" } } } } },
+      "then": { "properties": { "body": { "$ref": "#/$defs/body_claim_authority" }, "x-deal-v0": { "not": { "anyOf": [ { "required": ["counterparty"] }, { "required": ["channel"] } ] }, "required": ["refs"], "properties": { "refs": { "minItems": 1, "maxItems": 2, "items": { "properties": { "rel": { "enum": ["about", "authorized_by"] } } } } } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "outcome_note" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_outcome_note" }, "x-deal-v0": { "not": { "required": ["counterparty"] }, "required": ["refs"], "properties": { "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "confirms" } } } } } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "intent" } } } } },
@@ -79,7 +81,7 @@
     },
     "short_text": { "type": "string", "minLength": 1, "maxLength": 200 },
     "record_type": {
-      "enum": ["intent", "baseline", "message", "claim", "evidence", "detail_change", "check", "verdict", "approval", "action", "outcome", "close", "disclosure", "sale", "counterparty_profile", "thread", "thread_opened", "sale_cut", "sale_close", "sale_unpost", "agent_move", "rules_verdict", "outcome_note"]
+      "enum": ["intent", "baseline", "message", "claim", "evidence", "detail_change", "check", "verdict", "approval", "action", "outcome", "close", "disclosure", "sale", "counterparty_profile", "thread", "thread_opened", "sale_cut", "sale_close", "sale_unpost", "agent_move", "rules_verdict", "outcome_note", "claim_authority"]
     },
     "point_of_no_return": { "enum": ["pay", "sign", "commit", "cancel", "share_contact", "share_credentials", "offer"] },
     "check_action": { "description": "What a check is of: a point of no return, represent (where the user sells: what the agent is about to tell the buyer), or post (on a sale's own log: a listing about to be posted). represent is a check only: never an act, never in allowed. post is never in allowed: every post check asks.", "enum": ["pay", "sign", "commit", "cancel", "share_contact", "share_credentials", "offer", "represent", "post"] },
@@ -142,6 +144,15 @@
           "properties": { "payee": { "$ref": "#/$defs/hex64" } }
         }
       }
+    },
+    "body_claim_authority": {
+      "description": "The seller's own verdict on its agent's representation, sealed right after the claim it judges (one about ref) so a copy can withhold it apart from the claim's words (evidencebook#607): either what authorized it (authority_basis and evaluation_ref, with one authorized_by ref to that evaluation or approval), or that nothing did (unchecked, with the rule why).",
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["authority_basis", "evaluation_ref"],
+          "properties": { "authority_basis": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/authority_entry" } }, "evaluation_ref": { "$ref": "#/$defs/record_ref" } } },
+        { "type": "object", "additionalProperties": false, "required": ["unchecked", "rule"],
+          "properties": { "unchecked": { "const": true }, "rule": { "enum": ["no_check", "not_approved", "denied", "approval_used", "differs_from_check", "changed_after_check", "authority_changed", "check_expired"] } } }
+      ]
     },
     "body_rules_verdict": {
       "description": "The party's own overall rules word for this deal, under the pack its digest names. word is one of met, not_met, unknown, out_of_scope; it is derived once by the party's own check and never re-run, counted or combined. It is sealed once, after the final close, which it confirms (one confirms ref). pack_id names the pack only when it is published (publisher/name/semver); a private or forked pack carries the digest alone.",

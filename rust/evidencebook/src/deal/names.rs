@@ -44,6 +44,9 @@ pub const TYPE_AGENT_MOVE: &str = "agent_move";
 pub const TYPE_RULES_VERDICT: &str = "rules_verdict";
 /// TEMPORARY (evidencebook#462): the book owner's note that the deal did not hold.
 pub const TYPE_OUTCOME_NOTE: &str = "outcome_note";
+/// The seller's verdict on its agent's representation, sealed apart from the
+/// claim (evidencebook#607).
+pub const TYPE_CLAIM_AUTHORITY: &str = "claim_authority";
 
 /// The x-deal-v0 record types, in the schema's order.
 pub fn record_types() -> &'static [&'static str] {
@@ -71,6 +74,7 @@ pub fn record_types() -> &'static [&'static str] {
         TYPE_AGENT_MOVE,
         TYPE_RULES_VERDICT,
         TYPE_OUTCOME_NOTE,
+        TYPE_CLAIM_AUTHORITY,
     ]
 }
 

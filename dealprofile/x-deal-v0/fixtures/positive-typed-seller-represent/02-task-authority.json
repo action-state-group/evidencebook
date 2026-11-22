@@ -1,0 +1,42 @@
+{
+  "fixture": "02-task-authority.json",
+  "expect": "valid",
+  "story": "The seller's task authority, ordering the condition statement.",
+  "record": {
+    "type": "task-authority/v0",
+    "canonicalization": "jcs",
+    "chain_id": "deal-7e41b9c02d5a8f36",
+    "seq": 2,
+    "at": "2026-10-08T09:02:00Z",
+    "prev": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+    },
+    "chain_root": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+    },
+    "refs": [
+      {
+        "rel": "source",
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      }
+    ],
+    "body": {
+      "verbatim_commitment": "6d14d36b5673bd7c6fecae707aeec18e9d08803eef026a6a58521bf04b48b15b",
+      "allowed": [
+        "offer",
+        "commit",
+        "share_contact"
+      ],
+      "ordered_representations": [
+        "condition"
+      ]
+    }
+  },
+  "expected_digest": "856773d20d2ca65a2c90d0a5acaa6b49ff5300f302e0e886a11ec6989dcc2785"
+}

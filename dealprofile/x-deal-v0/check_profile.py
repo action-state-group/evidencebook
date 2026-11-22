@@ -916,7 +916,8 @@ def check_chain(records):
                     "close": {"outcome"}, "disclosure": {"authorized_by"}, "claim": {"authorized_by"},
                     "task_authority": {"source", "approves", "registration"}, "platform_approval": set(), "policy_change": set(),
                     "check": {"supersedes", "source"}, "counterparty_acceptance": set(),
-                    "counterparty_profile": {"about"}, "rules_verdict": {"confirms"}, "outcome_note": {"confirms"}}
+                    "counterparty_profile": {"about"}, "rules_verdict": {"confirms"}, "outcome_note": {"confirms"},
+                    "claim_authority": {"about", "authorized_by"}}
     # The user's limits in force. Absent allowed = no restriction; present and
     # empty = nothing allowed. An intent may narrow them; only the user's
     # confirm_limits answer to an intent that asks for more puts a new version
@@ -943,6 +944,12 @@ def check_chain(records):
     ordered = records[0]["body"]["intent"].get("ordered_representations") if party_role == "seller" else None
     rep_rules = ordered is not None
     stated = set()  # classes an authorized agent claim has stated
+    # evidencebook#607: a representation sealed since the verdict moved off it
+    # carries none, and its claim_authority directly follows it. pending_claim
+    # is such a claim still waiting for it; once a deal holds a claim_authority
+    # no later representation carries its own verdict.
+    pending_claim = None
+    claim_authority_seen = False
 
     def limits_in_force():
         out = {k: v for k, v in (("max_total_minor", max_total), ("allowed", allowed)) if v is not None}
@@ -972,6 +979,8 @@ def check_chain(records):
         t = b["record_type"]
         if b.get("typed") and not typed_chain:
             fail(i, "a typed record in a chain that did not open with a task authority")
+        if pending_claim is not None and t != "claim_authority":
+            fail(i, "a seller's representation is directly followed by its claim_authority")
         if t == "check" and "listing_classes" in body and "sale_authority_commitment" not in records[task_idx]["body"]:
             fail(i, "listing_classes is a rule input of a sale's thread only")
         if t in ("check", "action") and body.get("action") == "post":
@@ -1136,7 +1145,7 @@ def check_chain(records):
             chk = authorized_check(jt, action, what)
             return by_digest[records[jt]["x-deal-v0"]["refs"][0]["digest"]], jt, chk
 
-        def verify_basis(jv, ja, amount):
+        def verify_basis(jv, ja, amount, at=None):
             """The executed phase of the check contract: the evaluation relied on
             (evaluation_ref) still valid, and every authority layer in order, each a
             ref to its record: the task authority the evaluation named; on an ASK,
@@ -1144,7 +1153,9 @@ def check_chain(records):
             evaluation (scope mismatch exactly when it stated another amount),
             never as the answer; no one_shot_override."""
             v = records[jv]["body"]
-            if b["at"] > v["valid_until"]:
+            # A claim_authority is held to its claim's time: the words were
+            # said then, whenever the verdict was sealed.
+            if (at or b["at"]) > v["valid_until"]:
                 fail(i, f"the evaluation was valid until {v['valid_until']}: a step after that needs a new check")
             if body.get("evaluation_ref", {}).get("digest") != digests[jv]:
                 fail(i, "evaluation_ref is not the evaluation the step relied on")
@@ -1179,6 +1190,39 @@ def check_chain(records):
             want = ["task_authority"] + (["user_approval"] if ja is not None else []) + ["platform_approval"] * len(seen)
             if types != want:
                 fail(i, "authority_basis lists task_authority, then the user's answer, then platform approvals")
+
+        def represented(i, verdict, claim, by_rel, at):
+            """Section 6 rule 12 on a seller's representation: the verdict (on
+            the claim itself, or on the claim_authority that follows it) carries
+            exactly one of authority_basis or unchecked, and an authorized one
+            rests on a represent check of these exact words."""
+            if ("authority_basis" in verdict) == (verdict.get("unchecked") is True):
+                fail(i, "a seller's representation carries exactly one of authority_basis or unchecked")
+            if verdict.get("unchecked") is True:
+                if "authorized_by" in by_rel:
+                    fail(i, "an unchecked representation names nothing that authorized it")
+                return
+            jt = one("authorized_by", ("approval", "verdict"))
+            jv, ja, chk = authorize_typed(jt, "represent", "representation")
+            verify_basis(jv, ja, None, at)
+            rep = chk["body"].get("representing", {})
+            if rep.get("class") != claim["class"]:
+                fail(i, "the representation's class differs from the one checked")
+            # Sealed under the check's own nonces: equal commitments
+            # mean the words said are the words checked.
+            if rep.get("text_commitment") != claim["text_commitment"] or \
+                    rep.get("source_ref_commitment") != claim.get("source_ref_commitment"):
+                fail(i, "the representation's words differ from the ones checked")
+            if task_at_verdict.get(jv) != task_idx:
+                fail(i, "the task authority changed after the check: the representation needs a new check")
+            if ja is None and claim["class"] not in (records[task_idx]["body"].get("ordered_representations") or []):
+                fail(i, "a representation the task authority does not order needs the user's own approval")
+            # The user's own claim (capsule-engine#189): whatever the
+            # task authority orders, only the user's own approval, in
+            # their words, says the words are theirs.
+            if rep.get("attributed_to") == "user" and ja is None:
+                fail(i, "a representation attributed to the user needs the user's own approval")
+            stated.add(claim["class"])
 
         if t == "task_authority":
             # The user's task authority: as asked at the baseline, or a new version
@@ -1337,35 +1381,22 @@ def check_chain(records):
             if rep_rules and body.get("source_kind") == "agent" and "text_commitment" in body:
                 if "class" not in body:
                     fail(i, "a seller's representation names its class")
-                if ("authority_basis" in body) == (body.get("unchecked") is True):
-                    fail(i, "a seller's representation carries exactly one of authority_basis or unchecked")
-                if body.get("unchecked") is True:
-                    if "authorized_by" in by_rel:
-                        fail(i, "an unchecked representation names nothing that authorized it")
+                if "authority_basis" not in body and "unchecked" not in body and "authorized_by" not in by_rel:
+                    # The verdict is sealed apart, in the claim_authority that
+                    # directly follows (evidencebook#607).
+                    pending_claim = i
                 else:
-                    jt = one("authorized_by", ("approval", "verdict"))
-                    jv, ja, chk = authorize_typed(jt, "represent", "representation")
-                    verify_basis(jv, ja, None)
-                    rep = chk["body"].get("representing", {})
-                    if rep.get("class") != body["class"]:
-                        fail(i, "the representation's class differs from the one checked")
-                    # Sealed under the check's own nonces: equal commitments
-                    # mean the words said are the words checked.
-                    if rep.get("text_commitment") != body["text_commitment"] or \
-                            rep.get("source_ref_commitment") != body.get("source_ref_commitment"):
-                        fail(i, "the representation's words differ from the ones checked")
-                    if task_at_verdict.get(jv) != task_idx:
-                        fail(i, "the task authority changed after the check: the representation needs a new check")
-                    if ja is None and body["class"] not in (records[task_idx]["body"].get("ordered_representations") or []):
-                        fail(i, "a representation the task authority does not order needs the user's own approval")
-                    # The user's own claim (capsule-engine#189): whatever the
-                    # task authority orders, only the user's own approval, in
-                    # their words, says the words are theirs.
-                    if rep.get("attributed_to") == "user" and ja is None:
-                        fail(i, "a representation attributed to the user needs the user's own approval")
-                    stated.add(body["class"])
+                    if claim_authority_seen:
+                        fail(i, "a seller's representation after a claim_authority carries no verdict of its own: its claim_authority does")
+                    represented(i, body, body, by_rel, None)
             elif "authority_basis" in body or "unchecked" in body or "authorized_by" in by_rel:
                 fail(i, "only a seller's representation under the representation rules carries an authority")
+        elif t == "claim_authority":
+            j = one("about", ("claim",))
+            if j != pending_claim or j != i - 1:
+                fail(i, "a claim_authority directly follows the seller's representation it judges")
+            pending_claim, claim_authority_seen = None, True
+            represented(i, body, records[j]["body"], by_rel, records[j]["x-deal-v0"]["at"])
         elif t == "detail_change":
             one("source", ("message", "evidence"), required=False)
             kinds = set(b.get("counterparty", {}).get("ids", {}))
@@ -1627,7 +1658,8 @@ def run_fixtures() -> int:
     # records beside x-deal-v0 evidence records, a seller's typed share, and a
     # sale's own log. Each is checked as its own chain.
     positives = []
-    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"):
+    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-typed-seller-represent",
+                      "positive-sale", "positive-sale-unpost"):
         chain = []
         for p in sorted((FIX / chain_dir).glob("*.json")):
             positives.append(p)
@@ -1642,7 +1674,8 @@ def run_fixtures() -> int:
                 # A sale's log, and a seller's deal (sealed in the typed records),
                 # is checked as a chain from its task authority on, every prefix:
                 # its root alone is not yet one.
-                if chain_dir not in ("positive-sale", "positive-sale-unpost", "positive-typed-seller") or len(chain) >= 2:
+                if chain_dir not in ("positive-sale", "positive-sale-unpost", "positive-typed-seller",
+                                     "positive-typed-seller-represent") or len(chain) >= 2:
                     check_chain(chain)
                 print(f"ok   {chain_dir}/{p.name:<34} {record_type_of(rec):<20} jcs-sha256 {d}")
             except StageError as e:
@@ -2474,6 +2507,265 @@ def regen():
             "description": f"A task authority whose {member} names post: every post asks, and no task authority allows one.",
             "expected_stage": "schema", "expected_error_contains": member,
             "chain_dir": "positive-typed-seller", "chain_prefix": names2[:sta], "record": r})
+    # --- a seller's representations with their verdicts sealed apart (evidencebook#607) --
+    # A seller's deal that orders a condition statement (rule 12). Each agent claim
+    # carries only its words; the claim_authority right after it carries the verdict:
+    # an ordered claim (DO), an approved one (ASK), and one made with no check. A
+    # claim whose claim_authority is not sealed yet ends a valid prefix.
+    chain_id3 = "deal-7e41b9c02d5a8f36"
+    dk3 = deal_key(secret, chain_id3)
+    fps3 = {k: fingerprint(dk3, k, v) for k, v in (("name", "Example Buyer"), ("domain", "buyer.example"))}
+    platform3 = fingerprint(dk3, "domain", "marketplace.example")
+    texts3 = {"rep-intent": "Sell my example bicycle; ask 1900. Tell them about the scratch.",
+              "rep-condition": "The frame has one small scratch by the seat",
+              "rep-warranty": "I will cover the gears for 30 days",
+              "rep-warranty-card": "Tell Example Buyer about the warranty: \"I will cover the gears for 30 days\"? [Hold] [Go ahead]",
+              "rep-warranty-said": "yes, offer the 30 days on the gears",
+              "rep-refund": "Returns accepted within 7 days if unridden",
+              "rep-pickup": "Pickup any evening this week",
+              "rep-area": "Hyde Park, Austin",
+              "rep-old": "Ridden twice"}
+    com3 = {k: commitment(nonce(k), v) for k, v in texts3.items()}
+    records3, names3 = [], []
+    clock3 = iter([f"2026-10-08T09:{m:02d}:00Z" for m in range(0, 60, 2)])
+
+    def tref3(j):
+        return {"type": "record", "digest_alg": "SHA-256", "digest": record_digest(records3[j])}
+
+    def add_typed3(name, type_name, body, refs=None):
+        r = {"type": type_name, "canonicalization": "jcs", "chain_id": chain_id3, "seq": len(records3) + 1,
+             "at": next(clock3), "prev": tref3(len(records3) - 1), "chain_root": tref3(0)}
+        if refs:
+            r["refs"] = [{"rel": rel, **tref3(j)} for rel, j in refs]
+        r["body"] = body
+        records3.append(r)
+        names3.append(f"{len(records3):02d}-{name}.json")
+        return len(records3) - 1
+
+    def add_v0_3(name, rtype, body, refs=None):
+        r = {"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": chain_id3, "record_type": rtype,
+                           "seq": len(records3) + 1, "at": next(clock3), "prev": _ref(record_digest(records3[-1])),
+                           "baseline_ref": _ref(record_digest(records3[0]))}, "body": body}
+        if refs:
+            r["x-deal-v0"]["refs"] = [{"rel": rel, **_ref(record_digest(records3[j]))} for rel, j in refs]
+        records3.append(r)
+        names3.append(f"{len(records3):02d}-{name}.json")
+        return len(records3) - 1
+
+    records3.append({"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": chain_id3,
+                                   "record_type": "baseline", "seq": 1, "at": next(clock3), "channel": "marketplace",
+                                   "counterparty": {"fp_alg": "hmac-sha256-deal-key", "ids": fps3}},
+                     "body": {"deal_type": "purchase", "demo": True,
+                              "intent": {"verbatim_commitment": com3["rep-intent"], "party_role": "seller",
+                                         "allowed": ["offer", "commit", "share_contact"],
+                                         "ordered_representations": ["condition"]},
+                              "terms": {"item": "example bicycle", "quantity": 1, "price_minor": 190000, "currency": "USD"},
+                              "recourse": {"rail": "card", "refundable": False}}})
+    names3.append("01-baseline.json")
+    ta3 = add_typed3("task-authority", "task-authority/v0", {
+        "verbatim_commitment": com3["rep-intent"], "allowed": ["offer", "commit", "share_contact"],
+        "ordered_representations": ["condition"]}, refs=[("source", 0)])
+
+    def evaluation3(check, disposition, findings, options, card=None, valid_until="2026-10-08T09:50:00Z"):
+        body = {"disposition": disposition, "findings": findings, "options": options, "judge": {"kind": "rules"},
+                "proposed_action_digest": record_digest(records3[check]), "task_authority_ref": tref3(ta3),
+                "ruleset_digest": record_digest(rules), "materiality": "predicate", "materiality_digest": materiality,
+                "valid_until": valid_until, "authority_basis": [{"type": "task_authority", "ref": tref3(ta3)}]}
+        if card:
+            body["rendering_commitment"] = card
+        return add_typed3("action-evaluation", "action-evaluation/v0", body, refs=[("checks", check)])
+
+    def claim3(name, label, cls, nonce_label=None):
+        # Sealed under the check's own nonce when it rests on one, so the words
+        # said are the words checked.
+        return add_v0_3(f"claim-{name}", "claim", {
+            "text_commitment": commitment(nonce(nonce_label or label), texts3[label]), "source_kind": "agent", "class": cls})
+
+    # A claim an earlier producer sealed, its verdict on the claim itself: still valid,
+    # and the new shape follows it in the same deal.
+    old3 = add_v0_3("claim-sealed-before", "claim", {
+        "text_commitment": com3["rep-old"], "source_kind": "agent", "class": "other",
+        "unchecked": True, "rule": "no_check"})
+    # The ordered condition statement: checked (DO), said, authorized by its evaluation.
+    # The check is valid until a minute after the claim, and the claim_authority is
+    # sealed after that: the claim's time is the one that counts.
+    rc = add_typed3("proposed-action-represent-condition", "proposed-action/v0", {
+        "action": "represent", "representing": {"class": "condition", "text_commitment": com3["rep-condition"]}})
+    rcv = evaluation3(rc, "DO", [], [], valid_until="2026-10-08T09:11:00Z")
+    rcc = claim3("condition", "rep-condition", "condition")
+    rca = add_v0_3("claim-authority-condition", "claim_authority", {
+        "authority_basis": [{"type": "task_authority", "ref": tref3(ta3)}], "evaluation_ref": tref3(rcv)},
+        refs=[("about", rcc), ("authorized_by", rcv)])
+    # A warranty the task authority does not order: the check asks, the user approves
+    # those words, and the verdict cites the approval.
+    rw = add_typed3("proposed-action-represent-warranty", "proposed-action/v0", {
+        "action": "represent", "representing": {"class": "warranty", "text_commitment": com3["rep-warranty"]}})
+    rwv = evaluation3(rw, "ASK", [{"question": "what", "rule": "representation_outside_authority", "field": "warranty"}],
+                      ["hold", "proceed"], com3["rep-warranty-card"])
+    rwa = add_typed3("approval-of-the-warranty", "action-approval/v0", {
+        "authority": "user_approval", "choice": "proceed", "proceed": True,
+        "said_commitment": com3["rep-warranty-said"], "rendering_commitment": com3["rep-warranty-card"]},
+        refs=[("approves", rwv)])
+    rwc = claim3("warranty", "rep-warranty", "warranty")
+    rwca = add_v0_3("claim-authority-warranty", "claim_authority", {
+        "authority_basis": [{"type": "task_authority", "ref": tref3(ta3)}, {"type": "user_approval", "ref": tref3(rwa)}],
+        "evaluation_ref": tref3(rwv)}, refs=[("about", rwc), ("authorized_by", rwa)])
+    # A refund promise said with no check at all: still sealed, its verdict unchecked.
+    rrc = claim3("refund-terms", "rep-refund", "refund_terms")
+    rrca = add_v0_3("claim-authority-refund-terms", "claim_authority", {"unchecked": True, "rule": "no_check"},
+                    refs=[("about", rrc)])
+    # A share the representation gate holds until the ordered condition statement is
+    # authorized: it is, so the share goes ahead (DO).
+    sk3 = add_typed3("proposed-action-share-pickup-area", "proposed-action/v0", {
+        "action": "share_contact", "disclosing": ["pickup_area"], "disclosing_to": "platform",
+        "recipient_role": "platform", "repeat_disclosures": [], "recipient_told_before": False})
+    sv3 = evaluation3(sk3, "DO", [], [])
+    share_body3 = {"action": "share_contact",
+                   "disclosed": {"to": "platform", "fields": [{"class": "pickup_area", "value_commitment": com3["rep-area"]}]},
+                   "counterparty": {"fp_alg": "hmac-sha256-chain-key", "ids": {"domain": platform3}},
+                   "evaluation_ref": tref3(sv3), "authority_basis": [{"type": "task_authority", "ref": tref3(ta3)}]}
+    sa3 = add_typed3("action-record-share-pickup-area", "action-record/v0", share_body3, refs=[("authorized_by", sv3)])
+    # A pickup note just sealed: its claim_authority follows, and until then the deal
+    # ends at the claim.
+    rpc = claim3("pickup", "rep-pickup", "pickup")
+    stories3 = {
+        "baseline": "First contact on a seller's deal that orders a condition statement (ordered_representations).",
+        "task-authority/v0": "The seller's task authority, ordering the condition statement.",
+        names3[old3]: "A claim sealed before the verdict moved off it: unchecked, rule no_check, on the claim itself.",
+        names3[rc]: "The agent is about to tell the buyer about the condition: its class in the clear, its words committed.",
+        names3[rcv]: "The check passes (DO): the task authority orders a condition statement.",
+        names3[rcc]: "The condition claim, sealed under the check's nonce: its words only, no verdict.",
+        names3[rca]: "Its verdict, sealed apart right after it, after the check's valid_until: authorized, since the "
+                     "claim itself was sealed in time.",
+        names3[rw]: "The agent is about to promise a warranty, which the task authority does not order.",
+        names3[rwv]: "The check asks (ASK): the representation goes beyond what the user asked the agent to say.",
+        names3[rwa]: "The user approves those words, in their own words, on the card the check rendered.",
+        names3[rwc]: "The warranty claim: its words only.",
+        names3[rwca]: "Its verdict: the task authority, then the user's approval.",
+        names3[rrc]: "A refund promise the agent said with no check: still sealed, since the words were said.",
+        names3[rrca]: "Its verdict: unchecked, rule no_check, naming nothing that authorized it.",
+        names3[sk3]: "The agent is about to give the listing platform the public pickup area.",
+        names3[sv3]: "The check passes (DO): the ordered condition statement is authorized, so the gate is open.",
+        names3[sa3]: "The pickup area shared: a gated step, after the ordered statement's authorized claim_authority.",
+        names3[rpc]: "A pickup note just sealed: the deal may end here until its claim_authority follows.",
+    }
+    (FIX / "positive-typed-seller-represent").mkdir(parents=True, exist_ok=True)
+    for old in (FIX / "positive-typed-seller-represent").glob("*.json"):
+        old.unlink()
+    for n, r in zip(names3, records3):
+        d = record_digest(r)
+        digests.append((f"positive-typed-seller-represent/{n}", d))
+        dump(FIX / "positive-typed-seller-represent" / n, {
+            "fixture": n, "expect": "valid", "story": stories3.get(n) or stories3[record_type_of(r)],
+            "record": r, "expected_digest": d})
+
+    def neg3(name, contains, desc, at, record, stage="chain", between=None):
+        f = {"fixture": name, "expect": "invalid", "description": desc, "expected_stage": stage,
+             "expected_error_contains": contains, "chain_dir": "positive-typed-seller-represent",
+             "chain_prefix": names3[:at], "record": record}
+        if between:
+            f["chain_between"] = between
+        dump(FIX / "negative" / f"{name}.json", f)
+
+    def cp3(j):
+        return json.loads(json.dumps(records3[j]))
+
+    def follow(r, prev_rec, at=None):
+        # r placed right after prev_rec: its seq, prev and (when given) at.
+        seq = (prev_rec["x-deal-v0"]["seq"] if "x-deal-v0" in prev_rec else prev_rec["seq"]) + 1
+        if "x-deal-v0" in r:
+            r["x-deal-v0"]["seq"], r["x-deal-v0"]["prev"] = seq, _ref(record_digest(prev_rec))
+            if at:
+                r["x-deal-v0"]["at"] = at
+        else:
+            r["seq"] = seq
+            r["prev"] = {"type": "record", "digest_alg": "SHA-256", "digest": record_digest(prev_rec)}
+            if at:
+                r["at"] = at
+        return r
+
+    def about(r, claim_rec):
+        r["x-deal-v0"]["refs"][0]["digest"] = record_digest(claim_rec)
+        return r
+
+    # A record other than its claim_authority right after a new-shape claim.
+    neg3("neg-claim-authority-missing", "is directly followed by its claim_authority",
+         "A new-shape representation followed by another claim instead of its claim_authority.",
+         rrc + 1, follow(cp3(rpc), records3[rrc]))
+    # A claim_authority about a claim that is not the record before it.
+    neg3("neg-claim-authority-not-after-its-claim", "directly follows the seller's representation it judges",
+         "A claim_authority about an earlier claim, not the one right before it.", rrca, about(cp3(rrca), records3[rcc]))
+    # A claim_authority after a claim that is not a seller's representation.
+    user_claim = follow({"x-deal-v0": dict(cp3(rpc)["x-deal-v0"]), "body": {
+        "text_commitment": com3["rep-pickup"], "source_kind": "user"}}, records3[rrca])
+    neg3("neg-claim-authority-about-a-users-claim", "directly follows the seller's representation it judges",
+         "A claim_authority after a claim the user made: only a seller's agent's representation has one.",
+         rrca + 1, about(follow(cp3(rrca), user_claim, records3[rpc]["x-deal-v0"]["at"]), user_claim), between=[user_claim])
+    # An unchecked verdict naming an authorization.
+    r = cp3(rrca)
+    r["x-deal-v0"]["refs"].append({"rel": "authorized_by", **_ref(record_digest(records3[rcv]))})
+    neg3("neg-claim-authority-unchecked-names-an-authorization", "an unchecked representation names nothing that authorized it",
+         "An unchecked claim_authority that also names an authorized_by ref.", rrca, r)
+
+    def replaced_claim(name, contains, desc, change, claim_at=None):
+        # The condition claim changed, then its claim_authority about it.
+        r = cp3(rcc)
+        change(r["body"])
+        if claim_at:
+            r["x-deal-v0"]["at"] = claim_at
+        neg3(name, contains, desc, rcc, about(follow(cp3(rca), r, claim_at), r), between=[r])
+
+    # A verdict on both the claim and its claim_authority: the claim carries its
+    # own, so no claim_authority is expected for it.
+    replaced_claim("neg-claim-authority-after-an-old-shape-claim", "directly follows the seller's representation it judges",
+                   "A claim carrying its own verdict, then a claim_authority for it as well.",
+                   lambda b: b.update({"unchecked": True, "rule": "no_check"}))
+    # Rule 12 on the new record: other words, another class, a stale check.
+    replaced_claim("neg-claim-authority-other-words", "the representation's words differ from the ones checked",
+                   "An authorized claim_authority about a claim whose words are not the checked words.",
+                   lambda b: b.update({"text_commitment": commitment(nonce("rep-condition-other"), "The frame has no scratches")}))
+    replaced_claim("neg-claim-authority-another-class", "the representation's class differs from the one checked",
+                   "An authorized claim_authority about a claim of another class than the one checked.",
+                   lambda b: b.update({"class": "features"}))
+    replaced_claim("neg-claim-authority-claim-after-valid-until", "the evaluation was valid until",
+                   "A claim sealed after its check's valid_until: its verdict cannot authorize it.",
+                   lambda b: None, claim_at="2026-10-08T09:31:00Z")
+    # An old-shape claim after the deal holds a claim_authority.
+    r = follow(cp3(rpc), records3[rrca])
+    r["body"].update({"unchecked": True, "rule": "no_check"})
+    neg3("neg-old-shape-claim-after-a-claim-authority", "carries no verdict of its own",
+         "A representation carrying its own verdict after the deal already holds a claim_authority.", rrca + 1, r)
+    # The same evaluation authorizing a second claim of the checked words.
+    again = follow(cp3(rcc), records3[rca], records3[rca]["x-deal-v0"]["at"])
+    neg3("neg-claim-authority-check-used-twice", "an evaluation authorizes at most one action or disclosure",
+         "A second claim of the checked words, authorized again by the same evaluation.", rca + 1,
+         about(follow(cp3(rca), again), again), between=[again])
+    # The gate on the new record: the ordered condition statement made with no check,
+    # so its claim_authority is unchecked, and the same gated share is refused.
+    cond = follow(cp3(rcc), records3[ta3])
+    cond["body"]["text_commitment"] = commitment(nonce("rep-condition-unchecked"), texts3["rep-condition"])
+    cond_v = about(follow(cp3(rrca), cond), cond)
+    chk = follow(cp3(sk3), cond_v)
+    ev = follow(cp3(sv3), chk)
+    ev["body"]["proposed_action_digest"] = record_digest(chk)
+    ev["refs"][0]["digest"] = record_digest(chk)
+    act = follow(cp3(sa3), ev)
+    act["body"]["evaluation_ref"] = {"type": "record", "digest_alg": "SHA-256", "digest": record_digest(ev)}
+    act["refs"][0]["digest"] = record_digest(ev)
+    neg3("neg-claim-authority-gate-after-an-unchecked-ordered-claim", "to tell the buyer about condition first",
+         "The ordered condition statement said with no check (its claim_authority unchecked), then a gated share: "
+         "the gate holds it, since only an authorized claim_authority states the class.",
+         ta3 + 1, act, between=[cond, cond_v, chk, ev])
+    # Unknown rule, and both forms at once: the schema refuses them.
+    r = cp3(rrca)
+    r["body"]["rule"] = "because"
+    neg3("neg-claim-authority-unknown-rule", "because", "An unchecked claim_authority whose rule is not one of rule 12's.",
+         rrca, r, stage="schema")
+    r = cp3(rca)
+    r["body"].update({"unchecked": True, "rule": "no_check"})
+    neg3("neg-claim-authority-both-forms", "body: {'authority_basis'", "A claim_authority carrying both authority_basis and unchecked.",
+         rca, r, stage="schema")
+
     (FIX / "expected-digests.txt").write_text(
         "# SHA-256 over the RFC 8785 (JCS) bytes of each positive record (the `record` member only)\n"
         + "".join(f"{d}  {n if '/' in n else 'positive/' + n}\n" for n, d in digests), encoding="utf-8")
@@ -3003,7 +3295,8 @@ def chain_vectors():
             return e.stage, str(e)[len(e.stage) + 3:]
         return "", ""
 
-    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"):
+    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-typed-seller-represent",
+                      "positive-sale", "positive-sale-unpost"):
         recs = [load(p)["record"] for p in sorted((FIX / chain_dir).glob("*.json"))]
         for n in range(1, len(recs) + 1):
             if chain_dir in ("positive-sale", "positive-sale-unpost", "positive-typed-seller") and n < 2:
@@ -3089,7 +3382,8 @@ def _mutation_vectors(verdict):
     reference checker's. Every distinct refusal keeps its first few cases, and so do the
     chains that pass, so the file stays small and every rule a mutation reaches is in it."""
     seen, out = {}, []
-    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"):
+    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-typed-seller-represent",
+                      "positive-sale", "positive-sale-unpost"):
         chain = [load(p)["record"] for p in sorted((FIX / chain_dir).glob("*.json"))]
         for k, rec in enumerate(chain):
             for path in _leaf_paths(rec):

@@ -1,0 +1,61 @@
+{
+  "fixture": "neg-claim-authority-unchecked-names-an-authorization",
+  "expect": "invalid",
+  "description": "An unchecked claim_authority that also names an authorized_by ref.",
+  "expected_stage": "chain",
+  "expected_error_contains": "an unchecked representation names nothing that authorized it",
+  "chain_dir": "positive-typed-seller-represent",
+  "chain_prefix": [
+    "01-baseline.json",
+    "02-task-authority.json",
+    "03-claim-sealed-before.json",
+    "04-proposed-action-represent-condition.json",
+    "05-action-evaluation.json",
+    "06-claim-condition.json",
+    "07-claim-authority-condition.json",
+    "08-proposed-action-represent-warranty.json",
+    "09-action-evaluation.json",
+    "10-approval-of-the-warranty.json",
+    "11-claim-warranty.json",
+    "12-claim-authority-warranty.json",
+    "13-claim-refund-terms.json"
+  ],
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-7e41b9c02d5a8f36",
+      "record_type": "claim_authority",
+      "seq": 14,
+      "at": "2026-10-08T09:26:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "b6003bd0bc23e78f7c2d4ceeab100d1e82ffe6dbc4ae0918fa977852af799dfa"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "9d09be6ed5eae46cee13daca3508f159bc5968047933b079f6231ecee3e01b47"
+      },
+      "refs": [
+        {
+          "rel": "about",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "b6003bd0bc23e78f7c2d4ceeab100d1e82ffe6dbc4ae0918fa977852af799dfa"
+        },
+        {
+          "rel": "authorized_by",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "17349fd9c0361177f8c5d9d854ca8cbcd49ecad869650f017c9b3e9edd4fb9e5"
+        }
+      ]
+    },
+    "body": {
+      "unchecked": true,
+      "rule": "no_check"
+    }
+  }
+}

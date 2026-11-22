@@ -170,7 +170,7 @@ when or how often the deal was shared:
 | `profile` | `"x-deal-v0"` | REQUIRED | Profile and version. |
 | `canonicalization` | `"jcs"` | REQUIRED | Pinned: RFC 8785. Any other value fails closed (section 5). |
 | `deal_id` | string `^deal-[0-9a-f]{16,64}$` | REQUIRED | Random, opaque, and the same on every record of the deal. Never derived from any identifier. |
-| `record_type` | enum (section 3) | REQUIRED | One of the 23 record types. |
+| `record_type` | enum (section 3) | REQUIRED | One of the 24 record types. |
 | `seq` | integer ≥ 1 | REQUIRED | Position in the deal: 1, 2, 3, … with no gaps (section 6). |
 | `at` | string `YYYY-MM-DDThh:mm:ssZ` | REQUIRED | The seal time in UTC, whole seconds. |
 | `prev` | digest ref | REQUIRED iff `seq` > 1 | The record digest of record `seq − 1`. |
@@ -192,7 +192,7 @@ never against a later change.
 
 ## 3. Record types (action-type conventions)
 
-Twenty-three record types. The set is closed: an unknown `record_type` fails the schema.
+Twenty-four record types. The set is closed: an unknown `record_type` fails the schema.
 
 | record_type | What it records | Required body fields | Required refs / block fields |
 |---|---|---|---|
@@ -201,7 +201,7 @@ Twenty-three record types. The set is closed: an unknown `record_type` fails the
 | `intent` | The user restates or picks within the ask. Replaces `verbatim` / `asked` from here on. `allowed` and `max_total_minor` carry forward unchanged: an intent may lower the limit or drop actions, and a higher limit or a new action is only a proposal (section 6, rule 6). | `verbatim_commitment` | `baseline_ref`, `prev`. Optional `party_role`, equal to the baseline's (a deal's role is fixed when it opens). Optional `ordered_representations` (where the user sells, section 6 rule 12): on the baseline, what the user orders; on a later intent, a proposal. Optional `delegated` (`["item"]`: the user's words hand the agent the choice of item) with `delegated_commitment` (those words); a later intent never widens it, and one that names `asked.item` takes the item back. On a later intent sealed since journey records: `move` (`narrowed`\|`switched`\|`raised`\|`picked`, derived by the producer, section 6 rule 13), `proposed: true` when it asks for more than the limits in force, `why_commitment` on a switch or raise, and a `counterparty` block when it starts a leg. |
 | `agent_move` | One of the agent's moves on the errand, its label fixed by `move`: `searched`, `options` (Showed you N options), `recommended`, `chose` (Chose for you), `couldnt` (Couldn't). | `move`; `searched`: `where_commitment`, `results`; `options`: `options[]` (each `item_commitment`, optional `price_minor`), `found`; `recommended`: `option` (from 1), `reason_commitment`; `chose`: `item_commitment`, optional `price_minor`; `couldnt`: `reason` (`sign_in_required`\|`out_of_stock`\|`cannot_ship_here`\|`blocked`\|`payment_declined`\|`site_error`\|`other`), `detail_commitment` with `other` | `baseline_ref`, `prev`. A `chose` follows a `delegated` item in force; it carries a `counterparty` block only when it starts the first leg. Texts are commitments only. |
 | `message` | One message in the thread. The text stays local. | `from` (`counterparty`\|`user`\|`agent`), `content_commitment`; optional `sent_at` (the platform's own time for the message, when the agent could read it, in UTC, at or before the record's `at`, which is when it was noted) | `channel`. `counterparty` when the message shows identifiers (for example, a new phone number). |
-| `claim` | Something the counterparty (or listing) asserts, recorded as a claim, not a fact. | `text_commitment` (the claim's words, ≤ 200 chars, committed), `source_kind` (whose it is: `merchant`\|`agent`\|`platform`\|`user`\|`external`), optional `source_ref_commitment` (the caller's note of where it was read, committed). A claim sealed before claims were committed carries `text` and `source` in the clear instead, and re-derives unchanged (see "Claims"). | none beyond the chain; where the user sells, under section 6 rule 12, an agent's claim also carries `authority_basis` + `evaluation_ref` + one `authorized_by` ref, or `unchecked: true` + `rule`. |
+| `claim` | Something the counterparty (or listing) asserts, recorded as a claim, not a fact. | `text_commitment` (the claim's words, ≤ 200 chars, committed), `source_kind` (whose it is: `merchant`\|`agent`\|`platform`\|`user`\|`external`), optional `source_ref_commitment` (the caller's note of where it was read, committed). A claim sealed before claims were committed carries `text` and `source` in the clear instead, and re-derives unchanged (see "Claims"). | none beyond the chain; where the user sells, under section 6 rule 12, an agent's claim carries no verdict and no ref: its `claim_authority`, the next record, does. One sealed before that change carries the verdict itself: `authority_basis` + `evaluation_ref` + one `authorized_by` ref, or `unchecked: true` + `rule`. |
 | `evidence` | What was done to establish a claim, and whether it did. Optionally a merchant's own email (`merchant_email`, below), or a held object (`wrapped`, below). After the deal's final close, one of the two record types allowed (with the deal's `rules_verdict`): later evidence linked to that close. | `source`, `verified` | exactly one `about` → a `claim` or the `baseline`. At most one `confirms` → the deal's final `close` (required after it, not allowed before it). Optional `resolves_obligation` (a digest ref) → an earlier record holding a cancel-by date. Optional `received_to` (`{"fp_alg": "hmac-sha256-deal-key", "payee": <64 hex>}`), on evidence of a payment the user received (a settlement leg's step, where the user sells): the account it was received to, fingerprinted per deal like every identifier. It is the user's own account, never a `counterparty` id, so it is not a change of the other party's details. The step's Capsule carries the leg as its top-level `settlement` member (draft-mih-agent-settlement-records-00); the record does not restate it. Optional `preimage` (64 lowercase hex), only with `received_to`, on evidence of a Lightning payment the user received: the payment's preimage, the proof it settled. The sealer checks, before sealing, that its SHA-256 over the 32 octets the hex names is the step's leg `payment_ref` value of type `ln.payment_hash` (`dealprofile.PreimageMatches`, `fixtures/preimage-vectors.json`). The record checks here (schema, `check_profile.py`) see the record, not the Capsule, so they do not repeat it; a reader holding the step's Capsule can. The invoice (BOLT11) is never sealed. |
 | `detail_change` | The counterparty changed an identifier, a term or the rail after first contact. Recording it never accepts it. | `source`, `changed[]` (field names) | `counterparty.ids` kinds MUST equal the identifier kinds listed in `changed`. At most one `source` → a `message` or `evidence`. |
 | `check` | The agent asks, before a point of no return, exactly what is about to happen (the snapshot). | `action` (`pay`\|`sign`\|`commit`\|`cancel`\|`share_contact`\|`share_credentials`\|`offer`\|`represent`\|`post`; `offer` and `represent` only where the user sells; `represent` carries `representing`, section 6 rule 12; `post` only on a sale's own log, carrying `posting`, section 6 rule 15) | `baseline_ref` (always). `counterparty.ids.payee` when a payee is involved: on every `pay`, and, where the user buys, on a `commit`, `sign` or `cancel` that states an `amount_minor` (money to or from that merchant). A check sealed before this names a payee on a `pay` only, and re-derives unchanged. Optional `amount_minor` (the expected charge), on a `pay` `authorized_max_minor` (the most it may take: what a limit binds, at least `amount_minor`), `currency`, `seen_item`, `terms`, `recourse`, the rule inputs (below), `pack_id`, `pack_digest`, `action_class` + `taxonomy_version` and `spend_minor` (see Action classes, below), with `spend_authorized_minor` beside them when `authorized_max_minor` is sealed, on a `cancel` `fee_minor`, `cancelled_amount_minor` and `direction` (`in`), on a refund's `cancel` `reverses_ref` (the payment it returns, see Action classes, below), on a check of a sale's thread `item_ref_commitment` (section 6, rule 10) and, on its `offer` and `commit`, `listing_classes` (section 8), on an `offer` the rule input `no_proposal` (section 6, rule 9), and for a share `disclosing` (the classes about to be given, as for a `disclosure`) and `disclosing_to` (`counterparty`\|`platform`\|`other`), which every share check carries. |
@@ -218,6 +218,7 @@ Twenty-three record types. The set is closed: an unknown `record_type` fails the
 | `sale_close` | On a sale's own log: the end of the sale, sealed by `deal sale close` after every opened thread's `thread_opened` (section 6, rule 10). No buyer's thread opens on the sale after it; a thread already open goes on and ends at its own close. | nothing: `body` is empty | `deal_id` `sale-…`; follows the sale's previous record. No `counterparty`, no `refs`. At most one per sale, and only `sale_cut` records follow it, since every later sale bundle cuts the threads' heads again. |
 | `counterparty_profile` | The payee of the `check` just before it, fingerprinted under this profile's own key, for the user's own history: one merchant has one value across the profile's deals. Sealed right after its check, before any rules checker runs; never in a shared copy. | `counterparty_profile` in the header: `{fp_alg: "hmac-sha256-profile-key", ids: {payee}}`; an empty body | exactly one `about` → the `check` it follows. No `counterparty` block. |
 | `rules_verdict` | The party's own overall rules word for the deal, under the pack its digest names, so a counterparty copy can say whether that side's own check agreed (evidencebook-deal#191; Steven's ruling, Buzz 8b6aaecf). One word, derived once by the party's own check and never re-run, counted or combined; never a field of a report and never on a History card. | `word` (`met`\|`not_met`\|`unknown`\|`out_of_scope`), `pack_digest` (the pack's definition digest, 64 hex), optional `pack_id` (`publisher/name/semver`, only for a published pack; a private or forked pack carries the digest alone); no `counterparty` block. | At most one per deal, sealed only after the final `close` (the verdict is on the finished deal): a late record like `evidence` (Late records, section 3), with exactly one `confirms` ref → the final `close`, chained `confirms` as a Capsule, so a reconcile admission that reads every later step as confirming that close still holds. |
+| `claim_authority` | Where the user sells, the seller's own verdict on its agent's claim (section 6 rule 12): what authorized it, or that nothing did. Sealed apart from the claim so a copy can carry the claim's words without it (evidencebook#607; Steven's ruling u615). | Exactly one of: `authority_basis` + `evaluation_ref`, or `unchecked: true` + `rule` (one of rule 12's: `no_check`, `not_approved`, `denied`, `approval_used`, `differs_from_check`, `changed_after_check`, `authority_changed`, `check_expired`); no other member; no `counterparty` or `channel`. | Exactly one `about` ref → the claim it judges, which is the record right before it; with `authority_basis`, exactly one `authorized_by` ref → the evaluation (DO) or the user's approval (ASK); no other ref. |
 | `outcome_note` | TEMPORARY (evidencebook#462; evidencebook#461's computed row status supersedes it; this bridge fits today's layout only, which has a final `close`, and #461's target has none). The book owner's own note that the deal did not hold, against the owner: each `reason` is the owner's own failure (`dispute_lost`: it lost a dispute; `settled_against`: a dispute settled against it; `not_delivered`: it did not deliver; `other`: any other way the deal did not hold for the owner). A buyer whose seller failed does not write it, since the History card counts it on the writer's own card. It is the owner's own statement, not checked against any ruling or the other side, and no card or UI wording calls it a ruling. Written only by the owner into its own book, never a counterparty's signature appended to it. evidencebook-deal's share path leaves it out of every shared copy (the holder's own record, no share policy applies; a producer rule with its own test, not a check of this profile). Migration: a deal book that holds an `outcome_note` stays readable under this profile version, which keeps the type read-only forever (old logs are never rewritten); #461's new layout either maps a held note to its did-not-hold line or ignores it, and names which when it lands. | `outcome` (`did_not_hold`), `reason` (`dispute_lost`\|`settled_against`\|`not_delivered`\|`other`); no `counterparty` block. | At most one per deal, sealed only after the final `close`, like a `rules_verdict`: exactly one `confirms` ref → the final `close`. The History deal entry's `outcome` is `did_not_hold` for a deal whose log holds one (section 11). |
 
 ### Action classes
@@ -495,9 +496,11 @@ typed record, in its header), next to the fingerprints' `fp_alg`. What it states
     carries these.
 
   An adjudicator's copy carries the `claim_openings` of claims whose words and source note hold
-  none of the user's private details. A counterparty's copy carries none, except where the user
+  none of the user's private details (where the user sells, the agent's own only when the seller
+  includes them, section 6 rule 12). A counterparty's copy carries none, except where the user
   sells: there it opens the agent's own claims (its representations to the buyer) whose words
-  and source note hold none of the user's private details, and no other claim.
+  and source note hold none of the user's private details, and no other claim, and never one
+  that carries its own verdict (rule 12, Copies).
 
 **Claims.** A claim's words and its source note are sealed as commitments; only whose it is,
 `source_kind`, is in the clear.
@@ -716,9 +719,20 @@ A verifier holding one deal's records in `seq` order checks:
     ("tell them about the scratch": `condition`), and is empty when nothing is ordered. A deal or
     sale opened before has none and keeps the earlier rules; a sale's thread follows its sale.
     Under this rule:
-    - Every `claim` with `source_kind: agent` names a `class` and carries exactly one of these:
+    - Every `claim` with `source_kind: agent` names a `class`, and its verdict is exactly one of
+      these:
       - `authority_basis` with `evaluation_ref` and one `authorized_by` ref;
       - `unchecked: true` with a `rule` and no ref.
+
+      The verdict is sealed in the `claim_authority` record right after the claim (evidencebook#607),
+      and the claim carries none of it: its words, `class` and `source_kind` only. A deal may end at
+      such a claim (its verdict not sealed yet, its class not stated); any record after it is its
+      `claim_authority`. A producer that stopped between the two seals the missing
+      `claim_authority` before any other record, with the verdict as of the claim. A claim sealed
+      before this change carries the verdict itself and no `claim_authority`; once a deal holds a
+      `claim_authority`, no later claim carries its own verdict. Everything below holds of the
+      verdict wherever it is sealed, and the check's `valid_until` is compared with the claim's
+      `at`, not the `claim_authority`'s.
 
       The claim rests on a `check` with `action: "represent"`. Typed, that check is a
       `proposed-action/v0` whose `representing` seals the class in the clear, and the exact words
@@ -750,12 +764,26 @@ A verifier holding one deal's records in `seq` order checks:
       - the check is still within its `valid_until`;
       - the task authority in force is the one the evaluation names.
     - A claim nothing authorized is still sealed, since the words may already have been said,
-      with `unchecked: true` and its rule:
+      its verdict `unchecked: true` with its rule:
       - `no_check`, `not_approved`, `denied` or `approval_used`;
       - `differs_from_check`, `changed_after_check`, `authority_changed` or `check_expired`.
     - `represent` is never an `action` and never in `allowed`.
     - The list changes only by the user's `confirm_limits` of an `intent` that proposes another
       one. Adding a class and dropping one are both proposals.
+    - **Copies.** A counterparty copy of a deal under this rule carries each agent claim's
+      words (the claim record, and its opening as `representations` and `claim_openings`, section
+      4), so the buyer can check the words it was told, and nothing that says whether a claim was
+      authorized (Steven's ruling u615). It withholds every `claim_authority`; the represent trail
+      (every `check` with `action: "represent"`, its evaluation, and every approval of it); every
+      `action-evaluation/v0` and every outcome with `status: "unchecked_action"`, since the gate
+      below names `required_representation_missing` there; and every agent claim that carries its
+      own verdict (sealed before this change), whose words it opens nowhere. Its report names a
+      record it withholds this way by no kind, line, result or count beyond its place in the log.
+      An adjudicator's copy withholds every agent claim and every `claim_authority` unless the
+      seller includes them, all of them, by its own choice. **Known limit:** a withheld record
+      keeps its place in the log, which a copy's verification rests on; counting the withheld
+      records before a claim can suggest, but never prove, that it had no check. Copies made before
+      this change still carry the verdicts they carried.
     - While an ordered class has no authorized claim in this deal (on a sale, in this thread), a
       check of `offer`, `commit`, `sign`, `pay`, `share_contact` or `share_credentials` asks, with
       finding `required_representation_missing` and no `proceed` option. No transaction approval
@@ -979,9 +1007,10 @@ At every check, after the `check` record is sealed:
     `class`, sealed before the checked step, in seal order, each as its sealed claim record states
     it (`capsule_id`, `record_digest`, `class`, `source_kind`, `at`, `text_commitment`; never the
     words), so a rule on a required disclosure finds a statement the agent made earlier in the deal.
-    Under the representation rules (section 6, rule 12) each also carries the claim's own
-    `authority_basis`, exactly as sealed, or `unchecked: true`, so a rule tells a statement the
-    user ordered or approved from one they did not.
+    Under the representation rules (section 6, rule 12) each also carries the claim's verdict,
+    `authority_basis` exactly as sealed or `unchecked: true`, read from the claim's
+    `claim_authority` (or, for a claim sealed before that record, from the claim itself), so a
+    rule tells a statement the user ordered or approved from one they did not.
     It is absent on a buyer's deal, when there are none, and on history entries;
     and, on a `represent` check, `representing_opening`: `{nonce, text}`, the opening of the
     check's `representing.text_commitment`, the exact words the agent is about to say, so a rule

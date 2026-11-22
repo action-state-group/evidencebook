@@ -563,6 +563,13 @@ type dealChain struct {
 	b, body       obj
 	t             string
 	byRel         map[string][]int
+
+	// evidencebook#607: pendingClaim is a representation sealed without its
+	// verdict, waiting for the claim_authority that directly follows it (-1
+	// for none); once a deal holds a claim_authority, no later representation
+	// carries its own verdict.
+	pendingClaim       int
+	claimAuthoritySeen bool
 }
 
 var allowedRels = map[string][]string{
@@ -572,6 +579,7 @@ var allowedRels = map[string][]string{
 	"task_authority": {"source", "approves", "registration"}, "platform_approval": {}, "policy_change": {},
 	"check": {"supersedes", "source"}, "counterparty_acceptance": {},
 	"counterparty_profile": {"about"}, "rules_verdict": {"confirms"}, "outcome_note": {"confirms"},
+	"claim_authority": {"about", "authorized_by"},
 }
 
 func (c *dealChain) fail(format string, args ...any) { failAt(c.i, format, args...) }
@@ -705,9 +713,16 @@ func (c *dealChain) authorizeTyped(jt int, action, what string) (jv, ja, chk int
 // verifyBasis is the executed phase of the check contract: the evaluation
 // relied on still valid, and every authority layer in order, each a ref to
 // its record.
-func (c *dealChain) verifyBasis(jv, ja int, amount any) {
+//
+// at is the time the step was taken, "" for the record's own: a
+// claim_authority is held to its claim's time, since the words were said
+// then, whenever the verdict was sealed.
+func (c *dealChain) verifyBasis(jv, ja int, amount any, at string) {
 	v := c.bodyOf(jv)
-	if until := str(v["valid_until"]); str(c.b["at"]) > until {
+	if at == "" {
+		at = str(c.b["at"])
+	}
+	if until := str(v["valid_until"]); at > until {
 		c.fail("the evaluation was valid until %s: a step after that needs a new check", until)
 	}
 	if mp(c.body["evaluation_ref"])["digest"] != c.digests[jv] {
@@ -825,7 +840,7 @@ func checkDealChain(raw []obj) {
 	c := &dealChain{
 		taskAtVerdict: map[int]int{}, platformFor: map[int][]int{}, confirmed: map[int]bool{}, usedApprovals: map[int]bool{},
 		verdictForChk: map[int]bool{}, profileForChk: map[int]bool{}, reversed: map[int]bool{}, firstAnswer: map[int]int{},
-		stated: map[string]bool{}, lastOutcome: -1, latestOffer: -1, accepted: -1, closedFinal: -1, boundsKnown: true,
+		stated: map[string]bool{}, pendingClaim: -1, lastOutcome: -1, latestOffer: -1, accepted: -1, closedFinal: -1, boundsKnown: true,
 		byDig: map[string]int{},
 	}
 	for i, r := range raw {
@@ -871,6 +886,9 @@ func checkDealChain(raw []obj) {
 		typed := has(b, "typed")
 		if typed && !c.typedChain {
 			c.fail("a typed record in a chain that did not open with a task authority")
+		}
+		if c.pendingClaim >= 0 && t != TypeClaimAuthority {
+			c.fail("a seller's representation is directly followed by its claim_authority")
 		}
 		if t == TypeCheck && has(body, "listing_classes") && !has(c.bodyOf(c.taskIdx), "sale_authority_commitment") {
 			c.fail("listing_classes is a rule input of a sale's thread only")

@@ -40,6 +40,7 @@ pub enum Body {
     AgentMove(AgentMoveBody),
     RulesVerdict(RulesVerdictBody),
     OutcomeNote(OutcomeNoteBody),
+    ClaimAuthority(ClaimAuthorityBody),
 }
 
 impl Body {
@@ -69,6 +70,7 @@ impl Body {
             Body::AgentMove(_) => TYPE_AGENT_MOVE,
             Body::RulesVerdict(_) => TYPE_RULES_VERDICT,
             Body::OutcomeNote(_) => TYPE_OUTCOME_NOTE,
+            Body::ClaimAuthority(_) => TYPE_CLAIM_AUTHORITY,
         }
     }
 
@@ -97,6 +99,7 @@ impl Body {
             TYPE_AGENT_MOVE => Body::AgentMove(serde_json::from_value(body)?),
             TYPE_RULES_VERDICT => Body::RulesVerdict(serde_json::from_value(body)?),
             TYPE_OUTCOME_NOTE => Body::OutcomeNote(serde_json::from_value(body)?),
+            TYPE_CLAIM_AUTHORITY => Body::ClaimAuthority(serde_json::from_value(body)?),
             other => {
                 return Err(<serde_json::Error as serde::de::Error>::custom(format!(
                     "record type {other:?} has no body type"
@@ -132,6 +135,7 @@ impl Serialize for Body {
             Body::AgentMove(b) => b.serialize(s),
             Body::RulesVerdict(b) => b.serialize(s),
             Body::OutcomeNote(b) => b.serialize(s),
+            Body::ClaimAuthority(b) => b.serialize(s),
         }
     }
 }

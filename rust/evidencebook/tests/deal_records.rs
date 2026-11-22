@@ -115,6 +115,7 @@ fn records_round_trip() {
         "positive",
         "positive-typed",
         "positive-typed-seller",
+        "positive-typed-seller-represent",
         "positive-sale",
         "positive-sale-unpost",
     ] {
