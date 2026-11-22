@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -135,7 +136,7 @@ func TestAV1ReportAfterADueTick(t *testing.T) {
 // adjudicator's copy names its referee. A failed share gate writes and
 // records nothing.
 func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
-	h := agreedBoth(t, offerTo)
+	h := agreedBoth(t, oneForum)
 	h.buyer.act(t)
 	disclosures := func() []map[string]any {
 		var out []map[string]any
@@ -174,6 +175,8 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 	require.Len(t, recs, 2)
 	assert.Equal(t, "adjudicator", recs[1]["audience"])
 	assert.Equal(t, "Lamp Court", recs[1]["recipient"])
+	assert.Equal(t, "adjudicator-key", recs[1]["adjudicator_key_id"], "the agreement's adjudicator, by key")
+	assert.Nil(t, recs[0]["adjudicator_key_id"])
 
 	taken := filepath.Join(t.TempDir(), "taken.json")
 	require.NoError(t, os.WriteFile(taken, []byte("x"), 0o600))
@@ -200,7 +203,7 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 // events, the opening and its plain counterparty values among them, and the
 // copy's audience, over the exact bytes then written.
 func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
-	h := agreedBoth(t, offerTo)
+	h := agreedBoth(t, oneForum)
 	h.buyer.act(t)
 	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
 	var gotEvents []sealedEvent
@@ -220,4 +223,49 @@ func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
 	written, err := os.ReadFile(file)
 	require.NoError(t, err)
 	assert.Equal(t, written, gotBytes, "the gate read the exact bytes written")
+}
+
+// An adjudicator's copy goes only to a deal whose agreement chose one.
+func TestAV1AdjudicatorCopyNeedsTheAgreementsAdjudicator(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	file := filepath.Join(t.TempDir(), "adj.json")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", file), "names no adjudicator")
+	_, err := os.Lstat(file)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// The bytes are staged before the record: a failed record leaves no file
+// (and no staging file), a failed staging runs no record, and a file that
+// appears at the path after the record is never replaced and the error says
+// the copy is on record.
+func TestWriteNewFileAfterStagesBeforeTheRecord(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "c.json")
+	assert.Error(t, writeNewFileAfter(out, []byte("x\n"), func() error { return errors.New("no record") }))
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "no file, no staging file")
+
+	ro := filepath.Join(dir, "ro")
+	require.NoError(t, os.Mkdir(ro, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(ro, 0o700) })
+	ran := false
+	assert.Error(t, writeNewFileAfter(filepath.Join(ro, "c.json"), []byte("x\n"), func() error { ran = true; return nil }))
+	assert.False(t, ran, "an unwritable directory fails before the record")
+
+	err = writeNewFileAfter(out, []byte("mine\n"), func() error { return os.WriteFile(out, []byte("theirs"), 0o600) })
+	assert.ErrorContains(t, err, "on record")
+	got, rerr := os.ReadFile(out)
+	require.NoError(t, rerr)
+	assert.Equal(t, "theirs", string(got), "never replaced")
+
+	fresh := filepath.Join(dir, "d.json")
+	require.NoError(t, writeNewFileAfter(fresh, []byte("y\n"), nil))
+	got, err = os.ReadFile(fresh)
+	require.NoError(t, err)
+	assert.Equal(t, "y\n", string(got))
+	info, err := os.Stat(fresh)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }

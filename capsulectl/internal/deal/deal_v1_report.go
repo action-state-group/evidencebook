@@ -8,7 +8,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -147,6 +149,24 @@ func runV1Report(c *cobra.Command) (err error) {
 	if d.OwnAgreementID == "" {
 		return cli.InputError("deal " + dealID + " has no agreement of yours recorded yet, so no report: your deal book opens at your agreement (`deal agree`)")
 	}
+	// An adjudicator's copy goes only to a deal that chose one: the
+	// agreement names its adjudicator by key, and the record carries that key
+	// beside the referee's name.
+	adjKey := ""
+	if share == dealprofile.AudienceAdjudicator {
+		book, err := s.ownBookV1(ctx, d)
+		if err != nil {
+			return err
+		}
+		ag, ok := agreeOf(book[0])
+		if !ok || ag.Kind != xdealv1.KindAgreement {
+			return cli.InputError("the first record of your deal book is not your agreement")
+		}
+		if ag.Adjudicator.IsNull() || !ag.Adjudicator.Present {
+			return cli.InputError("the agreement of deal " + dealID + " names no adjudicator, so no adjudicator's copy: use --share counterparty or your own copy")
+		}
+		adjKey = ag.Adjudicator.V.KeyID
+	}
 	nonce := make([]byte, 32)
 	if _, err := rand.Read(nonce); err != nil {
 		return err
@@ -178,11 +198,12 @@ func runV1Report(c *cobra.Command) (err error) {
 		if _, err := xdealv1.VerifyReport(pair, snap.Book.Agreement); err != nil {
 			return cli.InputError("the report sealed with this profile's signing key does not verify against your agreement (" + err.Error() + "): the key that signed the agreement must sign the report; run it with the profile you agreed with (--profile)")
 		}
+		var record func() error
 		if shared {
-			// The exact bytes are checked against the deal's own plain
-			// values (the person's words, the bounds, the counterparty's
-			// details, kept only on this device), then put on record, and
-			// only then written.
+			// The exact bytes are checked to contain none of the deal's own
+			// plain values (the person's words, the bounds, the
+			// counterparty's details, kept only on this device), then put on
+			// record, and only then written.
 			events, err := s.v1Events(ctx, dealID)
 			if err != nil {
 				return err
@@ -190,13 +211,16 @@ func runV1Report(c *cobra.Command) (err error) {
 			if err := v1ShareGate(file, events, share); err != nil {
 				return err
 			}
-			rec, err := s.recordV1Share(ctx, p, dealID, share, to, file)
-			if err != nil {
-				return err
+			record = func() error {
+				rec, err := s.recordV1Share(ctx, p, dealID, share, to, adjKey, file)
+				if err != nil {
+					return err
+				}
+				result["share"] = rec
+				return nil
 			}
-			result["share"] = rec
 		}
-		if err := writeNewFile(out, file); err != nil {
+		if err := writeNewFileAfter(out, file, record); err != nil {
 			return err
 		}
 		result["sealed_report"], result["file"] = digest, out
@@ -255,13 +279,57 @@ func (s *dealSession) sealV1Report(p cli.Profile, r xdealv1.Report, at time.Time
 }
 
 // writeNewFile writes data, exactly, to a file that must not exist yet.
-func writeNewFile(path string, data []byte) error {
-	if _, err := os.Lstat(path); err == nil {
-		return cli.InputError(path + " exists: --out names a new file")
-	} else if !errors.Is(err, os.ErrNotExist) {
+func writeNewFile(path string, data []byte) error { return writeNewFileAfter(path, data, nil) }
+
+// writeNewFileAfter writes data, exactly, to a file that must not exist yet,
+// running before (when set) between staging the bytes and putting them in
+// place. The bytes are written and synced to a temporary file beside path
+// first, so a full disk or an unwritable directory fails before `before` runs;
+// what can still fail after it is only the link into place (path appearing
+// meanwhile), and then the error says the copy is on record but not written.
+func writeNewFileAfter(path string, data []byte, before func() error) (err error) {
+	dir := filepath.Dir(path)
+	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	return cli.AtomicFile(path, data, false)
+	f, err := os.CreateTemp(dir, ".capsulectl-deal-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() {
+		if e := os.Remove(tmp); e != nil && !errors.Is(e, os.ErrNotExist) {
+			err = errors.Join(err, e)
+		}
+	}()
+	if _, err = f.Write(data); err == nil {
+		err = f.Sync()
+	}
+	if e := f.Close(); err == nil {
+		err = e
+	}
+	if err != nil {
+		return err
+	}
+	if err = os.Chmod(tmp, 0o600); err != nil {
+		return err
+	}
+	if before != nil {
+		if err = before(); err != nil {
+			return err
+		}
+	}
+	// A hard link, unlike a rename, never replaces a file at path.
+	if err = os.Link(tmp, path); err != nil {
+		if before != nil {
+			return fmt.Errorf("the shared copy is on record, but %s could not be written (%w): run deal report again to write and record a new copy", path, err)
+		}
+		if errors.Is(err, os.ErrExist) {
+			return cli.InputError(path + " exists: --out names a new file")
+		}
+		return err
+	}
+	return nil
 }
 
 // v1ShareGate is dealShareGate, a seam for tests.
@@ -271,7 +339,7 @@ var v1ShareGate = dealShareGate
 // it is written (persistShare): the deal, the audience, the recipient, the
 // digest of the exact bytes, the time and a fresh nonce. It carries none of
 // an x-deal-v0 copy's receipt-page fields: a report pair is no bundle page.
-func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, audience, recipient string, data []byte) (map[string]any, error) {
+func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, audience, recipient, adjudicatorKey string, data []byte) (map[string]any, error) {
 	nonce := make([]byte, 32)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
@@ -282,6 +350,9 @@ func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, 
 		"receipt_sha256": hex.EncodeToString(sum[:]),
 		"at":             cli.DealClock().UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z"),
 		"nonce":          hex.EncodeToString(nonce),
+	}
+	if adjudicatorKey != "" {
+		record["adjudicator_key_id"] = adjudicatorKey
 	}
 	s.dp = p
 	s.dp.LogID = cli.DealLogID(dealID)
