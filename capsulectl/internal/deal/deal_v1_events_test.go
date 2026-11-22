@@ -244,3 +244,22 @@ func TestTheV1LocalListStaysInTheStore(t *testing.T) {
 		assert.NotContains(t, out, marker, verb[0])
 	}
 }
+
+// An append that fails after its record was stored keeps the whole batch: the
+// intent is in the journal, so the opening stays with it and the deal is open.
+func TestAV1OpeningWhoseAppendFailedAfterStoringIsKept(t *testing.T) {
+	h := receivedOffer(t)
+	appendV1JournalAfterHook = func() error { return errors.New("failed after storing") }
+	_, err := invoke(t, "", "--profile", "deal", "deal", "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
+	appendV1JournalAfterHook = nil
+	require.Error(t, err)
+	withSession(t, func(s *dealSession) {
+		events, err := s.v1Events(t.Context(), h.dealID)
+		require.NoError(t, err)
+		require.Len(t, events, 2, "the opening and its intent both stay")
+		assert.Equal(t, "open", events[0].Event.Kind)
+	})
+	note(t, h.dealID, "message", `{"from":"counterparty","text":"It ships Monday."}`)
+	types, _ := journalTypes(t, h.dealID)
+	assert.Equal(t, []string{"intent", "message"}, types)
+}

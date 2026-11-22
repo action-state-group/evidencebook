@@ -216,20 +216,7 @@ func (s *dealSession) storeV1(ctx context.Context, dealID string, steps ...prepa
 			continue
 		}
 		if err := s.appendV1Journal(ctx, p.payload); err != nil {
-			// Withdraw every step of the batch the journal does not hold,
-			// the opening included (its local digest is never in the
-			// journal), so a deal is never left opened without its intent.
-			for _, q := range steps {
-				held, herr := s.journalHolds(ctx, q.se.Digest)
-				if herr != nil {
-					err = errors.Join(err, herr)
-					continue
-				}
-				if !held {
-					err = errors.Join(err, s.withdrawV1(ctx, dealID, q.se.Event.N))
-				}
-			}
-			return err
+			return errors.Join(err, s.settleFailedV1(ctx, dealID, steps))
 		}
 		if err := s.v1Appended(ctx, dealID, p.se.Digest); err != nil {
 			return err
@@ -238,16 +225,39 @@ func (s *dealSession) storeV1(ctx context.Context, dealID string, steps ...prepa
 	return nil
 }
 
+// settleFailedV1 decides a batch whose append failed while the command ran.
+// An append can fail after its record was stored, so the batch's records are
+// asked for: if none is in the journal, every step of the batch is withdrawn
+// in one transaction, the opening included, and a retry seals the batch once;
+// if any is held, or the answer is uncertain, every step stays and the next
+// command that loads the deal appends what is missing. A deal is never left
+// with an intent but no opening, or an opening but no intent.
+func (s *dealSession) settleFailedV1(ctx context.Context, dealID string, steps []preparedV1) error {
+	for _, q := range steps {
+		if q.payload == nil {
+			continue
+		}
+		held, err := s.journalHolds(ctx, q.se.Digest)
+		if err != nil || held {
+			return err
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	for _, q := range steps {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM deal_v1_events WHERE deal_id=? AND n=?`, dealID, q.se.Event.N); err != nil {
+			return errors.Join(err, tx.Rollback())
+		}
+	}
+	return tx.Commit()
+}
+
 // v1Appended clears a stored payload once its record is in the journal, so a
 // read only looks at true leftovers.
 func (s *dealSession) v1Appended(ctx context.Context, dealID, digest string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE deal_v1_events SET payload=NULL WHERE deal_id=? AND record_digest=?`, dealID, digest)
-	return err
-}
-
-// withdrawV1 removes a stored step whose record never reached the journal.
-func (s *dealSession) withdrawV1(ctx context.Context, dealID string, n int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM deal_v1_events WHERE deal_id=? AND n=?`, dealID, n)
 	return err
 }
 
@@ -326,6 +336,10 @@ func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) ([]byte, stri
 // appending its record.
 var appendV1JournalHook func() error
 
+// appendV1JournalAfterHook lets a test fail an append after its record was
+// stored, as Book.Append can.
+var appendV1JournalAfterHook func() error
+
 // appendV1Journal appends one journal record. A record stored but not yet in
 // the log is recovered by the next Journal open (Shelf.Journal).
 func (s *dealSession) appendV1Journal(ctx context.Context, payload []byte) error {
@@ -339,6 +353,9 @@ func (s *dealSession) appendV1Journal(ctx context.Context, payload []byte) error
 		return err
 	}
 	_, err = j.Append(ctx, evidencebook.Entry{RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{payload}})
+	if err == nil && appendV1JournalAfterHook != nil {
+		err = appendV1JournalAfterHook()
+	}
 	return err
 }
 
