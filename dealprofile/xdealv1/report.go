@@ -595,16 +595,15 @@ type ReportSnapshot struct {
 	// the status input carries them (PaymentCheck's results).
 	Payments map[string]PaymentResult
 	// PaymentsNotRun are the rows whose owed is an amount but whose payment
-	// check was not run, with why: NotRunNotRecomputed (the row is not
-	// recomputed, so it is no payment row), NotRunNoOfferPair (the host gave
-	// no sent pair of the offer) or NotRunNoAcceptorKey (no acceptor key is
-	// known yet).
+	// check was not run, with why: CheckNotRecomputed (the row is not
+	// recomputed, so it is no payment row; the report row's check says the
+	// same), NotRunNoOfferPair (the host gave no sent pair of the offer) or
+	// NotRunNoAcceptorKey (no acceptor key is known yet).
 	PaymentsNotRun map[string]string
 }
 
 // Why a payment row's check was not run (ReportSnapshot.PaymentsNotRun).
 const (
-	NotRunNotRecomputed = "not_recomputed"
 	NotRunNoOfferPair   = "no_offer_pair"
 	NotRunNoAcceptorKey = "no_acceptor_key"
 )
@@ -670,7 +669,7 @@ func paymentsNotRun(b StatusBooks) map[string]string {
 		}
 		switch _, checked := b.Payments[row.ID]; {
 		case !row.Recomputed:
-			out[row.ID] = NotRunNotRecomputed
+			out[row.ID] = CheckNotRecomputed
 		case checked:
 		case b.Payments == nil:
 			out[row.ID] = NotRunNoOfferPair

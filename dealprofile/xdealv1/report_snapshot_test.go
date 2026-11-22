@@ -51,7 +51,28 @@ func TestPaymentsNotRunNamesARowThatIsNotRecomputed(t *testing.T) {
 		{ID: "delivered", OwedBy: RoleSeller, Owed: json.RawMessage(`"the lamp"`)},
 	}}}}
 	got := paymentsNotRun(StatusBooks{Offer: offer, Payments: map[string]PaymentResult{"paid": {}}})
-	assert.Equal(t, map[string]string{"deposit": NotRunNotRecomputed}, got)
+	assert.Equal(t, map[string]string{"deposit": CheckNotRecomputed}, got)
 	got = paymentsNotRun(StatusBooks{Offer: offer, Payments: map[string]PaymentResult{}})
-	assert.Equal(t, map[string]string{"deposit": NotRunNotRecomputed, "paid": NotRunNoAcceptorKey}, got)
+	assert.Equal(t, map[string]string{"deposit": CheckNotRecomputed, "paid": NotRunNoAcceptorKey}, got)
+}
+
+// The provider's own skips reach PaymentsNotRun with their reasons: an offer
+// pair callback that has no pair is no_offer_pair; an offerer that knows no
+// acceptor key yet is no_acceptor_key.
+func TestThePaymentsSkipsCarryTheirReasons(t *testing.T) {
+	d := newPaymentDeal(t, nil, true)
+	ag := *d.buyerAg.Body.(*AgreeBody)
+	p := &StatusProvider{OfferPair: func(context.Context, string) ([]byte, error) { return nil, nil }}
+	res, err := p.payments(context.Background(), d.offer, ag, nil, nil)
+	require.NoError(t, err)
+	assert.Nil(t, res)
+	assert.Equal(t, map[string]string{"paid_as_agreed": NotRunNoOfferPair}, paymentsNotRun(StatusBooks{Offer: d.offer, Payments: res}))
+
+	p.OfferPair = func(context.Context, string) ([]byte, error) { return d.offerPair, nil }
+	ag.CounterpartyKey = NullOf[string]()
+	res, err = p.payments(context.Background(), d.offer, ag, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, res, "the check ran, and skipped the row")
+	assert.Empty(t, res)
+	assert.Equal(t, map[string]string{"paid_as_agreed": NotRunNoAcceptorKey}, paymentsNotRun(StatusBooks{Offer: d.offer, Payments: res}))
 }
