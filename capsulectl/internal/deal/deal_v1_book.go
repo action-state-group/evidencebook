@@ -43,6 +43,7 @@ func v1ReceiveContext(c *cobra.Command) {
 // check). The holder's own deal book is read back from the book itself.
 var dealV1Tables = []string{
 	dealV1AdmitTable,
+	dealV1EventsTable,
 	`CREATE TABLE IF NOT EXISTS deal_v1 (
 	deal_id TEXT PRIMARY KEY,
 	side TEXT NOT NULL,

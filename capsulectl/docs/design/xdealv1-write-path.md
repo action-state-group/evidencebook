@@ -399,18 +399,20 @@ the journal lacks it.
    share or disclosure carries it; only the journal's records, with their commitments, go out.
 
 1. **The opening.** The first `deal note --kind intent` on a v1 deal writes the synthetic `open`
-   event. Its input is v0's intent note input plus `type`, and optionally `channel`:
-   - `type` and `channel` come from the input;
+   event. `--input` is v0's intent note input, and `--opening FILE` gives the rest of v0's opening
+   (`type`, an optional `channel`, `who`, `recourse`; as built, since the note command reads
+   `--input` as an intent before the deal loads):
+   - `type` and `channel` come from `--opening`;
    - `intent` (verbatim words, bounds, allowed) comes from the input, sealed as the journal `intent`
      record with its `verbatim_commitment` and `bounds_commitment` opened by the local nonces, as
      v0 keeps them (`deal_profile.go:490-508`);
-   - `who` comes from the input, in plain values, as v0's opening takes it. The offer's counterparty
+   - `who` comes from `--opening`, in plain values, as v0's opening takes it. The offer's counterparty
      block and the `counterparty_profile` record hold only fingerprints (`deal_profile.go:268-279`),
      and `deal offer` writes no counterparty block (`deal_v1_offer.go:84-87`), so `who` cannot be
      recovered from records. Left out, it is empty, and a later intent that names the merchant opens
      the merchant leg, as in v0;
    - `terms` comes from the offer's `terms`, mapped field by field;
-   - the recourse (`Rail`, `Refundable`) comes from the input as in v0. The agreement's adjudicator
+   - the recourse (`Rail`, `Refundable`) comes from `--opening`, as v0's opening takes it. The agreement's adjudicator
      and forums are the dispute clause, which is not this recourse;
    - `Records` is the x-deal-v0 path (`""`), so `dealRecordSet` gives the untyped behaviour;
    - the pinned materiality predicate is read from the profile then and stored on the event, as
