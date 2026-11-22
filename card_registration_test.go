@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -406,6 +407,20 @@ func TestAttachCardReceiptChecksTheNewReceiptAlone(t *testing.T) {
 		_, err := AttachCardReceipt(card, KeyID(signer), anchor, statement, receipt, service.policy())
 		require.ErrorIs(t, err, ErrInvalid, name)
 	}
+	// An earlier Receipt that is not a byte string leaves a statement that
+	// can never pass, so a valid new Receipt is still refused.
+	var tagged cbor.RawTag
+	require.NoError(t, cbor.Unmarshal(statement, &tagged))
+	var parsed coseSign1
+	require.NoError(t, cbor.Unmarshal(tagged.Content, &parsed))
+	broken, err := cardCBOR.Marshal(cbor.RawTag{Number: coseSign1Tag, Content: mustMarshal([]any{
+		parsed.Protected, map[int64]any{coseLabelReceipts: []any{nil}}, parsed.Payload, parsed.Signature,
+	})})
+	require.NoError(t, err)
+	_, err = AttachCardReceipt(card, KeyID(signer), anchor, broken, service.receiptFor(t, statementEntry(t, statement)), service.policy())
+	require.ErrorIs(t, err, ErrInvalid)
+	assert.Contains(t, err.Error(), "would not pass")
+
 	// A second good Receipt is kept beside the first.
 	two, err := AttachCardReceipt(card, KeyID(signer), anchor, statement, service.receiptFor(t, statementEntry(t, statement)), service.policy())
 	require.NoError(t, err)
@@ -425,7 +440,7 @@ func TestRegisteringACardChangesNothingAboutTheAnswer(t *testing.T) {
 	require.NoError(t, err)
 	reply := respondAs(t, responder, sent.Message(), "requester")
 	env := mustEnvelope(t, reply)
-	card := env.Artifact
+	card := bytes.Clone(env.Artifact)
 
 	service := newTestReceiptService(5)
 	before := CheckCardRegistered(card, env, nil, service.policy())

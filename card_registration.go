@@ -180,6 +180,11 @@ func AttachCardReceipt(card []byte, holder, anchor string, statement, receipt []
 	if len(candidate) > cardStatementMaxLen {
 		return nil, fmt.Errorf("%w: the card statement would be over %d octets", ErrInvalid, cardStatementMaxLen)
 	}
+	// The whole statement must still be in the one form of SH §13.1, which
+	// an earlier Receipt that is not a byte string, say, would break.
+	if report := aacwitness.CheckCardStatement(card, holder, anchor, candidate, policy); report.Status != aacwitness.AnchorPass {
+		return nil, fmt.Errorf("%w: the card statement would not pass (%s): %s", ErrInvalid, report.Status, report.Detail)
+	}
 	return candidate, nil
 }
 
