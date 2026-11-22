@@ -513,6 +513,7 @@ dealprofile/xdealv1	type	ReportRead	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	ReportRestsOn	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	ReportRow	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	ReportRuling	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	ReportSnapshot	x-deal-v1	frozen #724	frozen #724
 dealprofile/xdealv1	type	ReportSource	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Row	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	RowBooks	x-deal-v1	ported	not needed

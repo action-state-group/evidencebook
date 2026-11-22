@@ -580,44 +580,105 @@ func (p *StatusProvider) Report(ctx context.Context, logID string, c ReportCopy)
 // the copy lists its rows or not. The host carries them as the x-deal-v1
 // bundle extension's book (ReportBundle) beside the sealed report.
 func (p *StatusProvider) ReportWithBook(ctx context.Context, logID string, c ReportCopy) (Report, ReportBook, error) {
+	s, err := p.ReportSnapshot(ctx, logID, c)
+	return s.Report, s.Book, err
+}
+
+// ReportSnapshot is a report, the book pairs it rests on, and each payment
+// row's payment check, all from one read of the shelf (ReportWithBook), so a
+// host that shows the checks beside the report never shows a check the
+// report did not read.
+type ReportSnapshot struct {
+	Report Report
+	Book   ReportBook
+	// Payments are the payment checks the status read, by row, exactly as
+	// the status input carries them (PaymentCheck's results).
+	Payments map[string]PaymentResult
+	// PaymentsNotRun are the rows whose owed is an amount but whose payment
+	// check was not run, with why: NotRunNotRecomputed (the row is not
+	// recomputed, so it is no payment row), NotRunNoOfferPair (the host gave
+	// no sent pair of the offer) or NotRunNoAcceptorKey (no acceptor key is
+	// known yet).
+	PaymentsNotRun map[string]string
+}
+
+// Why a payment row's check was not run (ReportSnapshot.PaymentsNotRun).
+const (
+	NotRunNotRecomputed = "not_recomputed"
+	NotRunNoOfferPair   = "no_offer_pair"
+	NotRunNoAcceptorKey = "no_acceptor_key"
+)
+
+// ReportSnapshot is ReportWithBook with the payment checks read in the same
+// snapshot (ReportSnapshot, the type).
+func (p *StatusProvider) ReportSnapshot(ctx context.Context, logID string, c ReportCopy) (ReportSnapshot, error) {
 	if p.Shelf == nil {
-		return Report{}, ReportBook{}, fmt.Errorf("xdealv1: the status provider has no shelf")
+		return ReportSnapshot{}, fmt.Errorf("xdealv1: the status provider has no shelf")
 	}
 	book, err := p.Shelf.Open(ctx, logID)
 	if err != nil {
-		return Report{}, ReportBook{}, err
+		return ReportSnapshot{}, err
 	}
 	first, err := book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: 1})
 	if err != nil {
-		return Report{}, ReportBook{}, err
+		return ReportSnapshot{}, err
 	}
 	notV1 := fmt.Errorf("xdealv1: report: book %s is not an x-deal-v1 deal book", logID)
 	if len(first) != 1 {
-		return Report{}, ReportBook{}, notV1
+		return ReportSnapshot{}, notV1
 	}
 	if rec, kind, err := v1Payload(ctx, book, first[0]); err != nil {
-		return Report{}, ReportBook{}, err
+		return ReportSnapshot{}, err
 	} else if a, ok := asAgree(rec.Body); kind != payloadV1 || !ok || a.Kind != KindAgreement {
-		return Report{}, ReportBook{}, notV1
+		return ReportSnapshot{}, notV1
 	}
 	journal, err := p.Shelf.ExistingJournal(ctx)
 	if err != nil {
-		return Report{}, ReportBook{}, err
+		return ReportSnapshot{}, err
 	}
 	if journal == nil {
-		return Report{}, ReportBook{}, fmt.Errorf("xdealv1: report: the shelf has no journal, which holds the deal's offer")
+		return ReportSnapshot{}, fmt.Errorf("xdealv1: report: the shelf has no journal, which holds the deal's offer")
 	}
 	bookID := first[0].RecordID
 	for attempt := 0; attempt < 3; attempt++ {
 		rb, pairs, stable, err := p.reportBooks(ctx, logID, bookID, book, journal)
 		if err != nil {
-			return Report{}, ReportBook{}, err
+			return ReportSnapshot{}, err
 		}
 		if stable {
-			return reportWithBook(rb, c, pairs)
+			r, b, err := reportWithBook(rb, c, pairs)
+			if err != nil {
+				return ReportSnapshot{}, err
+			}
+			return ReportSnapshot{Report: r, Book: b, Payments: rb.Books.Payments, PaymentsNotRun: paymentsNotRun(rb.Books)}, nil
 		}
 	}
-	return Report{}, ReportBook{}, fmt.Errorf("%w: report: book %s kept changing while it was read", evidencebook.ErrBusy, logID)
+	return ReportSnapshot{}, fmt.Errorf("%w: report: book %s kept changing while it was read", evidencebook.ErrBusy, logID)
+}
+
+// paymentsNotRun are the rows whose owed is an amount and whose payment check
+// the status did not run, with why (ReportSnapshot.PaymentsNotRun).
+func paymentsNotRun(b StatusBooks) map[string]string {
+	of, ok := asPropose(b.Offer.Body)
+	if !ok {
+		return nil
+	}
+	out := map[string]string{}
+	for _, row := range of.TermsRows.Rows {
+		if _, isAmount := owedAmount(row); !isAmount {
+			continue
+		}
+		switch _, checked := b.Payments[row.ID]; {
+		case !row.Recomputed:
+			out[row.ID] = NotRunNotRecomputed
+		case checked:
+		case b.Payments == nil:
+			out[row.ID] = NotRunNoOfferPair
+		default:
+			out[row.ID] = NotRunNoAcceptorKey
+		}
+	}
+	return out
 }
 
 // reportBooks reads one snapshot of what a report rests on, with the book
