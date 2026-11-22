@@ -1,17 +1,17 @@
 {
-  "fixture": "10-approval-of-the-warranty.json",
+  "fixture": "13-approval-of-the-warranty.json",
   "expect": "valid",
   "story": "The user approves those words, in their own words, on the card the check rendered.",
   "record": {
     "type": "action-approval/v0",
     "canonicalization": "jcs",
     "chain_id": "deal-7e41b9c02d5a8f36",
-    "seq": 10,
-    "at": "2026-10-08T09:18:00Z",
+    "seq": 13,
+    "at": "2026-10-08T09:24:00Z",
     "prev": {
       "type": "record",
       "digest_alg": "SHA-256",
-      "digest": "82ad6eb4c51b2972dbb89ea3289eb059c2d8e3644927aa29450a5adc4cf12ed1"
+      "digest": "2c5a1199371f1454d0055d5eef83e85c186cf24121ddbad5a364bd1b1d232812"
     },
     "chain_root": {
       "type": "record",
@@ -23,7 +23,7 @@
         "rel": "approves",
         "type": "record",
         "digest_alg": "SHA-256",
-        "digest": "82ad6eb4c51b2972dbb89ea3289eb059c2d8e3644927aa29450a5adc4cf12ed1"
+        "digest": "2c5a1199371f1454d0055d5eef83e85c186cf24121ddbad5a364bd1b1d232812"
       }
     ],
     "body": {
@@ -34,5 +34,5 @@
       "rendering_commitment": "bf720bc791551e59651deba294b2368cf21e2f8c032fc1ffb1b8d417accbd1f8"
     }
   },
-  "expected_digest": "2b251d1729c4568779d381596ab8cad7acef268ae33e19bec7725e43439851f3"
+  "expected_digest": "74ecff5f1c1d8d5b93cf77d10d143861e0cc912af53bad08e506270cda87db85"
 }

@@ -1,17 +1,17 @@
 {
-  "fixture": "08-proposed-action-represent-warranty.json",
+  "fixture": "11-proposed-action-represent-warranty.json",
   "expect": "valid",
   "story": "The agent is about to promise a warranty, which the task authority does not order.",
   "record": {
     "type": "proposed-action/v0",
     "canonicalization": "jcs",
     "chain_id": "deal-7e41b9c02d5a8f36",
-    "seq": 8,
-    "at": "2026-10-08T09:14:00Z",
+    "seq": 11,
+    "at": "2026-10-08T09:20:00Z",
     "prev": {
       "type": "record",
       "digest_alg": "SHA-256",
-      "digest": "e37f47e9a18a75d1e7500376bbfc5aee4c8729f32806bb1837adc184f428508d"
+      "digest": "c3abe26c67548b56c8f9e788cf61d2b4e79ae54a5f0bfc49069c8799c232c7fc"
     },
     "chain_root": {
       "type": "record",
@@ -26,5 +26,5 @@
       }
     }
   },
-  "expected_digest": "321959e2c3abf2b735b3c72ddd42e1f33e20635330c256b1c16bbff0eb3d6fbd"
+  "expected_digest": "320a8ad3502b7228f1355510b9e677eca3d952ced0b260032d28191d0fbfb8a0"
 }

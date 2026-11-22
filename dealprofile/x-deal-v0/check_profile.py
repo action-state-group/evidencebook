@@ -2524,7 +2524,8 @@ def regen():
               "rep-refund": "Returns accepted within 7 days if unridden",
               "rep-pickup": "Pickup any evening this week",
               "rep-area": "Hyde Park, Austin",
-              "rep-old": "Ridden twice"}
+              "rep-old": "Ridden twice",
+              "rep-old-condition": "The paint is chipped on the fork"}
     com3 = {k: commitment(nonce(k), v) for k, v in texts3.items()}
     records3, names3 = [], []
     clock3 = iter([f"2026-10-08T09:{m:02d}:00Z" for m in range(0, 60, 2)])
@@ -2586,12 +2587,23 @@ def regen():
     old3 = add_v0_3("claim-sealed-before", "claim", {
         "text_commitment": com3["rep-old"], "source_kind": "agent", "class": "other",
         "unchecked": True, "rule": "no_check"})
+    # An authorized claim an earlier producer sealed, its verdict (DO) on the claim.
+    ro = add_typed3("proposed-action-represent-before", "proposed-action/v0", {
+        "action": "represent", "representing": {"class": "condition", "text_commitment": com3["rep-old-condition"]}})
+    rov = evaluation3(ro, "DO", [], [])
+    roc = add_v0_3("claim-authorized-before", "claim", {
+        "text_commitment": com3["rep-old-condition"], "source_kind": "agent", "class": "condition",
+        "authority_basis": [{"type": "task_authority", "ref": tref3(ta3)}], "evaluation_ref": tref3(rov)},
+        refs=[("authorized_by", rov)])
     # The ordered condition statement: checked (DO), said, authorized by its evaluation.
     # The check is valid until a minute after the claim, and the claim_authority is
     # sealed after that: the claim's time is the one that counts.
     rc = add_typed3("proposed-action-represent-condition", "proposed-action/v0", {
         "action": "represent", "representing": {"class": "condition", "text_commitment": com3["rep-condition"]}})
-    rcv = evaluation3(rc, "DO", [], [], valid_until="2026-10-08T09:11:00Z")
+    rcv = evaluation3(rc, "DO", [], [])
+    # Valid until a minute after the claim (sealed two minutes after the evaluation).
+    t = datetime.datetime.strptime(records3[rcv]["at"], "%Y-%m-%dT%H:%M:%SZ") + datetime.timedelta(minutes=3)
+    records3[rcv]["body"]["valid_until"] = t.strftime("%Y-%m-%dT%H:%M:%SZ")
     rcc = claim3("condition", "rep-condition", "condition")
     rca = add_v0_3("claim-authority-condition", "claim_authority", {
         "authority_basis": [{"type": "task_authority", "ref": tref3(ta3)}], "evaluation_ref": tref3(rcv)},
@@ -2632,6 +2644,9 @@ def regen():
         "baseline": "First contact on a seller's deal that orders a condition statement (ordered_representations).",
         "task-authority/v0": "The seller's task authority, ordering the condition statement.",
         names3[old3]: "A claim sealed before the verdict moved off it: unchecked, rule no_check, on the claim itself.",
+        names3[ro]: "An earlier condition statement, checked before the verdict moved off the claim.",
+        names3[rov]: "Its check passes (DO).",
+        names3[roc]: "Its claim, sealed by an earlier producer with its verdict on it: authorized by the evaluation.",
         names3[rc]: "The agent is about to tell the buyer about the condition: its class in the clear, its words committed.",
         names3[rcv]: "The check passes (DO): the task authority orders a condition statement.",
         names3[rcc]: "The condition claim, sealed under the check's nonce: its words only, no verdict.",
@@ -2756,6 +2771,20 @@ def regen():
          "The ordered condition statement said with no check (its claim_authority unchecked), then a gated share: "
          "the gate holds it, since only an authorized claim_authority states the class.",
          ta3 + 1, act, between=[cond, cond_v, chk, ev])
+    # A detail change between the check and the claim: the verdict on the new
+    # record cannot rest on that check.
+    change = follow({"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": chain_id3,
+                                   "record_type": "detail_change", "seq": 0, "at": records3[rcv]["at"],
+                                   "baseline_ref": _ref(record_digest(records3[0]))},
+                     "body": {"source": "counterparty", "changed": ["place"]}}, records3[rcv])
+    claim_after = follow(cp3(rcc), change)
+    neg3("neg-claim-authority-details-changed-after-the-check", "details changed after the check",
+         "A detail change sealed between the represent check and the claim: the claim_authority cannot rest on that check.",
+         rcv + 1, about(follow(cp3(rca), claim_after), claim_after), between=[change, claim_after])
+    # A second claim_authority about the same claim.
+    neg3("neg-claim-authority-twice", "directly follows the seller's representation it judges",
+         "A second claim_authority about the condition claim, right after its first.", rca + 1,
+         follow(cp3(rca), records3[rca]))
     # Unknown rule, and both forms at once: the schema refuses them.
     r = cp3(rrca)
     r["body"]["rule"] = "because"

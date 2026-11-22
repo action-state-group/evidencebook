@@ -1,5 +1,5 @@
 {
-  "fixture": "12-claim-authority-warranty.json",
+  "fixture": "15-claim-authority-warranty.json",
   "expect": "valid",
   "story": "Its verdict: the task authority, then the user's approval.",
   "record": {
@@ -8,12 +8,12 @@
       "canonicalization": "jcs",
       "deal_id": "deal-7e41b9c02d5a8f36",
       "record_type": "claim_authority",
-      "seq": 12,
-      "at": "2026-10-08T09:22:00Z",
+      "seq": 15,
+      "at": "2026-10-08T09:28:00Z",
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "3bddf972925a1432968f976a4a47c74f4e1187b9e125b0e15aa4ab51d3d91d51"
+        "digest": "c7f213f1f5d3ecb4ed3eb43d128df644f2efe5f2e7f9589fa36f529cb2bce96c"
       },
       "baseline_ref": {
         "type": "deal-record",
@@ -25,13 +25,13 @@
           "rel": "about",
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "3bddf972925a1432968f976a4a47c74f4e1187b9e125b0e15aa4ab51d3d91d51"
+          "digest": "c7f213f1f5d3ecb4ed3eb43d128df644f2efe5f2e7f9589fa36f529cb2bce96c"
         },
         {
           "rel": "authorized_by",
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "2b251d1729c4568779d381596ab8cad7acef268ae33e19bec7725e43439851f3"
+          "digest": "74ecff5f1c1d8d5b93cf77d10d143861e0cc912af53bad08e506270cda87db85"
         }
       ]
     },
@@ -50,16 +50,16 @@
           "ref": {
             "type": "record",
             "digest_alg": "SHA-256",
-            "digest": "2b251d1729c4568779d381596ab8cad7acef268ae33e19bec7725e43439851f3"
+            "digest": "74ecff5f1c1d8d5b93cf77d10d143861e0cc912af53bad08e506270cda87db85"
           }
         }
       ],
       "evaluation_ref": {
         "type": "record",
         "digest_alg": "SHA-256",
-        "digest": "82ad6eb4c51b2972dbb89ea3289eb059c2d8e3644927aa29450a5adc4cf12ed1"
+        "digest": "2c5a1199371f1454d0055d5eef83e85c186cf24121ddbad5a364bd1b1d232812"
       }
     }
   },
-  "expected_digest": "447a89246fc88ca4e9893d96efcb2164387ff20bf2684a5e9e7b137ef11f3194"
+  "expected_digest": "84e957a5a671ee62b6b0956f52b95320dadc43032685eabbf44fb0a9cf251324"
 }

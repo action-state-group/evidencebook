@@ -1,19 +1,19 @@
 {
-  "fixture": "18-claim-pickup.json",
+  "fixture": "16-claim-refund-terms.json",
   "expect": "valid",
-  "story": "A pickup note just sealed: the deal may end here until its claim_authority follows.",
+  "story": "A refund promise the agent said with no check: still sealed, since the words were said.",
   "record": {
     "x-deal-v0": {
       "profile": "x-deal-v0",
       "canonicalization": "jcs",
       "deal_id": "deal-7e41b9c02d5a8f36",
       "record_type": "claim",
-      "seq": 18,
-      "at": "2026-10-08T09:34:00Z",
+      "seq": 16,
+      "at": "2026-10-08T09:30:00Z",
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "0394bd1d16ea5a9fd43d26a3450922d55527bae0f17aa8bd932bd5c1b1ff3587"
+        "digest": "84e957a5a671ee62b6b0956f52b95320dadc43032685eabbf44fb0a9cf251324"
       },
       "baseline_ref": {
         "type": "deal-record",
@@ -22,10 +22,10 @@
       }
     },
     "body": {
-      "text_commitment": "6156577c34c6dad4d6b384917a0283c05954c77c5e79d05b1882f08a84d76cae",
+      "text_commitment": "1040abb28fa8d36486bb5df234dda0282f0c822e226c8c0c82fbe2bab6cf420a",
       "source_kind": "agent",
-      "class": "pickup"
+      "class": "refund_terms"
     }
   },
-  "expected_digest": "0c3574babb2bec9cf4a36d335427d480c19f70dc35f94ad1edaa4d160a67be2b"
+  "expected_digest": "38148aae988b3ee44b3f4063fc2bf938d087182abbd9a00d06a77a0fd4cf1ecf"
 }

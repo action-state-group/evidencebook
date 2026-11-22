@@ -1,19 +1,19 @@
 {
-  "fixture": "06-claim-condition.json",
+  "fixture": "21-claim-pickup.json",
   "expect": "valid",
-  "story": "The condition claim, sealed under the check's nonce: its words only, no verdict.",
+  "story": "A pickup note just sealed: the deal may end here until its claim_authority follows.",
   "record": {
     "x-deal-v0": {
       "profile": "x-deal-v0",
       "canonicalization": "jcs",
       "deal_id": "deal-7e41b9c02d5a8f36",
       "record_type": "claim",
-      "seq": 6,
-      "at": "2026-10-08T09:10:00Z",
+      "seq": 21,
+      "at": "2026-10-08T09:40:00Z",
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "17349fd9c0361177f8c5d9d854ca8cbcd49ecad869650f017c9b3e9edd4fb9e5"
+        "digest": "b194854ffdd5e9642e85f3d5770b18420bee4a027250f777db62dce7b135d62c"
       },
       "baseline_ref": {
         "type": "deal-record",
@@ -22,10 +22,10 @@
       }
     },
     "body": {
-      "text_commitment": "61856d5898d148c9e0904e565f69e2ad274e49426fb9bdc0b8089c85353817af",
+      "text_commitment": "6156577c34c6dad4d6b384917a0283c05954c77c5e79d05b1882f08a84d76cae",
       "source_kind": "agent",
-      "class": "condition"
+      "class": "pickup"
     }
   },
-  "expected_digest": "093722866d651265b39e3ad1a47434c7169d6910787f398c42cdae412ad65d6a"
+  "expected_digest": "a5b9fbe449c83aee51ef4d89bf4eee5717cf182b032c624de5af17fd42830f5a"
 }

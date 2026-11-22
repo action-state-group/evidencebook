@@ -9,7 +9,7 @@ the checks in Go, Rust and Python, and the vectors. The producer side (what `dis
 
 Steven's ruling u615 (2026-11-19, ops `company-oss/inbox.md:944`): a seller may include, on an
 adjudicator copy only, the claims its agent made without authority, by an explicit per-share
-opt-in, default off, and **never on the counterparty copy**. Sherlock2 confirmed that keeping the
+opt-in, default off, and **never on the counterparty copy**. Sherlock confirmed that keeping the
 claim and moving the seller's verdict off it is a fix under that ruling, not a new consent
 question (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=2abeb751210e53195d88667f4c9babdf6c5d6545790c54d22859e79067d017c4).
 Steven's 2026-11-21 ruling on the adjudicator copy ("yes, uniformly": it hides the claims and
@@ -88,7 +88,7 @@ authorized its agent's claim, or that nothing did.
 | Body | exactly one of: `{authority_basis, evaluation_ref}` (as the claim carried them), or `{unchecked: true, rule}` (`rule` from rule 12's two lists). No other member. |
 | Refs | exactly one `about` → the claim it judges; with `authority_basis`, exactly one `authorized_by` → the evaluation (DO) or the user's approval (ASK), as on the claim today. No other ref. |
 | Block | no `counterparty`, no `channel`. |
-| Place | the record right after its claim (`seq` + 1). Every claim under rule 12 that carries no verdict of its own has exactly one, and no other record has one. A deal whose last record is such a claim is valid (its verdict is not sealed yet, and its class is not stated); any record after it must be its `claim_authority`. |
+| Place | the record right after its claim (`seq` + 1). Every claim under rule 12 that carries no verdict of its own has exactly one, and no other record has one. A deal whose last record is such a claim is valid (its verdict is not sealed yet, so the gate does not yet count its class); any record after it must be its `claim_authority`. |
 
 **The claim** (`source_kind: agent`, under rule 12) then carries `text_commitment`,
 `source_kind`, `class` and optionally `source_ref_commitment`, and no `authority_basis`,
@@ -146,9 +146,9 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
     authorized or not, and opens none of their words (there is no disclosed record to check them
     against). Section 6 says why.
 - **An adjudicator copy** is evidencebook-deal#231's: by default it withholds every agent claim,
-  and now every `claim_authority` too; with the seller's opt-in (`--include-unauthorized-claims`,
-  all or nothing per deal) it discloses every agent claim and every `claim_authority`. The
-  represent trail in an adjudicator copy is unchanged here (#231 records its positional residual).
+  every `claim_authority` and the represent trail (Sherlock on evidencebook-deal#245,
+  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=effe0673354608775358f3fa42a5ac47106fb4a3f0e34b99b6679f2b6667a5b5);
+  with the seller's opt-in (all or nothing per deal) it carries all of them.
 
 ## 6. Versioning and existing books
 

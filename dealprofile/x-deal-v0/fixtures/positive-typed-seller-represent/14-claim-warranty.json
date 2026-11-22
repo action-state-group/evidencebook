@@ -1,19 +1,19 @@
 {
-  "fixture": "13-claim-refund-terms.json",
+  "fixture": "14-claim-warranty.json",
   "expect": "valid",
-  "story": "A refund promise the agent said with no check: still sealed, since the words were said.",
+  "story": "The warranty claim: its words only.",
   "record": {
     "x-deal-v0": {
       "profile": "x-deal-v0",
       "canonicalization": "jcs",
       "deal_id": "deal-7e41b9c02d5a8f36",
       "record_type": "claim",
-      "seq": 13,
-      "at": "2026-10-08T09:24:00Z",
+      "seq": 14,
+      "at": "2026-10-08T09:26:00Z",
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "447a89246fc88ca4e9893d96efcb2164387ff20bf2684a5e9e7b137ef11f3194"
+        "digest": "74ecff5f1c1d8d5b93cf77d10d143861e0cc912af53bad08e506270cda87db85"
       },
       "baseline_ref": {
         "type": "deal-record",
@@ -22,10 +22,10 @@
       }
     },
     "body": {
-      "text_commitment": "1040abb28fa8d36486bb5df234dda0282f0c822e226c8c0c82fbe2bab6cf420a",
+      "text_commitment": "a207cd81a3a63a005c3493e6f37e5bc1f6868d9d3db36dbf1823631907ba7798",
       "source_kind": "agent",
-      "class": "refund_terms"
+      "class": "warranty"
     }
   },
-  "expected_digest": "b6003bd0bc23e78f7c2d4ceeab100d1e82ffe6dbc4ae0918fa977852af799dfa"
+  "expected_digest": "c7f213f1f5d3ecb4ed3eb43d128df644f2efe5f2e7f9589fa36f529cb2bce96c"
 }

@@ -360,7 +360,7 @@ const SCHEMA_WORDING_ONLY: &[(&str, &str)] = &[
     // There: the body, not valid under any of claim_authority's two forms.
     (
         "neg-claim-authority-both-forms.json",
-        "additionalProperties 'authority_basis', 'evaluation_ref' not allowed",
+        "/body: additionalProperties '",
     ),
 ];
 
