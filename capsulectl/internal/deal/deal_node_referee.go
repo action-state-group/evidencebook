@@ -269,7 +269,8 @@ The Result is received only when each half verifies and its opening recomputes t
 are signed by two keys and this node's key signed one of them, the Result verifies, is signed by the referee both
 parties' terms name, names exactly these two halves, and is the document it commits to. Anything else is refused:
 the refusal is sealed as a record that holds the Result's digest and the refusal code, nothing else, and the
-verb exits with the code. Receiving is safe to repeat: a Result already received, and a half already held, seal
+verb exits with the code. Every Result delivered to this node leaves a permanent record in the node book, a
+refused one too, even when it is junk or about a deal this node is not in. Receiving is safe to repeat: a Result already received, and a half already held, seal
 nothing again.
 
 What the check shows is what the Result and the halves say; it does not show the referee's judgment is right, and
