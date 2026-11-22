@@ -1,13 +1,17 @@
 package deal
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -174,10 +178,7 @@ func TestDealNodeReplyCheck(t *testing.T) {
 	assert.Equal(t, true, got["signed"])
 	assert.Equal(t, "refusal", got["kind"])
 
-	other := signer[:63] + "0"
-	if other == signer {
-		other = signer[:63] + "1"
-	}
+	other := flipLast(signer)
 	for name, args := range map[string][]string{
 		"another signer":           {"--reply", filepath.Join(dir, "artifact.json"), "--request-digest", digest, "--signer", other},
 		"another request":          {"--reply", filepath.Join(dir, "artifact.json"), "--request-digest", digest[:63] + "0", "--signer", signer},
@@ -189,6 +190,68 @@ func TestDealNodeReplyCheck(t *testing.T) {
 	}
 	_, err = invoke(t, "", "--profile", "deal", "deal", "node", "reply-check", "--reply", filepath.Join(dir, "artifact.json"))
 	require.ErrorIs(t, err, cli.ErrInput)
+	_, err = invoke(t, "", "--profile", "deal", "deal", "node", "reply-check", "--reply", filepath.Join(dir, "artifact.json"), "--request-digest", digest, "--signer", "not-a-key")
+	require.ErrorIs(t, err, cli.ErrInput, "a mistyped signer is an input error, not signed: false")
+	assert.Equal(t, true, replyCheck(t, "--reply", filepath.Join(dir, "artifact.json"), "--request-digest", digest, "--signer", strings.ToUpper(signer))["signed"], "the signer key is read as a key, so its case does not matter")
+
+	// signed is the signature and the request only: a refusal with a reason that is not a registered token, and an
+	// envelope whose artifact no longer matches its signed digest, are both still signed by the responder.
+	key, err := cli.PrivateKey(p.Signing)
+	require.NoError(t, err)
+	edSigner, err := evidencebook.NewEd25519Signer(key)
+	require.NoError(t, err)
+	refusal, err := evidencerequest.Refusal{RequestDigest: digest, Reason: "made_up_reason", IssuedAt: "2026-09-27T18:00:00Z", KeyID: signer}.Sign(t.Context(), edSigner)
+	require.NoError(t, err)
+	refusalJSON, err := json.Marshal(refusal)
+	require.NoError(t, err)
+	nonconforming := writeJSON(t, string(refusalJSON))
+	assert.Equal(t, true, replyCheck(t, "--reply", nonconforming, "--request-digest", digest, "--signer", signer)["signed"], "a nonconforming reason is still the responder's signed refusal")
+	// An envelope whose artifact no longer matches its signed digest does not parse as a reply at all.
+	var envelope map[string]any
+	artifactReply, err := os.ReadFile(filepath.Join(dir, "artifact.json"))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(artifactReply, &envelope))
+	envelope["artifact"] = base64.StdEncoding.EncodeToString([]byte("not the signed artifact"))
+	altered, err := json.Marshal(envelope)
+	require.NoError(t, err)
+	assert.Equal(t, false, replyCheck(t, "--reply", writeJSON(t, string(altered)), "--request-digest", digest, "--signer", signer)["signed"])
+}
+
+// flipLast is s with its last character changed, so it is never s.
+func flipLast(s string) string {
+	if s[len(s)-1] == '0' {
+		return s[:len(s)-1] + "1"
+	}
+	return s[:len(s)-1] + "0"
+}
+
+// Under a policy that serves peers, a record of the node book is answered with its Capsule (digests) and not
+// its payload originals: a sealed prompt does not leave with it.
+func TestDealNodeRespondUnderPeersDoesNotCarryAPrompt(t *testing.T) {
+	dealFixture(t)
+	got, err := sealModelCall(t)
+	require.NoError(t, err)
+	record := got["record"].(map[string]any)["record_id"].(string)
+	dir := t.TempDir()
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	_, err = nodeVerb(t, "request", "--request", writeJSON(t, `{"subject":{"record":"`+record+`"},"coverage":{"min_freshness":1}}`), "--responder", p.TrustedKeys[0], "--output", filepath.Join(dir, "r.json"))
+	require.NoError(t, err)
+	policy := writeJSON(t, `{"record_at_completion":"counterparty","history_segments":"peers","adjudications":"deliver_to_subjects"}`)
+	answered, err := nodeVerb(t, "respond", "--request", filepath.Join(dir, "r.json"), "--requester", "peer-1", "--policy", policy, "--output", filepath.Join(dir, "a.json"))
+	require.NoError(t, err)
+	require.Equal(t, "artifact", answered["outcome"], "peers are served a record by its subject")
+	reply, err := os.ReadFile(filepath.Join(dir, "a.json"))
+	require.NoError(t, err)
+	var envelope struct {
+		Artifact string `json:"artifact"`
+	}
+	require.NoError(t, json.Unmarshal(reply, &envelope))
+	capsule, err := base64.StdEncoding.DecodeString(envelope.Artifact)
+	require.NoError(t, err)
+	assert.NotContains(t, string(reply), "messages", "the prompt text is not in the reply")
+	assert.NotContains(t, string(capsule), "messages")
+	assert.Contains(t, string(capsule), "agent_input_digest", "the Capsule carries the prompt's digest")
 }
 
 // Under the default share policy a requester the operator authenticated is not

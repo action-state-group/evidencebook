@@ -2,11 +2,13 @@ package deal
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
 	"github.com/spf13/cobra"
@@ -22,6 +24,13 @@ import (
 // read and write files and record.
 
 // nodeBookError words a book refusal as an input error, as `book` does.
+// nodeResponseResult is what `request --response` prints: the core's result plus
+// the answer's witness standing, as `book request --response` prints it.
+type nodeResponseResult struct {
+	cli.EvidenceRequestResult
+	Witness string `json:"witness,omitempty"`
+}
+
 func nodeBookError(err error) error {
 	if errors.Is(err, evidencebook.ErrNotFound) {
 		return errors.Join(cli.InputError("not found in the node book: "+err.Error()), err)
@@ -93,7 +102,10 @@ func dealNodeRequestCommand() *cobra.Command {
 			if e = json.Unmarshal(record.Header.Statement, &st); e != nil {
 				return e
 			}
-			return cli.Output(c, map[string]any{"record_id": record.RecordID, "request_digest": st.RequestDigest, "outcome": st.Outcome, "reason": st.Reason, "witness": st.Witness})
+			return cli.Output(c, nodeResponseResult{
+				EvidenceRequestResult: cli.EvidenceRequestResult{RecordID: record.RecordID, RequestDigest: st.RequestDigest, Outcome: st.Outcome, Reason: st.Reason},
+				Witness:               st.Witness,
+			})
 		default:
 			record, e := b.RecordAbsence(ctx, in.For, in.WindowEnd, in.Route)
 			if e != nil {
@@ -108,6 +120,10 @@ func dealNodeRequestCommand() *cobra.Command {
 	})
 	cmd.Flags().String("book", "", "The node's book on the shelf (required)")
 	cmd.Short = "Ask a party for evidence from a node book, or record its answer or its absence (each is a signed record of the node book)"
+	// The core's help describes a deal copy, where a bad receipt fails the answer.
+	// On a node book a carried receipt is unsigned, so it can only add standing.
+	cmd.Flags().Lookup("witness-directory").Usage = "With --response: a witness directory (witnesses.json format). The answer reads witness \"witnessed\" only when a receipt from a witness in it covers the answer's anchor checkpoint; without it, or with no such receipt, \"unwitnessed\". A receipt that does not verify counts for nothing"
+	cmd.Flags().Lookup("request").Usage = "Evidence request JSON to ask with: the request map of draft-mih-agent-evidence-request-00 (a one-member subject such as {\"full_history\":null}, and coverage with exactly one of expected_pin or min_freshness)"
 	return cmd
 }
 
@@ -173,11 +189,19 @@ func dealNodeRespondCommand() *cobra.Command {
 	cmd.Short = "Answer a request addressed to a node book with a signed reply, and record it"
 	cmd.Long += `
 
-On a node book. This is the one verb that can answer a requester from a node's own book, so it says what it can show:
-only what the share policy allows, to the requester the operator authenticated with --requester. With no --requester,
-or under the default policy, a history segment or a record of the node book is declined with a signed refusal; the
-refusal and every answer are records of the node book. Pass --policy only to serve more, and only for a book whose
-records you would show that requester.`
+On a node book. This is the one verb that can answer a requester from a node's own book, so it says what it can show.
+To anyone, with no --requester: only the public questions (the checkpoints subject and the history_card/1
+derivation); everything else gets a signed refusal. With --requester and the default policy (history_segments
+"counterparties"): a record, exchange or correlation subject only when every record it names has that requester as
+its counterparty, and the records deal node append and seal-model-call seal name none, so by default they go to no
+one. With a policy that sets history_segments to "peers", any requester you authenticated can ask for any record of
+the node book by its subject: the answer carries the record's Capsule (its digests), not its payload originals, so a
+sealed prompt does not leave with it, and it does carry the record's statement members. The refusal and every
+answer are records of the node book.
+
+--requester is for an identity your transport authenticated (a verified signature over the request, mutual TLS), never
+a name the requester declared: it is the only input to what that requester may be served. Pass --policy only to serve
+more, and only for a book whose records you would show that requester.`
 	return cmd
 }
 
@@ -188,19 +212,29 @@ records you would show that requester.`
 func dealNodeReplyCheckCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reply-check",
-		Short: "Whether a reply is an artifact or a refusal the named responder signed for the request with a given digest (seals nothing)",
-		Long: `Check a reply file offline: it must parse as an evidence-request reply (an envelope or a refusal), be
-signed by --signer, name the request with --request-digest, and verify. The result is {"signed": true|false, "kind":
+		Short: "Whether a reply carries the named responder's signature for the request with a given digest (seals nothing)",
+		Long: `Check a reply file offline: it must parse as an evidence-request reply (an envelope or a refusal), name the
+request with --request-digest, and carry a valid signature of --signer. The result is {"signed": true|false, "kind":
 "artifact"|"refusal"}; a reply that does not qualify is signed: false, not an error. Nothing is recorded: this is the
-check a reply gets that arrives after its request's absence was recorded.`,
+check a reply gets that arrives after its request's absence was recorded.
+
+signed checks that the reply parses and carries the responder's signature for the request. It does not check a
+refusal's reason against the registered tokens, or the answer under the responder's pinned checkpoint key and the
+witness receipts, as recording an answer with deal node request --response does: a late reply that passes this check
+is not the same as a recorded, verified answer. --signer is the responder's signing key as 64 hex characters.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			path, _ := c.Flags().GetString("reply")
 			digest, _ := c.Flags().GetString("request-digest")
-			signer, _ := c.Flags().GetString("signer")
-			if path == "" || digest == "" || signer == "" {
+			signerFlag, _ := c.Flags().GetString("signer")
+			if path == "" || digest == "" || signerFlag == "" {
 				return cli.InputError("--reply, --request-digest and --signer are required")
 			}
+			keys, err := cli.ParseKeys([]string{signerFlag})
+			if err != nil || len(keys) != 1 {
+				return cli.InputError("--signer must be a 32-byte Ed25519 public key in hex")
+			}
+			signer := hex.EncodeToString(keys[0])
 			raw, err := cli.ReadInput(path)
 			if err != nil {
 				return err
@@ -211,10 +245,17 @@ check a reply gets that arrives after its request's absence was recorded.`,
 			}
 			switch {
 			case reply.Refusal != nil:
-				return cli.Output(c, map[string]any{"signed": reply.Refusal.VerifyFor(signer, digest) == nil, "kind": "refusal"})
+				r := reply.Refusal
+				return cli.Output(c, map[string]any{"signed": r.KeyID == signer && r.RequestDigest == digest && r.Verify() == nil, "kind": "refusal"})
 			case reply.Envelope != nil:
 				e := reply.Envelope
-				return cli.Output(c, map[string]any{"signed": e.RequestDigest == digest && e.Responder == signer && e.Verify() == nil, "kind": "artifact"})
+				signed := e.RequestDigest == digest && e.Responder == signer
+				if signed {
+					body, bodyErr := e.SigningBody()
+					sig, sigErr := hex.DecodeString(e.Sig)
+					signed = bodyErr == nil && sigErr == nil && evidencerequest.VerifySignature(e.Responder, body, sig) == nil
+				}
+				return cli.Output(c, map[string]any{"signed": signed, "kind": "artifact"})
 			}
 			return cli.Output(c, map[string]any{"signed": false})
 		},
