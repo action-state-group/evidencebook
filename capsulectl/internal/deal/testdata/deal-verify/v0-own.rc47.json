@@ -14,7 +14,7 @@
       "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); witnessed",
       "kind": "x-deal-v0",
       "report": "standalone",
-      "sealed_report": "943fb06e4009150fbc1145ae1c16f65347c5ca9a71a417a64780082c320c2e19",
+      "sealed_report": "676d389f9dd95407318b39348abfb31e636c93acb2bcb346b4c24c96e126632a",
       "status": "pass"
     }
   ],
@@ -23,13 +23,13 @@
     "receipts": [
       {
         "binding": "cll",
-        "key_id": "e259521e14370d3600980d438540cd4ae00be89fb7f7d4980aa8a1a4bdc93f33",
+        "key_id": "32f9844f401333165c9abda0f221dd644dcbbc9039322e3a13d66b0b22f5a920",
         "reason": "ok (receipt carries no grade label)",
         "registration_time": null,
         "registration_time_reason": "iat_absent",
         "registration_time_text": "no signed time (iat_absent)",
         "status": "pass",
-        "ts_url": "https://127.0.0.1:53474",
+        "ts_url": "https://127.0.0.1:53761",
         "via": "cadence"
       }
     ],

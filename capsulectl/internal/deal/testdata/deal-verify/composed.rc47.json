@@ -5,9 +5,9 @@
     {
       "composed": {
         "composed_digest": {
-          "declared": "9a4fca0c3694a5dd0fadee975e763e2752b3d181c9d799f31b342eaf8fab5adb",
+          "declared": "5fd249da79b05cd30ccad683010374180312b915a00a32587471310fe8dbd7a8",
           "matches": true,
-          "recomputed": "9a4fca0c3694a5dd0fadee975e763e2752b3d181c9d799f31b342eaf8fab5adb"
+          "recomputed": "5fd249da79b05cd30ccad683010374180312b915a00a32587471310fe8dbd7a8"
         },
         "composition_closure": {
           "findings": [],
@@ -17,8 +17,8 @@
         "corroboration": [
           {
             "members": [
-              "4e685d7d708b0683fa3024333f9c950c80e81aee76c778fb02367c0f8b876f46",
-              "747055ac6d112ad397330084cb7a7e955f69df3b6280dcf1769e9640e3343091"
+              "6f5cde6a02e7147ce63fc026138b61a9983ed59c4c504b5601cc62f9aae8800d",
+              "e048d788f6534d0b2f2e512c618ed77fd4337f6d15dd3e581ffb0da870082ed8"
             ],
             "qualifier": "custody_declared",
             "result": "corroborating"
@@ -31,8 +31,8 @@
             "declared": "agree",
             "derived": "agree",
             "members": [
-              "4e685d7d708b0683fa3024333f9c950c80e81aee76c778fb02367c0f8b876f46",
-              "747055ac6d112ad397330084cb7a7e955f69df3b6280dcf1769e9640e3343091"
+              "6f5cde6a02e7147ce63fc026138b61a9983ed59c4c504b5601cc62f9aae8800d",
+              "e048d788f6534d0b2f2e512c618ed77fd4337f6d15dd3e581ffb0da870082ed8"
             ],
             "result": "derived_matches"
           }
@@ -41,7 +41,7 @@
           {
             "body": "carried",
             "bundle": {
-              "bundle_digest": "fa056826115ccc584644f2cf906a02cfd195b2aebf3296f4e49d315ac6c0d776",
+              "bundle_digest": "d16361c0a36abe515782a5f9bd3edd7f6f6b76efada153a9a124483e77980cb9",
               "checked_against": {
                 "bundle_draft": "draft-mih-zhang-agent-disclosure-bundle-01",
                 "checks": "aac-strict"
@@ -53,7 +53,7 @@
               "countersignatures": [],
               "disclosures": [
                 {
-                  "capsule_id": "065fc8c622be3707e953b5cee98113b29454a06e747890c415f993ddde5fba82",
+                  "capsule_id": "cb07ad3079ba5a89f7729dae07716d63611c69031e5c154b0299b4206b4f7f10",
                   "member": "agent_input",
                   "status": "withheld"
                 }
@@ -71,7 +71,7 @@
                   "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed",
                   "kind": "x-deal-v0",
                   "report": "standalone",
-                  "sealed_report": "5eb57c786e0d08d743ca3c3fdf17d22147b342ac6dbaa3c7398374e7f32d103a",
+                  "sealed_report": "d2c166c3541492891e9e389f9208b31b34eb0d3cdc0d721aacab9a0c056187f0",
                   "status": "pass"
                 }
               ],
@@ -92,10 +92,10 @@
                 "status": "pass"
               },
               "record_identity": {
-                "065fc8c622be3707e953b5cee98113b29454a06e747890c415f993ddde5fba82": "passed"
+                "cb07ad3079ba5a89f7729dae07716d63611c69031e5c154b0299b4206b4f7f10": "passed"
               },
               "record_signatures": {
-                "065fc8c622be3707e953b5cee98113b29454a06e747890c415f993ddde5fba82": "authored"
+                "cb07ad3079ba5a89f7729dae07716d63611c69031e5c154b0299b4206b4f7f10": "authored"
               },
               "verdict": "VALID",
               "witnesses": {
@@ -108,8 +108,8 @@
             },
             "digest": "reproduced",
             "findings": [],
-            "id": "4e685d7d708b0683fa3024333f9c950c80e81aee76c778fb02367c0f8b876f46",
-            "observer": "41cd348a9890a7fec578e803d44e3fb5c7cdd00a4585f89f91bf1a3561c82f12",
+            "id": "6f5cde6a02e7147ce63fc026138b61a9983ed59c4c504b5601cc62f9aae8800d",
+            "observer": "456981d035f9e8bc2ff0140a2e4cfd3ce93e589cd471c8b5079ab242a71f0a7e",
             "outcome": "artifact",
             "response_signature": {
               "profile": "evidencebook-artifact-response",
@@ -119,7 +119,7 @@
           {
             "body": "carried",
             "bundle": {
-              "bundle_digest": "8e6dfdd2ebee2140a354cb82c4dad373609a1f66bb93a01675733030f0064ca0",
+              "bundle_digest": "eb2fbaa387a7bb034d66451c5a98d75965c99942817421e7503fc8bced14f509",
               "checked_against": {
                 "bundle_draft": "draft-mih-zhang-agent-disclosure-bundle-01",
                 "checks": "aac-strict"
@@ -131,24 +131,24 @@
               "countersignatures": [],
               "disclosures": [
                 {
-                  "capsule_id": "42f41e6dbadc21501e95922a9fbc1ea2df3682bb5f333972d0b294b21bf585e1",
+                  "capsule_id": "ab6e992bd8130cbb98825137114f10455161af19f07067ad064d2a585a190fe6",
                   "member": "agent_input",
                   "status": "disclosure_match"
                 },
                 {
-                  "capsule_id": "75258d3c1abefef99f35859f588270fd5ea4171040cbf12feb79e84ddb57ff70",
+                  "capsule_id": "c2f28a3a6a8188c86a0626848be504a63b361c78555f352b7105fa6d36c54f1b",
                   "member": "agent_input",
                   "status": "disclosure_match"
                 },
                 {
-                  "capsule_id": "abe7d86cf11a22456d217b3024d24b111536b71037117467181c74ed624d1390",
-                  "member": "agent_input",
-                  "status": "disclosure_match"
-                },
-                {
-                  "capsule_id": "e189050d9568d80915d7560c86c4dc4ea83c1f557945db7e71e901006235c796",
+                  "capsule_id": "de6ef5ed722081ab852762663fffe4ddc099d306549093824a620e3ccb3abedb",
                   "member": "agent_input",
                   "status": "withheld"
+                },
+                {
+                  "capsule_id": "e2ec038e2767788698c4e19cee9fae1706d6a75477a378b1e2ce3509bba968c0",
+                  "member": "agent_input",
+                  "status": "disclosure_match"
                 }
               ],
               "extensions": [
@@ -168,7 +168,7 @@
                   "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed",
                   "kind": "x-deal-v0",
                   "report": "standalone",
-                  "sealed_report": "b45b8ed44b4d7d315e6a0f0ceea41a8f5fe9a2d6af85762ada4248ce24df0ed4",
+                  "sealed_report": "36995ced1d327f5e8bbaa80151b6d92087130d2e1d0182f6178ac8539ff11af3",
                   "status": "pass"
                 }
               ],
@@ -189,16 +189,16 @@
                 "status": "pass"
               },
               "record_identity": {
-                "42f41e6dbadc21501e95922a9fbc1ea2df3682bb5f333972d0b294b21bf585e1": "passed",
-                "75258d3c1abefef99f35859f588270fd5ea4171040cbf12feb79e84ddb57ff70": "passed",
-                "abe7d86cf11a22456d217b3024d24b111536b71037117467181c74ed624d1390": "passed",
-                "e189050d9568d80915d7560c86c4dc4ea83c1f557945db7e71e901006235c796": "passed"
+                "ab6e992bd8130cbb98825137114f10455161af19f07067ad064d2a585a190fe6": "passed",
+                "c2f28a3a6a8188c86a0626848be504a63b361c78555f352b7105fa6d36c54f1b": "passed",
+                "de6ef5ed722081ab852762663fffe4ddc099d306549093824a620e3ccb3abedb": "passed",
+                "e2ec038e2767788698c4e19cee9fae1706d6a75477a378b1e2ce3509bba968c0": "passed"
               },
               "record_signatures": {
-                "42f41e6dbadc21501e95922a9fbc1ea2df3682bb5f333972d0b294b21bf585e1": "authored",
-                "75258d3c1abefef99f35859f588270fd5ea4171040cbf12feb79e84ddb57ff70": "authored",
-                "abe7d86cf11a22456d217b3024d24b111536b71037117467181c74ed624d1390": "authored",
-                "e189050d9568d80915d7560c86c4dc4ea83c1f557945db7e71e901006235c796": "authored"
+                "ab6e992bd8130cbb98825137114f10455161af19f07067ad064d2a585a190fe6": "authored",
+                "c2f28a3a6a8188c86a0626848be504a63b361c78555f352b7105fa6d36c54f1b": "authored",
+                "de6ef5ed722081ab852762663fffe4ddc099d306549093824a620e3ccb3abedb": "authored",
+                "e2ec038e2767788698c4e19cee9fae1706d6a75477a378b1e2ce3509bba968c0": "authored"
               },
               "verdict": "VALID",
               "witnesses": {
@@ -211,8 +211,8 @@
             },
             "digest": "reproduced",
             "findings": [],
-            "id": "747055ac6d112ad397330084cb7a7e955f69df3b6280dcf1769e9640e3343091",
-            "observer": "f637673f9d218b132295306c1964ab72e5dea386b75180055e75f3e306cd6ac6",
+            "id": "e048d788f6534d0b2f2e512c618ed77fd4337f6d15dd3e581ffb0da870082ed8",
+            "observer": "fdca7cb4c6630f13404ca4895977eb7a59953167f222eacb59ecaaf9fa38ff12",
             "outcome": "artifact",
             "response_signature": {
               "profile": "evidencebook-artifact-response",

@@ -10,7 +10,7 @@
       "as_of": "as of 2026-09-27T18:00:00Z (the holder's time, when it computed the report; no witness attests it)",
       "kind": "x-deal-v1",
       "report": "standalone",
-      "sealed_report": "1092bb72fd8db1f6cf4aa36f1dd3c4d4c726d2a167eb78d501798f54cdfa9e94",
+      "sealed_report": "4c80bd975f3b1da2028eea119952e0a56135575225dc907ffc167c45588a00d4",
       "status": "pass"
     }
   ],

@@ -14,7 +14,7 @@
       "kind": "x-deal-v1",
       "note": "the x-deal-v1 report rule failed: [report] the x-deal-v1 extension: the book carries an agreement and a relied_on object",
       "report": "standalone",
-      "sealed_report": "1092bb72fd8db1f6cf4aa36f1dd3c4d4c726d2a167eb78d501798f54cdfa9e94",
+      "sealed_report": "4c80bd975f3b1da2028eea119952e0a56135575225dc907ffc167c45588a00d4",
       "status": "fail"
     }
   ],

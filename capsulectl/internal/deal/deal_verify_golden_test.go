@@ -3,7 +3,10 @@ package deal
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
+	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -255,6 +258,40 @@ func buildDealVerifyCopies(t *testing.T) map[string]dealVerifyCopy {
 	sample, err := os.ReadFile(filepath.Join(rc47Dir(t), "testdata", "composed-refusal-sample.json"))
 	require.NoError(t, err)
 	copies["composed-served-refusal"] = plain(sample)
+	// The served-refusal variants of capsule-cli's own test
+	// (TestComposedRefusalMemberPageByItsSignature at rc47): the refusal
+	// edited, and its member and composed digests recomputed, so only its
+	// signature state differs.
+	refusal := func(edit func(block, refusal map[string]any)) []byte {
+		return mutate(t, sample, func(v map[string]any) {
+			block := extensionsOf(v)["composed/v1"].(map[string]any)
+			member := block["members"].([]any)[0].(map[string]any)
+			r := member["refusal"].(map[string]any)
+			edit(block, r)
+			var err error
+			member["digest"], err = canonical.JSONDigest(r)
+			require.NoError(t, err)
+			block["composed_digest"], err = aacbundle.ComposedDigest(block)
+			require.NoError(t, err)
+		})
+	}
+	copies["composed-refusal-unsigned"] = plain(refusal(func(_, r map[string]any) { delete(r, "key_id"); delete(r, "sig") }))
+	copies["composed-refusal-signed-by-another-key"] = plain(refusal(func(_, r map[string]any) {
+		public, private, err := ed25519.GenerateKey(rand.Reader)
+		require.NoError(t, err)
+		message, err := canonical.JCS(map[string]any{"request_digest": r["request_digest"], "reason": r["reason"], "issued_at": r["issued_at"]})
+		require.NoError(t, err)
+		r["key_id"], r["sig"] = hex.EncodeToString(public), hex.EncodeToString(ed25519.Sign(private, message))
+	}))
+	copies["composed-refusal-beside-an-unsigned-one"] = plain(refusal(func(block, _ map[string]any) {
+		member := block["members"].([]any)[1].(map[string]any)
+		other := map[string]any{"issued_at": "2026-10-29T12:02:00Z", "reason": "not_authorized", "request_digest": member["request_digest"]}
+		delete(member, "absence")
+		member["outcome"], member["refusal"] = "refusal", other
+		var err error
+		member["digest"], err = canonical.JSONDigest(other)
+		require.NoError(t, err)
+	}))
 	// A served refusal beside another failure: the page is refused.
 	copies["composed-served-refusal-and-a-broken-checkpoint"] = plain(mutate(t, sample, func(v map[string]any) {
 		cpv := v["checkpoint"].(map[string]any)
