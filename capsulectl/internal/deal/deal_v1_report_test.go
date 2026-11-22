@@ -5,10 +5,12 @@ package deal
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
+	evidencebook "github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"os"
 	"path/filepath"
@@ -306,8 +308,8 @@ func v1BundleOf(t *testing.T, file string) map[string]interface{} {
 	require.NoError(t, err)
 	value, err := cli.DecodeBundleJSON(raw)
 	require.NoError(t, err)
-	cli.SetDealV1ReportVerifier(verifyV1Report)
-	t.Cleanup(func() { cli.SetDealV1ReportVerifier(nil) })
+	// TestMain installs the profile's report rule (InstallDealHooks), so the
+	// producer's own check before writing ran it too.
 	entry := cli.DealReportEntry(value, aacbundle.VerificationResult{})
 	assert.Equal(t, "pass", entry["status"], entry)
 	require.NoError(t, cli.CheckDealStandaloneReport(value))
@@ -397,8 +399,30 @@ func TestAV1ReportBundleAudiencesAndMarkers(t *testing.T) {
 		}
 		raw, err := os.ReadFile(path)
 		require.NoError(t, err)
-		for _, marker := range []string{"buy the lamp", "Kettle Shop", "kettle.example"} {
-			assert.NotContains(t, string(raw), marker, "%s carries %q", audience, marker)
+		// The file's text, and every payload it carries decoded: the book's
+		// (evidencebook/payloads, base64url) and each relied-on pair's.
+		texts := []string{string(raw)}
+		payloads, _ := value["extensions"].(map[string]interface{})[evidencebook.ExtensionPayloads].(map[string]interface{})
+		require.NotEmpty(t, payloads, audience)
+		for _, v := range payloads {
+			b, err := base64.RawURLEncoding.DecodeString(v.(string))
+			require.NoError(t, err)
+			texts = append(texts, string(b))
+		}
+		for _, pair := range book["relied_on"].(map[string]interface{}) {
+			if s, ok := pair.(map[string]interface{})["payload"].(string); ok {
+				if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
+					texts = append(texts, string(b))
+				}
+				if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+					texts = append(texts, string(b))
+				}
+			}
+		}
+		for _, text := range texts {
+			for _, marker := range []string{"buy the lamp", "max_total_minor", "Kettle Shop", "kettle.example"} {
+				assert.NotContains(t, text, marker, "%s carries %q", audience, marker)
+			}
 		}
 	}
 	rows, err := v1DB(t).Query(`SELECT record FROM deal_disclosures WHERE deal_id=? ORDER BY n`, h.dealID)

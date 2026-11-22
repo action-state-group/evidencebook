@@ -6,7 +6,7 @@
 - The bundle is checked as a reader checks it before it is written.
 - Making it writes nothing to your book: no disclosure record goes into an x-deal-v1 book.
 - With `--share counterparty|adjudicator --to NAME`, the bundle is a disclose act, as for `--out`: checked to contain none of the plain values kept only on this device, then put on record (the records it carries and the digest of the exact file), then written.
-- None of your plain values (your words, the counterparty's details) is in any bundle.
+- **What a shared bundle discloses:** every record of your deal book with its contents, which is what you signed, and the other side's records your report's rows rely on, which is what it sent you, up to the report's checkpoint. For a counterparty that is the deal's own exchange; an adjudicator sees all of it. Your own notes (intent, opening) are never in a book, so never in a bundle: none of your plain values (your words, your limits, the counterparty's details) is in any bundle, its payloads included.
 - `--out` and `--bundle` are one or the other.
 - `deal export` on an x-deal-v1 deal points at `--bundle`.
 - capsulectl-deal now needs capsule-cli v0.1.0-rc47, whose `verify --bundle` finds an x-deal-v1 deal's last step through its disclosed header (capsule-cli#605).
