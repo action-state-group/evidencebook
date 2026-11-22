@@ -147,8 +147,9 @@ dispatch function of 2.3.
 A v1 deal is not on a `/1` or `/2` card. `readHistoryRecord` skips a record with no `x-deal-v0`
 block (`standard_history.go:150-151`), and `StandardHistoryDeal` needs a v0 `commit` or `pay`
 action to call a log a deal (`standard_history.go:190-199`). Until `/3` (AAC#620) is served, a
-host that seals new deals as v1 stops growing its `/1` card. So new deals stay v0 by default
-until `/3` is served, and v1 is selected by a setting (Q7, decided).
+host that seals new deals as v1 stops growing its `/1` card. So new deals stayed v0 by default
+until `/3` was served (Q7). `/3` is served now, and v1 is the default for new deals; v0 is frozen
+(Q7, revised 2026-11-22).
 
 ## 3. The record types
 
@@ -2051,12 +2052,17 @@ the free-text reason stays a commitment only the buyer can open.
 
 ### 12.2 Left open by the design, not settled here
 
-- **Q6. Does `/3` count v0 books?** v0 books carry profile `"none"` facts (2.4). Whether `/3` reads
-  them, maps them, or leaves them to `/1` and `/2` is AAC#620's.
+- **Q6. Does `/3` count v0 books?** v0 books carry profile `"none"` facts (2.4). Settled by AAC#620:
+  `/3` counts no book of profile `none` (agent-action-capsule `spec/standard-history-v0.md` §11.1), so
+  v0 deals stay on `/1` and `/2`.
 - **Q7. The gap until `/3`.** v1 deals are on no `/1` or `/2` card (2.5). Decision (coordinator,
   2026-11-17): new deals stay v0 by default until `/3` is served; v1 is selected by a setting.
   Reason: the 2026-11-19 demo and the `/1` card stay untouched. The plugin applies it
-  (evidencebook-deal#212).
+  (evidencebook-deal#212). **Revised** (Ethan, 2026-11-22: "全面切换 v1", switch fully to v1):
+  `/3` is served (evidencebook-deal#226), so new deals are x-deal-v1 by default and x-deal-v0 is
+  frozen: no new features, and a new v0 deal only by an explicit legacy setting. Books sealed
+  under v0 stay readable and verifiable, unchanged, and a v0 deal opened before the switch
+  finishes under v0 (evidencebook#626).
 - **Q8. The witnessed follow-up message** (receipts and the shelf consistency proof, design §4.2,
   "The stamp-proof message") has no form in Forms or in the library. That is AAC#621's.
 - **Q9. Late statements and disputes in the report.** Decision (coordinator, 2026-11-17): additive
