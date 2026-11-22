@@ -1,0 +1,84 @@
+name: capsulectl against capsule-cli main
+
+# The deal pages and a shared deal copy (capsulectl-deal, moved here from
+# evidencebook-deal, evidencebook#610), checked with a `capsulectl` built
+# from capsule-cli `main` rather than the release go.mod pins (capsule-cli#326,
+# design note section 3.4). The plugin still builds against its pinned core
+# and writes the deal page with that core's runtime; main hosts the plugin,
+# verifies each copy, and builds the receipt's bundle into a page with its own
+# runtime (check-deal-pages.sh, deal-receipt-rebuilt). This catches a core
+# change that would stop main verifying or rendering what the newest deal
+# build produces, before that change ships in a release. A scheduled run that
+# fails comments on one open issue, so the failure is seen.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 6 * * *'
+  pull_request:
+    paths:
+      - .github/workflows/capsulectl-core-main.yml
+      - capsulectl/scripts/check-deal-pages.sh
+      - capsulectl/scripts/check-portability.sh
+
+permissions:
+  contents: read
+
+# Only a newer push cancels a pull request's run; a manual run never
+# cancels the nightly, or the other way round.
+concurrency:
+  group: capsulectl-core-main-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  core-main:
+    name: deal pages and portability against capsule-cli main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out capsule-cli main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: action-state-group/capsule-cli
+          ref: main
+          path: .core/capsule-cli
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: capsulectl/go.mod
+          cache-dependency-path: capsulectl/go.sum
+      - name: Build capsulectl from capsule-cli main
+        run: |
+          commit=$(git -C .core/capsule-cli rev-parse HEAD)
+          echo "capsule-cli main at $commit" >> "$GITHUB_STEP_SUMMARY"
+          (cd .core/capsule-cli && go build -o "$RUNNER_TEMP/core/capsulectl" ./cmd/capsulectl)
+      - name: A deal receipt's page
+        env:
+          CAPSULECTL: ${{ runner.temp }}/core/capsulectl
+          CHROME: google-chrome
+        working-directory: capsulectl
+        run: bash scripts/check-deal-pages.sh
+      - name: Deal, share, export, delete the session, verify offline
+        env:
+          CAPSULECTL: ${{ runner.temp }}/core/capsulectl
+          CHROME: google-chrome
+        working-directory: capsulectl
+        run: bash scripts/check-portability.sh
+      - name: Report a failed nightly on its issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: The nightly capsulectl check against capsule-cli main failed
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number,title --jq "map(select(.title == env.TITLE))[0].number // empty")
+          if [[ -n "$n" ]]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "Failed: $RUN. Close this issue once main passes again."
+          fi

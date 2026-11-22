@@ -1,7 +1,7 @@
-# The Python stack for scripts/interop-resolved.sh, as evidencebook's CI pins it.
+# The Python stack for scripts/deal/interop-resolved.sh, as evidencebook's CI pins it.
 # Locked with hashes, transitively, in interop-requirements.txt:
-#   uv pip compile scripts/interop-requirements.in --generate-hashes \
-#     --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o scripts/interop-requirements.txt
+#   uv pip compile scripts/deal/interop-requirements.in --generate-hashes \
+#     --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o scripts/deal/interop-requirements.txt
 # checkpointed-local-log is the PyPI release evidencebook's CI pins, locked with the rest
 # (it carries the CLL -02 bare `sub` the Go side now writes); its runtime dependencies are
 # cbor2, scitt-cose, agent-action-capsule and cryptography.

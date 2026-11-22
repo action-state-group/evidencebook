@@ -1,7 +1,10 @@
-# Releasing capsulectl-book
+# Releasing capsulectl-book and capsulectl-deal
 
 A release is a pushed `capsulectl/vX.Y.Z` tag (Go's tag form for this nested
-module), built and published by
+module), and it carries both launchers of the module, `capsulectl-book` and
+`capsulectl-deal`, at the same version: one tag, one release, one
+`SHA256SUMS` (evidencebook#610; `capsulectl-deal` used to release from
+evidencebook-deal, whose `v*` releases stay where they are). The release is built and published by
 [`release.yml`](../.github/workflows/release.yml)
 through [`scripts/release-build.sh`](scripts/release-build.sh), after a
 release reviewer approves the run. It follows capsule-cli's release process
@@ -34,6 +37,12 @@ capsule-cli version is refused on every run and cannot be moved, and that
 core then gets no capsulectl-book release. So tag only the merge commit that carries the
 bump (step 1 below).
 
+A release's sealed deal records name it as their producer,
+`capsulectl-deal <version> (<commit>)`, and a shared copy keeps a producer only
+in a fixed shape, so the workflow refuses any other version:
+`v<n>.<n>.<n>` with at most four digits each, optionally followed by `-rc`,
+`-alpha`, `-beta` or `-dev` and up to three digits.
+
 ## The cut
 
 1. Merge a pull request that sets `capsulectl/go.mod`'s capsule-cli
@@ -49,9 +58,12 @@ bump (step 1 below).
    module's files (capsule-viewer's release bundle, vendored in
    `internal/book/assets/standard-history`), unpacked beside the launcher so the
    core can read the files the handshake names. The workflow checks the archive
-   against the handshake before it publishes.
+   against the handshake before it publishes. It also carries
+   `deal-view-vX.Y.Z.tar.gz`, the deal view's files, unpacked into the plugin
+   directory beside `capsulectl-deal` (checked against that handshake too), and
+   `deal-skill-vX.Y.Z.tar.gz`, the `skills/deal` tree.
 4. Verify from the downloaded assets: `sha256sum -c SHA256SUMS`, and
-   `gh attestation verify` on each binary and on `standard-history-vX.Y.Z.tar.gz` with
+   `gh attestation verify` on each binary and each archive with
    `--bundle capsulectl-book-vX.Y.Z.sigstore.json --repo action-state-group/evidencebook
    --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml`.
 

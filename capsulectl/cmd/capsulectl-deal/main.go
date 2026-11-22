@@ -11,7 +11,7 @@ import (
 	"syscall"
 
 	"github.com/action-state-group/capsule-cli/cli"
-	"github.com/action-state-group/evidencebook-deal/internal/deal"
+	"github.com/action-state-group/evidencebook/capsulectl/internal/deal"
 )
 
 func main() {

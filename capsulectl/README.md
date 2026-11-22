@@ -1,4 +1,4 @@
-# capsulectl-book
+# capsulectl-book and capsulectl-deal
 
 `capsulectl-book`, the `capsulectl` plugin over evidence books: the book verbs
 (`capsulectl book close`, `reconcile`, `request`, `respond`, `remote`,
@@ -8,7 +8,18 @@ this library's command-line face, a nested Go module,
 `github.com/action-state-group/evidencebook/capsulectl`, with its own
 releases.
 
-It moved here from [capsule-cli](https://github.com/action-state-group/capsule-cli)
+The module also holds `capsulectl-deal` (`cmd/capsulectl-deal`, `internal/deal`,
+`skills/deal`, `examples/`): the deal verbs (`capsulectl deal ...`) and a deal
+profile's SQLite store, which `capsulectl verify` cannot check alone: the
+core reports the x-deal-v1 report rule `NOT_CHECKED` until `capsulectl-deal` is
+installed and runs it. The two are separate launchers built from one source
+tree and released together under one tag, and neither links the other's
+package, so each carries only its own commands, hooks and wording. It moved
+here from [evidencebook-deal](https://github.com/action-state-group/evidencebook-deal)
+(evidencebook#610) with its history; the deal changelog up to that move is
+[CHANGELOG-deal.md](CHANGELOG-deal.md), and its earlier issue and PR numbers are evidencebook-deal’s.
+
+capsulectl-book moved here from [capsule-cli](https://github.com/action-state-group/capsule-cli)
 (capsule-cli#326); its history is capsule-cli's. The `cli-plugin/v1`
 contract it implements is capsule-cli's
 [docs/PLUGINS.md](https://github.com/action-state-group/capsule-cli/blob/main/docs/PLUGINS.md).

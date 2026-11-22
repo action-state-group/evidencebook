@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/action-state-group/evidencebook-deal/internal/deal"
+	"github.com/action-state-group/evidencebook/capsulectl/internal/deal"
 )
 
 func main() {
