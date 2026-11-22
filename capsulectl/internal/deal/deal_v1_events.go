@@ -64,9 +64,9 @@ func v1NoteRefusal(kind, dealID string) error {
 	head := "deal " + dealID + " is an x-deal-v1 deal: `deal note --kind " + kind + "` "
 	switch kind {
 	case "act":
-		return cli.InputError(head + "has no x-deal-v1 form; an act is recorded with `deal perform`, and a payment will be recorded with `deal settle` (not yet available: evidencebook#626)")
+		return cli.InputError(head + "has no x-deal-v1 form; an act is recorded with `deal perform`, and a payment with `deal settle`")
 	case "payment_received":
-		return cli.InputError(head + "has no x-deal-v1 form; it will be recorded with `deal settle` (not yet available: evidencebook#626)")
+		return cli.InputError(head + "has no x-deal-v1 form; what you received is recorded with `deal settle`")
 	case "delivered":
 		return cli.InputError(head + "has no x-deal-v1 form; it is recorded with `deal perform`")
 	case noteKindDispute:
@@ -153,6 +153,9 @@ func (s *dealSession) sealV1Step(ctx context.Context, dealID string, events []se
 func (s *dealSession) sealV1(ctx context.Context, dealID string, events []sealedEvent, ev dealEvent, opening bool) (sealedEvent, error) {
 	prepared, err := s.prepareV1(dealID, events, ev, opening)
 	if err != nil {
+		return sealedEvent{}, err
+	}
+	if err := s.refuseWhileInFlight(ctx, dealID, prepared.payload); err != nil {
 		return sealedEvent{}, err
 	}
 	if err := s.storeV1(ctx, dealID, prepared); err != nil {

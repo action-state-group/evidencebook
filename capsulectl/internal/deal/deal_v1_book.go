@@ -44,6 +44,7 @@ func v1ReceiveContext(c *cobra.Command) {
 var dealV1Tables = []string{
 	dealV1AdmitTable,
 	dealV1EventsTable,
+	dealV1SendsTable,
 	`CREATE TABLE IF NOT EXISTS deal_v1 (
 	deal_id TEXT PRIMARY KEY,
 	side TEXT NOT NULL,

@@ -915,6 +915,7 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 	type act struct {
 		deal, id string
 		at       time.Time
+		v1       bool
 	}
 	var acts []act
 	since := cli.DealClock().Add(-cli.RulesHistoryDays * 24 * time.Hour)
@@ -928,16 +929,53 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 		if e != nil || at.Before(since) {
 			continue
 		}
-		acts = append(acts, act{deal, id, at})
+		acts = append(acts, act{deal, id, at, false})
+	}
+	// An x-deal-v1 deal's acts are its local act events (xdealv1-write-path
+	// §13 item 9): every act that cites a check, a payment counted from its
+	// send, a perform or a failed payment with no amount. Each is read as the
+	// v0-shaped record of its own deal's events, never the current deal's.
+	v1Acts, v1Incomplete, err := s.v1RulesActs(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, va := range v1Acts {
+		if va.at.Before(since) {
+			continue
+		}
+		acts = append(acts, act{va.deal, va.id, va.at, true})
 	}
 	sort.SliceStable(acts, func(i, j int) bool { return acts[i].at.After(acts[j].at) })
-	scope := &dealRulesHistory{Days: cli.RulesHistoryDays, Complete: true, Since: since}
+	scope := &dealRulesHistory{Days: cli.RulesHistoryDays, Complete: !v1Incomplete, Since: since}
 	if len(acts) > rulesHistoryMax {
 		acts, scope.Complete = acts[:rulesHistoryMax], false
 	}
 	history := []interface{}{}
 	items := map[string]string{}
+	v1Events := map[string][]sealedEvent{}
 	for _, a := range acts {
+		if a.v1 {
+			evs, ok := v1Events[a.deal]
+			if !ok {
+				// A deal whose events cannot be read is left out, as an
+				// unreadable record is: the history is then incomplete.
+				if evs, err = s.v1Events(ctx, a.deal); err != nil {
+					evs = nil
+				}
+				v1Events[a.deal] = evs
+			}
+			if evs == nil {
+				scope.Complete = false
+				continue
+			}
+			record, err := s.v1CapsuleWithInput(a.id, evs)
+			if err != nil || record == nil {
+				scope.Complete = false
+				continue
+			}
+			history = append(history, record)
+			continue
+		}
 		record, err := s.capsuleWithInput(ctx, a.id)
 		if err != nil || record == nil {
 			scope.Complete = false
@@ -1105,4 +1143,91 @@ func receivedNotice(ctx context.Context, p cli.Profile, role string, input []byt
 		return "", "the rules checker printed no line about the cards"
 	}
 	return run.Notice, ""
+}
+
+// v1RulesAct is an x-deal-v1 act the rules history reads.
+type v1RulesAct struct {
+	deal, id string
+	at       time.Time
+}
+
+// v1RulesActs are every x-deal-v1 deal's local act events that rest on a
+// check (AuthorizedBy set); the buyer's refund received, which cites none,
+// reaches only the money fold. Each deal's book is reconciled first, so an
+// act a stopped run sealed but did not record locally (or a payment whose
+// failed leg did not yet clear its amount) is read as it stands.
+func (s *dealSession) v1RulesActs(ctx context.Context) ([]v1RulesAct, bool, error) {
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='deal_v1_events'`).Scan(&exists); err != nil || exists == 0 {
+		return nil, false, err
+	}
+	failed, err := s.reconcileAllV1(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT deal_id, n, local FROM deal_v1_events WHERE kind='act' ORDER BY deal_id, n`)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var out []v1RulesAct
+	for rows.Next() {
+		var deal, local string
+		var n int64
+		if err := rows.Scan(&deal, &n, &local); err != nil {
+			return nil, false, err
+		}
+		var ev dealEvent
+		if failed[deal] || json.Unmarshal([]byte(local), &ev) != nil || ev.Act == nil || ev.Act.AuthorizedBy == "" {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, ev.At)
+		if err != nil {
+			continue
+		}
+		out = append(out, v1RulesAct{deal, v1EventID(deal, n), at})
+	}
+	return out, len(failed) > 0, rows.Err()
+}
+
+// reconcileAllV1 reconciles every x-deal-v1 deal whose book this profile holds
+// (reconcileV1Acts). A deal that cannot be reconciled does not stop the
+// others or the check that asked: its acts are left out and the history is
+// marked incomplete, as for a record it cannot read.
+func (s *dealSession) reconcileAllV1(ctx context.Context) (failed map[string]bool, err error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT deal_id FROM deal_v1 WHERE own_agreement_id != ''`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	failed = map[string]bool{}
+	for _, id := range ids {
+		d, err := s.v1DealOf(ctx, id)
+		if err != nil {
+			failed[id] = true
+			continue
+		}
+		if d == nil {
+			continue
+		}
+		book, err := s.ownBookV1(ctx, d)
+		if err == nil {
+			_, err = s.reconcileV1Acts(ctx, id, book)
+		}
+		if err != nil {
+			failed[id] = true
+		}
+	}
+	return failed, nil
 }
