@@ -32,18 +32,23 @@ import (
 const dealVerifyDir = "testdata/deal-verify"
 
 // dealVerifyResult is what a golden records of one copy: the verdict, the
-// page gate, the deal kinds' extension entries and the witness entry.
+// page gate, the extension entries of the kinds the plugin will read or
+// recurse through (composed/v1 included, with each member's own report), and
+// the witness entry. PageGateNoDirectory is cli.PageGate's result, which
+// takes no witness directory: a copy can read INVALID under its directory
+// and still pass it. rc47 exports no page verdict string, so the gate's
+// result is what stands for it.
 type dealVerifyResult struct {
-	Verdict    string           `json:"verdict"`
-	PageGate   string           `json:"page_gate"`
-	Extensions []map[string]any `json:"extensions"`
-	Witnesses  map[string]any   `json:"witnesses"`
+	Verdict             string           `json:"verdict"`
+	PageGateNoDirectory string           `json:"page_gate_no_directory"`
+	Extensions          []map[string]any `json:"extensions"`
+	Witnesses           map[string]any   `json:"witnesses"`
 }
 
 // dealVerifyKinds are the extension kinds the plugin will read.
 var dealVerifyKinds = map[string]bool{
 	dealprofile.Profile: true, "x-deal-v1": true, cli.DealSaleExtension: true, cli.HistorySelectionExtension: true,
-	dealprofile.ReportExtension: true, cli.DealCadenceExtension: true,
+	dealprofile.ReportExtension: true, cli.DealCadenceExtension: true, "composed/v1": true,
 }
 
 // rc47Result is rc47's `capsulectl verify --bundle` result for the copy at
@@ -53,11 +58,11 @@ func rc47Result(t *testing.T, path, dir string) dealVerifyResult {
 	t.Helper()
 	report, _ := verifyWithDirectory(t, path, dir)
 	verdict, _ := report["verdict"].(string)
-	r := dealVerifyResult{Verdict: verdict, PageGate: "pass", Extensions: []map[string]any{}}
+	r := dealVerifyResult{Verdict: verdict, PageGateNoDirectory: "pass", Extensions: []map[string]any{}}
 	value, err := cli.DecodeBundleJSON(mustRead(t, path))
 	require.NoError(t, err)
 	if err := cli.PageGate(value); err != nil {
-		r.PageGate = "refused: " + err.Error()
+		r.PageGateNoDirectory = "refused: " + err.Error()
 	}
 	exts, _ := report["extensions"].([]any)
 	for _, raw := range exts {
@@ -201,14 +206,22 @@ func buildDealVerifyCopies(t *testing.T) map[string]dealVerifyCopy {
 		dropOne(extensionsOf(v)[cli.DealSaleExtension].(map[string]any), "threads")
 	}))
 
-	// Both deal versions on one copy: rc47 judges the deal section once.
-	copies["v0-with-a-v1-section-too"] = witnessed(mutate(t, []byte(cp), func(v map[string]any) {
-		extensionsOf(v)["x-deal-v1"] = map[string]any{}
+	// The failing direct receipt on its own (no cadence chain), which shows
+	// the receipt in the case above does fail.
+	copies["v0-failing-direct-receipt-alone"] = witnessed(mutate(t, []byte(cp), func(v map[string]any) {
+		chain := extensionsOf(v)[cli.DealCadenceExtension].(map[string]any)
+		cadence, _ := chain["cadence"].(map[string]any)
+		v["checkpoint"].(map[string]any)["witnesses"] = cadence["witnesses"]
+		delete(extensionsOf(v), cli.DealCadenceExtension)
 	}))
 
 	// A composed page of two parties' answers (the buyer's own and the
-	// seller's copy for the buyer), and the same page with one member's
-	// sealed report pointer changed: a nested deal failure.
+	// seller's copy for the buyer): its golden holds each member's own
+	// report, deal entries included, which a reader that is not passed into
+	// the members cannot reproduce. The same page with a member's report
+	// pointer changed breaks the member's binding (its digest), so the core
+	// refuses it whatever the members' deal checks say: a binding failure,
+	// not a nested deal failure.
 	dealFixture(t)
 	cid := dealRun(t, "open", "--input", writeJSON(t, crossPartyBuyerOpen))["deal_id"].(string)
 	buyer := thisDealParty(t)
@@ -224,7 +237,7 @@ func buildDealVerifyCopies(t *testing.T) map[string]dealVerifyCopy {
 	require.NoError(t, err, composedPath)
 	composed := mustRead(t, composedPath)
 	copies["composed"] = plain(composed)
-	copies["composed-member-report-changed"] = plain(mutate(t, composed, func(v map[string]any) {
+	copies["composed-member-binding-broken"] = plain(mutate(t, composed, func(v map[string]any) {
 		b, _ := json.Marshal(v)
 		s := strings.Replace(string(b), `"sealed_report":"`, `"sealed_report":"0`, 1)
 		var back map[string]any
@@ -239,17 +252,39 @@ func buildDealVerifyCopies(t *testing.T) map[string]dealVerifyCopy {
 
 	// capsule-cli's own served-refusal sample (cli/testdata at rc47): a
 	// composed page whose top-level refusal is served.
-	if sample, err := os.ReadFile(filepath.Join(rc47Dir(t), "testdata", "composed-refusal-sample.json")); err == nil {
-		copies["composed-served-refusal"] = plain(sample)
-	}
+	sample, err := os.ReadFile(filepath.Join(rc47Dir(t), "testdata", "composed-refusal-sample.json"))
+	require.NoError(t, err)
+	copies["composed-served-refusal"] = plain(sample)
+	// A served refusal beside another failure: the page is refused.
+	copies["composed-served-refusal-and-a-broken-checkpoint"] = plain(mutate(t, sample, func(v map[string]any) {
+		cpv := v["checkpoint"].(map[string]any)
+		cpv["root"] = flipHex(t, cpv["root"])
+	}))
 
 	// x-deal-v1: a deal book's bundle, and three refused forms.
-	h := agreedBoth(t, offerTo)
+	h := agreedBoth(t, oneForum) // its agreement names an adjudicator
 	h.buyer.act(t)
 	v1 := filepath.Join(t.TempDir(), "v1.json")
 	dealRun(t, "report", "--deal", h.dealID, "--bundle", v1)
 	v1Raw := mustRead(t, v1)
 	copies["v1-keep"] = plain(v1Raw)
+	for _, share := range []struct{ audience, to string }{{cli.DealAudienceCounterparty, "Kettle Shop"}, {cli.DealAudienceAdjudicator, "Lamp Court"}} {
+		path := filepath.Join(t.TempDir(), share.audience+".json")
+		dealRun(t, "report", "--deal", h.dealID, "--share", share.audience, "--to", share.to, "--bundle", path)
+		copies["v1-"+share.audience] = plain(mustRead(t, path))
+	}
+	// Both deal versions, each a real section: rc47 judges the deal section
+	// once, the first kind it lists.
+	copies["v1-with-a-v0-section-too"] = plain(mutate(t, v1Raw, func(v map[string]any) {
+		var c map[string]any
+		require.NoError(t, json.Unmarshal([]byte(cp), &c))
+		extensionsOf(v)[dealprofile.Profile] = extensionsOf(c)[dealprofile.Profile]
+	}))
+	copies["v0-with-a-v1-section-too"] = witnessed(mutate(t, []byte(cp), func(v map[string]any) {
+		var c map[string]any
+		require.NoError(t, json.Unmarshal(v1Raw, &c))
+		extensionsOf(v)["x-deal-v1"] = extensionsOf(c)["x-deal-v1"]
+	}))
 	copies["v1-no-section"] = plain(mutate(t, v1Raw, func(v map[string]any) { delete(extensionsOf(v), "x-deal-v1") }))
 	copies["v1-wrong-sealed-report"] = plain(mutate(t, v1Raw, func(v map[string]any) {
 		extensionsOf(v)["x-deal-v1"].(map[string]any)["sealed_report"] = strings.Repeat("0", 64)
@@ -271,6 +306,8 @@ func isHex64(s string) bool {
 func TestDealVerifyGoldensAreRC47s(t *testing.T) {
 	if os.Getenv("EB_WRITE_DEAL_VERIFY_GOLDENS") == "1" {
 		copies := buildDealVerifyCopies(t)
+		// A copy no longer built leaves no golden behind.
+		require.NoError(t, os.RemoveAll(dealVerifyDir))
 		require.NoError(t, os.MkdirAll(dealVerifyDir, 0o755))
 		for name, c := range copies {
 			path := filepath.Join(dealVerifyDir, name+".json")

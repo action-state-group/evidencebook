@@ -1,6 +1,6 @@
 {
   "verdict": "VALID",
-  "page_gate": "pass",
+  "page_gate_no_directory": "pass",
   "extensions": [
     {
       "kind": "x-cadence-witness/v0",
@@ -13,11 +13,11 @@
       "threads": [
         {
           "member": "present",
-          "registration": "682000b649e77e514a431fc85918849bdbd06db327551af21293c13a9e77bc6e"
+          "registration": "75127ce14daad75bc6d91cfa95a6dfa4b060458c82f989d6c8f50292d314d577"
         },
         {
           "member": "present",
-          "registration": "3459ffb4d9b08b2900bdc79a2d92fdb7681a5bdba8acb7325a168a0300e31196"
+          "registration": "f9fef48282e49153681ccd9204fdf664eb98611eb0f072ac34aaea7a8fcccd4e"
         }
       ]
     },

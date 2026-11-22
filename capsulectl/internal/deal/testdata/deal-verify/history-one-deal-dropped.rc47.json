@@ -1,20 +1,20 @@
 {
   "verdict": "INVALID",
-  "page_gate": "refused: no page written: `verify --bundle` calls this bundle INVALID (verification failed: a record or disclosure did not check out), and a page must never claim more than that; write the bundle with --out and check it with `capsulectl verify --bundle`",
+  "page_gate_no_directory": "refused: no page written: `verify --bundle` calls this bundle INVALID (verification failed: a record or disclosure did not check out), and a page must never claim more than that; write the bundle with --out and check it with `capsulectl verify --bundle`",
   "extensions": [
     {
       "audience": "keep",
       "deals": [
         {
-          "deal_id": "deal-936a3be974fc4bdd",
+          "deal_id": "deal-323fda500296ff5e",
           "steps_after_checkpoint": 0,
           "verdict": "INVALID"
         },
         {
           "audience": "keep",
-          "deal_id": "deal-da63639d4db3e582",
+          "deal_id": "deal-a95b2b486afb2b1f",
           "report": {
-            "bundle_digest": "fd224433594920bc1388a36607992fcb28028efbf12f267de6dae73881988f82",
+            "bundle_digest": "a882682bdc9ed6b6b029eef4b0856e073d26c0376cd7e8e4b2dbfdda710d7f93",
             "checked_against": {
               "bundle_draft": "draft-mih-zhang-agent-disclosure-bundle-01",
               "checks": "aac-strict"
@@ -26,32 +26,32 @@
             "countersignatures": [],
             "disclosures": [
               {
-                "capsule_id": "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30",
+                "capsule_id": "097f821c750032473392148b73bef740cd7ba40ae5bbcabb680d07e51c535f29",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764",
+                "capsule_id": "73c78a79f031472dc900b9f4ba911bc9a3abe5d72c6444fc6415ef186e479622",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006",
+                "capsule_id": "9cc3f5d3dfa0a160f28c694d1213ea75589aa43f8522bf15efbfbcb7fc543666",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf",
+                "capsule_id": "b798a9ef5de1c0949d9205a38fd91453ccb0038b989fe1aedf02e4820fab426b",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838",
+                "capsule_id": "c95adace7df59fbf7dd02e2ca7b52d90484558a4ee535e347093c9576270b47e",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a",
+                "capsule_id": "ef6fe4c645bc65a81247a0cbd6c408947e9f7b2330983b6a98e3322d9f11c0fd",
                 "member": "agent_input",
                 "status": "disclosure_match"
               }
@@ -69,7 +69,7 @@
                 "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed",
                 "kind": "x-deal-v0",
                 "report": "standalone",
-                "sealed_report": "bedcc5b368c3d289598ebb871d8c6b8397bc286834fbe94ed4f340703412e509",
+                "sealed_report": "b29862786ef5dd0ae6fa820c31d0c9109f3f8b2bb95192a505b1adcc18e0912c",
                 "status": "pass"
               }
             ],
@@ -90,20 +90,20 @@
               "status": "pass"
             },
             "record_identity": {
-              "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30": "passed",
-              "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764": "passed",
-              "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006": "passed",
-              "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf": "passed",
-              "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838": "passed",
-              "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a": "passed"
+              "097f821c750032473392148b73bef740cd7ba40ae5bbcabb680d07e51c535f29": "passed",
+              "73c78a79f031472dc900b9f4ba911bc9a3abe5d72c6444fc6415ef186e479622": "passed",
+              "9cc3f5d3dfa0a160f28c694d1213ea75589aa43f8522bf15efbfbcb7fc543666": "passed",
+              "b798a9ef5de1c0949d9205a38fd91453ccb0038b989fe1aedf02e4820fab426b": "passed",
+              "c95adace7df59fbf7dd02e2ca7b52d90484558a4ee535e347093c9576270b47e": "passed",
+              "ef6fe4c645bc65a81247a0cbd6c408947e9f7b2330983b6a98e3322d9f11c0fd": "passed"
             },
             "record_signatures": {
-              "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30": "authored",
-              "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764": "authored",
-              "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006": "authored",
-              "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf": "authored",
-              "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838": "authored",
-              "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a": "authored"
+              "097f821c750032473392148b73bef740cd7ba40ae5bbcabb680d07e51c535f29": "authored",
+              "73c78a79f031472dc900b9f4ba911bc9a3abe5d72c6444fc6415ef186e479622": "authored",
+              "9cc3f5d3dfa0a160f28c694d1213ea75589aa43f8522bf15efbfbcb7fc543666": "authored",
+              "b798a9ef5de1c0949d9205a38fd91453ccb0038b989fe1aedf02e4820fab426b": "authored",
+              "c95adace7df59fbf7dd02e2ca7b52d90484558a4ee535e347093c9576270b47e": "authored",
+              "ef6fe4c645bc65a81247a0cbd6c408947e9f7b2330983b6a98e3322d9f11c0fd": "authored"
             },
             "verdict": "VALID",
             "witnesses": {
@@ -119,17 +119,17 @@
         }
       ],
       "findings": [
-        "deal_missing:deal-936a3be974fc4bdd"
+        "deal_missing:deal-323fda500296ff5e"
       ],
-      "holder_key": "ae7e77f36c5fbf6f4ff242d211e78870b71b416bf3347255c3ba95a3279e560a",
+      "holder_key": "19cc5aa4007b2707f762604ce77eb740299df831509e247fb4de8b5c5106c886",
       "holder_stated": [
         "recipient",
         "steps_after_checkpoint"
       ],
       "kind": "x-history-selection/v0",
       "signer_keys": {
-        "ae7e77f36c5fbf6f4ff242d211e78870b71b416bf3347255c3ba95a3279e560a": [
-          "deal-da63639d4db3e582"
+        "19cc5aa4007b2707f762604ce77eb740299df831509e247fb4de8b5c5106c886": [
+          "deal-a95b2b486afb2b1f"
         ]
       },
       "status": "fail"

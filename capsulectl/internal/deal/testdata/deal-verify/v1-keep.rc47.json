@@ -1,6 +1,6 @@
 {
   "verdict": "VALID",
-  "page_gate": "pass",
+  "page_gate_no_directory": "pass",
   "extensions": [
     {
       "kind": "x-deal-report/v0",
@@ -10,7 +10,7 @@
       "as_of": "as of 2026-09-27T18:00:00Z (the holder's time, when it computed the report; no witness attests it)",
       "kind": "x-deal-v1",
       "report": "standalone",
-      "sealed_report": "9644f62a3ec7c929db695ea1dc674ce789dc214773fb94d3316905cc7ffd320a",
+      "sealed_report": "1092bb72fd8db1f6cf4aa36f1dd3c4d4c726d2a167eb78d501798f54cdfa9e94",
       "status": "pass"
     }
   ],

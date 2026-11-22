@@ -1,15 +1,15 @@
 {
   "verdict": "VALID",
-  "page_gate": "pass",
+  "page_gate_no_directory": "pass",
   "extensions": [
     {
       "audience": "keep",
       "deals": [
         {
           "audience": "keep",
-          "deal_id": "deal-936a3be974fc4bdd",
+          "deal_id": "deal-323fda500296ff5e",
           "report": {
-            "bundle_digest": "af64eff7dcafd8ae4f63a7d290e990ab2e7b6a31604abd836843787f4e43ead6",
+            "bundle_digest": "4bfafde22429fb3f1821fb104585a54c1fe3d9149ff6d84e4da70ab2450d9152",
             "checked_against": {
               "bundle_draft": "draft-mih-zhang-agent-disclosure-bundle-01",
               "checks": "aac-strict"
@@ -21,32 +21,32 @@
             "countersignatures": [],
             "disclosures": [
               {
-                "capsule_id": "249b6bc3a86eb772459f78e007e80ad879865ea09aac475252c23d614a8b3fa2",
+                "capsule_id": "25a613420ca5120a05f458796bd1c6c1fdc6536ab776c489ebe73eb184b6c107",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "8b91558eea5202a5d921a04d6dae11e81cac142476130f1fbb598e53e0495e76",
+                "capsule_id": "267bea4ece12ca9636a44710131509867288818503cdd4799d7753d112cb3ea3",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "8ee704daa9d4ca11bf5cfc6b852afad3933aa6f959afc39a049cf33ede24c0f1",
+                "capsule_id": "630e16d2763f2a3383167a9a31667a9e36865152e553d998b01e3b27312d959f",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "9407c91ab222d98a80180ad697f3bf3ce5a9559e4d6cf8b9cebc8de8c456b0bc",
+                "capsule_id": "9c89ac0a7c1e18f720bd3f3405ee0fc48940aeaace498743d8b6c8d45f3d2c36",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "a966e390d120be395bf157a63984023d2cb0ef71974528e9f433327f78a3d406",
+                "capsule_id": "c14be886571dd399795d15911eb29a8b77c8f755847cc6d533a6f44bc9a872e0",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "b83085a06c412968b3c4507d1b713b623d3e73040669f650a42d46bb64381865",
+                "capsule_id": "ce63381155cde24923cc0d441c97e9180fca0f4d3a0d5132ca3c49ce4c1ac2b8",
                 "member": "agent_input",
                 "status": "disclosure_match"
               }
@@ -64,7 +64,7 @@
                 "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); witnessed",
                 "kind": "x-deal-v0",
                 "report": "standalone",
-                "sealed_report": "aae26b4bdaef57f7f81a81eb63e4367672aa9e6dd63ba4c6defd26acf64d5f72",
+                "sealed_report": "b1cb99c5f660e21109d66aef9dbc48027b00b6ee6e86eb8dd63db7d73a2e0168",
                 "status": "pass"
               }
             ],
@@ -85,20 +85,20 @@
               "status": "pass"
             },
             "record_identity": {
-              "249b6bc3a86eb772459f78e007e80ad879865ea09aac475252c23d614a8b3fa2": "passed",
-              "8b91558eea5202a5d921a04d6dae11e81cac142476130f1fbb598e53e0495e76": "passed",
-              "8ee704daa9d4ca11bf5cfc6b852afad3933aa6f959afc39a049cf33ede24c0f1": "passed",
-              "9407c91ab222d98a80180ad697f3bf3ce5a9559e4d6cf8b9cebc8de8c456b0bc": "passed",
-              "a966e390d120be395bf157a63984023d2cb0ef71974528e9f433327f78a3d406": "passed",
-              "b83085a06c412968b3c4507d1b713b623d3e73040669f650a42d46bb64381865": "passed"
+              "25a613420ca5120a05f458796bd1c6c1fdc6536ab776c489ebe73eb184b6c107": "passed",
+              "267bea4ece12ca9636a44710131509867288818503cdd4799d7753d112cb3ea3": "passed",
+              "630e16d2763f2a3383167a9a31667a9e36865152e553d998b01e3b27312d959f": "passed",
+              "9c89ac0a7c1e18f720bd3f3405ee0fc48940aeaace498743d8b6c8d45f3d2c36": "passed",
+              "c14be886571dd399795d15911eb29a8b77c8f755847cc6d533a6f44bc9a872e0": "passed",
+              "ce63381155cde24923cc0d441c97e9180fca0f4d3a0d5132ca3c49ce4c1ac2b8": "passed"
             },
             "record_signatures": {
-              "249b6bc3a86eb772459f78e007e80ad879865ea09aac475252c23d614a8b3fa2": "authored",
-              "8b91558eea5202a5d921a04d6dae11e81cac142476130f1fbb598e53e0495e76": "authored",
-              "8ee704daa9d4ca11bf5cfc6b852afad3933aa6f959afc39a049cf33ede24c0f1": "authored",
-              "9407c91ab222d98a80180ad697f3bf3ce5a9559e4d6cf8b9cebc8de8c456b0bc": "authored",
-              "a966e390d120be395bf157a63984023d2cb0ef71974528e9f433327f78a3d406": "authored",
-              "b83085a06c412968b3c4507d1b713b623d3e73040669f650a42d46bb64381865": "authored"
+              "25a613420ca5120a05f458796bd1c6c1fdc6536ab776c489ebe73eb184b6c107": "authored",
+              "267bea4ece12ca9636a44710131509867288818503cdd4799d7753d112cb3ea3": "authored",
+              "630e16d2763f2a3383167a9a31667a9e36865152e553d998b01e3b27312d959f": "authored",
+              "9c89ac0a7c1e18f720bd3f3405ee0fc48940aeaace498743d8b6c8d45f3d2c36": "authored",
+              "c14be886571dd399795d15911eb29a8b77c8f755847cc6d533a6f44bc9a872e0": "authored",
+              "ce63381155cde24923cc0d441c97e9180fca0f4d3a0d5132ca3c49ce4c1ac2b8": "authored"
             },
             "verdict": "VALID",
             "witnesses": {
@@ -106,13 +106,13 @@
               "receipts": [
                 {
                   "binding": "cll",
-                  "key_id": "11c37aed621e8c538efd25d7986ad7bfef6bd6fdbd6d0919f7848ed0698956e3",
+                  "key_id": "e259521e14370d3600980d438540cd4ae00be89fb7f7d4980aa8a1a4bdc93f33",
                   "reason": "ok (receipt carries no grade label)",
                   "registration_time": null,
                   "registration_time_reason": "iat_absent",
                   "registration_time_text": "no signed time (iat_absent)",
                   "status": "pass",
-                  "ts_url": "https://127.0.0.1:51907",
+                  "ts_url": "https://127.0.0.1:53474",
                   "via": "cadence"
                 }
               ],
@@ -124,9 +124,9 @@
         },
         {
           "audience": "keep",
-          "deal_id": "deal-da63639d4db3e582",
+          "deal_id": "deal-a95b2b486afb2b1f",
           "report": {
-            "bundle_digest": "fd224433594920bc1388a36607992fcb28028efbf12f267de6dae73881988f82",
+            "bundle_digest": "a882682bdc9ed6b6b029eef4b0856e073d26c0376cd7e8e4b2dbfdda710d7f93",
             "checked_against": {
               "bundle_draft": "draft-mih-zhang-agent-disclosure-bundle-01",
               "checks": "aac-strict"
@@ -138,32 +138,32 @@
             "countersignatures": [],
             "disclosures": [
               {
-                "capsule_id": "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30",
+                "capsule_id": "097f821c750032473392148b73bef740cd7ba40ae5bbcabb680d07e51c535f29",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764",
+                "capsule_id": "73c78a79f031472dc900b9f4ba911bc9a3abe5d72c6444fc6415ef186e479622",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006",
+                "capsule_id": "9cc3f5d3dfa0a160f28c694d1213ea75589aa43f8522bf15efbfbcb7fc543666",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf",
+                "capsule_id": "b798a9ef5de1c0949d9205a38fd91453ccb0038b989fe1aedf02e4820fab426b",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838",
+                "capsule_id": "c95adace7df59fbf7dd02e2ca7b52d90484558a4ee535e347093c9576270b47e",
                 "member": "agent_input",
                 "status": "disclosure_match"
               },
               {
-                "capsule_id": "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a",
+                "capsule_id": "ef6fe4c645bc65a81247a0cbd6c408947e9f7b2330983b6a98e3322d9f11c0fd",
                 "member": "agent_input",
                 "status": "disclosure_match"
               }
@@ -181,7 +181,7 @@
                 "as_of": "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed",
                 "kind": "x-deal-v0",
                 "report": "standalone",
-                "sealed_report": "bedcc5b368c3d289598ebb871d8c6b8397bc286834fbe94ed4f340703412e509",
+                "sealed_report": "b29862786ef5dd0ae6fa820c31d0c9109f3f8b2bb95192a505b1adcc18e0912c",
                 "status": "pass"
               }
             ],
@@ -202,20 +202,20 @@
               "status": "pass"
             },
             "record_identity": {
-              "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30": "passed",
-              "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764": "passed",
-              "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006": "passed",
-              "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf": "passed",
-              "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838": "passed",
-              "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a": "passed"
+              "097f821c750032473392148b73bef740cd7ba40ae5bbcabb680d07e51c535f29": "passed",
+              "73c78a79f031472dc900b9f4ba911bc9a3abe5d72c6444fc6415ef186e479622": "passed",
+              "9cc3f5d3dfa0a160f28c694d1213ea75589aa43f8522bf15efbfbcb7fc543666": "passed",
+              "b798a9ef5de1c0949d9205a38fd91453ccb0038b989fe1aedf02e4820fab426b": "passed",
+              "c95adace7df59fbf7dd02e2ca7b52d90484558a4ee535e347093c9576270b47e": "passed",
+              "ef6fe4c645bc65a81247a0cbd6c408947e9f7b2330983b6a98e3322d9f11c0fd": "passed"
             },
             "record_signatures": {
-              "256bf36f2db51a833193799c1a663411c4aa0e9f7561948187b7595330ad6a30": "authored",
-              "3c699c84fbba01bddef2ef7d86db4167fd8b639ac6cee430a2df2ca38d197764": "authored",
-              "60be46b2d4b4b5e9999201bc583da8d4609f3db0b640ec8dd842a8dc97d39006": "authored",
-              "73d1f539989f09652d7450007901d4d375e1cdb79e0078456bc6125a5212f8cf": "authored",
-              "94ca98c6fd792c3d993de1c47bdf61435de05d5117b2ec8fa03e8eeada954838": "authored",
-              "bc5de88c84bfe8d0d92520a7ae6061cd3a1a8aa0bc0d8ce26044c9eb6b7a3a8a": "authored"
+              "097f821c750032473392148b73bef740cd7ba40ae5bbcabb680d07e51c535f29": "authored",
+              "73c78a79f031472dc900b9f4ba911bc9a3abe5d72c6444fc6415ef186e479622": "authored",
+              "9cc3f5d3dfa0a160f28c694d1213ea75589aa43f8522bf15efbfbcb7fc543666": "authored",
+              "b798a9ef5de1c0949d9205a38fd91453ccb0038b989fe1aedf02e4820fab426b": "authored",
+              "c95adace7df59fbf7dd02e2ca7b52d90484558a4ee535e347093c9576270b47e": "authored",
+              "ef6fe4c645bc65a81247a0cbd6c408947e9f7b2330983b6a98e3322d9f11c0fd": "authored"
             },
             "verdict": "VALID",
             "witnesses": {
@@ -231,16 +231,16 @@
         }
       ],
       "findings": [],
-      "holder_key": "ae7e77f36c5fbf6f4ff242d211e78870b71b416bf3347255c3ba95a3279e560a",
+      "holder_key": "19cc5aa4007b2707f762604ce77eb740299df831509e247fb4de8b5c5106c886",
       "holder_stated": [
         "recipient",
         "steps_after_checkpoint"
       ],
       "kind": "x-history-selection/v0",
       "signer_keys": {
-        "ae7e77f36c5fbf6f4ff242d211e78870b71b416bf3347255c3ba95a3279e560a": [
-          "deal-936a3be974fc4bdd",
-          "deal-da63639d4db3e582"
+        "19cc5aa4007b2707f762604ce77eb740299df831509e247fb4de8b5c5106c886": [
+          "deal-323fda500296ff5e",
+          "deal-a95b2b486afb2b1f"
         ]
       },
       "status": "pass"
