@@ -268,9 +268,14 @@ commitment, the action and the terms its action_digest commits to.
 The Result is received only when each half verifies and its opening recomputes the half's action_digest, the halves
 are signed by two keys and this node's key signed one of them, the Result verifies, is signed by the referee both
 parties' terms name, names exactly these two halves, and is the document it commits to. Anything else is refused:
-the refusal is sealed with its code (never silence) and the verb exits with it. Receiving is safe to repeat: a
-Result already received, and a half already held, seal nothing again. What the check shows is what the Result
-and the halves say; it does not show the referee's judgment is right.`,
+the refusal is sealed as a record that holds the Result's digest and the refusal code, nothing else, and the
+verb exits with the code. Receiving is safe to repeat: a Result already received, and a half already held, seal
+nothing again.
+
+What the check shows is what the Result and the halves say; it does not show the referee's judgment is right, and
+received means checked and held, not that this node accepts the ruling. The record of a received Result holds the
+Result's digest, its Capsule id and the referee's key, not the Result document. Both halves, the other party's
+included, are kept in full in this book and go with it to anyone you share or export it to.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
 			p, err := cli.Selected(c)
