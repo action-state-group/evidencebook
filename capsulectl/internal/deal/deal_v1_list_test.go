@@ -112,7 +112,8 @@ func TestAV1DealIsListed(t *testing.T) {
 	}
 	require.Len(t, line, 7, out)
 	assert.Equal(t, []string{h.dealID, "deal", "open"}, line[:3])
-	assert.Equal(t, "-", line[5], "a v1 counterparty has no payee fingerprint")
+	assert.Equal(t, shortKey(l["counterparty_key"].(string)), line[5], "a v1 counterparty's column is its key, short")
+	assert.Len(t, line[5], 16)
 
 	// A book past its checkpoint is not_checkpointed, never a guess.
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
@@ -174,7 +175,8 @@ func TestAV1ListSettledAndErrors(t *testing.T) {
 	}
 	out, err := invoke(t, "", "--profile", "deal", "deal", "list", "--json")
 	require.Error(t, err, out)
-	assert.Contains(t, err.Error(), "deal "+h.dealID+":", "the error names the deal")
+	assert.Contains(t, err.Error(), "deal "+h.dealID, "the error names the deal")
+	assert.Equal(t, 1, strings.Count(err.Error(), h.dealID), "once")
 	assert.Contains(t, err.Error(), "this computer's clock", "in plain words, as deal report says it")
 
 	// A range that leaves the deal out computes no state for it, so its

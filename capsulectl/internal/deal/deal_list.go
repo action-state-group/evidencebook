@@ -23,7 +23,9 @@ type dealListing struct {
 	OpenedAt     string `json:"opened_at"`
 	LastRecordAt string `json:"last_record_at"`
 	// CounterpartyFingerprint is the payee fingerprint of the deal's latest
-	// counterparty_profile step (dealprofile.ProfileKey), or null when it has none.
+	// counterparty_profile step (dealprofile.ProfileKey), or null when it has
+	// none; for an x-deal-v1 deal, the first 16 characters of the
+	// counterparty's key (shortKey), or null before one is known.
 	CounterpartyFingerprint *string `json:"counterparty_fingerprint"`
 	LogID                   string  `json:"log_id"`
 	// Result is a deal's result (dealResult): bought, sold, called_off,
@@ -94,7 +96,7 @@ type dealSummaryAmount struct {
 const dealNotRecorded = "not recorded"
 
 func dealListCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "list", Short: "One line per deal in the profile's store: deal id, kind, state, opened and last-record times, counterparty fingerprint, log id; --json adds a plain summary (what, with whom, amount, outcome); --since/--until pick the deals active in a range, and with --json add its totals and who was told what; an x-deal-v1 deal shows its state computed now (settled, open, not_checkpointed, or offered, offer_received, agreeing, declined, cancelled before its book opens); read-only", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "list", Short: "One line per deal in the profile's store: deal id, kind, state, opened and last-record times, the counterparty's fingerprint (v0: payee fingerprint; v1: the first 16 characters of its key), log id; --json adds a plain summary (what, with whom, amount, outcome); --since/--until pick the deals active in a range, and with --json add its totals and who was told what; an x-deal-v1 deal shows its state computed now (settled, open, not_checkpointed, or offered, offer_received, agreeing, declined, cancelled before its book opens); read-only", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		since, _ := c.Flags().GetString("since")
 		until, _ := c.Flags().GetString("until")
 		bounds, ranged, err := listBounds(since, until)

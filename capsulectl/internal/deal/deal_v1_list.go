@@ -88,6 +88,11 @@ func (s *dealSession) v1ListingOf(ctx context.Context, p cli.Profile, dealID str
 		return dealListing{}, false, err
 	}
 	l := dealListing{DealID: dealID, Kind: "deal", Version: dealVersionV1, Side: d.Side, Role: d.Role, CounterpartyKey: d.CounterpartyKey, State: d.State}
+	if fp := shortKey(d.CounterpartyKey); fp != "" {
+		// The plain line's counterparty column shows the counterparty's
+		// key, short (Sherlock2, #733); --json carries it whole.
+		l.CounterpartyFingerprint = &fp
+	}
 	sum := dealSummary{What: dealNotRecorded, Counterparty: dealNotRecorded, Outcome: d.State}
 	if d.OfferDigest != "" {
 		offer, err := s.offerByDigest(ctx, d.OfferDigest)
@@ -126,7 +131,10 @@ func (s *dealSession) v1ListingOf(ctx context.Context, p cli.Profile, dealID str
 		if err != nil {
 			// One deal's report failure names the deal, in plain words
 			// where they are known (a clock off), as deal report does.
-			return dealListing{}, false, fmt.Errorf("deal %s: %w", dealID, v1ReportError(dealID, p, err))
+			if plain := v1ReportError(dealID, p, err); plain != err {
+				return dealListing{}, false, plain
+			}
+			return dealListing{}, false, fmt.Errorf("deal %s: %w", dealID, err)
 		}
 		l.State, sum.Outcome, l.OutcomeAsOf = state, state, asOf
 		switch state {
@@ -270,4 +278,13 @@ func v1ListFooter(list []dealListing) []string {
 		}
 	}
 	return out
+}
+
+// shortKey is a key's first 16 characters, the plain list's counterparty
+// column for an x-deal-v1 deal; empty while no counterparty key is known.
+func shortKey(k string) string {
+	if len(k) > 16 {
+		return k[:16]
+	}
+	return k
 }

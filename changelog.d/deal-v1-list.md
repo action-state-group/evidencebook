@@ -1,6 +1,6 @@
 ### Added: `deal list` shows x-deal-v1 deals (#626, B4a)
 
-- **The plain line** keeps v0's columns: kind `deal`; the opened time is the offer's; the last record time is your deal book's last record's (the offer's before the book opens); the log id is empty until your book opens.
+- **The plain line** keeps v0's columns: kind `deal`; the opened time is the offer's; the last record time is your deal book's last record's (the offer's before the book opens); the counterparty column shows the first 16 characters of the counterparty's key (v0's shows the payee fingerprint); the log id is empty until your book opens.
 - **The state:**
   - before your book opens, it is the deal's stored state: `offered`, `offer_received`, `agreeing`, `declined` or `cancelled`;
   - once it opens, it is computed now, and never sealed: `settled` or `open`, as a report says, or `not_checkpointed` while your book has records after its last checkpoint;
