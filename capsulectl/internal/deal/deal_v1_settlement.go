@@ -44,7 +44,7 @@ type v1SettlementRow struct {
 // do (Sherlock2, #736). not_recomputed needs none: the row's verdict says it.
 var v1NotRunNotes = map[string]string{
 	xdealv1.NotRunNoOfferPair:   "this store holds the offer but not its signed copy, so the payment check cannot run here; receive the offer file again (deal receive) to keep it",
-	xdealv1.NotRunNoAcceptorKey: "your records do not name the accepting side's key yet, so the payment check cannot run; it runs once your agreement names it",
+	xdealv1.NotRunNoAcceptorKey: "your agreement names no key for the accepting side (the other side runs no layer), so the payment check cannot run on this deal",
 }
 
 // v1SettlementFlags are v0's flags that a v1 deal does not take.
