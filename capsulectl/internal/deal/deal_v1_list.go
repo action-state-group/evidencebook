@@ -220,7 +220,7 @@ func v1SummaryText(sum dealSummary, paymentRows *int, noLayer bool) string {
 	}
 	who := "counterparty: no name recorded (key only)"
 	if noLayer {
-		who = "counterparty: keeps no records of its own"
+		who = "counterparty: keeps no signed records"
 	}
 	return strings.Join([]string{sum.What, who, amount, sum.Outcome}, " · ")
 }

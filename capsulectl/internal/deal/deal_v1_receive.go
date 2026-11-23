@@ -136,7 +136,7 @@ func (s *dealSession) receiveV1(ctx context.Context, c *cobra.Command, push v1Pu
 		// offerer and is never sent (PROFILE §4.7): no one can answer it.
 		if info.sent != nil && info.kind == xdealv1.TypePropose {
 			if prop, ok := proposeOf(info.sent.Record); ok && prop.To.V == nil {
-				return cli.InputError("this offer names no key (to is null): it is an offer to a party that keeps no records of its own, and it stays with whoever made it. Nothing can answer it, so it is not kept")
+				return cli.InputError("this offer names no key (to is null): it is an offer to a party that keeps no signed records of its own, and it stays with whoever made it, so it is not kept: ask them for an offer to your key")
 			}
 		}
 	}

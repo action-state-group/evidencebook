@@ -158,12 +158,17 @@ func TestTheDealSkillNeverAsksTheUserToDoDNS(t *testing.T) {
 	// Compared with its line breaks as spaces, so a rewrap changes nothing.
 	flat := strings.Join(strings.Fields(skill), " ")
 	for _, part := range []string{
-		`"state": "deferred"`,
 		`"the email's signature will be checked later"`,
 		"Never ask the user to look anything up",
 	} {
 		assert.Contains(t, flat, part)
 	}
+	// On x-deal-v1 the email is refused, not deferred; the legacy file keeps
+	// the x-deal-v0 deferral.
+	assert.Contains(t, flat, "the note is refused and nothing is sealed")
+	legacy, err := os.ReadFile(filepath.Join("..", "..", "skills", "deal", "LEGACY-X-DEAL-V0.md"))
+	require.NoError(t, err)
+	assert.Contains(t, strings.Join(strings.Fields(string(legacy)), " "), `"state": "deferred"`)
 	for _, instruction := range []string{"TXT record", "_domainkey", "_dmarc", "dig ", "nslookup", "--key-record", "--dmarc-record", "look up the merchant", "host -t", "resolver"} {
 		assert.False(t, strings.Contains(skill, instruction), "the skill names %q", instruction)
 	}

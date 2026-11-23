@@ -19,10 +19,17 @@ const retailDemo = "../../skills/deal/demo/retail-checkout"
 
 var procedureStep = regexp.MustCompile(`^\d+\. (.+)$`)
 
-// procedureSteps returns the numbered steps of one procedure in SKILL.md.
-func procedureSteps(t *testing.T, name string) []string {
+// The skill's two procedure files: SKILL.md teaches x-deal-v1, and the
+// legacy file keeps the x-deal-v0 procedures (evidencebook#626 B6).
+const (
+	skillFile  = "../../skills/deal/SKILL.md"
+	legacyFile = "../../skills/deal/LEGACY-X-DEAL-V0.md"
+)
+
+// procedureSteps returns the numbered steps of one procedure in file.
+func procedureSteps(t *testing.T, file, name string) []string {
 	t.Helper()
-	raw, err := os.ReadFile("../../skills/deal/SKILL.md")
+	raw, err := os.ReadFile(file)
 	require.NoError(t, err)
 	var steps []string
 	in := false
@@ -54,7 +61,7 @@ func auditHostRun(t *testing.T, args ...string) (map[string]any, error) {
 
 func TestDealProceduresEndInTheFinalReview(t *testing.T) {
 	for _, name := range []string{"Purchase", "Booking", "Signature", "Disclosure"} {
-		steps := procedureSteps(t, name)
+		steps := procedureSteps(t, legacyFile, name)
 		review, act, open := -1, -1, -1
 		for i, step := range steps {
 			// One deal per errand (capsule-cli#340): the deal opens at the
@@ -77,6 +84,64 @@ func TestDealProceduresEndInTheFinalReview(t *testing.T) {
 		assert.Less(t, open, review, "%s opens the deal before the final review", name)
 		require.NotEqual(t, -1, act, "%s has an acting step", name)
 		assert.Less(t, review, act, "%s reviews before it acts", name)
+	}
+}
+
+// skillSection is one procedure of SKILL.md as flat text, up to the next
+// heading of its level or above.
+func skillSection(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := os.ReadFile(skillFile)
+	require.NoError(t, err)
+	text := string(raw)
+	i := strings.Index(text, "\n### "+name+"\n")
+	require.GreaterOrEqual(t, i, 0, name)
+	rest := text[i+1:]
+	if j := strings.Index(rest[4:], "\n### "); j >= 0 {
+		rest = rest[:j+4]
+	}
+	return strings.Join(strings.Fields(rest), " ")
+}
+
+// The x-deal-v1 procedures: Purchase makes or receives the offer, seals the
+// admission, the intent and the agreement before its final review, and acts
+// only after it; Disclosure reviews before it sends. Each asks with the
+// check's own text.
+func TestDealV1ProceduresEndInTheFinalReview(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		before []string // what the procedure names before its final review
+		after  string   // the act, after the user's answer
+	}{
+		{"Purchase", []string{"`deal offer", "`deal receive", "`deal admit", "--kind intent", "the intent for the user's pick", "`deal agree"}, "deal settle --deal ID --sent"},
+		{"Disclosure", nil, "Send."},
+		{"Booking", nil, "deal perform --deal ID --act book"},
+		{"Signature", nil, "deal perform --deal ID --act sign"},
+	} {
+		section := skillSection(t, c.name)
+		review := strings.Index(section, "**Final review:**")
+		require.GreaterOrEqual(t, review, 0, "%s has a final review", c.name)
+		assert.Equal(t, review, strings.LastIndex(section, "**Final review:**"), "%s has one final review", c.name)
+		assert.Contains(t, section[review:], "`deal check`", c.name)
+		proceed := strings.Index(section, "On `\"proceed\": true`")
+		require.Greater(t, proceed, review, "%s answers after the review", c.name)
+		assert.Contains(t, section[review:proceed], "`approval_text`", "%s asks with the check's own text", c.name)
+		for _, cmd := range c.before {
+			i := strings.Index(section, cmd)
+			require.GreaterOrEqual(t, i, 0, "%s names %s", c.name, cmd)
+			assert.Less(t, i, review, "%s names %s before the final review", c.name, cmd)
+		}
+		act := strings.Index(section, c.after)
+		require.GreaterOrEqual(t, act, 0, "%s acts", c.name)
+		assert.Less(t, proceed, act, "%s acts only after the answer", c.name)
+	}
+	// No x-deal-v0 verb is taught as a step of the x-deal-v1 procedures.
+	raw, err := os.ReadFile(skillFile)
+	require.NoError(t, err)
+	procs := string(raw)
+	procs = procs[strings.Index(procs, "## Procedures"):strings.Index(procs, "### Older deals")]
+	for _, v0 := range []string{"`deal open", "`deal close", "`deal note --kind act", "--html"} {
+		assert.NotContains(t, procs, v0)
 	}
 }
 
@@ -110,7 +175,7 @@ func TestDealRetailCheckoutFollowsTheProcedure(t *testing.T) {
 	host("c1", "t-main", "spawn_task", "other", "")
 	var dealID string
 	proceed := false
-	for _, step := range procedureSteps(t, "Purchase") {
+	for _, step := range procedureSteps(t, legacyFile, "Purchase") {
 		switch {
 		case strings.HasPrefix(step, "Fill"):
 			host("c2", "t-browser", "fill_form", "other", "")

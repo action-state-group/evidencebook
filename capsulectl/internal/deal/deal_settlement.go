@@ -313,6 +313,6 @@ func dealSettlementCommand() *cobra.Command {
 		})
 	}}
 	cli.AddSettlementStatusFlags(cmd)
-	cmd.Flags().String("deal", "", "Deal ID from `deal open`")
+	cmd.Flags().String("deal", "", "The deal id (`deal offer` or `deal receive` printed it; `deal open` for an x-deal-v0 deal)")
 	return cmd
 }
