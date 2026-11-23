@@ -2,11 +2,12 @@ package deal
 
 import (
 	"crypto/sha256"
-	_ "embed"
 	"encoding/hex"
 	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
+
+	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
 )
 
 // The deal view is this plugin's presentation module (capsulectl.deal-view/v0,
@@ -22,20 +23,14 @@ import (
 // deal-view-VERSION.tar.gz, and checks them against the digests stated here.
 // Without that directory the core refuses the module and the plugin's
 // commands are unaffected.
+// The files are held by the assets package, which the report builder shares
+// (capsulectl-book's settlement report carries deal receipts).
 var (
-	//go:embed assets/deal-view.js
-	DealViewJS string
-	//go:embed assets/deal-view.css
-	DealViewCSS string
-	//go:embed assets/deal-view.js.sha256
-	DealViewJSSHA256 string
-	//go:embed assets/deal-view.manifest.json
-	DealViewManifestJSON []byte
-	// The same script's second module, capsulectl.deal-view-composed/v0: the
-	// receipt with the other party's half, read from a deal composition
-	// (docs/design/two-sided-receipt.md).
-	//go:embed assets/deal-view-composed.manifest.json
-	DealViewComposedManifestJSON []byte
+	DealViewJS                   = assets.JS
+	DealViewCSS                  = assets.CSS
+	DealViewJSSHA256             = assets.JSSHA256
+	DealViewManifestJSON         = assets.ManifestJSON
+	DealViewComposedManifestJSON = assets.ComposedManifestJSON
 )
 
 // dealViewDir is where the module's files sit, relative to the launcher.

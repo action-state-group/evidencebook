@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
@@ -262,9 +263,10 @@ func TestADealViewThePageWouldRefuseWritesNoPage(t *testing.T) {
 			edit(copied)
 			raw, err := json.Marshal(copied)
 			require.NoError(t, err)
-			old := DealViewManifestJSON
-			DealViewManifestJSON = raw
-			t.Cleanup(func() { DealViewManifestJSON = old })
+			// The module is built from the assets package's manifest.
+			old := assets.ManifestJSON
+			assets.ManifestJSON = raw
+			t.Cleanup(func() { assets.ManifestJSON = old })
 			dealFixture(t)
 			id := retailDeal(t)
 			path := filepath.Join(t.TempDir(), "page.html")
