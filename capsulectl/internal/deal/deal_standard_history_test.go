@@ -811,7 +811,9 @@ func TestAnUnpricedDealSaysWhyItIsNotOnTheCard(t *testing.T) {
 	shown := cli.SafeError(err)
 	assert.Contains(t, shown, "deal "+dealID+" can't be counted yet: its agreed amount isn't recorded")
 	assert.NotContains(t, shown, "XTS")
-	assert.NotContains(t, shown, "627")
+	// The amount must not show; the random deal id may hold the digits
+	// (evidencebook#730), so it is left out of that check.
+	assert.NotContains(t, strings.ReplaceAll(shown, dealID, "DEAL"), "627")
 	assert.NotContains(t, shown, "suppressed")
 	assert.Equal(t, 1, cli.ExitCode(err), "the exit code is unchanged")
 	assert.ErrorIs(t, err, dealprofile.ErrUnpriced, "deal respond still refuses on the cause")
