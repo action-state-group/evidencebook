@@ -228,16 +228,21 @@ A retail checkout is almost always the second shape.
    the same, and `--status settled` adds `--payment-ref ORDER_NUMBER` once
    the confirmation shows it (a failed checkout may leave it out). The
    report then says the reference was recorded after payment. Never put a
-   card number, or any part of one, in a reference: it is refused. While
+   card number, or any part of one, in a reference: it is refused. When the
+   merchant's order number itself looks like a card number, `--status
+   settled` takes `--no-payment-ref` instead, and the report says no
+   reference was recorded. While
    the rail still says pending, run nothing more for this payment. The user
-   sends `payer-leg.json` to the other side.
+   sends `payer-leg.json` to the other side (with no layer there, it is the
+   user's own copy, and nothing is sent).
 10. **How it went.** Each side states how its rows went:
 
     ```sh
     capsulectl --profile deal deal statement --deal ID --statement paid_as_agreed=met --out statement.json
     ```
 
-    `met`, `not_met` or `cannot_tell`. The user sends the file.
+    `met`, `not_met` or `cannot_tell`. The user sends the file (with no
+    layer on the other side, there is no one to send it to).
 11. **Reading the deal.** `deal settlement --deal ID` and `deal report
     --deal ID` read your book only up to its last checkpoint, and refuse a
     book with records after it. Run `deal tick`: if it prints `state:
@@ -310,15 +315,15 @@ with its offer, so:
 2. **A switch to another merchant is a new offer.** The deal's counterparty
    is the key its offer names. When the user moves to another merchant, that
    is a new deal with that merchant's offer; withdraw your own open offer
-   with `deal offer cancel OFFER` first.
+   with `deal offer cancel OFFER --out FILE` first, and send the file.
 3. **The merchant comes before the check.** `deal check` needs the opening's
    `who`, or the user's pick or your `chose`.
 4. **Tax and total go in the amount.** The check's `amount_minor` is
    everything to be charged; `price_minor` is the item's price. `conditions`
    hold only choices (a size, a colour, a delivery option).
 5. **Called off.** When the user drops the errand before agreeing, withdraw
-   your offer (`deal offer cancel OFFER`) or decline theirs (`deal offer
-   decline OFFER`), and send the file.
+   your offer (`deal offer cancel OFFER --out FILE`) or decline theirs
+   (`deal offer decline OFFER --out FILE`), and send the file.
 6. **Find deals with `deal list`**, never from memory.
 
 ### Sale
@@ -326,8 +331,8 @@ with its offer, so:
 The user sells one item. On x-deal-v1 each buyer sends an offer: keep each
 with `deal receive`, run admission on the buyer you agree with, and agree to
 that offer (Purchase, steps 4 to 6, with the user as the seller). Decline
-every other buyer's offer with `deal offer decline OFFER` and send each its
-file. A sale's listing and its buyer threads (`deal sale ...`) are x-deal-v0
+every other buyer's offer with `deal offer decline OFFER --out FILE` and
+send each its file. A sale's listing and its buyer threads (`deal sale ...`) are x-deal-v0
 only (see the legacy file).
 
 ### Where the user sells: payment received, and what was delivered
@@ -365,9 +370,12 @@ almost always the no-layer shape).
    Purchase steps 7 to 9 with `"action": "pay"`. When it charges nothing now
    (pay at the hotel, a free table), `deal check` with `"action": "commit"`,
    the booking as `terms` and its price as `amount_minor`.
-3. The user's answer as in Purchase step 8. Confirm the booking only after
-   that returns `"proceed": true`.
-4. Right after confirming, record the booking on that check:
+3. Any request to the user to go ahead uses the check's `approval_text`, as
+   it is. On `"proceed": true`, confirm. On `pause`, the user's answer as in
+   Purchase step 8; confirm only if that returns `"proceed": true`.
+4. Right after confirming, on the commit branch, record the booking on that
+   check (on the payment branch the payer leg of Purchase step 9 is the
+   record; `deal perform` rests only on a commit check):
 
    ```sh
    capsulectl --profile deal deal perform --deal ID --act book --check CHECK_ID \
@@ -384,8 +392,9 @@ It is a Purchase up to the agreement (steps 1 to 6).
 1. Read the document, and fill it up to the signature without signing.
 2. **Final review:** `deal check` with `"action": "commit"`, the document's
    terms as `terms` and what it commits the user to pay as `amount_minor`.
-3. The user's answer as in Purchase step 8. Sign only after that returns
-   `"proceed": true`.
+3. Any request to the user to go ahead uses the check's `approval_text`, as
+   it is. On `"proceed": true`, sign. On `pause`, the user's answer as in
+   Purchase step 8; sign only if that returns `"proceed": true`.
 4. Right after signing:
 
    ```sh
@@ -440,14 +449,16 @@ sent in a message. Use the deal of the errand it belongs to.
 
 ### Cancellation and refund
 
-- **Before the deal starts:** `deal offer cancel OFFER` (your own offer) or
-  `deal offer decline OFFER` (one sent to you), and send the file.
+- **Before the deal starts:** `deal offer cancel OFFER --out FILE` (your own
+  offer) or `deal offer decline OFFER --out FILE` (one sent to you), and send
+  the file.
 - **After agreeing:** a cancel is checked like any act: `deal check` with
   `"action": "cancel"`, the user's answer, then cancel with the merchant.
 - **A refund the user pays** (the user is the seller) rests on that cancel
   check and names the leg of the user's own book it refunds:
   `deal settle --deal ID --sent --check CANCEL_CHECK_ID --reverses LEG
-  --payment-ref-type TYPE`, then `--status` as in Purchase step 9.
+  --payment-ref-type TYPE --payment-ref REF` (the refund's own reference:
+  a cancel check records none), then `--status` as in Purchase step 9.
 - **A refund the user receives** is a payee leg that reverses the user's own
   payment: `deal settle --deal ID --reverses LEG --received N --receive-fee N
   --status settled --payment-ref-type TYPE --payment-ref REF --out
@@ -606,7 +617,9 @@ capsulectl. Follow them; never make up your own narration of a step.
 - **Files to send are the user's to send.** Every step that writes a file
   for the other side (an offer, an agreement, a payment leg, a statement, a
   dispute) ends with telling the user, in one sentence, to send that file to
-  the other side. Never send it yourself unless the user asked you to.
+  the other side. Never send it yourself unless the user asked you to. When
+  the other side keeps no signed records, there is no one to send it to:
+  say nothing about sending.
 - **A report goes out only when asked.** The cadence, `deal tick`,
   checkpoints and other bookkeeping stay silent. On an x-deal-v1 deal the
   report is `deal report --deal ID`, read at your last checkpoint (Purchase,

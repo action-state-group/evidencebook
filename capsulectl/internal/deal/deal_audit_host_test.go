@@ -115,6 +115,8 @@ func TestDealV1ProceduresEndInTheFinalReview(t *testing.T) {
 	}{
 		{"Purchase", []string{"`deal offer", "`deal receive", "`deal admit", "--kind intent", "the intent for the user's pick", "`deal agree"}, "deal settle --deal ID --sent"},
 		{"Disclosure", nil, "Send."},
+		{"Booking", nil, "deal perform --deal ID --act book"},
+		{"Signature", nil, "deal perform --deal ID --act sign"},
 	} {
 		section := skillSection(t, c.name)
 		review := strings.Index(section, "**Final review:**")

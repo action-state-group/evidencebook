@@ -21,6 +21,33 @@ too. Two things differ on x-deal-v0: each sealed step is an x-deal-v0 record
 (EvidenceBook's [`dealprofile/x-deal-v0/PROFILE.md`](https://github.com/action-state-group/evidencebook/tree/v0.10.0/dealprofile/x-deal-v0/PROFILE.md)),
 and receipts go out as pages: pass `--html FILE` on `deal note --kind act`
 and `deal close`, and `deal report --html FILE` after a material change.
+On x-deal-v0, these rules on receipts and "show my receipts" also apply
+(moved from SKILL.md):
+
+- **When a receipt goes out by itself.** Send the receipt, unasked, at
+  these moments only:
+  - after a payment: `deal note --kind act --html FILE`;
+  - when an errand ends, arrived or called off, and when a sale's buyer
+    thread closes: `deal close --html FILE`. When a hold or a deny ends
+    an errand where nothing was done yet (no act on record), close it
+    `called_off` all the same: its receipt shows nothing was paid (or
+    shared), and the user keeps it as proof. After an act, close it with
+    what happened (`received`, `not_received`);
+  - an updated receipt only on a material change: a merchant email added,
+    a refund, and on a sale a payment received or the handover (the list
+    above). Nothing else sends one: the cadence, `deal tick`, checkpoints
+    and other bookkeeping stay silent.
+
+  The first receipt the user ever gets carries one or two more lines (what
+  it covers next to the merchant's, and why to keep it); capsulectl adds
+  them to `say` that once. Never add them yourself.
+- **"Show my receipts" comes from the record, never from memory.** Run
+  `deal list --json` (with `--since` and `--until` when the user names a
+  period, and then say its `say` first) and say each deal's `say`, one per
+  line, in the order listed. For "show my receipt for <item>", find that
+  deal in the same list by its `say` and `summary`, run `deal report --deal
+  ID --html FILE`, and send it as any `report`. Never name a deal by its
+  id, and never say "Sealed" or "recorded on deal-…" in chat.
 
 Some procedures have no x-deal-v1 form, so they exist here only: Booking,
 Signature, Cancel-by date (`deal deadlines` reads x-deal-v0 obligations only),
@@ -557,11 +584,12 @@ All commands take `--profile deal` and print one JSON object.
 **1. Open** at the user's first ask (see "One errand, one deal"):
 
 ```sh
-capsulectl --profile deal deal open --skill <path of this SKILL.md> --input open.json
+capsulectl --profile deal deal open --skill <path of the deal skill's SKILL.md> --input open.json
 ```
 
-Always pass `--skill` with the full path of **this** file, the SKILL.md you
-are following now (or set `CAPSULE_DEAL_SKILL` to it). Its digest is sealed
+Always pass `--skill` with the full path of the deal skill's SKILL.md, beside
+this file (or set `CAPSULE_DEAL_SKILL` to it); `deal open` reads its
+frontmatter, which this file has none of. Its digest is sealed
 in the deal's baseline, with how many other copies of this skill sit beside
 it. If `deal open` reports `"other_copies"` above 0, tell the user: another
 copy of the deal skill (for example an old backup left inside the skills
