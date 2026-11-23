@@ -430,6 +430,9 @@ func bookError(err error) error {
 	if errors.Is(err, evidencebook.ErrInvalid) {
 		return errors.Join(cli.InputError("the evidence book refused this as invalid: "+err.Error()), err)
 	}
+	if errors.Is(err, evidencebook.ErrInGrace) {
+		return errors.Join(cli.Hint(cli.ErrInput, err.Error()+": hand over the windows before it, or wait until it closes (`book window roll` after that closes it)"), err)
+	}
 	return err
 }
 
@@ -639,10 +642,12 @@ type reconcileResult struct {
 // Close sealed, and none for a close/v1 Close, whose body has no pairs.
 // Close is the sealed body as stored.
 type closeResult struct {
-	RecordID       string                       `json:"record_id"`
-	Seq            uint64                       `json:"seq"`
-	Period         string                       `json:"period"`
-	Counterparty   string                       `json:"counterparty"`
+	RecordID     string `json:"record_id"`
+	Seq          uint64 `json:"seq"`
+	Period       string `json:"period"`
+	Counterparty string `json:"counterparty"`
+	// Window is the window whose book holds the Close, on a windowed store.
+	Window         string                       `json:"window,omitempty"`
 	AlreadyClosed  bool                         `json:"already_closed"`
 	PeerBundle     string                       `json:"peer_bundle,omitempty"`
 	PeerClose      string                       `json:"peer_close,omitempty"`
@@ -798,11 +803,13 @@ func reconcileCommand() *cobra.Command {
 		if e != nil {
 			return e
 		}
-		defer func() { err = errors.Join(err, opened.release()) }()
+		// The store opened here is released, whichever window's book the
+		// period uses (forPeriod returns one sharing its shelf).
+		defer func(o openedBook) { err = errors.Join(err, o.release()) }(opened)
 		if e = opened.refuseDisplacedClose(); e != nil {
 			return e
 		}
-		if e = opened.periodInWindow(a.period.start, a.period.end); e != nil {
+		if opened, e = opened.forPeriod(c.Context(), a.period.start, a.period.end); e != nil {
 			return e
 		}
 		in, e := reconcileInput(c.Context(), opened.book, a.period, a.counterparty, a.peer, true)
@@ -980,15 +987,20 @@ func closeCommand() *cobra.Command {
 		if e != nil {
 			return e
 		}
-		defer func() { err = errors.Join(err, opened.release()) }()
+		// The store opened here is released, whichever window's book the
+		// period uses (forPeriod returns one sharing its shelf).
+		defer func(o openedBook) { err = errors.Join(err, o.release()) }(opened)
 		if e = opened.refuseDisplacedClose(); e != nil {
 			return e
 		}
-		if e = opened.periodInWindow(a.period.start, a.period.end); e != nil {
+		if opened, e = opened.forPeriod(c.Context(), a.period.start, a.period.end); e != nil {
 			return e
 		}
 		book := opened.book
 		result := closeResult{Period: a.period.key, Counterparty: a.counterparty}
+		if opened.shelf != nil {
+			result.Window = opened.window.Label
+		}
 		closes, e := priorCloses(c.Context(), book, a.counterparty)
 		if e != nil {
 			return e

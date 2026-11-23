@@ -12,6 +12,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
@@ -51,14 +53,64 @@ var noticeOut io.Writer = os.Stderr
 // names none (Sherlock2, #689: month).
 const defaultWindow = evidencebook.WindowMonth
 
-// windowNotice is what store creation prints: the window cannot change once
-// the store exists.
-func windowNotice(period evidencebook.WindowPeriod) string {
+// defaultGrace is the grace a window keeps for a Close over it when the
+// holder names none (evidencebook#807): 7 days for a month, quarter or year,
+// 1 day for a week, none for a day (a grace is shorter than the period).
+func defaultGrace(period evidencebook.WindowPeriod) time.Duration {
+	switch period {
+	case evidencebook.WindowDay:
+		return 0
+	case evidencebook.WindowWeek:
+		return 24 * time.Hour
+	}
+	return 7 * 24 * time.Hour
+}
+
+// parseGrace reads --grace: whole days ("7d") or a Go duration ("36h").
+func parseGrace(raw string) (time.Duration, error) {
+	if days, ok := strings.CutSuffix(raw, "d"); ok {
+		n, err := strconv.Atoi(days)
+		if err != nil || n < 0 {
+			return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration (36h)")
+		}
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
+		return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration (36h)")
+	}
+	return d, nil
+}
+
+// graceText is a grace as the notice states it.
+func graceText(grace time.Duration) string {
+	plural := func(n int64, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return fmt.Sprintf("%d %ss", n, unit)
+	}
+	switch {
+	case grace%(24*time.Hour) == 0:
+		return plural(int64(grace/(24*time.Hour)), "day")
+	case grace%time.Hour == 0:
+		return plural(int64(grace/time.Hour), "hour")
+	}
+	return grace.String()
+}
+
+// windowNotice is what store creation prints: neither the window nor its
+// grace can change once the store exists.
+func windowNotice(period evidencebook.WindowPeriod, grace time.Duration) string {
 	unit := "calendar " + string(period) + "s"
 	if period == evidencebook.WindowWeek {
 		unit = "ISO weeks from Monday"
 	}
-	return fmt.Sprintf("window: %s (%s, UTC), fixed for this store", period, unit)
+	closes := "closes when it ends"
+	if grace > 0 {
+		closes = "closes " + graceText(grace) + " after it ends"
+	}
+	return fmt.Sprintf("window: %s (%s, UTC), %s, fixed for this store", period, unit, closes)
 }
 
 // sealedStore reads a window book's records as sealed, the recordStore a
@@ -155,7 +207,7 @@ func openWindowedBook(ctx context.Context, p cli.Profile, signer evidencebook.Si
 // from the start of the current period. It writes no record and needs no
 // signing key: the shelf's file holds the policy, and the first window's
 // book is opened by the first verb that writes.
-func initWindowedStore(ctx context.Context, p cli.Profile, period evidencebook.WindowPeriod) error {
+func initWindowedStore(ctx context.Context, p cli.Profile, period evidencebook.WindowPeriod, grace time.Duration) error {
 	if err := os.MkdirAll(filepath.Dir(shelfFile(p)), 0o700); err != nil {
 		return err
 	}
@@ -167,9 +219,19 @@ func initWindowedStore(ctx context.Context, p cli.Profile, period evidencebook.W
 	if err != nil {
 		return err
 	}
-	policy := &evidencebook.WindowPolicy{Period: period, Base: p.LogID, Since: period.WindowAt(bookNow()).Start}
+	policy := &evidencebook.WindowPolicy{Period: period, Base: p.LogID, Since: period.WindowAt(bookNow()).Start, Grace: grace}
 	shelf, err := evidencebook.OpenSQLiteShelf(ctx, windowedConfig(p, signer, scratchKey, noOriginals{profile: p.Name}, bookNow, policy))
 	if err != nil {
+		// The shelf validates its policy after creating its file, and both
+		// callers create a store only where none exists: a refused policy
+		// leaves no store behind.
+		if errors.Is(err, evidencebook.ErrInvalid) {
+			for _, suffix := range []string{"", "-wal", "-shm", ".lock"} {
+				if e := os.Remove(shelfFile(p) + suffix); e != nil && !errors.Is(e, os.ErrNotExist) {
+					err = errors.Join(err, e)
+				}
+			}
+		}
 		return bookError(err)
 	}
 	return shelf.Release()
@@ -239,18 +301,35 @@ func currentWitnessStore(p cli.Profile) (bookWitnessStore, error) {
 	return windowWitnessStore(p, policy.Period.WindowAt(bookNow()).Label), nil
 }
 
-// periodInWindow refuses, on a windowed store, a close or reconcile period
-// outside the current window: its records are in another window's book,
-// which a Close in this one could not link (a Close over an earlier window
-// is a follow-up of evidencebook#689).
-func (o openedBook) periodInWindow(start, end time.Time) error {
-	if o.shelf == nil {
-		return nil
+// forPeriod is the book a close or reconcile over [start, end) works in. On
+// a JSONL book, and for a period inside the current window, it is that book;
+// for a period inside a window in its grace, that window's book, so a Close
+// over last month is sealed with last month's records (evidencebook#807).
+// Any other period is refused: its records are in a book a Close here could
+// not link.
+func (o openedBook) forPeriod(ctx context.Context, start, end time.Time) (openedBook, error) {
+	if o.shelf == nil || (!start.Before(o.window.Start) && !end.After(o.window.End)) {
+		return o, nil
 	}
-	if start.Before(o.window.Start) || end.After(o.window.End) {
-		return cli.Hint(cli.ErrInput, fmt.Sprintf("this store is split by window, and the period [%s, %s) is not inside the current window %s [%s, %s): a Close covers the records of one window and is sealed in it; a Close over an earlier window's period is not supported yet", start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339), o.window.Label, o.window.Start.Format(time.RFC3339), o.window.End.Format(time.RFC3339)))
+	windows, err := o.shelf.Windows(ctx)
+	if err != nil {
+		return openedBook{}, err
 	}
-	return nil
+	for _, w := range windows {
+		if start.Before(w.Start) || end.After(w.End) {
+			continue
+		}
+		if !w.InGrace {
+			break
+		}
+		book, window, err := o.shelf.WindowBook(ctx, w.Label)
+		if err != nil {
+			return openedBook{}, err
+		}
+		o.book, o.store, o.window = book, sealedStore{book}, window
+		return o, nil
+	}
+	return openedBook{}, cli.Hint(cli.ErrInput, fmt.Sprintf("this store is split by window, and the period [%s, %s) is neither inside the current window %s [%s, %s) nor inside an earlier window in its grace: a Close covers the records of one window and is sealed in it, and an earlier window takes one only until it closes (`book window list` shows each window's closes_at)", start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339), o.window.Label, o.window.Start.Format(time.RFC3339), o.window.End.Format(time.RFC3339)))
 }
 
 // windowCoverage is what `report build` gives report.Build to check a

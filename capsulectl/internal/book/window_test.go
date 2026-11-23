@@ -21,7 +21,7 @@ import (
 // A book store split into one book per month (evidencebook#689), through the
 // real commands: the holder creates it with `book window init`, records in
 // September and October, rolls into December, hands over the chain of
-// September to November; the requester asks each window pinned to its final
+// September to November (each with its boundary: a month window keeps a 7-day grace); the requester asks each window pinned to its final
 // checkpoint, seals one Result over the three answers with `report derive
 // --chain`, and `report coverage` and `report build` check the range.
 
@@ -44,12 +44,12 @@ func newWindowExchange(t *testing.T) *windowExchange {
 	require.NoError(t, json.Unmarshal([]byte(out), &created), out)
 	assert.Equal(t, evidencebook.WindowMonth, created.Period)
 	assert.Equal(t, "2026-09-01T00:00:00Z", created.Since)
-	assert.Equal(t, "window: month (calendar months, UTC), fixed for this store", created.Notice)
+	assert.Equal(t, "window: month (calendar months, UTC), closes 7 days after it ends, fixed for this store", created.Notice)
 
 	appendHalves(t, b, half{"x1", "r1", "p1"})
 	set(time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC))
 	appendHalves(t, b, half{"x2", "r2", "p2"})
-	set(time.Date(2026, 12, 2, 10, 0, 0, 0, time.UTC))
+	set(time.Date(2026, 12, 9, 10, 0, 0, 0, time.UTC))
 
 	x := &windowExchange{packExchange: &packExchange{evidenceExchange: &evidenceExchange{t: t, dir: t.TempDir(), b: b, bKeys: bKeys}}, set: set}
 	digest, err := documentDigest([]byte(cliPackDocument))
@@ -268,7 +268,10 @@ func TestAWindowedStoreIsCreatedOnceAndKeepsItsWindow(t *testing.T) {
 	assert.Contains(t, err.Error(), "not split by window")
 }
 
-func TestAWindowedStoreClosesOnlyItsCurrentWindow(t *testing.T) {
+// A month window keeps a 7-day grace (evidencebook#807): a Close over last
+// month is sealed in last month's book until the grace ends, and refused
+// after it.
+func TestAClosedOverLastMonthIsSealedInItsWindowDuringTheGrace(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	set := bookClock(t, time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC))
 	b, _ := bookProfile(t, "b")
@@ -276,15 +279,98 @@ func TestAWindowedStoreClosesOnlyItsCurrentWindow(t *testing.T) {
 	require.NoError(t, err)
 	appendHalves(t, b, half{"x1", "r1", "p1"})
 	set(time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC))
-	// A day inside September, the current window, closes.
+	// A day inside September, the current window, closes there.
 	out, err := invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "day", "--date", "2026-09-10")
 	require.NoError(t, err, out)
-	// August is before the store began, and September is not over: once it
-	// is, its records are in a closed window's book.
+	assert.Contains(t, out, `"window":"2026-09"`)
+
 	set(time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC))
-	_, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "month", "--date", "2026-09-01")
+	appendHalves(t, b, half{"x2", "r2", "p2"}) // into October
+	out, err = invoke(t, "", "book", "window", "list", "--profile", "b")
+	require.NoError(t, err, out)
+	var windows windowListResult
+	require.NoError(t, json.Unmarshal([]byte(out), &windows), out)
+	require.Len(t, windows.Windows, 2)
+	assert.True(t, windows.Windows[0].InGrace)
+	assert.Equal(t, time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC), windows.Windows[0].ClosesAt)
+	assert.Equal(t, time.Date(2026, 11, 8, 0, 0, 0, 0, time.UTC), windows.Windows[1].ClosesAt)
+
+	// September, in its grace, takes the Close over its month.
+	out, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "month", "--date", "2026-09-01")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, `"window":"2026-09"`)
+	var closed closeResult
+	require.NoError(t, json.Unmarshal([]byte(out), &closed), out)
+	shelf, err := windowedShelfForReading(t.Context(), b)
+	require.NoError(t, err)
+	held, err := shelf.Records(t.Context(), "b/2026-09")
+	require.NoError(t, err)
+	require.NoError(t, shelf.Release())
+	found := false
+	for _, r := range held.Records {
+		found = found || r.RecordID == closed.RecordID
+	}
+	assert.True(t, found, "the Close is in September's book")
+
+	// September has no final checkpoint yet, so no chain covers it.
+	_, err = invoke(t, "", "book", "window", "chain", "--profile", "b", "--from", "2026-09", "--to", "2026-09", "--out", filepath.Join(t.TempDir(), "chain.json"))
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, err.Error(), "window 2026-09 is in grace until 2026-10-08T00:00:00Z")
+
+	// A period across two windows, or before the store began, is refused.
+	_, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "month", "--date", "2026-08-01")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not inside the current window 2026-10")
+	assert.Contains(t, err.Error(), "nor inside an earlier window in its grace")
+
+	// After the grace September is closed: its Close is refused.
+	set(time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC))
+	_, err = invoke(t, "", "book", "window", "roll", "--profile", "b")
+	require.NoError(t, err)
+	_, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "day", "--date", "2026-09-11")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nor inside an earlier window in its grace")
+}
+
+func TestWindowInitFixesTheGrace(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC))
+	for _, c := range []struct {
+		period, grace, notice string
+		want                  time.Duration
+	}{
+		{"week", "", "window: week (ISO weeks from Monday, UTC), closes 1 day after it ends, fixed for this store", 24 * time.Hour},
+		{"day", "", "window: day (calendar days, UTC), closes when it ends, fixed for this store", 0},
+		{"quarter", "36h", "window: quarter (calendar quarters, UTC), closes 36 hours after it ends, fixed for this store", 36 * time.Hour},
+		{"month", "0", "window: month (calendar months, UTC), closes when it ends, fixed for this store", 0},
+	} {
+		p, _ := bookProfile(t, "p"+c.period)
+		args := []string{"book", "window", "init", "--profile", p.Name, "--period", c.period}
+		if c.grace != "" {
+			args = append(args, "--grace", c.grace)
+		}
+		out, err := invoke(t, "", args...)
+		require.NoError(t, err, out)
+		var created windowInitResult
+		require.NoError(t, json.Unmarshal([]byte(out), &created), out)
+		assert.Equal(t, c.notice, created.Notice, c.period)
+		policy, err := evidencebook.ReadShelfWindow(t.Context(), shelfFile(p))
+		require.NoError(t, err)
+		assert.Equal(t, c.want, policy.Grace, c.period)
+	}
+	for _, c := range []struct{ period, grace, want string }{
+		{"week", "7d", "shorter than"},
+		{"day", "1d", "shorter than"},
+		{"month", "soon", "whole days (7d) or a duration (36h)"},
+		{"month", "-1h", "whole days (7d) or a duration (36h)"},
+		{"none", "1d", "not --period none"},
+	} {
+		p, _ := bookProfile(t, "bad"+c.period+strings.TrimPrefix(c.grace, "-"))
+		_, err := invoke(t, "", "book", "window", "init", "--profile", p.Name, "--period", c.period, "--grace", c.grace)
+		require.ErrorIs(t, err, cli.ErrInput, c.grace)
+		assert.Contains(t, err.Error(), c.want)
+		_, statErr := os.Stat(shelfFile(p))
+		assert.ErrorIs(t, statErr, os.ErrNotExist, "nothing was created")
+	}
 }
 
 func TestARollQueuesEachFinalCheckpointForTheWitness(t *testing.T) {
@@ -304,17 +390,26 @@ func TestARollQueuesEachFinalCheckpointForTheWitness(t *testing.T) {
 	require.NoError(t, err)
 	service, err := cli.ServiceID(b)
 	require.NoError(t, err)
+	// September closed with its final checkpoint; October, in its grace,
+	// has its boundary checkpoint queued.
 	for _, label := range []string{"2026-09", "2026-10"} {
 		states, err := windowWitnessStore(b, label).load()
 		require.NoError(t, err)
 		require.Len(t, states, 1, label)
 		assert.Equal(t, service, states[0].WitnessID)
 	}
+	// Once October closes, its final checkpoint joins its boundary.
+	set(time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC))
+	_, err = invoke(t, "", "book", "window", "roll", "--profile", "b")
+	require.NoError(t, err)
+	states, err := windowWitnessStore(b, "2026-10").load()
+	require.NoError(t, err)
+	assert.Len(t, states, 2)
 	// The core's checkpoint of the current window keeps its own delivery.
 	out, err := invoke(t, "", "cll", "checkpoint", "create", "--profile", "b")
 	require.NoError(t, err, out)
 	assert.Contains(t, out, `"log_id":"b/2026-11"`)
-	states, err := windowWitnessStore(b, "2026-11").load()
+	states, err = windowWitnessStore(b, "2026-11").load()
 	require.NoError(t, err)
 	assert.Len(t, states, 1)
 }
@@ -383,7 +478,7 @@ func TestStoreInitSplitsANewStoreByMonth(t *testing.T) {
 	t.Cleanup(func() { noticeOut = os.Stderr })
 	_, err := invoke(t, "", "store", "init", "--profile", "b")
 	require.NoError(t, err)
-	assert.Equal(t, "capsulectl: window: month (calendar months, UTC), fixed for this store\n", notice.String())
+	assert.Equal(t, "capsulectl: window: month (calendar months, UTC), closes 7 days after it ends, fixed for this store\n", notice.String())
 	policy, err := evidencebook.ReadShelfWindow(t.Context(), shelfFile(b))
 	require.NoError(t, err)
 	assert.Equal(t, evidencebook.WindowMonth, policy.Period)

@@ -51,8 +51,9 @@ type WindowOpenStatement struct {
 	Label         string       `json:"label"`
 	Start         string       `json:"start"`
 	End           string       `json:"end"`
-	// Previous is the previous window's final tree; absent only in the
-	// shelf's first window (WindowPolicy.Since).
+	// Previous is the previous window's boundary tree when it had a grace
+	// (evidencebook#807), else its final tree; absent only in the shelf's
+	// first window (WindowPolicy.Since).
 	Previous *WindowTree `json:"previous,omitempty"`
 }
 

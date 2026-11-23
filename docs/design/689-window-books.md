@@ -358,7 +358,8 @@ ends).
 window; the notice and help state it ("window: month (calendar months, UTC), closes 7 days after
 it ends, fixed for this store"); `book window list` shows each window's close time; `book close`
 over a period inside a window in grace seals the Close in that window; `book window roll` and
-`publish` queue the boundary and final checkpoints for the witness (`witness/<label>.json`).
+`publish` queue the boundary and final checkpoints for the witness (`witness/<label>.json`);
+`close` names the window it sealed in.
 
 **Tests.** Policy: grace written, compared, refused when not shorter than the period, a version 3
 file without the column reads 0, version 4 for grace above 0. Roll: boundary then grace then
@@ -370,5 +371,9 @@ a backdated ordinary record after the boundary, an omitted tail leaf, a rewritte
 consistency proof fails), a boundary without receipts under witnesses, a malformed `index_root`;
 an honest chain with late Closes and index roots verifies; a v1 chain verifies. Respond and
 report: a pin on a window in grace; `ErrInGrace` from chain and derive. capsulectl: the notice and
-help, `book close` last month in grace and after it, acknowledgements in the current window,
-`book window list`, an old store opening with grace 0.
+help, `--grace` and its refusals (no store is left behind), `book close` last month in grace
+and after it, an ordinary record after a window ends landing in the current window, `book window
+list`, a chain refused over a window in grace, the boundary checkpoint queued for the witness.
+capsulectl-book has no verb that writes an acknowledgement or rebuttal; the root package's tests
+show a window in grace refusing every record but a Close inside it, so such records go to the
+current window.
