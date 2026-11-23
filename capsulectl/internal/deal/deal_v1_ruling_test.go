@@ -202,3 +202,61 @@ func TestAChallengeOfAHeldRuling(t *testing.T) {
 	// --out goes with a ruling only.
 	assert.Contains(t, v1Err(t, "receive", file, "--out", filepath.Join(t.TempDir(), "x.json")), "--out goes with a ruling")
 }
+
+// The whole flow: a dispute, a ruling entered in both books, and the
+// adjudicator's report of each party's entry from its copy; copies taken
+// before the ruling show nothing, since no witness timed it; a party takes
+// the other side's copy, ruling included.
+func TestRulingEntriesFromBothCopies(t *testing.T) {
+	h, adj := adjudicatedDeal(t)
+	h.buyer.act(t)
+	dispute := filepath.Join(t.TempDir(), "dispute.json")
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
+	buyerBefore := adjudicatorCopy(t, h.buyer, h.dealID)
+	sellerBefore := adjudicatorCopy(t, h.seller, h.dealID)
+
+	adj.act(t)
+	rulingFile := filepath.Join(t.TempDir(), "ruling.json")
+	ruled := dealRun(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "not_met", "--against", "seller", "--final",
+		"--dispute", dispute, "--copy", buyerBefore, "--copy", sellerBefore, "--out", rulingFile)
+	digest := ruled["ruling"].(string)
+	before := dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerBefore, "--copy", sellerBefore)
+	for _, e := range before["entries"].([]any) {
+		row := e.(map[string]any)
+		assert.Equal(t, "not shown to the adjudicator", row["words"], "%v", row)
+		assert.Contains(t, row["sent"], "(adjudicator's statement)")
+	}
+
+	for _, side := range []v1Side{h.buyer, h.seller} {
+		side.act(t)
+		dealRun(t, "receive", rulingFile)
+	}
+	buyerAfter := adjudicatorCopy(t, h.buyer, h.dealID)
+	sellerAfter := adjudicatorCopy(t, h.seller, h.dealID)
+	adj.act(t)
+	after := dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerAfter, "--copy", sellerAfter)
+	parties := map[string]string{}
+	for _, e := range after["entries"].([]any) {
+		row := e.(map[string]any)
+		parties[row["party"].(string)] = row["words"].(string)
+	}
+	assert.Equal(t, map[string]string{"buyer": "entered, not witnessed", "seller": "entered, not witnessed"}, parties)
+	assert.Contains(t, v1Err(t, "ruling", "entries", "--deal", h.dealID, "--ruling", strings.Repeat("a", 64), "--copy", buyerAfter), "holds no ruling")
+
+	// The buyer takes the seller's counterparty copy: the ruling it carries
+	// is the one the buyer holds.
+	h.seller.act(t)
+	cp := filepath.Join(t.TempDir(), "cp.json")
+	dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", cp)
+	h.buyer.act(t)
+	got := dealRun(t, "receive", cp)
+	found := false
+	for _, r := range got["records"].([]any) {
+		row := r.(map[string]any)
+		if row["ruling"] == digest {
+			found = true
+			assert.Equal(t, "already kept", row["record"], "%v", row)
+		}
+	}
+	assert.True(t, found, "the copy carries the ruling: %v", got)
+}

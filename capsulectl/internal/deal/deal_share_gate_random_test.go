@@ -44,6 +44,11 @@ func TestDealShareGateIgnoresRandomIdentifiers(t *testing.T) {
 		{"base64 (16 bytes)", func() string { return base64.StdEncoding.EncodeToString(random(16)) }},
 		{"base64url (32 bytes)", func() string { return base64.RawURLEncoding.EncodeToString(random(32)) }},
 		{"hex id, all digits (32)", func() string { return strings.Repeat("4111", 8) }},
+		// A log id as a book carries it: a path-like id whose last segment is
+		// 32 hex characters (a deal book "deal/…", an x-deal-v1 case book
+		// "case/…", evidencebook#615).
+		{"deal log id", func() string { return "deal/" + hex.EncodeToString(random(16)) }},
+		{"case log id", func() string { return "case/" + hex.EncodeToString(random(16)) }},
 		{"RFC 3339 time", func() string {
 			return time.Unix(1_700_000_000+r.Int64N(400_000_000), r.Int64N(1e9)).UTC().Format(time.RFC3339Nano)
 		}},
@@ -73,7 +78,7 @@ func TestDealShareGateIgnoresRandomIdentifiers(t *testing.T) {
 		"card 5555555555554444.", "(378282246310005)",
 		"pan=4111111111111111", "?card_number=4111111111111111", "VISA-4111-1111-1111-1111",
 		"ref-4111111111111111", "pan_4111111111111111", "PAN4111111111111111", "4111111111111111x",
-		"card:4111111111111111", "4111111111111111=", "/4111111111111111/",
+		"card:4111111111111111", "4111111111111111=", "/4111111111111111/", "deal/4111111111111111",
 		"\uff14\uff11\uff11\uff11\uff11\uff11\uff11\uff11\uff11\uff11\uff11\uff11\uff11\uff11\uff11\uff11",
 		"4111\u200b1111\u200b1111\u200b1111",
 		// followed or preceded by a code or a date

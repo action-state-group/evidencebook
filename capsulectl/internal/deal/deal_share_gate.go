@@ -929,7 +929,8 @@ func gateInDigest(page []byte, start, end int) bool {
 // one is not a card number:
 //   - inside one [0-9a-z+/] span with letters on BOTH sides of it (a hex or
 //     base64 value: "c0f8…1766058009643e074");
-//   - inside a span that is a hex id of 32 or more characters;
+//   - inside a hex id of 32 or more characters, alone or as the last
+//     segment of a path-like id ("deal/<32 hex>", "case/<32 hex>");
 //   - inside a UUID (8-4-4-4-12 hex).
 //
 // '=', '_', ':' and a '-' after a word end a span, so a card number joined
@@ -980,8 +981,16 @@ func gateCardRun(page []byte, start, end int) (int, int, bool) {
 		if before && after {
 			return start, end, false
 		}
-		allHex := e-s >= 32
-		for i := s; i < e && allHex; i++ {
+		// A hex id of 32 or more characters, on its own or as the last
+		// segment of a path-like id ("deal/3aab…0918", "case/…").
+		hs := s
+		for i := s; i < start; i++ {
+			if page[i] == '/' {
+				hs = i + 1
+			}
+		}
+		allHex := e-hs >= 32
+		for i := hs; i < e && allHex; i++ {
 			allHex = hex(page[i])
 		}
 		if allHex {

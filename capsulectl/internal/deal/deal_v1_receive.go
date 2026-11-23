@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -22,7 +25,9 @@ func dealReceiveCommand() *cobra.Command {
 		Long: `Take a file the other side sent and keep it in your deal store. FILE holds one
 of: an offer, a decline or a cancellation (what 'deal offer' wrote), a deal-book
 record such as an agreement, or a push {record, stamp_proof} (what 'deal agree'
-writes for the acceptor), or a stamp proof alone. Each record is checked on its
+writes for the acceptor), or a stamp proof alone, or the other side's copy
+(deal report --share counterparty --bundle), whose records for the rows,
+rulings included, are each taken in turn. Each record is checked on its
 own before it is kept, and a stamp proof against the records you hold.
 
 It says in plain words what it did: which records are kept, whether one is
@@ -45,6 +50,21 @@ Needs the deal store in the new layout (deal set-version x-deal-v1 --migrate).`,
 			var members map[string]json.RawMessage
 			if err := json.Unmarshal(raw, &members); err != nil {
 				return cli.InputError("the file is not a JSON object: " + err.Error())
+			}
+			if members["bundle_version"] != nil && members["extensions"] != nil {
+				// A copy (deal report --share ... --bundle): take the
+				// records it carries for the rows, rulings included, so a
+				// ruling the other side received reaches you too (PROFILE §5).
+				v1ReceiveContext(c)
+				return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
+					if _, err := s.requireMigrated(ctx); err != nil {
+						return err
+					}
+					if err := s.ensureV1Tables(ctx); err != nil {
+						return err
+					}
+					return s.receiveCopy(ctx, c, raw)
+				})
 			}
 			_, hasProof := members["stamp_proof"]
 			_, hasRecord := members["record"]
@@ -410,4 +430,73 @@ func (s *dealSession) ensureOfferedRow(ctx context.Context, d *v1Deal) error {
 	}
 	d.Side, d.Role, d.OfferDigest = xdealv1.SideOfferer, prop.Role, digest
 	return nil
+}
+
+// receiveCopy takes the records a copy's x-deal-v1 extension carries: the
+// agreement and every record its rows rely on, each a book pair, in their
+// books' order, each through the same receive as a single file. A ruling
+// among them reaches this holder as the other side received it, so a judge
+// that gave each side another ruling shows as a fork (PROFILE.md §5).
+func (s *dealSession) receiveCopy(ctx context.Context, c *cobra.Command, raw []byte) error {
+	vb, err := evidencebook.VerifyBundle(raw)
+	if err != nil {
+		return cli.InputError("the copy does not verify: " + err.Error())
+	}
+	ext := vb.Extensions[xdealv1.Profile]
+	var x xdealv1.ReportBundle
+	if ext == nil || json.Unmarshal(ext, &x) != nil {
+		return cli.InputError("the bundle is not an x-deal-v1 copy (deal report --share counterparty --bundle)")
+	}
+	type held struct {
+		pair []byte
+		read xdealv1.BookRead
+	}
+	pairs := []held{}
+	for _, raw := range append([]json.RawMessage{x.Book.Agreement}, mapValues(x.Book.ReliedOn)...) {
+		read, err := xdealv1.VerifyBook(raw)
+		if err != nil {
+			return cli.InputError("a record of the copy does not verify: " + err.Error())
+		}
+		pairs = append(pairs, held{pair: raw, read: read})
+	}
+	slices.SortFunc(pairs, func(a, b held) int {
+		if c := strings.Compare(a.read.LogID, b.read.LogID); c != 0 {
+			return c
+		}
+		return int(a.read.Seq) - int(b.read.Seq)
+	})
+	var out []map[string]any
+	for _, h := range pairs {
+		row := map[string]any{"record_type": h.read.Record.Block.RecordType, "seq": h.read.Seq}
+		res, rerr := receiveFromStore(ctx, s.shelf, h.pair, nil)
+		switch {
+		case rerr != nil:
+			row["refused"] = rerr.Error()
+		case res.Record != nil:
+			row["record"] = recordWords(res.Record)
+			info := &receivedInfo{kind: h.read.Record.Block.RecordType, dealID: h.read.Record.Block.DealID, book: &h.read}
+			if res.Record.Stored || res.Record.Duplicate {
+				if err := s.noteReceived(ctx, info); err != nil {
+					return err
+				}
+			}
+		}
+		if h.read.Record.Block.RecordType == xdealv1.TypeRuling {
+			if d, err := xdealv1.Digest(h.read.Record); err == nil {
+				row["ruling"] = d
+			}
+		}
+		out = append(out, row)
+	}
+	return cli.Output(c, map[string]any{"records": out})
+}
+
+// mapValues are m's values in key order.
+func mapValues(m map[string]json.RawMessage) []json.RawMessage {
+	keys := slices.Sorted(maps.Keys(m))
+	out := make([]json.RawMessage, len(keys))
+	for i, k := range keys {
+		out[i] = m[k]
+	}
+	return out
 }
