@@ -286,28 +286,30 @@ func TestACardCheckoutsSharedCopyIsWritten(t *testing.T) {
 	raw, err := os.ReadFile(bundle)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "https://kettle.example", "the reference travels whole")
-	assert.ElementsMatch(t, []string{"K-12", "https://kettle.example"}, copyPaymentRefs(raw), "the reference and origin come from the copy's own legs")
+	assert.NotContains(t, string(scrubPaymentRefs(raw)), "https://kettle.example", "the gate scans the copy with the reference blanked")
 }
 
-// The allowance takes out only the exact origin: any other form of the
-// merchant's details (the bare domain, an email) still refuses the copy, for
-// either audience, and a copy with no merchant order leg gets no allowance
-// (#772 review).
-func TestTheOriginAllowanceHidesNothingElse(t *testing.T) {
-	events := []sealedEvent{{Event: dealEvent{Kind: "open", Open: &dealOpen{Who: dealWho{Name: "Kettle Shop", Domain: "kettle.example", Email: "shop@kettle.example"}}}}}
-	leg := `{"payment_ref":{"type":"x-deal-v1.merchant_order","value":"K-12","origin":"https://kettle.example"}}`
+// The gate scans the copy with each payment_ref's value and origin blanked
+// by structure: the leg's own reference passes, and nothing else is hidden.
+// A short reference does not hide a phone that contains it, any other form
+// of the merchant's details still refuses, for either audience, an origin
+// outside a payment_ref is not blanked, and a card-number value is left for
+// the gate to refuse (#772 review).
+func TestTheGateScansTheCopyWithReferencesBlanked(t *testing.T) {
+	events := []sealedEvent{{Event: dealEvent{Kind: "open", Open: &dealOpen{Who: dealWho{Name: "Kettle Shop", Domain: "kettle.example", Email: "shop@kettle.example", Phone: "512 555 1234"}}}}}
+	gate := func(copy, audience string) error {
+		return dealShareGate(scrubPaymentRefs([]byte(copy)), events, audience)
+	}
+	leg := `{"payment_ref":{"type":"x-deal-v1.merchant_order","value":"1234","origin":"https://kettle.example"}}`
 	for _, audience := range []string{"counterparty", "adjudicator"} {
-		origins := copyPaymentRefs([]byte(leg))
-		require.ElementsMatch(t, []string{"K-12", "https://kettle.example"}, origins)
-		assert.NoError(t, dealShareGate([]byte(leg), events, audience, origins...), audience)
-		for _, more := range []string{`"note":"see kettle.example"`, `"note":"mail shop@kettle.example"`, `"note":"Kettle Shop"`} {
-			copy := `{"leg":` + leg + `,` + more + `}`
-			assert.ErrorContains(t, dealShareGate([]byte(copy), events, audience, copyPaymentRefs([]byte(copy))...), "private value", "%s: %s", audience, more)
+		assert.NoError(t, gate(leg, audience), audience)
+		for _, more := range []string{`"note":"call 512 555 1234"`, `"note":"see kettle.example"`, `"note":"mail shop@kettle.example"`, `"note":"Kettle Shop"`} {
+			assert.ErrorContains(t, gate(`{"leg":`+leg+`,`+more+`}`, audience), "private value", "%s: %s", audience, more)
 		}
 	}
-	noLeg := `{"note":"https://kettle.example"}`
-	assert.Empty(t, copyPaymentRefs([]byte(noLeg)), "an origin outside a merchant order reference is not allowed")
-	assert.ErrorContains(t, dealShareGate([]byte(noLeg), events, "counterparty", copyPaymentRefs([]byte(noLeg))...), "private value")
-	assert.Empty(t, copyPaymentRefs([]byte(`{"payment_ref":{"type":"x-deal-v1.merchant_order","origin":"https://Kettle.Example/x"}}`)), "only an origin in normal form")
-	assert.Empty(t, copyPaymentRefs([]byte(`{"payment_ref":{"type":"acp.order_id","value":"4111 1111 1111 1111"}}`)), "never a card number")
+	assert.ErrorContains(t, gate(`{"note":"https://kettle.example"}`, "counterparty"), "private value", "an origin outside a payment_ref is not blanked")
+	assert.ErrorContains(t, gate(`{"payment_ref":{"type":"acp.order_id","value":"4111 1111 1111 1111"}}`, "counterparty"), "card number", "a card-number reference is refused")
+	unchanged := []byte(`{"amount": 12345678901234567890, "note": "<b>"}`)
+	assert.Equal(t, unchanged, scrubPaymentRefs(unchanged), "a copy with no payment_ref is scanned as it is")
+	assert.Equal(t, []byte("not json"), scrubPaymentRefs([]byte("not json")))
 }

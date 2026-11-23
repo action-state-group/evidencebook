@@ -1,6 +1,7 @@
 package deal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -204,34 +205,33 @@ func (s *dealSession) v1PaymentRowNotes(ctx context.Context, d *v1Deal, rows []s
 	return out, nil
 }
 
-// copyPaymentRefs are the payment reference values a copy's legs carry, and
-// the checkout origins of its merchant order references (in normal form):
-// each payment_ref object anywhere in the copy's JSON. A leg is sealed and
-// sent whole, so its reference cannot be withheld from a shared copy, and a
-// reference is never card data (deal check and deal settle refuse it); the
-// share gate allows them (evidencebook#771). Only references of legs in the
-// copy count.
-func copyPaymentRefs(data []byte) []string {
+// scrubPaymentRefs is the copy the share gate scans: data with the value and
+// the origin of every payment_ref object blanked, by structure (evidencebook
+// #771). A leg is sealed and sent whole, so its reference cannot be withheld
+// from a shared copy; blanking it in the scanned text removes exactly the
+// leg's own reference and nothing else, where cutting the value out as text
+// would also cut it out of a private value elsewhere ("1234" out of a phone).
+// A value that is a card number is left for the gate's own check to refuse.
+// Data that is not JSON, or holds no payment_ref, is returned as it is;
+// numbers keep their text and nothing is HTML-escaped.
+func scrubPaymentRefs(data []byte) []byte {
 	var v any
-	if json.Unmarshal(data, &v) != nil {
-		return nil
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if dec.Decode(&v) != nil {
+		return data
 	}
-	seen := map[string]bool{}
-	var out []string
+	changed := false
 	var walk func(any)
 	walk = func(x any) {
 		switch t := x.(type) {
 		case map[string]any:
 			if ref, ok := t["payment_ref"].(map[string]any); ok {
-				if v, ok := ref["value"].(string); ok && strings.TrimSpace(v) != "" && !cardLike(v) && !seen[v] {
-					seen[v] = true
-					out = append(out, v)
+				if s, ok := ref["value"].(string); ok && !cardLike(s) {
+					ref["value"], changed = "", true
 				}
-				if o, ok := ref["origin"].(string); ok && ref["type"] == merchantOrderType && !seen[o] {
-					if n, err := normalOrigin(o); err == nil && n == o {
-						seen[o] = true
-						out = append(out, o)
-					}
+				if _, ok := ref["origin"].(string); ok {
+					ref["origin"], changed = "", true
 				}
 			}
 			for _, v := range t {
@@ -244,5 +244,14 @@ func copyPaymentRefs(data []byte) []string {
 		}
 	}
 	walk(v)
-	return out
+	if !changed {
+		return data
+	}
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(v) != nil {
+		return data
+	}
+	return bytes.TrimRight(out.Bytes(), "\n")
 }

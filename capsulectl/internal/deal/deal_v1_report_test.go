@@ -188,7 +188,7 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", ""), "cannot be empty")
 	assert.Len(t, disclosures(), 2, "an existing or empty --out records nothing")
 
-	v1ShareGate = func([]byte, []sealedEvent, string, ...string) error {
+	v1ShareGate = func([]byte, []sealedEvent, string) error {
 		return cli.InputError("the copy would spell out a private value")
 	}
 	t.Cleanup(func() { v1ShareGate = dealShareGate })
@@ -213,7 +213,7 @@ func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
 	var gotEvents []sealedEvent
 	var gotAudience string
 	var gotBytes []byte
-	v1ShareGate = func(data []byte, events []sealedEvent, audience string, _ ...string) error {
+	v1ShareGate = func(data []byte, events []sealedEvent, audience string) error {
 		gotEvents, gotAudience, gotBytes = events, audience, data
 		return dealShareGate(data, events, audience)
 	}
@@ -226,7 +226,7 @@ func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
 	assert.Equal(t, "Kettle Shop", gotEvents[0].Event.Open.Who.Name)
 	written, err := os.ReadFile(file)
 	require.NoError(t, err)
-	assert.Equal(t, written, gotBytes, "the gate read the exact bytes written")
+	assert.Equal(t, scrubPaymentRefs(written), gotBytes, "the gate read the bytes written, payment references blanked")
 }
 
 // An adjudicator's copy goes only to a deal whose agreement chose one.
