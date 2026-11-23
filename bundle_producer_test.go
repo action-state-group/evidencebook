@@ -3,12 +3,14 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -548,5 +550,17 @@ func TestBundleWithItsDisclosureRecordedElsewhereWritesNothing(t *testing.T) {
 	}
 	if _, err := book.Bundle(ctx, BundleRequest{Root: records[1].RecordID, DisclosureRecordedElsewhere: true}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("no anchor: %v, want ErrInvalid", err)
+	}
+	// It is exactly the record the book appends without the flag.
+	appended, err := book.Bundle(ctx, BundleRequest{Root: records[1].RecordID, At: &anchor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appended.DisclosureEntry != nil {
+		t.Fatal("a bundle that records its disclosure hands back no entry")
+	}
+	h := appended.Disclosure.Header
+	if h.EpistemicType != entry.EpistemicType || entry.EpistemicType != ProducerClaim || !bytes.Equal(h.Statement, entry.Statement) || !reflect.DeepEqual(h.Links, entry.Links) {
+		t.Fatalf("appended %+v, entry %+v", h, entry)
 	}
 }

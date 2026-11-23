@@ -130,7 +130,11 @@ type Bundle struct {
 	// it where it records the disclosure, such as the current window's book
 	// for a bundle of an earlier window in its grace (evidencebook#807). Its
 	// statement names the bundle's digest and its anchor; it cites every
-	// record the bundle discloses. Nil otherwise.
+	// record the bundle discloses. The cited records and the anchor are this
+	// book's, so a bundle of the other book that walks into the entry
+	// declares them missing (records_mode declared_incomplete). The book
+	// it goes in must take an ordinary record: a window in its grace, or
+	// one that has ended, refuses it with ErrWindowClosed. Nil otherwise.
 	DisclosureEntry *Entry
 }
 
