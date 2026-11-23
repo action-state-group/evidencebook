@@ -260,3 +260,28 @@ func TestARecheckHoldsForAPaymentRecordedAfterPaying(t *testing.T) {
 	dealRun(t, "settle", "--deal", h.dealID, "--check", a, "--status", "failed", "--out", filepath.Join(t.TempDir(), "a.json"))
 	dealRun(t, append([]string{"settle", "--deal", h.dealID, "--check", b, "--sent"}, sent...)...)
 }
+
+// A card checkout's shared copy is written: the merchant order reference's
+// origin is the merchant's own identity, in a leg that travels whole, and
+// the share gate allows it even though the opening names the same domain
+// (the B6 hand run on #759 found the copy refused).
+func TestACardCheckoutsSharedCopyIsWritten(t *testing.T) {
+	dealID := noLayerAgreed(t)
+	check := merchantPayCheck(t, dealID, `,"payment_ref_after_payment":true`)
+	dealRun(t, "settle", "--deal", dealID, "--check", check, "--sent", "--payment-ref-type", merchantOrderType, "--payment-ref-origin", "https://kettle.example")
+	dealRun(t, "settle", "--deal", dealID, "--check", check, "--status", "settled", "--payment-ref", "K-12", "--out", filepath.Join(t.TempDir(), "paid.json"))
+	tickCovering(t)
+	bundle := filepath.Join(t.TempDir(), "shared.json")
+	out := dealRun(t, "report", "--deal", dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", bundle)
+	assert.Equal(t, bundle, out["bundle"], "%v", out)
+	raw, err := os.ReadFile(bundle)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "https://kettle.example", "the reference travels whole")
+	withSession(t, func(s *dealSession) {
+		d, err := s.v1DealOf(t.Context(), dealID)
+		require.NoError(t, err)
+		origins, err := s.v1MerchantOrigins(t.Context(), d)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"https://kettle.example"}, origins)
+	})
+}

@@ -203,3 +203,59 @@ func (s *dealSession) v1PaymentRowNotes(ctx context.Context, d *v1Deal, rows []s
 	}
 	return out, nil
 }
+
+// v1MerchantOrigins are the checkout origins of the merchant order references
+// the deal's own legs carry (the payer's sends and the own book's settle
+// legs), each in normal form: the merchant's own identity, which a shared
+// copy carries in a leg sealed whole.
+func (s *dealSession) v1MerchantOrigins(ctx context.Context, d *v1Deal) ([]string, error) {
+	seen := map[string]bool{}
+	var out []string
+	add := func(raw []byte) {
+		var ref struct {
+			Type   string `json:"type"`
+			Origin string `json:"origin"`
+		}
+		if json.Unmarshal(raw, &ref) == nil && ref.Type == merchantOrderType && ref.Origin != "" && !seen[ref.Origin] {
+			seen[ref.Origin] = true
+			out = append(out, ref.Origin)
+		}
+	}
+	q, err := s.db.QueryContext(ctx, `SELECT ref_json FROM deal_v1_sends WHERE deal_id=?`, d.DealID)
+	if err != nil && !strings.Contains(err.Error(), "no such table") {
+		return nil, err
+	}
+	if err == nil {
+		defer q.Close()
+		for q.Next() {
+			var refJSON string
+			if err := q.Scan(&refJSON); err != nil {
+				return nil, err
+			}
+			add([]byte(refJSON))
+		}
+		if err := q.Err(); err != nil {
+			return nil, err
+		}
+	}
+	book, err := s.ownBookV1(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	for i, r := range book {
+		if _, ok := settleOf(r); !ok {
+			continue
+		}
+		raw, err := s.ownSettleMember(ctx, d, i+1)
+		if err != nil {
+			return nil, err
+		}
+		var m struct {
+			PaymentRef json.RawMessage `json:"payment_ref"`
+		}
+		if json.Unmarshal(raw, &m) == nil {
+			add(m.PaymentRef)
+		}
+	}
+	return out, nil
+}

@@ -337,8 +337,8 @@ func dealOwnIDs(events []sealedEvent) []string {
 // dealShareGate is the last check before a shared copy is written or a share
 // is put on record: the share gate, then the spending-limit gate for the
 // counterparty.
-func dealShareGate(data []byte, events []sealedEvent, audience string) error {
-	allowed := append(dealShareableIDs(events, audience), dealOwnIDs(events)...)
+func dealShareGate(data []byte, events []sealedEvent, audience string, extra ...string) error {
+	allowed := append(append(dealShareableIDs(events, audience), dealOwnIDs(events)...), extra...)
 	if err := dealPageGate(data, events, allowed...); err != nil {
 		return err
 	}

@@ -246,7 +246,14 @@ func runV1Report(c *cobra.Command) (err error) {
 			if err != nil {
 				return err
 			}
-			if err := v1ShareGate(file, events, share); err != nil {
+			// A card checkout's merchant order reference carries the
+			// merchant's origin in a leg that travels whole: the merchant's
+			// own identity, allowed in the copy (evidencebook#771).
+			origins, err := s.v1MerchantOrigins(ctx, d)
+			if err != nil {
+				return err
+			}
+			if err := v1ShareGate(file, events, share, origins...); err != nil {
 				return err
 			}
 			record = func() error {
@@ -409,7 +416,8 @@ func syncDir(dir string) error {
 // v1SyncDir is syncDir, a seam for tests.
 var v1SyncDir = syncDir
 
-// v1ShareGate is dealShareGate, a seam for tests.
+// v1ShareGate is dealShareGate, a seam for tests: extra are values the copy
+// may carry (the merchant order origins).
 var v1ShareGate = dealShareGate
 
 // recordV1Share puts a shared copy of an x-deal-v1 report on record before

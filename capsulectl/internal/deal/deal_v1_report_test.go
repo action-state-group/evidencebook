@@ -188,7 +188,7 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", ""), "cannot be empty")
 	assert.Len(t, disclosures(), 2, "an existing or empty --out records nothing")
 
-	v1ShareGate = func([]byte, []sealedEvent, string) error {
+	v1ShareGate = func([]byte, []sealedEvent, string, ...string) error {
 		return cli.InputError("the copy would spell out a private value")
 	}
 	t.Cleanup(func() { v1ShareGate = dealShareGate })
@@ -213,7 +213,7 @@ func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
 	var gotEvents []sealedEvent
 	var gotAudience string
 	var gotBytes []byte
-	v1ShareGate = func(data []byte, events []sealedEvent, audience string) error {
+	v1ShareGate = func(data []byte, events []sealedEvent, audience string, _ ...string) error {
 		gotEvents, gotAudience, gotBytes = events, audience, data
 		return dealShareGate(data, events, audience)
 	}
