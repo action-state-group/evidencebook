@@ -21,7 +21,7 @@ import (
 // dealCheckpointCommands groups the deal log's checkpoint reads.
 func dealCheckpointCommands() *cobra.Command {
 	group := &cobra.Command{Use: "checkpoint", Short: "Read a deal log's checkpoints (read-only)"}
-	group.AddCommand(dealCheckpointStatusCommand())
+	group.AddCommand(dealCheckpointStatusCommand(), dealCheckpointProofCommand())
 	return group
 }
 

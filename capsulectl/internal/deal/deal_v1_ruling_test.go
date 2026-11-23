@@ -238,9 +238,15 @@ func TestRulingEntriesFromBothCopies(t *testing.T) {
 		dealRun(t, "receive", rulingFile)
 	}
 	buyerAfter := adjudicatorCopy(t, h.buyer, h.dealID)
+	buyerProof := filepath.Join(t.TempDir(), "buyer-proof.json")
+	proofOut := dealRun(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", buyerAfter, "--out", buyerProof)
+	assert.Equal(t, float64(0), proofOut["witness_receipts"], "no witness is configured in these tests")
+	again := dealRun(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", buyerAfter, "--out", buyerProof)
+	assert.Equal(t, buyerProof, again["file"], "the same file again is a re-run")
 	sellerAfter := adjudicatorCopy(t, h.seller, h.dealID)
+	assert.Contains(t, v1Err(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", buyerAfter, "--out", filepath.Join(t.TempDir(), "x.json")), "not of your deal book")
 	adj.act(t)
-	after := dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerAfter, "--copy", sellerAfter)
+	after := dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerAfter, "--copy", sellerAfter, "--proof", buyerProof)
 	parties := map[string]string{}
 	for _, e := range after["entries"].([]any) {
 		row := e.(map[string]any)
