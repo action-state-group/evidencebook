@@ -114,14 +114,14 @@ func (s *dealSession) checkpointProof(ctx context.Context, c *cobra.Command, dea
 		if err != nil {
 			return err
 		}
-		if tick.CheckpointSize == 0 {
-			continue // not a finished stamp: an interrupted tick
+		if tick.CheckpointSize == 0 || tick.Leaves.Stamp == nil {
+			continue // not a finished stamp: an interrupted tick, or one from before the shelf's stamps
 		}
 		// The adjudicator's audience: the fact's link opening, never its
 		// status opening (OpeningsFor).
 		p, err := cad.StampProof(ctx, d.OwnAgreementID, n, evidencebook.AudienceAdjudicator)
 		if errors.Is(err, evidencebook.ErrNotFound) {
-			continue
+			break // the book has no fact at this stamp, nor at any older one
 		}
 		if err != nil {
 			return err
@@ -129,6 +129,9 @@ func (s *dealSession) checkpointProof(ctx context.Context, c *cobra.Command, dea
 		v, err := evidencebook.VerifyStampProof(p)
 		if err != nil {
 			return err
+		}
+		if v.BookCheckpoint.TreeSize < vb.Anchor.MMRSize {
+			break // older stamps cover only older checkpoints of the book
 		}
 		if v.BookCheckpoint.Root != vb.Anchor.Root || v.BookCheckpoint.TreeSize != vb.Anchor.MMRSize {
 			continue
@@ -156,7 +159,7 @@ func (s *dealSession) checkpointProof(ctx context.Context, c *cobra.Command, dea
 	if err := cli.AtomicFile(out, data, isProofFile(out)); err != nil {
 		if prev, rerr := os.ReadFile(out); rerr == nil && bytes.Equal(prev, data) {
 			// The same file again is a re-run.
-		} else if rerr == nil {
+		} else if rerr == nil && !isProofFile(out) {
 			return cli.InputError("--out " + out + " exists and is not a proof file: choose another --out")
 		} else {
 			return err

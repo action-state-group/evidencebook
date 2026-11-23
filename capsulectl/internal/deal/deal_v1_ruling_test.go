@@ -397,16 +397,29 @@ func TestRulingEntriesByAWitnessedTime(t *testing.T) {
 	assert.Equal(t, float64(0), before["named_witness_receipts"])
 	assert.Contains(t, before["note"], "the file changes nothing")
 	witnessLastStamp(t, endpoint, key, cli.DealClock().UTC().Truncate(time.Second))
-	// A later stamp of the unchanged book that no witness registered, and an
-	// interrupted tick after it: the proof is still the registered stamp's.
+	// A later stamp of the unchanged book that no witness registered, then a
+	// tick with no stamp batch and an interrupted tick: the proof is still the
+	// registered stamp's.
 	clockAt(t, cli.DealClock().Add(72*time.Hour))
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	withSession(t, func(s *dealSession) {
-		var last int64
+		var last, size int64
 		var leaves string
-		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT tick, leaves FROM cadence_ticks ORDER BY tick DESC LIMIT 1`).Scan(&last, &leaves))
-		_, err := s.db.ExecContext(t.Context(), `INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', ?)`,
-			last+1, cli.DealClock().UTC().Format(time.RFC3339), cli.DealClock().UTC().Add(time.Hour).Format(time.RFC3339), leaves)
+		var statement []byte
+		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT tick, leaves, checkpoint_size, checkpoint FROM cadence_ticks ORDER BY tick DESC LIMIT 1`).Scan(&last, &leaves, &size, &statement))
+		at, due := cli.DealClock().UTC().Format(time.RFC3339), cli.DealClock().UTC().Add(time.Hour).Format(time.RFC3339)
+		// A finished tick with no stamp batch, as a shelf's ticks from before
+		// its stamps are, then an interrupted tick.
+		var unstamped map[string]any
+		require.NoError(t, json.Unmarshal([]byte(leaves), &unstamped))
+		delete(unstamped, "stamp")
+		raw, err := json.Marshal(unstamped)
+		require.NoError(t, err)
+		_, err = s.db.ExecContext(t.Context(), `INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, ?, ?, ?)`,
+			last+1, at, due, size, statement, string(raw))
+		require.NoError(t, err)
+		_, err = s.db.ExecContext(t.Context(), `INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', ?)`,
+			last+2, at, due, leaves)
 		require.NoError(t, err)
 	})
 	// The run replaces its own earlier proof file.
