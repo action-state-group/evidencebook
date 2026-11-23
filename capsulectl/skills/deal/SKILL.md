@@ -257,6 +257,11 @@ A retail checkout is almost always the second shape.
       NAME --bundle FILE`. It is put on record before the file is written. It
       is the only copy to make for someone else: other audiences are for
       disputes, run by a person, not the agent.
+    - `deal report --bundle` (with `--share` too) refuses a copy whose
+      report does not verify. To check a deal copy, run `capsulectl deal
+      verify --bundle FILE`: the core's generic verbs (`capsulectl
+      presentation list`, `presentation build`, `bundle --html`) read no
+      deal section, so they can build a page for a copy whose deal fails.
 
 #### The user picked from options
 

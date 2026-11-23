@@ -1610,7 +1610,9 @@ func shareLifecycle(l dealLifecycle) map[string]interface{} {
 }
 
 // dealVerifyCommand is the one command a stranger runs to check the file
-// offline, with nothing but the file and capsulectl.
+// offline, with nothing but the file and capsulectl with its deal plugin: the
+// core's verify reads no deal format since capsule-cli#609, so a deal copy is
+// checked by the plugin's verb (evidencebook#735).
 func dealVerifyCommand(htmlPath string) string {
 	name := "receipt.html" // the name the email attaches it under
 	if htmlPath != "" {
@@ -1619,7 +1621,7 @@ func dealVerifyCommand(htmlPath string) string {
 	if !regexp.MustCompile(`^[A-Za-z0-9._-]+$`).MatchString(name) {
 		name = "'" + strings.ReplaceAll(name, "'", `'\''`) + "'"
 	}
-	return "capsulectl verify --bundle " + name
+	return "capsulectl deal verify --bundle " + name
 }
 
 // recordShare seals the disclose act before the shared copy is written:

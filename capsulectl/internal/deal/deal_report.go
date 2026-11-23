@@ -231,7 +231,7 @@ func (s *dealSession) dealAssembleAtCheckpoint(ctx context.Context, events []sea
 	}
 	// A witness receipt already held for this checkpoint, re-verified now
 	// under the profile's pinned witness key, rides in checkpoint.witnesses,
-	// where `capsulectl verify --bundle --witness-directory` checks it. The
+	// where `capsulectl deal verify --bundle --witness-directory` checks it. The
 	// report itself never contacts the witness. It carries nothing private,
 	// so a shared copy keeps it too.
 	entry, err := s.heldWitnessReceipt(ctx, statement)

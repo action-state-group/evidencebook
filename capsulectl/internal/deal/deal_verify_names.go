@@ -34,7 +34,8 @@ import (
 // witnessed cadence checkpoint: the leaf's salt and position, the tree path
 // (always dealCadenceDepth hashes, so it says nothing about other deals),
 // the cadence entry's inclusion proof, the cadence checkpoint and the
-// witness receipt. `capsulectl verify --bundle` checks every link.
+// witness receipt. `capsulectl deal verify --bundle` checks every link
+// (rc47's core did; the plugin's reader does now).
 
 const (
 	// dealCadenceDepth fixes every path at 16 hashes: up to 65535 deals.

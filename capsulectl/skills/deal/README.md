@@ -125,7 +125,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal sale unpost --sale ID --platform SITE` | Records that the sale's live listing on SITE was taken down: a sealed `sale_unpost` on the sale's log (platform only, referring to the post it takes down). Needs no check or approval; refused for a site with no live listing, and after the sale's close. A later `post` on the site makes it live again. Run it only once the listing is down (or the user has confirmed it is): it records that, and nothing checks it. The site no longer counts toward a thread's `listing_classes`; with no live listing left the value is absent. |
 | `deal sale close --sale ID` | Ends the sale: no buyer's thread opens on it after this, while a thread already open goes on and closes on its own. It first seals the opening of any thread a crash left without one, then the sale's `sale_close`, and prints that the sale "stops taking new buyers" and how many negotiations are still open. It refuses while any listing is live, naming each site: take each down and `deal sale unpost` it first (close never seals a takedown itself). A sold thread's close (`deal close`) then leaves the sale open and lists `sale_open_listings`. `deal open --sale` refuses a new buyer on a sale whose item is sold, open or not. `deal sale bundle` still writes the sale's copy afterwards. A closed sale stops being re-checkpointed once a witnessed tick covers it. |
 | `deal report [--html FILE]` | The three-part report: what you asked, what the agent did, anomalies on either side. `--html` writes it as one local page that checks itself. In a typed deal (`--records typed`) it adds an Authority block for each action: every layer it relied on, in order, with its time (your request, the rules check's DO or ASK with its reasons, your own approval, a platform's own approval as observed, and what was done), never collapsed into "you approved". The block is in your own copy (the page and the email), not in a shared one. |
-| `deal report --email FILE [--bundle FILE]` | Writes the receipt as a ready-to-send email (.eml, no sender or recipient) for the agent host's own email tool: a plain and a static HTML body that read on a phone, with `receipt.html` and `bundle.json` attached. `--bundle` writes the Evidence Bundle for `capsulectl verify --bundle`. Nothing is sent by capsulectl. |
+| `deal report --email FILE [--bundle FILE]` | Writes the receipt as a ready-to-send email (.eml, no sender or recipient) for the agent host's own email tool: a plain and a static HTML body that read on a phone, with `receipt.html` and `bundle.json` attached. `--bundle` writes the Evidence Bundle for `capsulectl deal verify --bundle`. Nothing is sent by capsulectl. |
 | `deal countersign --bundle FILE --directory DIR [--entry FILE]` | Verifies (and with `--entry`, attaches) a countersignature you already hold over this deal's report bundle, and names its rung; a self-countersignature is shown as NOT INDEPENDENT. Sends nothing. See [COUNTERSIGN.md](COUNTERSIGN.md). |
 | `deal report --from-bundle FILE --directory DIR` | Renders the receipt from that same bundle file, so a countersignature covers what it shows. Every receipt names its countersign rung; without one it says "Not countersigned". |
 | `deal audit-host --executions FILE [--approvals FILE] [--from T] [--to T]` | Reads the agent host's execution records (tool calls of the agent and its sub-tasks, in the format in [AUDIT-HOST.md](AUDIT-HOST.md)) and lists each consequential action that has no deal record, with what the pass cannot see. Seals nothing; exits 3 when anything is unrecorded. `deal reconcile` is its former name, which still runs it with a warning for one release. |
@@ -345,7 +345,7 @@ leaf, its salt and position, the 16-hash path (the same length for every
 deal, so it says nothing about the others), the cadence entry's inclusion
 proof, the cadence checkpoint (signed by the same key as the deal
 checkpoint) and the witness receipt, plus, witnessed in part, the earlier
-checkpoint and its consistency proof. `capsulectl verify --bundle FILE
+checkpoint and its consistency proof. `capsulectl deal verify --bundle FILE
 --witness-directory DIRECTORY.json` checks every link.
 
 ## A period: `deal list --since --until`
@@ -534,7 +534,7 @@ When a witness receipt covers the checkpoint the report carries (through the
 cadence chain above, re-checked against the pinned witness key when the
 report is made), the page and the email say "Witnessed" instead of "Sealed
 by my agent", and otherwise say whether it is scheduled, pending or unverified (a held receipt that fails the check). The page does not
-check the receipt itself and says so; `capsulectl verify --bundle FILE
+check the receipt itself and says so; `capsulectl deal verify --bundle FILE
 --witness-directory DIRECTORY.json` does, against a witness directory the
 reader chooses. Making a report never contacts the witness.
 
@@ -550,11 +550,20 @@ does not prove the merchant shipped. It names its countersign rung: "Not
 countersigned" unless the file carries a countersignature that capsulectl
 verified, and NOT INDEPENDENT for one by the producer's own key (see
 [COUNTERSIGN.md](COUNTERSIGN.md)). And it gives one command anyone can run on
-the file, offline: `capsulectl verify --bundle receipt.html` (`verify
+the file, offline: `capsulectl deal verify --bundle receipt.html` (`verify
 --bundle` reads the page's embedded bundle). `deal report` prints the scope
 line as `scope`.
 
 ### Sharing a copy
+
+**Which verbs check a deal page.** The plugin's page writers refuse a copy
+whose deal section does not verify: `deal report --html` (with `--share` too),
+`deal note --kind act --html`, `deal close --html` and `deal compose --html`.
+An x-deal-v1 `deal report --bundle` (with `--share` too) refuses a copy whose
+standalone report does not verify. The core's generic verbs (`capsulectl
+presentation list`, `presentation build`, `bundle --html`) read no deal
+section, so they can build a page for a copy whose deal, or nested deal,
+fails. To check a deal copy, run `capsulectl deal verify --bundle FILE`.
 
 `--html` alone writes the user's own copy (audience `keep`: nothing withheld). To
 hand a copy to someone else, name the reader:

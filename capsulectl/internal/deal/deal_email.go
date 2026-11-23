@@ -24,7 +24,7 @@ import (
 // carries a short plain-text body, the same report as a static HTML body (no
 // scripts, no remote content: mail apps run neither), the self-checking
 // receipt page as an attachment, and the Evidence Bundle so anyone can check
-// it with `capsulectl verify --bundle`.
+// it with `capsulectl deal verify --bundle`.
 
 // heldWitnessReceipt returns the checkpoint.witnesses entry for the witness
 // receipt this device holds for the signed checkpoint statement, or nil when
@@ -93,7 +93,7 @@ func dealDidLineOf(b map[string]interface{}) string {
 // It names no witness state of its own: the attached page's verification
 // section is the one verdict, and the email does not give a second
 // (capsule-cli#341; the report's JSON keeps the rung for the agent).
-const dealEmailVerifyLine = "The attached page checks itself when it is opened. To check every seal and signature, run capsulectl verify --bundle bundle.json; to check the witness signature too, add --witness-directory with a witness directory you trust."
+const dealEmailVerifyLine = "The attached page checks itself when it is opened. To check every seal and signature, run capsulectl deal verify --bundle bundle.json; to check the witness signature too, add --witness-directory with a witness directory you trust."
 
 // dealAssurance names the rung the report stands on, from the bundle itself,
 // and says the witness state truthfully. "witnessed" needs a receipt in the
@@ -204,12 +204,12 @@ func dealAssuranceRung(b map[string]interface{}) map[string]any {
 			rest = "The rest did not verify: the witness's signature for the current checkpoint is held, but the check against the witness this profile names now failed. "
 		}
 		out["text"] = fmt.Sprintf(
-			"Witnessed in part: %s, an independent log, signed %s. That signature covers steps 1 to %d of %d: those existed, unchanged, by then. Steps %d to %d are sealed by my agent on this device only. %s%sIt does not confirm what the agent did. The witness signature is in the attached bundle; check it with capsulectl verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s",
+			"Witnessed in part: %s, an independent log, signed %s. That signature covers steps 1 to %d of %d: those existed, unchanged, by then. Steps %d to %d are sealed by my agent on this device only. %s%sIt does not confirm what the agent did. The witness signature is in the attached bundle; check it with capsulectl deal verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s",
 			host, when, k, n, k+1, n, coverageSentence(b, k, n), rest, dealDidLineOf(b))
 		return out
 	}
 	out["text"] = fmt.Sprintf(
-		"Witnessed: %s, an independent log, signed %s: the record existed, unchanged, by then. It does not confirm what the agent did. The witness signature is in the attached bundle; check it with capsulectl verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s", host, when, dealDidLineOf(b))
+		"Witnessed: %s, an independent log, signed %s: the record existed, unchanged, by then. It does not confirm what the agent did. The witness signature is in the attached bundle; check it with capsulectl deal verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s", host, when, dealDidLineOf(b))
 	return out
 }
 
@@ -280,7 +280,7 @@ var dealEmailNotClaimed = []string{
 	"Running capsulectl deal check is advisory: steps the agent never sealed are not in it.",
 }
 
-const dealEmailVerify = "capsulectl verify --bundle bundle.json"
+const dealEmailVerify = "capsulectl deal verify --bundle bundle.json"
 
 var dealEmailHTML = template.Must(template.New("email").Parse(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Receipt</title></head>
