@@ -870,7 +870,8 @@ func initBookFiles(ctx context.Context, p cli.Profile) error {
 	}
 	// A new store is split by month windows (evidencebook#805), except a
 	// reproduced scratch book and a profile whose pre-book cll.jsonl still
-	// holds entries, which move into a JSONL book with `book migrate`.
+	// holds entries or a checkpoint, which move into a JSONL book with
+	// `book migrate`; store init says which.
 	if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
 		_, reproduced, err := reproductionAt()
 		if err != nil {
@@ -887,6 +888,11 @@ func initBookFiles(ctx context.Context, p cli.Profile) error {
 			fmt.Fprintln(noticeOut, "capsulectl: "+windowNotice(defaultWindow))
 			return nil
 		}
+		reason := "a reproduced scratch book"
+		if !reproduced {
+			reason = "a pre-book cll.jsonl holds entries or a checkpoint; `book migrate` moves them"
+		}
+		fmt.Fprintln(noticeOut, "capsulectl: no window: one book for this store's whole history ("+reason+"), fixed for this store")
 	}
 	return initJSONLBook(ctx, p)
 }
