@@ -95,6 +95,50 @@ disclosure record commits to that bundle. It cannot be combined with
 as a committed payload has those bytes withheld by `--suppress agent_input`
 (which then needs `--payloads selected`).
 
+## Serve a Terms Pack by digest, and report over the answer
+
+A Terms Pack is named in an evidence request's `derivation` by the SHA-256 of
+the JCS of its compiled definition. Nothing is served by default.
+
+**Holder.** List the pack in the profile, one file per pack in
+`<profile database>/book/derivations/*.json`:
+
+```json
+{"document": {"...": "the compiled definition, as compiled"},
+ "recipients": ["requester-id"], "forms": ["full_history"],
+ "fields": ["record_type", "committed_at", "statement.generated_at"],
+ "proofs": true}
+```
+
+`document`, `forms` and `fields` are required; `recipients` are the requesters
+the pack is granted to (none: answered to no one over `full_history`);
+`proofs` is on unless `false`. `fields` are what each answer reveals of a
+record: header members or paths into one, and nothing else. Members are read
+exactly: an unknown, repeated or differently-cased member refuses. `book
+respond` and `book doctor` read the directory; one bad file stops every
+answer, public questions included, and a message names the file. `doctor`
+lists each digest, its grants, and a pack whose answers carry no proofs.
+
+**Requester.** `book request --response` records the answer. Then:
+
+```sh
+capsulectl book result derived-inputs --profile NAME --response RECORD_ID
+capsulectl book report derive --profile NAME --response RECORD_ID --pack DIGEST --result RESULT.json --out bundle.json [--allow-unproven]
+capsulectl book report build --bundle bundle.json --card CARD --out report.html
+capsulectl verify --bundle bundle.json
+```
+
+`derived-inputs` prints `{response, derivation, anchor, proven, records:
+[{digest, leaf_index, fields}]}` for your evaluator. The Result it produces is
+yours, signed by this book's key; the holder signed the inputs. Every claim
+must cite exactly `response` as its evidence. `proven` means each row's digest
+was checked in the holder's log at a signed checkpoint; the field values are the
+holder's word, and no proof shows that no row was left out. `derive` refuses a
+wrong `--pack`, an invalid Result, and an existing `--out` (before sealing
+anything); a Result sealed before a later failure is reported as
+`result_record_id`. A Result citing a private conduct pack is sealed for the
+owner and never bundled.
+
 ## Render a report
 
 ```sh

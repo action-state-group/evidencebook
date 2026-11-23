@@ -1290,6 +1290,12 @@ func respondCommand() *cobra.Command {
 			return e
 		}
 		defer func() { err = errors.Join(err, opened.release()) }()
+		// The Terms Packs the holder opted in to serving by digest
+		// (book/derivations/*.json). A file that does not read stops every
+		// answer: a pack the holder meant to serve is never silently unserved.
+		if _, e = registerDerivations(opened.book, p); e != nil {
+			return e
+		}
 		// The operator running respond is the transport: --requester is the
 		// identity they authenticated the request's sender as, and the only
 		// input to the book's relationship gate. Empty, only public

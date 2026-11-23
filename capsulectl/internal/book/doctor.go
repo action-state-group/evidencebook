@@ -66,6 +66,10 @@ func doctorCommand() *cobra.Command {
 			return e
 		}
 		defer func() { err = errors.Join(err, opened.release()) }()
+		packs, e := registerDerivations(opened.book, p)
+		if e != nil {
+			return e
+		}
 		// Read under the book's lock, which makes its holder the witness
 		// store's only writer (bookWitnessStore).
 		deliveries, e := newBookWitnessStore(p).load()
@@ -89,6 +93,7 @@ func doctorCommand() *cobra.Command {
 		if e != nil {
 			return bookError(e)
 		}
+		findings = append(findings, describeDerivations(packs))
 		return cli.Output(c, map[string]any{"findings": findings})
 	}}
 	cmd.Flags().String("policy", "", "The share policy this node advertises and answers under, as `book respond --policy` reads it (default: the documented defaults); a disclosure policy the book holds (`book policy`) overrides its standard-history and record-at-completion switches")

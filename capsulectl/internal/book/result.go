@@ -100,7 +100,7 @@ func resultCommands() *cobra.Command {
 		},
 	}
 	open.Flags().String("format", "text", "Output format: text or json")
-	group.AddCommand(open, resultBuildCommand())
+	group.AddCommand(open, resultBuildCommand(), resultDerivedInputsCommand())
 	return group
 }
 
