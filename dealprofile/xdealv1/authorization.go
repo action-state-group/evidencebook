@@ -26,6 +26,12 @@ const StageAuthorization = "authorization"
 // ActAuthorization is what authorizes one act.
 type ActAuthorization struct {
 	Act, Check, Verdict, Approval Record
+	// AmountNotHeld says why the act's settled amount was not held to its
+	// check, "" when it was or there was none to hold: on a cancel check
+	// that states a fee_minor other than 0 and no amount_minor, who bears the fee is not
+	// recorded, so the refund owed is not known (evidencebook#719,
+	// Sherlock2). A caller shows it, never as a match.
+	AmountNotHeld string
 	// ApprovalDigest is the approval's record digest, SHA-256 over its JCS
 	// bytes. It covers the approval's approves ref (the verdict's digest,
 	// which covers its checks ref, the check's digest) and its
@@ -119,12 +125,15 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 			return nil, bad("its check serves another deal")
 		}
 		cb := w.check[ci]
-		if err := settledAmountMatches(ins[i].Settlement, settleLeg(act), cb); err != nil {
-			return nil, bad("%v", err)
-		}
+		// The kind first, so an act on the wrong check is told so rather than
+		// held to that check's amount.
 		if want := kind.checkAction(); cb.Action != want {
 			return nil, bad("the act differs from the one checked: a %s rests on a %q check, not %q", kind, want, cb.Action)
 		}
+		if err := settledAmountMatches(ins[i].Settlement, settleLeg(act), cb); err != nil {
+			return nil, bad("%v", err)
+		}
+		notHeld := amountNotHeld(ins[i].Settlement, cb)
 		vi, ok := w.verdictOf[ci]
 		if !ok {
 			return nil, bad("its check has no verdict")
@@ -155,7 +164,7 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 				return nil, bad("journal record %d (%s) changed the details after its check: a new check is needed", k+1, journal[k].Block.RecordType)
 			}
 		}
-		a := ActAuthorization{Act: act, Check: journal[ci], Verdict: journal[vi], Approval: journal[ai],
+		a := ActAuthorization{Act: act, Check: journal[ci], Verdict: journal[vi], Approval: journal[ai], AmountNotHeld: notHeld,
 			ApprovalDigest: w.digests[ai], NeedsPersonSignature: personApprover(ab.Approver)}
 		if ab.Approver == "standing_intent" {
 			for _, j := range w.limitsAt[ai] {
@@ -628,7 +637,11 @@ func nonceOf(r Record) string {
 // receive_fee is refused. A member carrying the other leg's amount field is
 // refused.
 func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) error {
-	if len(member) == 0 || cb == nil || (cb.AmountMinor == nil && cb.Currency == "") {
+	if cb == nil {
+		return nil
+	}
+	checkedMinor := checkedAmount(cb)
+	if len(member) == 0 || (checkedMinor == nil && cb.Currency == "") {
 		return nil
 	}
 	var m struct {
@@ -652,7 +665,7 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 	// zero only where it is shown not to apply (an x402 exact scheme, read
 	// from wrapped objects this member does not carry), so it is refused
 	// here rather than guessed.
-	if leg == LegPayee && m.ReceiveFee == nil && m.Received != nil && cb.AmountMinor != nil {
+	if leg == LegPayee && m.ReceiveFee == nil && m.Received != nil && checkedMinor != nil {
 		return fmt.Errorf("its settlement member states no receive_fee, so the amount it settles cannot be held to the checked one: state the fee, 0 when none was taken")
 	}
 	if parts[0] == nil {
@@ -679,23 +692,62 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 		}
 		sum.Add(sum, v)
 	}
-	if cb.AmountMinor == nil {
+	if checkedMinor == nil {
 		return nil
 	}
 	checkScale, ok := dealprofile.AssetScale(parts[0].AssetCode)
 	if !ok {
 		return fmt.Errorf("the checked amount's currency %s has no known minor units, so the settled amount cannot be held to it", parts[0].AssetCode)
 	}
-	checked := new(big.Int).SetInt64(*cb.AmountMinor)
+	checked := new(big.Int).SetInt64(*checkedMinor)
 	if checkScale > scale {
 		sum.Mul(sum, pow10(checkScale-scale))
 	} else {
 		checked.Mul(checked, pow10(scale-checkScale))
 	}
 	if sum.Cmp(checked) != 0 {
-		return fmt.Errorf("the settled amount differs from the checked %d %s: a new check is needed", *cb.AmountMinor, parts[0].AssetCode)
+		return fmt.Errorf("the settled amount differs from the checked %d %s: a new check is needed", *checkedMinor, parts[0].AssetCode)
 	}
 	return nil
+}
+
+// checkedAmount is the amount a settled leg is held to: the check's
+// amount_minor, or, on a cancel check that states none and no fee_minor,
+// its cancelled_amount_minor (evidencebook#719). A seller's outgoing cancel
+// records the amount there (x-deal-v0's sealCancelAmount moves it there when
+// the cancel returns no payment of the holder's own), and the refund leg
+// answering it settles that amount, as capsulectl-deal builds it. With a
+// fee_minor beside it, whether the refund is net of the fee is not settled
+// (x-deal-v0 keeps a cancellation fee apart from the cancelled amount), so
+// no amount is held then.
+func checkedAmount(cb *CheckBody) *int64 {
+	if cb.AmountMinor == nil && cb.Action == "cancel" && !hasFee(cb) {
+		return cb.CancelledAmountMinor
+	}
+	return cb.AmountMinor
+}
+
+// hasFee says a check states a fee other than zero (fee_minor 0 is no fee).
+func hasFee(cb *CheckBody) bool { return cb.FeeMinor != nil && *cb.FeeMinor != 0 }
+
+// notHeldFee is ActAuthorization.AmountNotHeld's reason on a cancel check
+// that states a fee and no amount_minor.
+const notHeldFee = "fee present: who bears it is not recorded, so the refund owed is not known and its amount is not checked"
+
+// amountNotHeld is ActAuthorization.AmountNotHeld for a settlement member
+// that states an amount, on cb.
+func amountNotHeld(member json.RawMessage, cb *CheckBody) string {
+	if len(member) == 0 || cb == nil || cb.Action != "cancel" || cb.AmountMinor != nil || !hasFee(cb) || cb.CancelledAmountMinor == nil {
+		return ""
+	}
+	var m struct {
+		Amount   *legAmount `json:"amount"`
+		Received *legAmount `json:"received"`
+	}
+	if json.Unmarshal(member, &m) != nil || (m.Amount == nil && m.Received == nil) {
+		return ""
+	}
+	return notHeldFee
 }
 
 // legAmount is a settlement leg's amount (draft-mih-agent-settlement-records-01).
