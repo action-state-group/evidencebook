@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-fIccCapWXpmsT25bNFUU2Rsy4prYBYAcy1ap5v9aliw=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-1nWZMD2XxNV+qiTupWH54MW/bpMc2X1Gu8sTXBdo8os=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Evidence Graph</title>
     <style>
@@ -5472,6 +5472,7 @@ var EvidenceGraph = (() => {
     readWordingPack: () => readWordingPack,
     readerAnchorWitness: () => readerAnchorWitness,
     readerCadenceWitness: () => readerCadenceWitness,
+    readerCardRegistered: () => readerCardRegistered,
     readerCardSignature: () => readerCardSignature,
     readerWitnessPolicy: () => readerWitnessPolicy,
     registerPresentation: () => registerPresentation,
@@ -5522,6 +5523,8 @@ var EvidenceGraph = (() => {
       return Uint8Array.of(major << 5 | 24, length);
     if (length < 65536)
       return Uint8Array.of(major << 5 | 25, length >>> 8, length & 255);
+    if (length <= 4294967295)
+      return Uint8Array.of(major << 5 | 26, length >>> 24, length >>> 16 & 255, length >>> 8 & 255, length & 255);
     throw new RangeError("CBOR value too large");
   }
   function bstr(value) {
@@ -6337,7 +6340,7 @@ var EvidenceGraph = (() => {
     schema_version: "1",
     _vendored_from: "action-state-group/scitt-payload-binding",
     _vendored_source: "spec/cpb-provisional-registry.md",
-    _vendored_commit: "e0ad1c7e0b0248b9aed25c747f174548cb8e141d",
+    _vendored_commit: "b4af5817f7677f5a21bfd238c86ec95f30780352",
     _vendored_note: "Machine-readable resolver projection of the CPB *provisional* (Rung 3) Artifact Type entries. Lossy by design: name -> status + governed closed-set values. The markdown is normative; do not hand-edit -- re-run scripts/vendor_cpb_registry.py.",
     provisional_artifact_types: {
       "verifiable-agent-conversation": {
@@ -6347,12 +6350,12 @@ var EvidenceGraph = (() => {
       },
       "trace-trust-record": {
         status: "provisional",
-        reference: "`agentrust-io/trace-spec` @ `e0afe8eba628244afd591433014b182530a0c11c`",
+        reference: "`agentrust-io/trace-spec` @ `e0afe8eba628244afd591433014b182530a0c11c` \u2014 `spec/trace-v0.2.md` \xA73.2.2 (row 1), `spec/registry-anchor-v1.md` \xA71 and \xA72 (row 2), `schema/trace-claim.json` (the closed field set both rows range over).",
         governed_values: {}
       },
       "mesh-inference-exchange": {
         status: "provisional",
-        reference: "`action-state-group/capsule-emit-mesh` @ `0304296` (`mesh_record_emitter.py`, `mesh_record_verifier.py`)",
+        reference: "`action-state-group/capsule-emit-mesh` @ `9be03df`",
         governed_values: {
           terminal_state: [
             "completed",
@@ -6370,13 +6373,7 @@ var EvidenceGraph = (() => {
             "backend_dispatch",
             "client_egress"
           ]
-        },
-        capsule_field_values: {
-          "effect.type": ["inference_completion"],
-          effect_attestation: ["host_served_observed"],
-          "chain.relation": ["follows"]
-        },
-        capsule_field_values_source: "action-state-group/capsule-emit-mesh plugins/admission-policy/src/capsule_emit.rs (effect_type, effect_attestation, chain.relation) and capsule_sidecar.py"
+        }
       },
       "mmr-checkpoint": {
         status: "provisional",
@@ -6384,7 +6381,7 @@ var EvidenceGraph = (() => {
         governed_values: {}
       }
     },
-    snapshot_sha256: "c401fceb810116b64e3ea2f824d03bd016a63c7e47daf7a74ab239adf35e7cbc"
+    snapshot_sha256: "7d76464ad5be64eaf526938863bf6ed88a920297edae646e3ed26474267abf3b"
   };
 
   // node_modules/@action-state-group/agent-action-capsule/dist/provisional.js
@@ -6903,6 +6900,19 @@ var EvidenceGraph = (() => {
       flattened.push(await rootFromPeaks2(proof.peaks_right.map(hex2)));
     flattened.push(...proof.peaks_left.map(hex2).toReversed());
     return verifyHexInclusion2(root, BigInt(proof.size), BigInt(leafIndex), identity2, flattened);
+  }
+  var uint = (value) => integer(value) && value >= 0;
+  var hexList = (value) => Array.isArray(value) && value.every(isHex64);
+  function consistencyProof2(raw) {
+    if (!object3(raw) || raw.kind !== "consistency" || raw.v !== 1 || !uint(raw.old_size) || !uint(raw.new_size) || !hexList(raw.old_peaks) || !hexList(raw.new_peaks) || !Array.isArray(raw.witness) || !raw.witness.every(hexList))
+      return void 0;
+    return {
+      oldSize: BigInt(raw.old_size),
+      newSize: BigInt(raw.new_size),
+      oldPeaks: raw.old_peaks.map(hex2),
+      witness: raw.witness.map((path2) => path2.map(hex2)),
+      newPeaks: raw.new_peaks.map(hex2)
+    };
   }
 
   // node_modules/@action-state-group/agent-action-capsule/dist/bip340.js
@@ -8483,40 +8493,19 @@ var EvidenceGraph = (() => {
     }
   }
   var plainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof JsonNumber);
-  function normalized(value) {
-    if (Array.isArray(value))
-      return value.map(normalized);
-    if (!plainObject(value))
-      return value;
-    const out = {};
-    for (const [key, member] of Object.entries(value)) {
-      const next = normalized(member);
-      if (next === null || Array.isArray(next) && next.length === 0 || plainObject(next) && Object.keys(next).length === 0)
-        continue;
-      Object.defineProperty(out, key, {
-        value: next,
-        enumerable: true,
-        writable: true,
-        configurable: true
-      });
-    }
-    return out;
-  }
   async function recordCapsuleId(record) {
-    const algorithm = record.canonicalization_id ?? "jcs-n";
-    if (algorithm !== "jcs-n" && algorithm !== "jcs")
+    if (record.canonicalization_id !== "jcs")
       throw new TypeError("cannot recompute this canonicalization_id");
-    const vintage = algorithm === "jcs-n";
     const canonical = {};
     for (const [key, member] of Object.entries(record))
-      if (key !== "capsule_id" && key !== "signature" && key !== "key_id" && !(vintage && key === "chain"))
+      if (key !== "capsule_id" && key !== "signature" && key !== "key_id")
         Object.defineProperty(canonical, key, {
           value: member,
           enumerable: true,
           writable: true,
           configurable: true
         });
-    return sha256Hex(jcs(vintage ? normalized(canonical) : canonical));
+    return sha256Hex(jcs(canonical));
   }
   function digitPairs(value, member) {
     if (typeof value !== "string" || !/^(?:[0-9A-Fa-f]{2})+$/u.test(value))
@@ -8779,8 +8768,8 @@ var EvidenceGraph = (() => {
     }
   };
   var utf84 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-  function decodeReceiptItem(data, topTag) {
-    const value = decodeCbor(data);
+  function decodeReceiptItem(data, topTag, shortest = true) {
+    const value = decodeCbor(data, shortest);
     const walk2 = (item, depth) => {
       if (typeof item === "bigint" && item < -(1n << 63n))
         throw new SyntaxError("an integer below -2^63");
@@ -8804,7 +8793,7 @@ var EvidenceGraph = (() => {
     walk2(value, 0);
     return value;
   }
-  function decodeCbor(data) {
+  function decodeCbor(data, shortest = true) {
     let offset = 0;
     const byte = () => {
       const value2 = data[offset++];
@@ -8828,7 +8817,7 @@ var EvidenceGraph = (() => {
       let value2 = 0n;
       for (let i = 0; i < width; i += 1)
         value2 = value2 << 8n | BigInt(byte());
-      if (value2 < [24n, 1n << 8n, 1n << 16n, 1n << 32n][add3 - 24])
+      if (shortest && value2 < [24n, 1n << 8n, 1n << 16n, 1n << 32n][add3 - 24])
         throw new SyntaxError("CBOR argument is not in its shortest form");
       return value2;
     };
@@ -9313,20 +9302,20 @@ var EvidenceGraph = (() => {
     return typeof label === "string" ? GRADES.get(label) ?? null : null;
   }
   function registrationTimeOf(headers) {
-    const none = (reason) => ({
+    const none2 = (reason) => ({
       registrationTime: null,
       registrationTimeReason: reason
     });
     if (!headers.has(HDR_CWT_CLAIMS))
-      return none("iat_absent");
+      return none2("iat_absent");
     const claims = headers.get(HDR_CWT_CLAIMS);
     if (!(claims instanceof CborMap))
-      return none("iat_invalid");
+      return none2("iat_invalid");
     if (!claims.has(CWT_IAT))
-      return none("iat_absent");
+      return none2("iat_absent");
     const iat = claims.get(CWT_IAT);
     if (typeof iat !== "bigint" || iat < 0n || iat > MAX_IAT)
-      return none("iat_invalid");
+      return none2("iat_invalid");
     return { registrationTime: Number(iat), registrationTimeReason: null };
   }
   async function verifyCll(signed, record, key) {
@@ -9723,7 +9712,17 @@ ${body}
       witness,
       registration_time: time
     });
-    if (!ANCHOR_DIGEST.test(anchorDigest) || !(receipt instanceof Uint8Array))
+    if (!ANCHOR_DIGEST.test(anchorDigest))
+      return report("FAIL");
+    return await receiptOverEntry(hexToBytes(anchorDigest), receipt, policy);
+  }
+  async function receiptOverEntry(entry, receipt, policy) {
+    const report = (status2, witness = null, time = null) => ({
+      status: status2,
+      witness,
+      registration_time: time
+    });
+    if (!(receipt instanceof Uint8Array))
       return report("FAIL");
     const parsed = parseAnchorReceipt(receipt);
     if (parsed === null)
@@ -9731,10 +9730,9 @@ ${body}
     const keys = anchorPolicyKeys(policy).filter(({ type }) => type === parsed.alg);
     if (keys.length === 0)
       return report("NOT_CHECKED");
-    const leaf = hexToBytes(anchorDigest);
     let unavailable = false;
     for (const { name, spki } of keys) {
-      const result3 = await verifyCoseReceipt(receipt, leaf, spki);
+      const result3 = await verifyCoseReceipt(receipt, entry, spki);
       if (result3.ok)
         return report("PASS", name, parsed.time);
       if (result3.unavailable)
@@ -9742,24 +9740,125 @@ ${body}
     }
     return report(unavailable ? "NOT_CHECKED" : "FAIL");
   }
+  function earliest(passed) {
+    let chosen;
+    for (const r of passed) {
+      if (chosen === void 0 || r.registration_time !== null && (chosen.registration_time === null || r.registration_time < chosen.registration_time))
+        chosen = r;
+    }
+    return chosen;
+  }
   async function checkAnchorWitnessed(anchorDigest, receipts3, policy) {
     const reports = [];
     for (const receipt of receipts3)
       reports.push(await checkAnchorReceipt(anchorDigest, receipt, policy));
     const statuses = new Set(reports.map((r) => r.status));
     const status2 = reports.length === 0 ? "NOT_PRESENT" : statuses.has("PASS") ? "PASS" : statuses.has("FAIL") ? "FAIL" : "NOT_CHECKED";
-    let chosen;
-    for (const r of reports) {
-      if (r.status !== "PASS")
-        continue;
-      if (chosen === void 0 || r.registration_time !== null && (chosen.registration_time === null || r.registration_time < chosen.registration_time))
-        chosen = r;
-    }
+    const chosen = earliest(reports.filter((r) => r.status === "PASS"));
     return {
       status: status2,
       receipts: reports,
       witness: chosen?.witness ?? null,
       witnessed_time: chosen?.registration_time ?? null
+    };
+  }
+  var CARD_METHOD = "SCITT Transparent Statement over the card digest, RFC 9942 Receipts (standard-history-v0 \xA713)";
+  var RECEIPTS_LABEL = 394n;
+  function parseCardStatement(octets) {
+    try {
+      if (!(octets instanceof Uint8Array) || octets.length === 0 || octets.length > MAX_ANCHOR_RECEIPT_OCTETS)
+        return null;
+      const outer = decodeReceiptItem(octets, true);
+      if (!(outer instanceof CborTag) || outer.tag !== 18n || !Array.isArray(outer.value) || outer.value.length !== 4)
+        return null;
+      const [protectedBytes, unprotected, payload, signature2] = outer.value;
+      if (!(protectedBytes instanceof Uint8Array) || protectedBytes.length === 0 || !(payload instanceof Uint8Array) || payload.length !== 32 || !(signature2 instanceof Uint8Array) || signature2.length !== 64)
+        return null;
+      const headers = decodeReceiptItem(protectedBytes, false);
+      if (!(headers instanceof CborMap))
+        return null;
+      for (const [label, value] of headers.entries) {
+        if (label === 1n) {
+          if (value !== -8n)
+            return null;
+        } else if (label === HDR_CWT_CLAIMS) {
+          if (!(value instanceof CborMap) || typeof value.get(1n) !== "string" || typeof value.get(2n) !== "string")
+            return null;
+        } else if (label === 4n) {
+          if (!(value instanceof Uint8Array))
+            return null;
+        } else if (label === 3n) {
+          if (typeof value !== "string")
+            return null;
+        } else if (!(typeof label === "bigint" && label < PRIVATE_LABEL))
+          return null;
+      }
+      const claims = headers.get(HDR_CWT_CLAIMS);
+      if (!headers.has(1n) || !(claims instanceof CborMap))
+        return null;
+      if (!(unprotected instanceof CborMap) || unprotected.entries.length !== 1 || unprotected.entries[0][0] !== RECEIPTS_LABEL)
+        return null;
+      const receipts3 = unprotected.entries[0][1];
+      if (!Array.isArray(receipts3) || receipts3.length === 0 || receipts3.length > MAX_ANCHOR_PROOFS || !receipts3.every((r) => r instanceof Uint8Array))
+        return null;
+      return {
+        protectedBytes,
+        iss: claims.get(1n),
+        sub: claims.get(2n),
+        payload,
+        signature: signature2,
+        receipts: receipts3
+      };
+    } catch {
+      return null;
+    }
+  }
+  var bytesEqual2 = (a, b) => a.length === b.length && a.every((byte, i) => byte === b[i]);
+  async function checkCardStatement(card2, holder, anchor, octets, policy) {
+    const report = (status2, service = null, time = null) => ({ status: status2, service, registration_time: time });
+    const statement = parseCardStatement(octets);
+    if (statement === null)
+      return report("FAIL");
+    if (!(card2 instanceof Uint8Array) || !bytesEqual2(statement.payload, sha256(card2)))
+      return report("FAIL");
+    if (statement.iss !== holder || statement.sub !== anchor)
+      return report("FAIL");
+    if (typeof holder !== "string" || !ANCHOR_DIGEST.test(holder))
+      return report("FAIL");
+    const message = producerEnvelopeSigningBytes(statement.protectedBytes, statement.payload);
+    const key = hexToBytes(holder);
+    if (!strictEd25519(key, statement.signature))
+      return report("FAIL");
+    let verified;
+    try {
+      verified = await verifyEd25519Strict(key, statement.signature, message);
+    } catch {
+      return report("NOT_CHECKED");
+    }
+    if (!verified)
+      return report("FAIL");
+    const entry = sha256(message);
+    const reports = [];
+    for (const receipt of statement.receipts)
+      reports.push(await receiptOverEntry(entry, receipt, policy));
+    const chosen = earliest(reports.filter((r) => r.status === "PASS"));
+    if (chosen !== void 0)
+      return report("PASS", chosen.witness, chosen.registration_time);
+    return report(reports.some((r) => r.status === "FAIL") ? "FAIL" : "NOT_CHECKED");
+  }
+  async function checkCardRegistered(card2, holder, anchor, statements, policy) {
+    const reports = [];
+    for (const octets of statements ?? [])
+      reports.push(await checkCardStatement(card2, holder, anchor, octets, policy));
+    const statuses = new Set(reports.map((r) => r.status));
+    const status2 = reports.length === 0 ? "NOT_PRESENT" : statuses.has("PASS") ? "PASS" : statuses.has("FAIL") ? "FAIL" : "NOT_CHECKED";
+    const chosen = earliest(reports.filter((r) => r.status === "PASS"));
+    return {
+      status: status2,
+      method: CARD_METHOD,
+      statements: reports,
+      service: chosen?.service ?? null,
+      registration_time: chosen?.registration_time ?? null
     };
   }
 
@@ -9772,8 +9871,6 @@ ${body}
     extent: null,
     receipts: []
   });
-  var uint = (value) => integer(value) && value >= 0;
-  var hexList = (value) => Array.isArray(value) && value.every(isHex64);
   async function digest(...parts) {
     const joined = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
     let offset = 0;
@@ -9804,17 +9901,6 @@ ${body}
       return "malformed";
     const signed = await signedCheckpointFields(cose);
     return signed === void 0 ? "invalid" : { signed, cose };
-  }
-  function consistencyProof2(raw) {
-    if (!object3(raw) || raw.kind !== "consistency" || raw.v !== 1 || !uint(raw.old_size) || !uint(raw.new_size) || !hexList(raw.old_peaks) || !hexList(raw.new_peaks) || !Array.isArray(raw.witness) || !raw.witness.every(hexList))
-      return void 0;
-    return {
-      oldSize: BigInt(raw.old_size),
-      newSize: BigInt(raw.new_size),
-      oldPeaks: raw.old_peaks.map(hex2),
-      witness: raw.witness.map((path2) => path2.map(hex2)),
-      newPeaks: raw.new_peaks.map(hex2)
-    };
   }
   async function verifyParentLogWitness(block, signed, cose, directory) {
     if (signed === void 0 || cose === void 0)
@@ -11313,6 +11399,12 @@ ${body}
     "rebuts"
   ]);
   var UNVERIFIED_KEY_LABEL = "stated key_id (not verified)";
+  var REASON_KINDS = Object.freeze({
+    capsule_signature_did_not_verify: "finding",
+    capsule_signer_not_trusted: "setting",
+    counterparty_leg_signature_did_not_verify: "finding",
+    counterparty_leg_signer_not_trusted: "setting"
+  });
   function statedTimes(capsule) {
     const timestamp = asString2(capsule.timestamp);
     const provenanceMode = isObject3(capsule.provenance_mode) ? capsule.provenance_mode : void 0;
@@ -12094,6 +12186,10 @@ ${body}
         outOfScopeAllowed: raw.out_of_scope_allowed === true,
         ...typeof raw.applies_from === "string" ? { appliesFrom: raw.applies_from } : {},
         later: later.has(raw.id),
+        ...typeof raw.reason === "string" ? {
+          reason: raw.reason,
+          reasonKind: Object.hasOwn(REASON_KINDS, raw.reason) ? REASON_KINDS[raw.reason] : "unregistered"
+        } : {},
         support: evidence.length > 0 && missing.length === 0 ? "supported" : "unsupported",
         evidence,
         missing,
@@ -12275,15 +12371,16 @@ ${body}
         return "unreadable";
     }
   }
-  function caseActionIds(conversationId) {
-    const ids = [`urn:${conversationId}`];
-    const named = /^([^:]+):([^:]+):.+:(task-[^:]+:trial-[^:]+)$/u.exec(conversationId);
-    if (named !== null)
-      ids.push(`urn:${named[1]}:${named[2]}:${named[3]}`);
-    return ids;
-  }
   function isCaseRecordFor(record, conversationId) {
-    return record?.carriedCapsuleId !== void 0 && record.carriedActionId !== void 0 && caseActionIds(conversationId).includes(record.carriedActionId);
+    if (record?.carriedCapsuleId === void 0 || record.carriedActionId === void 0)
+      return false;
+    if (record.carriedActionId === `urn:${conversationId}`)
+      return true;
+    const input = record.carriedInput;
+    if (input === void 0 || input.state !== "disclosed" || !isObject3(input.payload))
+      return false;
+    const ids = sealedCaseIds(input.payload);
+    return ids.includes(conversationId) && ids.some((id) => record.carriedActionId === `urn:${id}`);
   }
   function claimsCitedCase(records, conversationId, claims, allClaims = claims) {
     if (claims.length === 0 || !claims.every((claim) => reportState(records, claim) === "withheld"))
@@ -13024,6 +13121,9 @@ ${body}
       capsuleId: result3.capsuleId
     };
   }
+
+  // node_modules/@action-state-group/agent-action-capsule/dist/retained-head.js
+  init_browser();
 
   // node_modules/@action-state-group/agent-action-capsule/dist/report-rows.js
   var rowCitationDigests = (row2) => Array.isArray(row2.references) ? row2.references.flatMap((reference) => isObject3(reference) && reference.type === "agent-action-capsule" && reference.citation_purpose === "acted_on" ? asString2(reference.digest) === void 0 ? [] : [asString2(reference.digest)] : []) : [];
@@ -15079,6 +15179,33 @@ ${body}
     return { plan, rows };
   }
 
+  // src/claim-reasons.ts
+  var RESERVED = /* @__PURE__ */ new Set([
+    "label",
+    "detail",
+    "not_evaluable"
+  ]);
+  var CORE_REASON_CODES = /* @__PURE__ */ new Set([
+    "capsule_signature_did_not_verify",
+    "capsule_signer_not_trusted",
+    "counterparty_leg_signature_did_not_verify",
+    "counterparty_leg_signer_not_trusted"
+  ]);
+  function claimReasons(claims) {
+    const out = /* @__PURE__ */ new Map();
+    for (const claim of claims) {
+      if (claim.failed || claim.reason === void 0) continue;
+      const kind = claim.reasonKind ?? "unregistered";
+      out.set(claim.id, {
+        code: claim.reason,
+        kind,
+        keyable: kind !== "unregistered" && !RESERVED.has(claim.reason),
+        core: CORE_REASON_CODES.has(claim.reason)
+      });
+    }
+    return out;
+  }
+
   // src/frame-tokens.generated.ts
   var COMPLIANCE_FRAME_VARS = "--navy:#232F42;--gold-l:#FBEFD9;--cream:#F6F2EA;--line:#E3DED3;--slate:#6B7482;--ink:#1F2733;--ok:#2E7D5B;--ok-l:#E3F1EA;--bad:#B5462F;--bad-l:#F8E6E1;--person:#5B4BA0;--person-l:#ECE8F7;--r:14px;";
   var OUTCOME_FRAME_VARS = "--navy:#232F42;--gold:#E8A33D;--gold-l:#FBEFD9;--cream:#F6F2EA;--line:#E3DED3;--slate:#6B7482;--ink:#1F2733;--ok:#2E7D5B;--ok-l:#E3F1EA;--bad:#B5462F;--bad-l:#F8E6E1;--person:#5B4BA0;--person-l:#ECE8F7;--r:14px;";
@@ -16963,9 +17090,9 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
     if (type === "recomputed_determination") return "recomputed";
     return "not stated";
   }
-  function agree(values, none, mixed) {
-    const distinct = new Set(values.filter((v) => v !== none));
-    if (distinct.size === 0) return none;
+  function agree(values, none2, mixed) {
+    const distinct = new Set(values.filter((v) => v !== none2));
+    if (distinct.size === 0) return none2;
     return distinct.size === 1 ? [...distinct][0] : mixed;
   }
   function parseClaim(claim) {
@@ -18064,15 +18191,15 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
   }
   function builtCommit() {
     if (false) return void 0;
-    return commitPrefix("613a8a95144e5851bbb61df72df8cc76b7500381");
+    return commitPrefix("9a4fae0d6bdb7dbd15a71262283d9234470d76e0");
   }
   var commit = builtCommit();
   var unreleased = false;
   var VIEWER_BUILD = {
     viewer: "@action-state-group/capsule-viewer",
-    viewerVersion: "0.19.2",
+    viewerVersion: "0.20.0",
     verifier: "@action-state-group/agent-action-capsule",
-    verifierVersion: "0.14.0",
+    verifierVersion: "0.16.0",
     cllVersion: "0.4.0",
     ...commit === void 0 ? {} : { commit },
     ...unreleased ? { unreleased: true } : {}
@@ -19913,6 +20040,15 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
       "generic.later.title": "Not yet in force \xB7 {n}",
       "generic.later.readiness": "readiness",
       "generic.later.note": "Applies from {date}, as the producer copied it from the contract, not re-checked here: readiness only, not counted.",
+      "generic.reason.says": "The report's producer gives this reason: {text}",
+      "generic.reason.token.capsule_signature_did_not_verify": "A record this claim needed has a signature that did not verify, so the record was not used.",
+      "generic.reason.token.capsule_signer_not_trusted": "A record this claim needed is signed by a key outside the keys the report's producer trusted, so the record was not used. This alone is not a sign of tampering.",
+      "generic.reason.token.counterparty_leg_signature_did_not_verify": "The other side's signed leg was found and its signature did not verify, so it does not raise the grade.",
+      "generic.reason.token.counterparty_leg_signer_not_trusted": "The other side's signed leg was found, signed by a key outside the keys the report's producer trusted, so it does not raise the grade. This alone is not a sign of tampering.",
+      "generic.reason.unworded": "The report's producer gives a reason this page has no words for: {code}",
+      "generic.reason.grade": "Grade: {grade}.",
+      "generic.reason.flag.one": "{n} claim with a reason from the producer",
+      "generic.reason.flag.other": "{n} claims with a reason from the producer",
       "generic.producer.note": "Requirement names, groups and claim ids are the producer's identifiers, shown as written unless a wording pack names them; they are not sealed evidence.",
       "generic.claim.type": "Claim type",
       "generic.claim.unrecognized": "unrecognized claim type {type}",
@@ -20371,6 +20507,13 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
     "groups.rtier.totals.out-of-scope",
     "groups.rtier.totals.unstated",
     "groups.rtier.totals.failed",
+    "generic.reason.says",
+    "generic.reason.token.capsule_signature_did_not_verify",
+    "generic.reason.token.capsule_signer_not_trusted",
+    "generic.reason.token.counterparty_leg_signature_did_not_verify",
+    "generic.reason.token.counterparty_leg_signer_not_trusted",
+    "generic.reason.unworded",
+    "generic.reason.grade",
     "generic.rtier.totals",
     "generic.rtier.totals.out-of-scope",
     "generic.rtier.totals.unstated",
@@ -20977,7 +21120,7 @@ ${key}`);
   var DEFAULT_PACK_SHA256 = Object.freeze({
     lines: "4a03428e884337321754bd6657df0ebb6d5441821378a3b1ff17f2a625021cc5",
     groups: "76acc9598202663738d7d2903ca1a042d9b7ca21799297946e4da39ea77d5250",
-    generic: "6c7570711462e9a9af94faac45f56414fd97a1681608be03299f6fa756eaa41c"
+    generic: "9987467e7d99ff4680fa6d7e2d2d634455f729958bfbd53ebac86c14508b031d"
   });
   function fill(key, text2, vars) {
     return text2.replace(PLACEHOLDER, (whole, name) => {
@@ -21021,6 +21164,7 @@ ${key}`);
         return target !== void 0 ? t(target) : section3(key) ?? value;
       },
       row: (requirementRef, part) => context.singleContract ? section3(`row.${requirementRef}.${part}`) : void 0,
+      reason: (requirementRef, code2) => context.singleContract ? section3(`row.${requirementRef}.reason.${code2}`) : void 0,
       group: (segment) => context.singleContract ? section3(`group.${segment}.title`) : void 0,
       grouping,
       source: supplied === void 0 ? {
@@ -24681,6 +24825,9 @@ ${key}`);
 .gr .rname{font-weight:600;color:var(--navy)}
 .gr .rname code,.gr .cid{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;word-break:break-all}
 .gr ul.claims{list-style:none;margin:6px 0 0;padding:0}
+.gr .rreason,.gr .rflag{font-size:12.5px;border-radius:6px;padding:2px 8px;background:#EEF0F3;color:var(--slate)}
+.gr .rreason{margin:4px 0 6px 22px}
+.gr .rreason[data-tone="warn"],.gr .rflag[data-tone="warn"]{background:var(--bad-l);color:var(--bad);font-weight:700}
 .gr .tier-note{font-size:12.5px;color:var(--slate)}
 ` + levelCss("gr") + frontCss(".gr")
   };
@@ -24772,18 +24919,48 @@ ${key}`);
     if (mark !== void 0) body.append(mark);
     return body;
   }
-  function claimItem(claim, w) {
+  function reasonLines(claim, w, reasons) {
+    const found = reasons?.get(claim.id);
+    if (found === void 0) return [];
+    const { code: code2 } = found;
+    const packText = found.keyable ? w.reason(claim.requirementRef, code2) : void 0;
+    const coreText = packText === void 0 && found.core ? w.t(`generic.reason.token.${code2}`) : void 0;
+    const text2 = packText ?? coreText;
+    const line = el10("p", "rreason");
+    line.dataset.reasonCode = code2;
+    line.dataset.reasonKind = found.kind;
+    line.dataset.tone = found.kind === "finding" ? "warn" : "note";
+    if (claim.later) line.append(w.t("generic.later.readiness"), " ");
+    if (claim.verdict !== "not_evaluable")
+      line.append(
+        w.t("generic.reason.grade", { grade: w.enumWord("grade", claim.grade) }),
+        " "
+      );
+    line.append(
+      tagSource(
+        el10(
+          "span",
+          "",
+          text2 !== void 0 ? w.t("generic.reason.says", { text: text2 }) : w.t("generic.reason.unworded", { code: code2 })
+        ),
+        packText !== void 0 ? "pack" : "core"
+      )
+    );
+    return [line];
+  }
+  function claimItem(claim, w, reasons) {
     const item = el10("li", "");
     item.dataset.claimRef = claim.id;
     const head2 = el10("span", "");
     const id = tagSource(el10("code", "cid", claim.id), "producer");
     head2.append(id, " ", verdictPill(shownVerdict(claim), w));
     item.append(
-      levelToggle(2, head2, () => claimProofs(claim, w), { className: "claim" })
+      levelToggle(2, head2, () => claimProofs(claim, w), { className: "claim" }),
+      ...reasonLines(claim, w, reasons)
     );
     return item;
   }
-  function rowItem(row2, w, later, tierOf) {
+  function rowItem(row2, w, later, tierOf, reasons) {
     const label = w.row(row2.requirementRef, "label");
     const name = el10("span", "rname");
     if (label !== void 0)
@@ -24798,6 +24975,14 @@ ${key}`);
       summary.append(" ", chip);
     }
     summary.append(tally(row2, w, later));
+    const given = row2.claims.filter((claim) => reasons?.has(claim.id));
+    if (given.length > 0) {
+      const flag = el10("span", "rflag", w.p("generic.reason.flag", given.length));
+      flag.dataset.tone = given.some(
+        (claim) => reasons.get(claim.id).kind === "finding"
+      ) ? "warn" : "note";
+      summary.append(" ", flag);
+    }
     const toggle = levelToggle(
       1,
       summary,
@@ -24818,7 +25003,7 @@ ${key}`);
           ))
             body.append(el10("p", "rnote", w.t("generic.later.note", { date })));
         const list2 = el10("ul", "claims");
-        for (const claim of row2.claims) list2.append(claimItem(claim, w));
+        for (const claim of row2.claims) list2.append(claimItem(claim, w, reasons));
         body.append(el10("h3", "", w.t("generic.claims.h")), list2);
         return body;
       },
@@ -24828,7 +25013,7 @@ ${key}`);
     toggle.dataset.contract = row2.contractRef;
     return toggle;
   }
-  function groupedRows(rows, w, later, tierOf) {
+  function groupedRows(rows, w, later, tierOf, reasons) {
     const box = el10("div", "groups");
     const order = [];
     const byGroup = /* @__PURE__ */ new Map();
@@ -24853,7 +25038,7 @@ ${key}`);
         part.append(heading);
       }
       for (const row2 of byGroup.get(group))
-        part.append(rowItem(row2, w, later, tierOf));
+        part.append(rowItem(row2, w, later, tierOf, reasons));
       box.append(part);
     }
     return box;
@@ -24863,9 +25048,10 @@ ${key}`);
     heading.append(" ", tagSource(el10("code", "", contract), "producer"));
     return heading;
   }
-  function byContract(rows, w, later, tierOf) {
+  function byContract(rows, w, later, tierOf, reasons) {
     const contracts = [...new Set(rows.map((row2) => row2.contractRef))];
-    if (contracts.length <= 1) return groupedRows(rows, w, later, tierOf);
+    if (contracts.length <= 1)
+      return groupedRows(rows, w, later, tierOf, reasons);
     const box = el10("div", "contracts");
     for (const contract of contracts) {
       const part = el10("div", "contract");
@@ -24876,14 +25062,15 @@ ${key}`);
           rows.filter((row2) => row2.contractRef === contract),
           w,
           later,
-          tierOf
+          tierOf,
+          reasons
         )
       );
       box.append(part);
     }
     return box;
   }
-  async function drawGeneric(levels, result3, bundle, verified, w, tierOf) {
+  async function drawGeneric(levels, result3, bundle, verified, w, tierOf, reasons) {
     const tierFor = (claim) => tierOf === void 0 ? "unstated" : tierOf(claim.contractRef, claim.requirementRef);
     const inForce = result3.claims.filter((claim) => !claim.later);
     const later = result3.claims.filter((claim) => claim.later);
@@ -24908,7 +25095,8 @@ ${key}`);
     const section = el10("section", "front-card");
     section.dataset.section = "rows";
     const rows = rowsOf(inForce);
-    if (tierOf === void 0) section.append(byContract(rows, w, false));
+    if (tierOf === void 0)
+      section.append(byContract(rows, w, false, void 0, reasons));
     else
       for (const tier of ROW_TIERS) {
         const inTier = rows.filter(
@@ -24926,7 +25114,7 @@ ${key}`);
             })
           ),
           el10("p", "rnote", w.t(`generic.rtier.${tier}.note`)),
-          byContract(inTier, w, false, tierOf)
+          byContract(inTier, w, false, tierOf, reasons)
         );
         section.append(part);
       }
@@ -24940,7 +25128,7 @@ ${key}`);
           "",
           w.t("generic.later.title", { n: later.length.toLocaleString() })
         ),
-        byContract(laterRows, w, true, tierOf)
+        byContract(laterRows, w, true, tierOf, reasons)
       );
       section.append(part);
     }
@@ -25073,7 +25261,18 @@ ${key}`);
         w,
         tierOf
       );
-    else await drawGeneric(levels, result3, bundle, verified, w, tierOf);
+    else
+      await drawGeneric(
+        levels,
+        result3,
+        bundle,
+        verified,
+        w,
+        tierOf,
+        // The pack's `row.<ref>.reason.<code>` words apply only to a Result
+        // citing one contract (the Words gate); the reason itself shows always.
+        input.reasons
+      );
     regions.L0.append(levels.L0);
     regions.L1.append(levels.L1);
     regions.L2.append(levels.L2);
@@ -25696,9 +25895,9 @@ ${key}`);
     const hex6 = typeof raw.signature === "string" ? raw.signature : void 0;
     const view = hex6 === void 0 ? void 0 : readEnvelope(hex6);
     if (hex6 === void 0) {
-      const none = el11("p", "l3-note", w.t("record.envelope.none"));
-      none.dataset.l3 = "no-envelope";
-      card2.append(none);
+      const none2 = el11("p", "l3-note", w.t("record.envelope.none"));
+      none2.dataset.l3 = "no-envelope";
+      card2.append(none2);
     } else if (view === void 0) {
       const bad2 = el11("p", "l3-note", w.t("record.envelope.unreadable"));
       bad2.dataset.l3 = "unreadable-envelope";
@@ -28335,7 +28534,10 @@ ${pad.repeat(depth)}`;
         CONTRACT_REPORT_MANIFEST.id
       );
       const supported = contractReportInput(context.bundle);
-      const input = supported === void 0 ? { grouping: "generic" } : claimsFitCard(result3, supported.grouping) ? supported : void 0;
+      const input = supported === void 0 ? {
+        grouping: "generic",
+        reasons: claimReasons(result3.claims)
+      } : claimsFitCard(result3, supported.grouping) ? supported : void 0;
       if (typeof context.bundle === "object" && context.bundle !== null)
         contractReportDrawn.set(
           context.bundle,
@@ -29601,6 +29803,69 @@ ${pad.repeat(depth)}`;
         return result2("NOT_PRESENT");
     }
     return result2("NOT_CHECKED");
+  }
+
+  // src/card-registered.ts
+  var MAX_CARD_STATEMENTS = 64;
+  var MAX_STATEMENT_HEX = 2 * 10485760;
+  var HEX2 = /^(?:[0-9a-f]{2})+$/u;
+  var ANCHOR = /^[0-9a-f]{64}$/u;
+  var none = (status2, statements = [], keyId = null) => ({
+    status: status2,
+    service: null,
+    registration_time: null,
+    statements,
+    key_id: keyId
+  });
+  var fromHex4 = (hex6) => {
+    const out = new Uint8Array(new ArrayBuffer(hex6.length / 2));
+    for (let i = 0; i < out.length; i += 1)
+      out[i] = Number.parseInt(hex6.slice(2 * i, 2 * i + 2), 16);
+    return out;
+  };
+  async function cardRegisteredUnder(card2, key, anchor, statements, policy) {
+    const report = await checkCardRegistered(
+      card2,
+      key,
+      anchor,
+      statements.map(
+        (s) => HEX2.test(s) && s.length <= MAX_STATEMENT_HEX ? fromHex4(s) : new Uint8Array(0)
+      ),
+      policy
+    );
+    return {
+      status: report.status,
+      service: report.service,
+      registration_time: report.registration_time,
+      statements: report.statements,
+      key_id: key
+    };
+  }
+  async function readerCardRegistered(context, statements) {
+    if (statements === null || statements.length === 0)
+      return none("NOT_PRESENT");
+    try {
+      if (statements.length > MAX_CARD_STATEMENTS || statements.some((s) => typeof s !== "string"))
+        return none("NOT_CHECKED");
+      if (!isVerifiedBundleContext(context)) return none("NOT_CHECKED");
+      const signature2 = await readerCardSignature(context);
+      const disclosed = context.root ? context.resolvedDisclosures.get(context.root)?.agent_input : void 0;
+      if (signature2.status !== "PASS" || signature2.key_id === null || disclosed === void 0 || disclosed.state !== "disclosed")
+        return none("NOT_CHECKED");
+      const card2 = disclosed.payload;
+      const anchor = card2 !== null && typeof card2 === "object" ? card2.anchor : void 0;
+      if (typeof anchor !== "string" || !ANCHOR.test(anchor))
+        return none("NOT_CHECKED");
+      return await cardRegisteredUnder(
+        jcs(card2),
+        signature2.key_id,
+        anchor,
+        statements,
+        readerWitnessPolicy()
+      );
+    } catch {
+      return none("NOT_CHECKED");
+    }
   }
 
   // src/wording/history-view.en.json

@@ -231,6 +231,12 @@ jobs:
         with:
           chrome-version: 155.0.8059.39
           install-dependencies: true
+      # The page's runtime draws a claim's reason words, which only a browser
+      # shows (internal/book/report_reason_test.go).
+      - name: A claim's reason on the report page
+        env:
+          EVIDENCEBOOK_CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: go test -count=1 -v -run '^TestContractReportDrawsAClaimReason$' ./internal/book
       - name: Install the pinned fonts
         run: |
           sudo apt-get update -qq

@@ -1,0 +1,5 @@
+### Changed: capsulectl and report move to capsule-cli v0.1.0-rc48 and capsule-viewer go v0.20.0 (#739)
+
+- `capsulectl-book result build` seals a Result whose claims carry the optional member `reason` (AAC Evidence Result section 4.4; the vendored schema and vectors are capsule-cli#612's), and a Result carrying it round-trips through `disclose` and `verify --bundle`.
+- The report page draws the reason: the runtime's generic Result page shows a claim's `reason` with the pack's `row.<ref>.reason.<code>` words, or the core words for the four core codes (capsule-viewer#345, #348). Only the `report` package's `View.ContractReport` draws that page today; `capsulectl-book report build` does not select it yet. The committed presentation pages in `report/testdata/presentation` carry the new runtime.
+- `capsulectl` requires capsule-cli `v0.1.0-rc48` (was rc47) and capsule-viewer go `v0.20.0` (was v0.19.2); `report` requires capsule-cli `v0.1.0-rc48` (was rc45, whose Result schema refuses `reason`, so `report.Build` could not take such a Result) and capsule-viewer go `v0.20.0`.
