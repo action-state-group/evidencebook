@@ -33,6 +33,11 @@ type WindowPolicy struct {
 	// Since is the first window's start. It must be the start of a period,
 	// so the first window is an ordinary one.
 	Since time.Time
+	// Grace is how long after a window ends its book still takes a close/v1
+	// Close for a period inside it (evidencebook#807); the window closes,
+	// and its final checkpoint exists, when the grace ends. Zero is no
+	// grace. It must be shorter than the period's shortest length.
+	Grace time.Duration
 }
 
 // Window is one window of a policy: its label and its half-open bounds
@@ -172,6 +177,22 @@ func (p WindowPeriod) ParseWindow(label string) (Window, error) {
 	return w, nil
 }
 
+// shortest is the shortest length a window of the period can have.
+func (p WindowPeriod) shortest() time.Duration {
+	switch p {
+	case WindowDay:
+		return 24 * time.Hour
+	case WindowWeek:
+		return 7 * 24 * time.Hour
+	case WindowMonth:
+		return 28 * 24 * time.Hour
+	case WindowQuarter:
+		return 89 * 24 * time.Hour
+	default:
+		return 365 * 24 * time.Hour
+	}
+}
+
 // validate checks a policy as a shelf is created with it.
 func (wp WindowPolicy) validate() error {
 	if !wp.Period.valid() {
@@ -182,6 +203,9 @@ func (wp WindowPolicy) validate() error {
 	}
 	if wp.Since.IsZero() || !wp.Since.Equal(wp.Period.start(wp.Since)) {
 		return fmt.Errorf("%w: the window policy's since (%s) is not the start of a %s", ErrInvalid, wp.Since.UTC().Format(time.RFC3339), wp.Period)
+	}
+	if wp.Grace < 0 || wp.Grace >= wp.Period.shortest() || wp.Grace%time.Second != 0 {
+		return fmt.Errorf("%w: a %s window's grace is whole seconds, at least zero and shorter than %s", ErrInvalid, wp.Period, wp.Period.shortest())
 	}
 	return nil
 }

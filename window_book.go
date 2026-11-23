@@ -65,6 +65,10 @@ type WindowCloseStatement struct {
 	Start         string         `json:"start"`
 	End           string         `json:"end"`
 	CountsByKind  map[string]int `json:"counts_by_kind"`
+	// Boundary is the tree the window held when it ended and entered its
+	// grace (evidencebook#807): the final tree, which the close record ends,
+	// binds it, so a chain cannot swap or drop it. Absent with no grace.
+	Boundary *WindowTree `json:"boundary,omitempty"`
 }
 
 func windowTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
@@ -73,20 +77,29 @@ func windowTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // when it opens the book and changes it under the book's lock.
 type bookWindow struct {
 	Window
+	// graceEnd is when the window's grace ends: its end with no grace. From
+	// its end until graceEnd the book takes only a close/v1 Close for a
+	// period inside the window (evidencebook#807).
+	graceEnd time.Time
 	// sealing is set while the shelf appends the window's own open or close
 	// record: no other caller can append either.
 	sealing bool
 	closed  bool
+	// bounded is set once the window took its boundary checkpoint: from
+	// then on only a Close for its period enters, whatever the clock reads.
+	bounded bool
 	// final is the window's final checkpoint once it is closed.
 	final Checkpoint
 }
 
-// admits checks that a record of recordType, at seq, committed at at, may
-// enter the book. A book outside a windowed shelf takes no window record;
-// a window book takes its open record only first and only from the shelf,
-// its close record only from the shelf, and every other record only inside
-// its window and before its close.
-func (w *bookWindow) admits(recordType string, seq uint64, at time.Time, checkpointing bool) error {
+// admits checks that a record, committed at at, may enter the book. A book
+// outside a windowed shelf takes no window record; a window book takes its
+// open record only first and only from the shelf, its close record only
+// from the shelf, the index roots its own checkpoints commit, every other
+// record only inside its window, and in its grace only a close/v1 Close for
+// a period inside the window.
+func (w *bookWindow) admits(h Header, at time.Time, checkpointing bool) error {
+	recordType, seq := h.RecordType, h.Seq
 	if w == nil {
 		if isWindowRecord(recordType) {
 			return fmt.Errorf("%w: a %s record belongs to a window book, which a windowed shelf writes", ErrInvalid, recordType)
@@ -109,8 +122,8 @@ func (w *bookWindow) admits(recordType string, seq uint64, at time.Time, checkpo
 		return nil
 	case RecordTypeIndexRoot:
 		// A checkpoint's index roots carry their real commit time: the
-		// checkpoint that closes a window commits them after its end. Only
-		// the book's own checkpoint commits one outside the window.
+		// checkpoints that end and close a window commit them after its
+		// end. Only the book's own checkpoint commits one outside it.
 		if seq == 1 {
 			return fmt.Errorf("%w: window %s's book begins with its open record", ErrInvalid, w.Label)
 		}
@@ -126,8 +139,33 @@ func (w *bookWindow) admits(recordType string, seq uint64, at time.Time, checkpo
 		// window filled in late commits after its end.
 		return nil
 	}
-	if !w.Contains(at) {
-		return fmt.Errorf("%w: %s is outside window %s [%s, %s)", ErrWindowClosed, at.Format(time.RFC3339Nano), w.Label, windowTime(w.Start), windowTime(w.End))
+	if w.Contains(at) && !w.bounded {
+		return nil
+	}
+	if recordType == RecordTypeClose && (w.bounded || !at.Before(w.End)) && at.Before(w.graceEnd) {
+		return w.closeInside(h)
+	}
+	if w.bounded {
+		return fmt.Errorf("%w: window %s has ended and takes only a Close for a period inside it", ErrWindowClosed, w.Label)
+	}
+	if !at.Before(w.End) && at.Before(w.graceEnd) {
+		return fmt.Errorf("%w: window %s is in its grace until %s, which takes only a Close for a period inside it", ErrWindowClosed, w.Label, windowTime(w.graceEnd))
+	}
+	return fmt.Errorf("%w: %s is outside window %s [%s, %s)", ErrWindowClosed, at.Format(time.RFC3339Nano), w.Label, windowTime(w.Start), windowTime(w.End))
+}
+
+// closeInside checks that a Close is a close/v1 whose period lies inside
+// the window, the one record a window takes in its grace.
+func (w *bookWindow) closeInside(h Header) error {
+	v1, _, err := ReadClose(h)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrWindowClosed, err)
+	}
+	if v1 == nil {
+		return fmt.Errorf("%w: window %s takes only a close/v1 Close in its grace", ErrWindowClosed, w.Label)
+	}
+	if v1.Period.Start.Before(w.Start) || v1.Period.End.After(w.End) {
+		return fmt.Errorf("%w: the Close's period [%s, %s) is not inside window %s [%s, %s)", ErrWindowClosed, windowTime(v1.Period.Start), windowTime(v1.Period.End), w.Label, windowTime(w.Start), windowTime(w.End))
 	}
 	return nil
 }
@@ -170,6 +208,11 @@ CREATE TABLE IF NOT EXISTS shelf_window_books (
 // the window.
 const ShelfVersionWindow = 3
 
+// ShelfVersionWindowGrace is the shelf file version of a windowed shelf
+// with a grace (evidencebook#807): a build that knows windows but not grace
+// refuses it rather than close its windows when they end.
+const ShelfVersionWindowGrace = 4
+
 const (
 	windowOpen   = "open"
 	windowClosed = "closed"
@@ -179,16 +222,24 @@ const (
 // (fresh, so it holds nothing yet), or checks a windowed file's recorded
 // policy against it.
 func initWindow(ctx context.Context, tx *sql.Tx, policy *WindowPolicy, version int64, fresh bool) error {
+	windowed := version == ShelfVersionWindow || version == ShelfVersionWindowGrace
 	switch {
-	case version == ShelfVersionWindow && policy == nil:
+	case windowed && policy == nil:
 		return fmt.Errorf("%w: this shelf is windowed; open it with its window policy", ErrInvalid)
-	case version == ShelfVersionWindow:
+	case windowed:
+		if err := addWindowColumns(ctx, tx); err != nil {
+			return err
+		}
 		var period, base, since string
-		if err := tx.QueryRowContext(ctx, `SELECT period, base, since FROM shelf_window WHERE id = 1`).Scan(&period, &base, &since); err != nil {
+		var grace int64
+		if err := tx.QueryRowContext(ctx, `SELECT period, base, since, grace FROM shelf_window WHERE id = 1`).Scan(&period, &base, &since, &grace); err != nil {
 			return fmt.Errorf("%w: windowed shelf without its policy: %v", ErrCorrupt, err)
 		}
-		if period != string(policy.Period) || base != policy.Base || since != windowTime(policy.Since) {
-			return fmt.Errorf("%w: this shelf's window is %s from %s under %q, fixed when it was created; it cannot change", ErrInvalid, period, since, base)
+		if period != string(policy.Period) || base != policy.Base || since != windowTime(policy.Since) || time.Duration(grace)*time.Second != policy.Grace {
+			return fmt.Errorf("%w: this shelf's window is %s from %s under %q with a grace of %s, fixed when it was created; it cannot change", ErrInvalid, period, since, base, time.Duration(grace)*time.Second)
+		}
+		if (grace > 0) != (version == ShelfVersionWindowGrace) {
+			return fmt.Errorf("%w: shelf version %d does not match its grace of %ds", ErrCorrupt, version, grace)
 		}
 		return nil
 	case policy == nil:
@@ -202,8 +253,33 @@ func initWindow(ctx context.Context, tx *sql.Tx, policy *WindowPolicy, version i
 	if _, err := tx.ExecContext(ctx, windowSchema); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO shelf_window (id, period, base, since) VALUES (1, ?, ?, ?)`, string(policy.Period), policy.Base, windowTime(policy.Since))
+	if err := addWindowColumns(ctx, tx); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO shelf_window (id, period, base, since, grace) VALUES (1, ?, ?, ?, ?)`, string(policy.Period), policy.Base, windowTime(policy.Since), int64(policy.Grace/time.Second))
 	return err
+}
+
+// addWindowColumns adds the grace columns (evidencebook#807) to a windowed
+// shelf created before them: the policy's grace, read as 0, and each
+// window's boundary tree.
+func addWindowColumns(ctx context.Context, tx *sql.Tx) error {
+	for _, c := range []struct{ table, column, ddl string }{
+		{"shelf_window", "grace", "ALTER TABLE shelf_window ADD COLUMN grace INTEGER NOT NULL DEFAULT 0"},
+		{"shelf_window_books", "boundary_entries", "ALTER TABLE shelf_window_books ADD COLUMN boundary_entries INTEGER"},
+		{"shelf_window_books", "boundary_root", "ALTER TABLE shelf_window_books ADD COLUMN boundary_root TEXT"},
+	} {
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, c.table, c.column).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			if _, err := tx.ExecContext(ctx, c.ddl); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // windowRow is one row of shelf_window_books.
@@ -213,10 +289,26 @@ type windowRow struct {
 	state   string
 	entries uint64
 	root    string
+	// boundaryEntries and boundaryRoot are the tree the window held when it
+	// ended and entered its grace (zero entries: none taken).
+	boundaryEntries uint64
+	boundaryRoot    string
+}
+
+// inGrace reports whether the row's window has ended and is in its grace.
+func (r windowRow) inGrace() bool { return r.state == windowOpen && r.boundaryEntries > 0 }
+
+// tree is the tree the next window's open record names: the boundary when
+// the window took one, else its final tree.
+func (r windowRow) tree() *WindowTree {
+	if r.boundaryEntries > 0 {
+		return &WindowTree{LogID: r.logID, Entries: r.boundaryEntries, Root: r.boundaryRoot}
+	}
+	return &WindowTree{LogID: r.logID, Entries: r.entries, Root: r.root}
 }
 
 func (s *Shelf) windowRowsLocked(ctx context.Context) ([]windowRow, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT label, log_id, state, COALESCE(final_entries, 0), COALESCE(final_root, '') FROM shelf_window_books ORDER BY start`)
+	rows, err := s.db.QueryContext(ctx, `SELECT label, log_id, state, COALESCE(final_entries, 0), COALESCE(final_root, ''), COALESCE(boundary_entries, 0), COALESCE(boundary_root, '') FROM shelf_window_books ORDER BY start`)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +317,7 @@ func (s *Shelf) windowRowsLocked(ctx context.Context) ([]windowRow, error) {
 	for rows.Next() {
 		var r windowRow
 		var label string
-		if err := rows.Scan(&label, &r.logID, &r.state, &r.entries, &r.root); err != nil {
+		if err := rows.Scan(&label, &r.logID, &r.state, &r.entries, &r.root, &r.boundaryEntries, &r.boundaryRoot); err != nil {
 			return nil, err
 		}
 		if r.Window, err = s.cfg.Window.Period.ParseWindow(label); err != nil {
@@ -324,28 +416,71 @@ func (s *Shelf) rollLocked(ctx context.Context) (windowRow, error) {
 		// record: write it now (openWindowLocked is idempotent).
 		var previous *WindowTree
 		if len(rows) > 1 {
-			prev := rows[len(rows)-2]
-			previous = &WindowTree{LogID: prev.logID, Entries: prev.entries, Root: prev.root}
+			previous = rows[len(rows)-2].tree()
 		}
-		if latest.state == windowOpen {
+		if latest.state == windowOpen && !latest.inGrace() {
 			if latest, err = s.openWindowLocked(ctx, latest.Window, previous); err != nil {
 				return windowRow{}, err
 			}
 		}
 	}
 	now := s.now()
-	for latest.state == windowClosed || !now.Before(latest.End) {
-		if latest.state == windowOpen {
-			if latest, err = s.closeWindowLocked(ctx, latest); err != nil {
+	// Every window whose grace has ended closes, oldest first.
+	for _, row := range rows {
+		if row.inGrace() && !now.Before(row.End.Add(policy.Grace)) && row.logID != latest.logID {
+			if _, err := s.closeWindowLocked(ctx, row); err != nil {
 				return windowRow{}, err
 			}
 		}
-		previous := &WindowTree{LogID: latest.logID, Entries: latest.entries, Root: latest.root}
-		if latest, err = s.openWindowLocked(ctx, policy.Period.Next(latest.Window), previous); err != nil {
+	}
+	for latest.state == windowClosed || latest.inGrace() || !now.Before(latest.End) {
+		switch {
+		case latest.inGrace() && !now.Before(latest.End.Add(policy.Grace)):
+			if latest, err = s.closeWindowLocked(ctx, latest); err != nil {
+				return windowRow{}, err
+			}
+		case latest.state == windowOpen && !latest.inGrace():
+			// The window has ended: with no grace, or past it, it closes
+			// now; otherwise it takes its boundary and enters its grace.
+			if policy.Grace == 0 || !now.Before(latest.End.Add(policy.Grace)) {
+				latest, err = s.closeWindowLocked(ctx, latest)
+			} else {
+				latest, err = s.boundaryLocked(ctx, latest)
+			}
+			if err != nil {
+				return windowRow{}, err
+			}
+		}
+		next := policy.Period.Next(latest.Window)
+		if latest, err = s.openWindowLocked(ctx, next, latest.tree()); err != nil {
 			return windowRow{}, err
 		}
 	}
 	return latest, nil
+}
+
+// boundaryLocked takes an ended window's boundary checkpoint and records it,
+// entering the window's grace: the next window's open record names this
+// tree, and a chain proves the final tree extends it (evidencebook#807).
+func (s *Shelf) boundaryLocked(ctx context.Context, row windowRow) (windowRow, error) {
+	book, err := s.openLocked(ctx, row.logID)
+	if err != nil {
+		return windowRow{}, err
+	}
+	// A Close admitted after this checkpoint is in the window's tail, so no
+	// size check races it.
+	cp, err := book.Checkpoint(ctx)
+	if err != nil {
+		return windowRow{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE shelf_window_books SET boundary_entries = ?, boundary_root = ? WHERE label = ?`, cp.Entries, cp.Root, row.Label); err != nil {
+		return windowRow{}, err
+	}
+	book.mu.Lock()
+	book.window.bounded = true
+	book.mu.Unlock()
+	row.boundaryEntries, row.boundaryRoot = cp.Entries, cp.Root
+	return row, nil
 }
 
 // openWindowLocked makes sure w has its row and its book its open record.
@@ -430,10 +565,14 @@ func (s *Shelf) closeWindowLocked(ctx context.Context, row windowRow) (windowRow
 		for _, record := range log {
 			counts[record.Header.RecordType]++
 		}
-		if _, err := book.appendWindowRecord(ctx, RecordTypeWindowClose, WindowCloseStatement{
+		statement := WindowCloseStatement{
 			RecordVersion: WindowCloseVersion, Period: s.cfg.Window.Period, Label: row.Label,
 			Start: windowTime(row.Start), End: windowTime(row.End), CountsByKind: counts,
-		}); err != nil {
+		}
+		if row.boundaryEntries > 0 {
+			statement.Boundary = row.tree()
+		}
+		if _, err := book.appendWindowRecord(ctx, RecordTypeWindowClose, statement); err != nil {
 			return windowRow{}, err
 		}
 	}
@@ -474,7 +613,12 @@ func (s *Shelf) attachWindow(ctx context.Context, book *Book, logID string) erro
 	if err != nil {
 		return fmt.Errorf("%w: window row %q: %v", ErrCorrupt, label, err)
 	}
-	bw := &bookWindow{Window: w}
+	bw := &bookWindow{Window: w, graceEnd: w.End.Add(s.cfg.Window.Grace)}
+	var boundary uint64
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(boundary_entries, 0) FROM shelf_window_books WHERE log_id = ?`, logID).Scan(&boundary); err != nil {
+		return err
+	}
+	bw.bounded = boundary > 0
 	if state == windowClosed {
 		final, err := finalCheckpoint(ctx, book, entries, root)
 		if err != nil {
@@ -542,6 +686,10 @@ type WindowState struct {
 	Window
 	LogID  string `json:"log_id"`
 	Closed bool   `json:"closed"`
+	// InGrace is set for a window that has ended and is in its grace;
+	// ClosesAt is when the window closes: its end plus the store's grace.
+	InGrace  bool      `json:"in_grace,omitempty"`
+	ClosesAt time.Time `json:"closes_at"`
 	// Final is the window's final tree once it is closed.
 	Final *WindowTree `json:"final,omitempty"`
 }
@@ -562,7 +710,7 @@ func (s *Shelf) Windows(ctx context.Context) ([]WindowState, error) {
 	}
 	out := make([]WindowState, len(rows))
 	for i, r := range rows {
-		out[i] = WindowState{Window: r.Window, LogID: r.logID, Closed: r.state == windowClosed}
+		out[i] = WindowState{Window: r.Window, LogID: r.logID, Closed: r.state == windowClosed, InGrace: r.inGrace(), ClosesAt: r.End.Add(s.cfg.Window.Grace)}
 		if out[i].Closed {
 			out[i].Final = &WindowTree{LogID: r.logID, Entries: r.entries, Root: r.root}
 		}
@@ -634,7 +782,16 @@ func ReadShelfWindow(ctx context.Context, path string) (*WindowPolicy, error) {
 		return nil, nil
 	}
 	var period, base, since string
-	switch err := db.QueryRowContext(ctx, `SELECT period, base, since FROM shelf_window WHERE id = 1`).Scan(&period, &base, &since); {
+	var grace int64
+	var graceColumn int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('shelf_window') WHERE name = 'grace'`).Scan(&graceColumn); err != nil {
+		return nil, err
+	}
+	query := `SELECT period, base, since, 0 FROM shelf_window WHERE id = 1`
+	if graceColumn > 0 {
+		query = `SELECT period, base, since, grace FROM shelf_window WHERE id = 1`
+	}
+	switch err := db.QueryRowContext(ctx, query).Scan(&period, &base, &since, &grace); {
 	case errors.Is(err, sql.ErrNoRows):
 		return nil, nil
 	case err != nil:
@@ -644,5 +801,5 @@ func ReadShelfWindow(ctx context.Context, path string) (*WindowPolicy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: the shelf's window since %q: %v", ErrCorrupt, since, err)
 	}
-	return &WindowPolicy{Period: WindowPeriod(period), Base: base, Since: start}, nil
+	return &WindowPolicy{Period: WindowPeriod(period), Base: base, Since: start, Grace: time.Duration(grace) * time.Second}, nil
 }
