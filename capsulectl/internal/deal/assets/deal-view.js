@@ -701,9 +701,15 @@ const dealSettlement = async (steps) => {
 };
 
 // The cadence witness (F8.1): the runtime walks the bundle's
-// x-cadence-witness/v0 chain from the context's own checkpoint and checks its
+// cadence chain (parent-log-witness/v1 or an older name) from the context's own checkpoint and checks its
 // receipts under the reader's witness list (readerCadenceWitness, viewer
 // 0.10.0, capsule-viewer#214). Undefined when the runtime has no such check.
+// A bundle carries the chain as parent-log-witness/v1 (Evidence Bundle -03;
+// evidencebook#737) or, in a bundle written before, x-cadence-witness/v0.
+const dealCarriesChain = (bundle) => {
+  const extensions = (bundle || {}).extensions || {};
+  return extensions["parent-log-witness/v1"] !== undefined || extensions["x-cadence-witness/v0"] !== undefined;
+};
 const dealWitnessOf = async (context) => {
   if (typeof EvidenceGraph.readerCadenceWitness !== "function") return undefined;
   try {
@@ -893,7 +899,7 @@ const dealViewModel = async (context) => {
     claimClasses,
     referee,
     dealId: logId.startsWith("deal/") ? logId.slice(5) : reportDealId,
-    witnessed: (bundle.extensions || {})["x-cadence-witness/v0"] !== undefined,
+    witnessed: dealCarriesChain(bundle),
     cadence: await dealWitnessOf(context),
     // Steps sealed before the deal store was a book (capsule-cli#242) have
     // no place in one: their lines are not read.
@@ -958,7 +964,7 @@ const dealCitingRecord = (records, cited) =>
     .map((r) => (((r || {}).model_attestation || {}).compute_attestation || {}).received_half)
     .find((h) => h && typeof h === "object" && h.cited_capsule_id === cited);
 const dealTheirArtifact = async (member, dealID, mine, meshOwn, payerRecords) => {
-  const witnessed = ((member.bundle || {}).extensions || {})["x-cadence-witness/v0"] !== undefined;
+  const witnessed = dealCarriesChain(member.bundle);
   const ctx = await EvidenceGraph.buildVerifiedBundleContext(member.bundle);
   const root = dealRootRecord(ctx.bundle, ctx.records);
   const mesh = dealMeshHalf(root) !== undefined;

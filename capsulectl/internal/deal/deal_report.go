@@ -153,7 +153,8 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 		}
 		ext = map[string]interface{}{dealprofile.ReportPointer: id}
 	}
-	extensions := map[string]interface{}{DealCadenceExtension: cadence, dealprofile.Profile: ext}
+	extensions := map[string]interface{}{dealprofile.Profile: ext}
+	setCadenceExtension(extensions, cadence)
 	if standalone != nil {
 		extensions[dealprofile.ReportExtension] = standalone
 	}

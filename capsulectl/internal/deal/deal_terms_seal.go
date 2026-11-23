@@ -425,7 +425,9 @@ func (s *dealSession) shareTermsResult(c *cobra.Command, dealID string, events [
 	if err != nil {
 		return err
 	}
-	b["extensions"] = map[string]interface{}{DealCadenceExtension: cadence}
+	extensions := map[string]interface{}{}
+	setCadenceExtension(extensions, cadence)
+	b["extensions"] = extensions
 	if err = cli.VerifyProducedBundle(b, true); err != nil {
 		return err
 	}

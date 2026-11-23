@@ -13,7 +13,7 @@ import (
 // plugin reads its own through the core's seam (cli.ExtensionReader), with
 // the code rc47's core ran (deal_verify_*.go, copied and credited):
 //
-//   - Witnesses: the cadence chain (x-cadence-witness/v0) and its receipts.
+//   - Witnesses: the cadence chain (parent-log-witness/v1) and its receipts.
 //     rc47 let that claim replace the bundle's direct witness claim; the seam
 //     reports it beside the core's (reader_witnesses), so a failing direct
 //     receipt stays visible. That is the one difference from rc47, by the

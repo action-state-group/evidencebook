@@ -151,8 +151,9 @@ func TestARC16StoreMovesOntoItsShelf(t *testing.T) {
 	require.NoError(t, err, out)
 	var b map[string]any
 	require.NoError(t, json.Unmarshal(mustRead(t, path), &b))
-	chain := b["extensions"].(map[string]any)["x-cadence-witness/v0"].(map[string]any)
+	chain := b["extensions"].(map[string]any)["parent-log-witness/v1"].(map[string]any)
 	assert.Equal(t, "witnessed", chain["state"])
+	requireParentWitness(t, mustRead(t, path), "")
 
 	// Later evidence on the closed deal brings it back into the tick.
 	dealRun(t, "note", "--deal", deals.Closed, "--kind", "evidence", "--email", filepath.Join(merchantFixture, "confirmation.eml"))

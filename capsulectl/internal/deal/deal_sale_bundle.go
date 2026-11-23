@@ -144,7 +144,9 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 	if predate {
 		section["threads_predate_registration"] = true
 	}
-	b["extensions"] = map[string]interface{}{DealCadenceExtension: cadence, dealprofile.Profile: section, DealSaleExtension: map[string]interface{}{"threads": threads}}
+	extensions := map[string]interface{}{dealprofile.Profile: section, DealSaleExtension: map[string]interface{}{"threads": threads}}
+	setCadenceExtension(extensions, cadence)
+	b["extensions"] = extensions
 	if err = cli.VerifyProducedBundle(b, true); err != nil {
 		return nil, nil, err
 	}

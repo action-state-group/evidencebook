@@ -51,6 +51,11 @@ const (
 	// are a registered space; until this one is registered it is a private
 	// kind, so it carries the x- prefix.
 	DealCadenceExtension = "x-cadence-witness/v0"
+	// DealParentWitnessExtension is the neutral kind a witnessed chain
+	// travels in (Evidence Bundle -03, "The parent-log-witness/v1
+	// Extension"), which the core's AAC verifier checks. It replaced
+	// DealCadenceExtension for a chain (evidencebook#737).
+	DealParentWitnessExtension = "parent-log-witness/v1"
 )
 
 // earlierCadenceExtensions are the names bundles carried the chain under
@@ -58,10 +63,52 @@ const (
 // chain names its log in deal_log_id).
 var earlierCadenceExtensions = []string{"cadence-witness/v0", "x-deal-cadence-v0"}
 
-// cadenceChainOf is the cadence chain a bundle carries, under its name or
-// a name bundles carried it under before.
+// cadenceExtensionEntry is the extension that carries a cadence chain
+// (dealWitnessState's map) in a bundle: a witnessed chain as the
+// parent-log-witness/v1 block, which is the chain with its "cadence" member
+// named "parent" as -03 calls it. Members -03 does not define (state, extent,
+// checkpoint_at, steps_witnessed, steps, rest) stay; a verifier ignores them
+// and computes the extent from the checkpoints. A state that is not a
+// witnessed chain (scheduled, pending, unverified, not_configured) names no
+// leaf and no receipt, so it is no block a verifier could check: it stays
+// under the old name, which no verifier reads as a witness, and never beside
+// a block.
+func cadenceExtensionEntry(chain map[string]interface{}) (string, map[string]interface{}) {
+	parent, isObject := chain["cadence"].(map[string]interface{})
+	if chain["state"] != "witnessed" || !isObject {
+		return DealCadenceExtension, chain
+	}
+	block := make(map[string]interface{}, len(chain))
+	for k, v := range chain {
+		if k != "cadence" {
+			block[k] = v
+		}
+	}
+	block["parent"] = parent
+	return DealParentWitnessExtension, block
+}
+
+// setCadenceExtension adds a bundle's cadence chain to its extensions.
+func setCadenceExtension(extensions map[string]interface{}, chain map[string]interface{}) {
+	name, value := cadenceExtensionEntry(chain)
+	extensions[name] = value
+}
+
+// cadenceChainOf is the cadence chain a bundle carries, under its name
+// (parent-log-witness/v1, with "parent" read back as "cadence", the member
+// every reader here takes) or a name bundles carried it under before.
 func CadenceChainOf(b map[string]interface{}) map[string]interface{} {
 	ext, _ := b["extensions"].(map[string]interface{})
+	if block, ok := ext[DealParentWitnessExtension].(map[string]interface{}); ok {
+		chain := make(map[string]interface{}, len(block))
+		for k, v := range block {
+			if k != "parent" {
+				chain[k] = v
+			}
+		}
+		chain["cadence"] = block["parent"]
+		return chain
+	}
 	for _, name := range append([]string{DealCadenceExtension}, earlierCadenceExtensions...) {
 		if chain, ok := ext[name].(map[string]interface{}); ok {
 			return chain

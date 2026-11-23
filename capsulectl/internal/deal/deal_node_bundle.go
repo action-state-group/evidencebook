@@ -153,7 +153,7 @@ only the earlier checkpoint: records after it are in the book by the consistency
 --witness-receipt FILE (a checkpoint.witnesses entry: ts_url, entry_hash, receipt_b64, leaf_index, tree_size) with
 --witness-directory FILE (witnesses.json) and --at carries the witness's receipt for that checkpoint; the receipt must
 verify under the directory, or no bundle is written. When a witnessed cadence tick carries the checkpoint, the cadence
-chain travels in the bundle's x-cadence-witness/v0 extension. What a bundle shows is that the record is in the book at that
+chain travels in the bundle's parent-log-witness/v1 extension. What a bundle shows is that the record is in the book at that
 position; it does not show the record's content is true.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
@@ -247,11 +247,12 @@ position; it does not show the record's content is true.`,
 			}
 			var cadenceExtent any
 			if chain, e := cadence.Chain(ctx, req.At.Statement); e == nil {
-				raw, e := json.Marshal(chain)
+				name, value := cadenceExtensionEntry(chain)
+				raw, e := json.Marshal(value)
 				if e != nil {
 					return e
 				}
-				extensions[evidencebook.CadenceExtension] = raw
+				extensions[name] = raw
 				cadenceExtent = chain["extent"]
 			} else if !errors.Is(e, evidencebook.ErrNotFound) {
 				return e

@@ -309,7 +309,8 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 		if err != nil {
 			return nil, 0, 0, err
 		}
-		extensions := map[string]interface{}{DealCadenceExtension: cadence, dealprofile.Profile: map[string]interface{}{"audience": DealAudienceHistory, "deal_id": dealID}}
+		extensions := map[string]interface{}{dealprofile.Profile: map[string]interface{}{"audience": DealAudienceHistory, "deal_id": dealID}}
+		setCadenceExtension(extensions, cadence)
 		if dealRole(covered) == dealRoleSeller {
 			extensions[dealSellerExtension] = map[string]interface{}{}
 		}
@@ -379,7 +380,8 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 			ext = map[string]interface{}{dealprofile.ReportPointer: id}
 		}
 	}
-	extensions := map[string]interface{}{DealCadenceExtension: cadence, dealprofile.Profile: ext}
+	extensions := map[string]interface{}{dealprofile.Profile: ext}
+	setCadenceExtension(extensions, cadence)
 	if standalone != nil {
 		extensions[dealprofile.ReportExtension] = standalone
 	}

@@ -49,7 +49,7 @@ type dealVerifyResult struct {
 // dealVerifyKinds are the extension kinds the plugin will read.
 var dealVerifyKinds = map[string]bool{
 	dealprofile.Profile: true, "x-deal-v1": true, DealSaleExtension: true, HistorySelectionExtension: true,
-	dealprofile.ReportExtension: true, DealCadenceExtension: true, "composed/v1": true,
+	dealprofile.ReportExtension: true, DealParentWitnessExtension: true, DealCadenceExtension: true, "composed/v1": true,
 }
 
 // readerResult is the plugin's `capsulectl deal verify --bundle` result for
