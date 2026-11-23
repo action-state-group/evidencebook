@@ -55,7 +55,9 @@ package	kind	symbol	feature	rust	python
 .	func	VerifyLeaf	indexes	frozen #638	frozen #637
 .	func	VerifyOpening	originals-and-stores	frozen #640	ported
 .	func	VerifyOpenings	shelf	ported	ported
+.	func	VerifyReportCoverage	window-books	frozen #798	frozen #799
 .	func	VerifyStampProof	shelf	ported	ported
+.	func	VerifyWindowChain	window-books	frozen #798	frozen #799
 .	func	VerifyWitnessReceipt	shelf	frozen #774	frozen #775
 .	type	A2AOptions	a2a-mcp-carriage	frozen #627	frozen #140
 .	type	A2ARequest	a2a-mcp-carriage	frozen #627	frozen #140
@@ -97,6 +99,8 @@ package	kind	symbol	feature	rust	python
 .	type	CapsuleSealer	originals-and-stores	frozen #640	ported
 .	type	CardRegisteredReport	card-registration	frozen #618	frozen #619
 .	type	CardStatementRegistrar	card-registration	frozen #618	frozen #619
+.	type	ChainFinding	window-books	frozen #798	frozen #799
+.	type	ChainWindow	window-books	frozen #798	frozen #799
 .	type	Checkpoint	substrates	ported	ported
 .	type	CloseInput	close-record	frozen #629	frozen #628
 .	type	ClosePeriod	close-record	frozen #629	frozen #628
@@ -114,6 +118,7 @@ package	kind	symbol	feature	rust	python
 .	type	CountedPrefix	shelf	ported	ported
 .	type	Coverage	request-reply-respond	ported	ported
 .	type	CoverageGiven	deal-reconcile	frozen #631	frozen #630
+.	type	CoverageOptions	window-books	frozen #798	frozen #799
 .	type	DealHalf	deal-reconcile	frozen #631	frozen #630
 .	type	DealMapping	standard-history	frozen #648	frozen #647
 .	type	DealReconcile	deal-reconcile	frozen #631	frozen #630
@@ -213,6 +218,7 @@ package	kind	symbol	feature	rust	python
 .	type	Registrar	substrates	frozen #650	frozen #649
 .	type	Reply	request-reply-respond	frozen #131	ported
 .	type	Report	derivation-report	frozen #755	frozen #747
+.	type	ReportCoverage	window-books	frozen #798	frozen #799
 .	type	ReportOptions	derivation-report	frozen #755	frozen #747
 .	type	Reproduction	originals-and-stores	ported	frozen #639
 .	type	RequestLimiter	request-reply-respond	ported	ported
@@ -269,13 +275,27 @@ package	kind	symbol	feature	rust	python
 .	type	VerificationEntry	request-reply-respond	frozen #131	frozen #131
 .	type	VerifiedBundle	evidence-bundle	frozen #636	frozen #635
 .	type	VerifiedStampProof	shelf	ported	ported
+.	type	VerifiedWindow	window-books	frozen #798	frozen #799
+.	type	VerifyChainOptions	window-books	frozen #798	frozen #799
+.	type	Window	window-books	frozen #798	frozen #799
+.	type	WindowChain	window-books	frozen #798	frozen #799
+.	type	WindowChainOptions	window-books	frozen #798	frozen #799
+.	type	WindowChainStatement	window-books	frozen #798	frozen #799
+.	type	WindowCloseStatement	window-books	frozen #798	frozen #799
+.	type	WindowInputs	window-books	frozen #798	frozen #799
 .	type	WindowLimiter	request-reply-respond	ported	ported
+.	type	WindowOpenStatement	window-books	frozen #798	frozen #799
+.	type	WindowPeriod	window-books	frozen #798	frozen #799
+.	type	WindowPolicy	window-books	frozen #798	frozen #799
+.	type	WindowState	window-books	frozen #798	frozen #799
+.	type	WindowTree	window-books	frozen #798	frozen #799
 .	type	WithheldItem	evidence-bundle	ported	frozen #635
 .	type	WitnessCheck	originals-and-stores	ported	ported
 .	type	WitnessReceipt	originals-and-stores	ported	ported
 .	type	WitnessRow	substrates	frozen #650	ported
 .	var	DefaultReceiveBounds	shelf	ported	ported
 .	var	ErrBusy	sentinel-errors	not needed	not needed
+.	var	ErrClockBehind	sentinel-errors	not needed	not needed
 .	var	ErrCorrupt	sentinel-errors	not needed	not needed
 .	var	ErrDeleted	sentinel-errors	not needed	not needed
 .	var	ErrInvalid	sentinel-errors	not needed	not needed
@@ -291,6 +311,7 @@ package	kind	symbol	feature	rust	python
 .	var	ErrStaleRound	disclosure-policy	not needed	not needed
 .	var	ErrUnavailable	sentinel-errors	not needed	not needed
 .	var	ErrUnsupported	sentinel-errors	not needed	not needed
+.	var	ErrWindowClosed	sentinel-errors	not needed	not needed
 .	var	NeverList	disclosure-policy	frozen #633	frozen #632
 .	var	RefusalReasons	request-reply-respond	frozen #131	frozen #131
 .	var	SettingsFields	disclosure-policy	frozen #633	frozen #632

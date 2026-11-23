@@ -114,6 +114,9 @@ type Book struct {
 	reportMu sync.Mutex
 	// released is set by Release; every write refuses with ErrReleased.
 	released bool
+	// window bounds a window book's records (Shelf.Current); nil for any
+	// other book.
+	window *bookWindow
 }
 
 // Open validates cfg, reconciles the record store with the substrate, and
@@ -398,6 +401,12 @@ func (b *Book) addAuthenticated(record Record) error {
 		// commits; indexing it would make every root commit the next one stale.
 		return nil
 	}
+	if isWindowRecord(record.Header.RecordType) {
+		// A window's open and close are found by position (its first and
+		// last leaf), and the final checkpoint right after the close must
+		// commit no new index root (evidencebook#689 §2).
+		return nil
+	}
 	for _, index := range b.index {
 		if key, ok := index.KeyOf(record); ok {
 			if err := index.Add(key, record.RecordID); err != nil {
@@ -519,6 +528,9 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	}
 	seq := uint64(len(b.log)) + 1
 	committedAt := b.now().UTC().Truncate(time.Microsecond)
+	if err := b.window.admits(entry.RecordType, seq, committedAt); err != nil {
+		return Record{}, err
+	}
 	header := Header{
 		Version: HeaderVersion, BookID: b.id, Seq: seq,
 		RecordType: entry.RecordType, EpistemicType: entry.EpistemicType,
@@ -781,6 +793,11 @@ func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoin
 	}
 	if err := b.refuseOtherClockKind(); err != nil {
 		return Checkpoint{}, err
+	}
+	if b.window != nil && b.window.closed {
+		// A closed window's tree is final: its final checkpoint is the one
+		// it gives.
+		return b.window.final, nil
 	}
 	b.checkpointing = true
 	defer func() { b.checkpointing = false }()

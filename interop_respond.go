@@ -295,6 +295,14 @@ func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions
 // respond is Respond; own marks the book's own request (Book.Staple), which
 // the cost policy does not count: the limiter and size cap are for askers.
 func (b *Book) respond(ctx context.Context, request Message, opts RespondOptions, own bool) (Reply, Record, error) {
+	return b.respondInto(ctx, request, opts, own, b)
+}
+
+// respondInto is respond with the evidence_request_answered record sealed
+// in into rather than b: a windowed shelf answers from the window book a
+// request pins and records the answer in the window open now
+// (evidencebook#689 §4).
+func (b *Book) respondInto(ctx context.Context, request Message, opts RespondOptions, own bool, into *Book) (Reply, Record, error) {
 	if err := opts.Policy.Validate(); err != nil {
 		return Reply{}, Record{}, err
 	}
@@ -318,7 +326,7 @@ func (b *Book) respond(ctx context.Context, request Message, opts RespondOptions
 	if err != nil {
 		return Reply{}, Record{}, err
 	}
-	record, err := b.appendRecord(ctx, body)
+	record, err := into.appendRecord(ctx, body)
 	if err != nil {
 		return Reply{}, Record{}, err
 	}

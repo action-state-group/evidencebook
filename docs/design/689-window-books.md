@@ -66,9 +66,10 @@ A windowed shelf has exactly one writable book: the newest open window's.
   call it, and a host may call it on a timer (capsulectl: `book window roll`), so last month's
   final checkpoint exists without waiting for a write.
 - A window book refuses a record whose `committed_at` is outside its window
-  (`ErrWindowClosed`), except its own `window_open` and `window_close`, which carry their real
-  commit time: an open can be committed after its start (a window filled in late), a close is
-  committed at or after its end. After the close a book is **closed**: book state, kept in
+  (`ErrWindowClosed`), except its own `window_open` and `window_close`, the index roots its
+  checkpoints commit, and the policy the shelf carries in (below), which carry their real commit
+  time: an open can be committed after its start (a window filled in late), a close and the
+  index roots before it at or after its end. After the close a book is **closed**: book state, kept in
   `shelf_window_books (log_id, label, state, final_size, final_root)`, refuses every append and
   every checkpoint other than returning its final one.
 - **Open record** (`record_type: "window_open"`, leaf 0, `producer_claim`):
@@ -76,10 +77,10 @@ A windowed shelf has exactly one writable book: the newest open window's.
   ```json
   {"record_version": "window_open/v1", "period": "month", "label": "2026-12",
    "start": "2026-12-01T00:00:00Z", "end": "2027-01-01T00:00:00Z",
-   "previous": {"log_id": "acme/2026-11", "tree_size": 412, "root": "<hex root hash>"}}
+   "previous": {"log_id": "acme/2026-11", "entries": 412, "root": "<hex root hash>"}}
   ```
 
-  `previous` names the previous window's final tree by size and root, not by a checkpoint
+  `previous` names the previous window's final tree by leaf count and root, not by a checkpoint
   digest: two signed checkpoints of one tree differ in their issue time, and the one a witness
   signed must match too. `previous` is absent only in the `Since` window, and a verifier
   refuses an open record without it anywhere else.
@@ -87,7 +88,9 @@ A windowed shelf has exactly one writable book: the newest open window's.
   type. The close sequence is: (1) a checkpoint, which commits any pending authenticated index
   roots (`book.go:787-803`); (2) append the close record; (3) the **final checkpoint**, whose
   tree size is the close record's seq + 1. `window_open` and `window_close` are exempt from the
-  authenticated indexes, as `index_root` is (`book.go:396-399`), so step 3 appends nothing.
+  authenticated indexes, as `index_root` is (`book.go:396-399`), so step 3 appends nothing. An
+  empty window's book holds its open record, the index roots of its first checkpoint and its
+  close.
 - `window_close` is not the existing `Close`: close/v1 names a counterparty and needs a
   record before it to be its head (`close.go:110-132`), which an empty window does not have,
   and its schema is AAC's.
@@ -106,6 +109,12 @@ A windowed shelf has exactly one writable book: the newest open window's.
   tick. capsulectl-book runs no cadence.
 
 ## 3. What the shelf shares across window books
+
+A book reads its disclosure policy from its own log (`policyInForce`,
+`disclosure_policy.go:439`), so the shelf re-states the policy in force at the end of the
+previous window as the new window's second record (a `disclosure_policy` record, kind
+`adopted`, with the same policy and digest); a crash between the open record and it is finished
+on the next roll.
 
 On a windowed shelf the derivation registrations and the unsigned-ask limiter belong to the
 shelf, not to one book (`interop_derivation.go:121-131`, `disclosure_policy.go:210-213`): a new
@@ -133,7 +142,8 @@ The Evidence Request and Evidence Bundle wire forms do not change.
 
 ## 5. The window chain and the report's coverage (R2, R4)
 
-**The chain** (`window_chain/v1`), exported by `Shelf.WindowChain(ctx, fromLabel, toLabel)`:
+**The chain** (`window_chain/v1`), exported by `Shelf.WindowChain(ctx, fromLabel, toLabel, opts)` (`opts.Receipts` supplies
+the host's witness receipts of each final checkpoint):
 
 ```json
 {"v": 1, "base": "acme", "period": "month", "since": "2026-01-01T00:00:00Z",
@@ -144,7 +154,7 @@ The Evidence Request and Evidence Bundle wire forms do not change.
               "final_checkpoint": <signed checkpoint>, "receipts": [<witness receipt>]}, ...]}
 ```
 
-`VerifyWindowChain(chain, checkpointKey, witnesses)` checks each window: the final checkpoint's
+`VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey, Witnesses})` checks each window: the final checkpoint's
 signature and log id; the open record at leaf 0 and the close record at the last leaf; the
 labels consecutive under the period from `since`; each open record's bounds equal to its
 label's; each `previous` equal to the prior window's final size and root. With witness ids,
@@ -171,13 +181,13 @@ What it shows and what it does not:
 - `Book.RecordWindowChain(ctx, chain, reported Period)` seals a `window_chain` record whose
   payload is the chain and whose statement is the reported range and the chain's digest. It
   refuses a chain that fails `VerifyWindowChain` or does not tile the range.
-- `Book.ReportFromWindows(ctx, chainRecord, responses, evaluate, opts)`: every response answers
+- `Book.ReportFromWindows(ctx, chainRecord, responses, evaluate, opts, chainOpts)`: every response answers
   the same pack, under the same holder checkpoint key (the key `RecordResponse` pins,
   `request.go:263`), at one window's final tree; every window in the range has exactly one. The
   gate `checkDerivedResult` (`derived_report.go:254-276`) is relaxed for it: each claim cites at
   least one of those response records and may cite the chain record, and nothing else. The
   bundle (with `contract-report/v1`) carries them all by closure, payloads included.
-- `VerifyReportCoverage(bundle)` checks the chain record verifies, the windows tile the range,
+- `VerifyReportCoverage(bundle, CoverageOptions{Witnesses})` checks the chain record verifies, the windows tile the range,
   each response's anchor is its window's final tree and its proofs verify there, and lists every
   gap by name: `window 2026-03 has no answer`, `windows do not tile 2026-01..2026-12`, `chain
   breaks at <label>`. `capsulectl verify --bundle` prints its lines, and `book report build`

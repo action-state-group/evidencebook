@@ -195,7 +195,7 @@ type sqliteStore struct {
 // without shelf_logs gets it filled, each book_records id a book and each
 // other cadence_logs id a host log. A version it does not know is refused
 // before anything is written.
-func initSQLiteStore(ctx context.Context, db *sql.DB) error {
+func initSQLiteStore(ctx context.Context, db *sql.DB, window *WindowPolicy) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -211,18 +211,25 @@ func initSQLiteStore(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	versioned := false
+	var version int64
 	if hasMeta {
-		var version int64
 		switch err := tx.QueryRowContext(ctx, `SELECT version FROM shelf_meta WHERE id = 1`).Scan(&version); {
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
 			return err
-		case version != ShelfVersion && version != ShelfVersionFacts:
-			return fmt.Errorf("%w: shelf file version %d (this build opens versions %d and %d)", ErrUnsupported, version, ShelfVersion, ShelfVersionFacts)
+		case version != ShelfVersion && version != ShelfVersionFacts && version != ShelfVersionWindow:
+			return fmt.Errorf("%w: shelf file version %d (this build opens versions %d, %d and %d)", ErrUnsupported, version, ShelfVersion, ShelfVersionFacts, ShelfVersionWindow)
 		default:
 			versioned = true
 		}
 	}
+	// A window is fixed only when the shelf is created: in a file holding
+	// no table at all (evidencebook#689 §1).
+	var tables int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'`).Scan(&tables); err != nil {
+		return err
+	}
+	fresh := !versioned && tables == 0
 	hasLogs, err := hasTable("shelf_logs")
 	if err != nil {
 		return err
@@ -233,8 +240,15 @@ func initSQLiteStore(ctx context.Context, db *sql.DB) error {
 	if err := migrateShelfReceipts(ctx, tx); err != nil {
 		return err
 	}
+	if err := initWindow(ctx, tx, window, version, fresh); err != nil {
+		return err
+	}
 	if !versioned {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO shelf_meta (id, version) VALUES (1, ?)`, ShelfVersion); err != nil {
+		created := int64(ShelfVersion)
+		if window != nil {
+			created = ShelfVersionWindow
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO shelf_meta (id, version) VALUES (1, ?)`, created); err != nil {
 			return err
 		}
 	}
