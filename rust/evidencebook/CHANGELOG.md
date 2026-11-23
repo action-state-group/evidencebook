@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 0.0.26 (2026-11-23)
+
+Every pull request merged since 0.0.25 that changed the crate:
+
+- [#614](https://github.com/action-state-group/evidencebook/pull/614): feat(dealprofile): rule 12 counterparty copy withholds answers, tellings, share checks and the close (#613)
+- [#756](https://github.com/action-state-group/evidencebook/pull/756): feat(rust): serve a Terms Pack by the digest of its definition, with grants, nested fields and set proofs (#746)
+- [#757](https://github.com/action-state-group/evidencebook/pull/757): fix(dealprofile): the x-deal-v1 payment check runs on the payment's own legs beside a refund (#722)
+
+Breaking changes in this release: `Registered::recipient` is replaced by `Registered::grants` (the grant is now a set: `recipient` and `recipients` together), `DerivationDefinition` gains the fields `recipients` and `proofs` and derives `Default` (a struct literal that does not name them writes `..Default::default()`), and `deal::v1`'s `REASON_REFUND_CITES_OFFER` is removed.
+
+- Serve a Terms Pack by the digest of its definition, as the Go book does (#746). `DerivationDefinition` gains `recipients` (one definition granted to several requesters; `recipient` and `recipients` are one grant set), dotted field paths (`statement.generated_at` reveals that member only, nested as the record holds it) and `proofs` (the answer carries the anchor's `cll-checkpoint`, one `cll-inclusion-proof` per record in record order and, when the checkpoint extends an earlier one, the `cll-consistency-proof`). `DerivationDefinition` now derives `Default`, so a literal that names no new field writes `..Default::default()`; `Registered::recipient` is replaced by `Registered::grants`, with `proofs` and `paths` beside it. New `evidencebook::derived`: `verify_set_inclusion` (the requester's check of those proofs, the envelope first, under the pinned checkpoint key) and `derived_inputs` (the rows of a derivation answer, `proven` only from a successful check). The Go reply bytes are the vectors (`testdata/derivation/proofs-vectors.json`) and the Go reply in `report/testdata/derived-report/bundle.json` is proven by the Rust check. The report over a derived answer is not ported (#755).
+
+### Fixed (breaking): `deal::v1::payment_check` runs on the payment's own legs beside a refund (evidencebook#722)
+
+- A refund or remedy leg citing the offer's terms leg no longer stops the check with `refund_cites_offer`. That let a 1-unit refund turn a failing payment into "not checked".
+- The check now runs on the payment's own legs. Those refund legs, when not superseded, are listed in the new `PaymentResult::not_checked`, and a status row counts them in `check_not_checked`. This matches Go byte for byte, on the shared vectors.
+- A payment leg is now superseded only by a later payment leg answering the same terms leg that AAC's verifier reads beside the offer. Before, a refund, a leg of another terms leg, or a malformed leg carrying `supersedes` could take the payment leg out of the check, which read "not agreed" instead of failed. A refund is still superseded by any later leg of its side.
+- `REASON_REFUND_CITES_OFFER` is removed.
+- This is a correctness fix to a function the crate already has, not a new port.
+
 ## 0.0.25 (2026-11-21)
 
 Every pull request merged since 0.0.24:
