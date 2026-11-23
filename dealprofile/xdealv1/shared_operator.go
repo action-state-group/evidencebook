@@ -32,8 +32,9 @@ const NotIndependentSharedOperator = "not independent (shared operator)"
 //
 // revocations are the revocation statements delivered with the bindings;
 // judged at stampedAt, one revoked after it does not remove the label. A bad
-// signature and any INCONCLUSIVE result give "". The verifier reads no member of the record for
-// this and holds no list of any operator's keys: the bindings are the proof.
+// signature and any INCONCLUSIVE result give "". It adds no record member and holds no list of
+// any operator's keys: the bindings are the proof, read beside the keys the
+// ruling and the agreement already carry.
 func SharedOperator(ruling Record, agreement AgreeBody, stampedAt time.Time, bindings, revocations [][]byte) string {
 	var body RulingBody
 	switch b := ruling.Body.(type) {
