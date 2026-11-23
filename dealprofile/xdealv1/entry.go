@@ -48,7 +48,8 @@ const (
 // proof of the copy's checkpoint with the receipts it sent and the witness
 // directory to verify them under. RulingAt is the time a witness the
 // agreement names gave the adjudicator's stamp that covers the ruling (for
-// the adjudicator, Shelf.StampTimeByKey), RFC 3339 in UTC; never the
+// the adjudicator, Shelf.RecordTimeByKey of the ruling's case book record),
+// RFC 3339 in UTC; never the
 // ruling's own at, which is the adjudicator's word. "" means no such stamp,
 // and then a copy without the statement shows nothing (EntryNotShown).
 type EntryInput struct {
