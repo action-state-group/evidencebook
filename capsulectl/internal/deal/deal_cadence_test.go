@@ -965,9 +965,9 @@ func TestTickStalenessLine(t *testing.T) {
 	line := tickStalenessLine(last, iv, last.Add(2*iv+time.Second), false)
 	assert.Contains(t, line, "Checkpoints stopped at 2026-11-23T01:05Z:")
 	assert.Contains(t, line, "every 5m")
-	assert.Contains(t, line, "the next tick covers it.")
+	assert.Contains(t, line, "the next tick, once the schedule runs again, covers it.")
 	assert.NotContains(t, line, "witness")
-	assert.Contains(t, tickStalenessLine(last, iv, last.Add(time.Hour), true), "covers it and sends it to your witness")
+	assert.Contains(t, tickStalenessLine(last, iv, last.Add(time.Hour), true), "once the schedule runs again, covers it and sends it to your witness")
 	assert.Empty(t, tickStalenessLine(last, time.Hour, last.Add(2*time.Hour), false), "a 1h cadence is on time at 2h")
 	assert.Contains(t, tickStalenessLine(last, time.Hour, last.Add(2*time.Hour+time.Minute), false), "every 1h")
 }

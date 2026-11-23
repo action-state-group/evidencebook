@@ -522,7 +522,7 @@ func tickStalenessLine(last time.Time, interval time.Duration, now time.Time, wi
 	if interval <= 0 || now.Sub(last) <= 2*interval {
 		return ""
 	}
-	covers := "the next tick covers it"
+	covers := "the next tick, once the schedule runs again, covers it"
 	if witness {
 		covers += " and sends it to your witness"
 	}
