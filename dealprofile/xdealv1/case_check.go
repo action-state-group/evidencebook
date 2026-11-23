@@ -111,8 +111,7 @@ func namesCounterparty(ag AgreeBody, key string) bool {
 //     agreement names adjudicatorKey;
 //   - the copies are of one deal and one offer, one per side, and with two,
 //     each agreement names the other copy's signer as its layered
-//     counterparty and
-//     both name the same adjudicator terms and forums;
+//     counterparty and both name the same adjudicator terms and forums;
 //   - with one copy, the other side's key is that agreement's
 //     counterparty_key, and a copy whose agreement names none is refused;
 //   - the dispute is read against its own agreement (CheckDispute) when the
