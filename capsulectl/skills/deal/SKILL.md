@@ -353,6 +353,51 @@ only (see the legacy file).
 
 - Send each file, and state how the rows went (Purchase, step 10).
 
+### Booking
+
+A hotel, flight, table, appointment, rental or ticket. It is a Purchase: the
+offer, admission, intent and agreement as in steps 1 to 6 (a booking site is
+almost always the no-layer shape).
+
+1. Fill the booking form up to the last screen before it is confirmed. Do
+   not press the final button.
+2. **Final review:** when the confirmation charges a card, it is a payment:
+   Purchase steps 7 to 9 with `"action": "pay"`. When it charges nothing now
+   (pay at the hotel, a free table), `deal check` with `"action": "commit"`,
+   the booking as `terms` and its price as `amount_minor`.
+3. The user's answer as in Purchase step 8. Confirm the booking only after
+   that returns `"proceed": true`.
+4. Right after confirming, record the booking on that check:
+
+   ```sh
+   capsulectl --profile deal deal perform --deal ID --act book --check CHECK_ID \
+     --observed confirmation_page --out perform.json
+   ```
+
+5. How it went and reading the deal, Purchase steps 10 and 11.
+
+### Signature
+
+A contract, a lease, a rental agreement, a service order, any e-signature.
+It is a Purchase up to the agreement (steps 1 to 6).
+
+1. Read the document, and fill it up to the signature without signing.
+2. **Final review:** `deal check` with `"action": "commit"`, the document's
+   terms as `terms` and what it commits the user to pay as `amount_minor`.
+3. The user's answer as in Purchase step 8. Sign only after that returns
+   `"proceed": true`.
+4. Right after signing:
+
+   ```sh
+   capsulectl --profile deal deal perform --deal ID --act sign --check CHECK_ID \
+     --observed esign_receipt --out perform.json
+   ```
+
+   The record is the agent's: it says the user approved and the document was
+   signed, never that the user's own signature is in it (see What "settled"
+   means).
+5. How it went and reading the deal, Purchase steps 10 and 11.
+
 ### Disclosure
 
 Giving anyone the user's name, phone, email, address, a pickup spot or area,
@@ -496,8 +541,8 @@ as the agent's records show"; never say the user signed.
 
 An x-deal-v0 deal already open keeps its version: finish it with the
 procedures in [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md). The same file
-covers a counterparty that runs only x-deal-v0. Booking, Signature,
-Cancel-by date and sale threads are there only.
+covers a counterparty that runs only x-deal-v0. Cancel-by date and sale
+threads are there only.
 
 ## Sub-tasks
 
@@ -656,8 +701,10 @@ capsulectl. Follow them; never make up your own narration of a step.
 On an x-deal-v1 deal, an offer or a counter-offer is sealed with `deal
 offer`, never checked with `deal check`, and agreeing is `deal agree`, which
 cites the side's admission decision. `pay` is the payment the user makes,
-`commit` an act such as a delivery (`deal perform` rests on it), and
-`cancel` a cancellation after agreeing (a refund rests on it).
+`commit` an act such as a delivery, a booking or a signature (`deal perform`
+rests on it), and `cancel` a cancellation after agreeing (a refund rests on
+it). `sign` is x-deal-v0's: on x-deal-v1 an act cannot rest on a `sign`
+check, so a signature uses `commit`.
 
 `commit` means sending a commitment (confirming a booking, accepting an
 offer, agreeing to buy). `cancel` means cancelling with the merchant. `deal
