@@ -1027,6 +1027,10 @@ func gateCardRun(page []byte, start, end int) (int, int, bool) {
 // card network's prefix and passes the checksum, as cardLike reads a payment
 // reference: the checksum alone passes one digit string in ten, so an honest
 // long order number would too often be refused (evidencebook#787, #772).
+// A card with digits glued to both of its ends in one run ("12 4111-1111-
+// 1111-1111 34") has no anchored window that is the card alone, so it is
+// caught only when an end window happens to read as one: reading the middle
+// windows too would bring back the false positives on long numbers.
 func gateCardWindows(digits string) bool {
 	card := func(w string) bool { return cardPrefix(w) && luhn(w) }
 	for n := 13; n <= 19 && n <= len(digits); n++ {

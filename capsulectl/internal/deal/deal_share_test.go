@@ -345,7 +345,7 @@ func TestDealSharePageGate(t *testing.T) {
 		"G" + verifyCode, "code" + verifyCode, "739 142", "739-142", "x " + verifyCode,
 		cardNumber, "4111-1111-1111-1111", "4111111111111111", base64.StdEncoding.EncodeToString([]byte(cardNumber)),
 		shopEmail, shopName,
-		"4242 4242 4242 4242", // any Luhn-valid card number, not only this deal's
+		"4242 4242 4242 4242", // any card number (prefix and checksum), not only this deal's
 		"your PIN is 5521", "OTP: 88213",
 		"41 L\u0430rkspur Lane, Springfi\u0435ld", "Springfi\u00adeld", "\uff17\uff13\uff19\uff11\uff14\uff12", "739\u200b142",
 		"?order_ref=G" + verifyCode, "track/ABCDEFGHIJ" + verifyCode,
