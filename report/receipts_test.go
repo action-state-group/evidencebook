@@ -99,12 +99,14 @@ func TestReceiptsAreRefusedBeforeAnythingIsRendered(t *testing.T) {
 	refused(settlementView(t, held("d1"), carried(t, "d1"), held("d2")), `deal "d1" has more than one entry`)
 	refused(settlementView(t, Receipt{Deal: "d1"}, held("d2")), `either carry its receipt bundle or be held`)
 	refused(settlementView(t, Receipt{Deal: "d1", Bundle: string(good), Held: true}, held("d2")), `either carry its receipt bundle or be held`)
-	refused(settlementView(t), `deal "d1" has no entry`)
+	refused(settlementView(t), `has no entry`)
 	refused(settlementView(t, Receipt{Deal: "d1", Bundle: "not json"}, held("d2")), "does not decode")
 	tampered := strings.Replace(string(good), `"root":"`, `"root":"0`, 1)
-	refused(settlementView(t, Receipt{Deal: "d1", Bundle: tampered}, held("d2")), "receipt bundle of deal")
+	refused(settlementView(t, Receipt{Deal: "d1", Bundle: tampered}, held("d2")), "does not pass the page gate")
 
 	view := settlementView(t, carried(t, "d1"), held("d2"))
+	view.Receipts.Module = receiptModule(t, "capsulectl.deal-view-composed/v0")
+	refused(view, "the module must carry the manifest of")
 	view.Receipts.Module = receiptModule(t, "not.a.receipt.module/v0")
 	refused(view, "the module must carry the manifest of")
 	view.Receipts.Module = emitter.Module{Code: []byte("x"), SHA256: "00"}
@@ -122,9 +124,18 @@ func TestAReceiptFiledUnderAnotherDealIsRefused(t *testing.T) {
 	// d1's claims cite the receipt's root; a Result whose d1 cites something
 	// else is the "wrong deal" case: the receipt's root is not among d1's
 	// evidence.
-	err := checkReceiptBundle(Receipt{Deal: "d1", Bundle: string(mustRead(t, settlementReceipt))}, map[string]bool{"somebody-else's-capsule": true})
+	module := moduleManifest{ID: ReceiptModuleID}
+	err := checkReceiptBundle(Receipt{Deal: "d1", Bundle: string(mustRead(t, settlementReceipt))}, map[string]bool{"somebody-else's-capsule": true}, module)
 	assert.ErrorContains(t, err, "which no claim of that deal cites as evidence")
-	require.NoError(t, checkReceiptBundle(Receipt{Deal: "d1", Bundle: string(mustRead(t, settlementReceipt))}, map[string]bool{root.Root: true}))
+	require.NoError(t, checkReceiptBundle(Receipt{Deal: "d1", Bundle: string(mustRead(t, settlementReceipt))}, map[string]bool{root.Root: true}, module))
+
+	// A VALID bundle the module's manifest does not take is refused too: the
+	// page could not open it.
+	var deal moduleManifest
+	deal.ID = ReceiptModuleID
+	deal.Requires.Extensions.Required = []string{"x-deal-v0"}
+	err = checkReceiptBundle(Receipt{Deal: "d1", Bundle: string(mustRead(t, settlementReceipt))}, map[string]bool{root.Root: true}, deal)
+	assert.ErrorContains(t, err, "not one the "+ReceiptModuleID+" module draws")
 }
 
 func TestAPageWithReceiptsGetsNoPermalink(t *testing.T) {
@@ -159,4 +170,13 @@ func optionsOf(t *testing.T, html string) map[string]any {
 	var options map[string]any
 	require.NoError(t, json.Unmarshal([]byte(m[1]), &options))
 	return options
+}
+
+func TestAModuleManifestTakesABundleByItsExtensions(t *testing.T) {
+	var m moduleManifest
+	require.NoError(t, json.Unmarshal([]byte(`{"id":"x","requires":{"extensions":{"required":["x-deal-v0"]}},"forbids":{"extensions":["composed/v1"]}}`), &m))
+	assert.True(t, m.accepts(map[string]interface{}{"x-deal-v0": 1}))
+	assert.False(t, m.accepts(nil), "a required extension is missing")
+	assert.False(t, m.accepts(map[string]interface{}{"x-deal-v0": 1, "composed/v1": 1}), "a forbidden extension is present")
+	assert.True(t, moduleManifest{}.accepts(nil), "a manifest with no requires takes any bundle")
 }
