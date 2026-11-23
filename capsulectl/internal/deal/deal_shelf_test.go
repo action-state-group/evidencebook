@@ -56,6 +56,7 @@ func rc16StoreFrom(t *testing.T, db string) (cli.Profile, rc16Deals, ed25519.Pri
 	require.NoError(t, os.WriteFile(filepath.Join(profiles, "deal.yaml"), []byte(strings.ReplaceAll(string(yaml), "@STORE@", store)), 0o600))
 	p, err := cli.LoadProfile("deal")
 	require.NoError(t, err)
+	legacyV0(t) // an rc16 store writes x-deal-v0, the default it was made under
 	var deals rc16Deals
 	raw, err := os.ReadFile(filepath.Join(src, "deals.json"))
 	require.NoError(t, err)

@@ -71,6 +71,8 @@ mkdir deal-receipt
   cd deal-receipt
   export XDG_CONFIG_HOME="$work/deal-receipt/config" CAPSULE_DEAL_CHECK_URL=
   capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
+  # x-deal-v1 is the default; this script walks an x-deal-v0 deal (evidencebook#626, #656).
+  capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
   id=$(capsulectl --profile deal deal open --input "$demo/open.json" | jq -r .deal_id)
   capsulectl --profile deal deal check --deal "$id" --input "$demo/check-pay.json" >/dev/null
   capsulectl --profile deal deal note --deal "$id" --kind act --input "$demo/act-pay.json" >/dev/null

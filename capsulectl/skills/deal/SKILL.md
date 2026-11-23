@@ -12,6 +12,12 @@ that reach that point: it opens the deal when the user first asks, seals each
 step of the errand, checks the step against what was asked, and seals the
 answer, using `capsulectl deal`. It is silent unless something differs.
 
+**Version.** This procedure records an x-deal-v0 deal (`deal open`), the
+legacy version. capsulectl-deal now writes x-deal-v1 by default, so run
+`capsulectl deal set-version x-deal-v0` once on the profile before the first
+`deal open`; `deal open` says so if you forget. An x-deal-v1 version of this
+procedure (offer, receive, agree) replaces this one.
+
 ## Invocation is advisory
 
 Nothing makes your agent host run this skill. On a host with no hook before

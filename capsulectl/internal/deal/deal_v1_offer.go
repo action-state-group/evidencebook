@@ -32,7 +32,9 @@ command after a failure finds the offer it left and writes the file again; it
 never seals the same offer twice. Once it has succeeded, running it again
 writes a new offer under a new deal id.
 
-Needs a profile on x-deal-v1 (deal set-version x-deal-v1 --migrate).`,
+x-deal-v1 is the default. A profile set to the legacy x-deal-v0 needs
+'deal set-version x-deal-v1' first, and a deal store in an older layout
+needs 'deal set-version x-deal-v1 --migrate' once.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			path, _ := c.Flags().GetString("input")

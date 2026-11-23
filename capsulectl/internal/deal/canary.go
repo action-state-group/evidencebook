@@ -116,6 +116,15 @@ func canaryRunCommand() *cobra.Command {
 			return canaryStep(c.Context(), p.Name, args...)
 		}
 
+		// The canary's scripted deal is an x-deal-v0 purchase from a merchant
+		// with no key, which x-deal-v1 has no form for: a profile with no
+		// version setting is pinned to the legacy x-deal-v0 here, so a
+		// deployed canary keeps ticking through the default's change
+		// (evidencebook#626).
+		pinned, err := pinCanaryLegacy(p)
+		if err != nil {
+			return err
+		}
 		openPath, err := file("open.json", canaryOpen)
 		if err != nil {
 			return err
@@ -181,6 +190,9 @@ func canaryRunCommand() *cobra.Command {
 			if v, ok := ticked[k]; ok {
 				out[k] = v
 			}
+		}
+		if pinned {
+			out["version_pinned"] = "this canary profile had no deal version setting; it is set to the legacy x-deal-v0, the version its scripted deal uses"
 		}
 		return cli.Output(c, out)
 	}}
@@ -461,3 +473,18 @@ func writeCanaryState(path string, o canaryObservation) error {
 // the capsulectl core's. The core's version is sealed beside them.
 func binaryVersion() string { return cli.FirstNonEmpty(cli.PluginVersion, cli.CLIVersion) }
 func binaryCommit() string  { return cli.FirstNonEmpty(cli.PluginCommit, cli.CLICommit) }
+
+// pinCanaryLegacy sets a canary profile with no version setting to the
+// legacy x-deal-v0 and says whether it did.
+func pinCanaryLegacy(p cli.Profile) (bool, error) {
+	dir, err := shDir(p)
+	if err != nil {
+		return false, err
+	}
+	if _, err := readSetting(filepath.Join(dir, dealVersionFile)); err == nil {
+		return false, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	return true, putDealVersionSetting(p, dealVersionV0)
+}

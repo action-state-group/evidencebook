@@ -66,6 +66,8 @@ demo="$root/skills/deal/demo/retail-checkout"
   cd "$session"
   export HOME="$session/home" XDG_CONFIG_HOME="$session/config" CAPSULECTL_PLUGIN_ROOTS="$session/plugins" CAPSULE_DEAL_CHECK_URL=
   capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
+  # x-deal-v1 is the default; this script walks an x-deal-v0 deal (evidencebook#626, #656).
+  capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
   id=$(capsulectl --profile deal deal open --records typed --input "$demo/open.json" | jq -er .deal_id)
   verdict=$(capsulectl --profile deal deal check --deal "$id" --input "$demo/check-pay.json" | jq -r .verdict)
   [[ "$verdict" == pass ]] || { echo "the demo's check did not pass: $verdict" >&2; exit 1; }

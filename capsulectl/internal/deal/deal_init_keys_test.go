@@ -36,9 +36,11 @@ func initWith(t *testing.T, args ...string) (map[string]any, string, error) {
 	t.Helper()
 	dealTestEnv(t, t.TempDir())
 	dir := filepath.Join(t.TempDir(), "deal")
+	legacyInit(t)
 	out, err := invoke(t, "", append([]string{"deal", "init", "--profile", "deal", "--dir", dir, "--no-witness"}, args...)...)
 	var got map[string]any
 	if err == nil {
+		legacyV0(t)
 		require.NoError(t, json.Unmarshal([]byte(out), &got), out)
 	}
 	return got, dir, err

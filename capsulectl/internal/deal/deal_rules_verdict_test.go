@@ -250,7 +250,7 @@ func TestTheVerdictIsNeverCarriedOntoAHistoryCard(t *testing.T) {
 	dir := t.TempDir()
 	for name, args := range map[string][]string{"own.json": nil, "shared.json": {"--shared"}} {
 		out := filepath.Join(dir, name)
-		dealRun(t, append([]string{"standard-history", "card", "--out", out}, args...)...)
+		dealRun(t, append([]string{"standard-history", "card", "--derivation", "standard_history/1", "--out", out}, args...)...)
 		card := string(mustRead(t, out))
 		for _, leak := range []string{"out_of_scope", "rules_verdict", publishedPackName, packDigest} {
 			assert.NotContains(t, card, leak, name)

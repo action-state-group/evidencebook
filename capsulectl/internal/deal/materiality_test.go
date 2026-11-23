@@ -24,8 +24,10 @@ func materialityFixture(t *testing.T, args ...string) {
 	dealFixture(t)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := filepath.Join(t.TempDir(), "deal")
+	legacyInit(t)
 	out, err := invoke(t, "", append([]string{"deal", "init", "--profile", "deal", "--dir", dir, "--no-witness"}, args...)...)
 	require.NoError(t, err, out)
+	legacyV0(t)
 }
 
 // flightCheck opens a flight purchase whose dates, place and fare the agent

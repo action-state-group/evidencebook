@@ -57,14 +57,14 @@ func shBlock(t *testing.T, b map[string]any) map[string]any {
 func TestNoCardWithoutADeclarationOrATick(t *testing.T) {
 	dealFixture(t)
 	out := filepath.Join(t.TempDir(), "card.json")
-	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", out)
+	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", out)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "declare")
 
 	_, err = invoke(t, "", "--profile", "deal", "deal", "standard-history", "declare")
 	require.Error(t, err, "the kind is required")
 	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
-	_, err = invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", out)
+	_, err = invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", out)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "deal tick")
 }
@@ -121,9 +121,9 @@ func TestTheCardCountsTheDealsUnderTheAnchor(t *testing.T) {
 
 	dir := t.TempDir()
 	own := filepath.Join(dir, "own.json")
-	dealRun(t, "standard-history", "card", "--out", own)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 	shared := filepath.Join(dir, "shared.json")
-	dealRun(t, "standard-history", "card", "--out", shared, "--shared")
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", shared, "--shared")
 
 	ownBlock := shBlock(t, readBundle(t, own))
 	deals, ok := ownBlock["deals"].([]any)
@@ -198,7 +198,7 @@ func TestANodeAnswersTheCard(t *testing.T) {
 	assert.Equal(t, standardhistory.Derivation, reply.Envelope.Derivation)
 
 	shared := filepath.Join(t.TempDir(), "shared.json")
-	dealRun(t, "standard-history", "card", "--out", shared, "--shared")
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", shared, "--shared")
 	block := shBlock(t, readBundle(t, shared))
 	assert.Equal(t, block["as_of"].(map[string]any)["anchor"], reply.Envelope.Anchor.Digest)
 	var card map[string]any
@@ -265,13 +265,13 @@ func TestTheCardIsAsOfItsAnchor(t *testing.T) {
 	*now = now.Add(3 * time.Hour)
 	retailDeal(t)
 	own := filepath.Join(t.TempDir(), "own.json")
-	dealRun(t, "standard-history", "card", "--out", own)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 	assert.Len(t, shBlock(t, readBundle(t, own))["deals"], 1, "a deal agreed after the tick is not on the card")
 
 	*now = now.Add(3 * time.Hour)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	own2 := filepath.Join(t.TempDir(), "own2.json")
-	dealRun(t, "standard-history", "card", "--out", own2)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own2)
 	deals := shBlock(t, readBundle(t, own2))["deals"].([]any)
 	require.Len(t, deals, 2)
 	assert.Less(t, deals[0].(map[string]any)["deal"], deals[1].(map[string]any)["deal"], "in deal id order")
@@ -289,7 +289,7 @@ func TestTheCardIsAsOfItsAnchor(t *testing.T) {
 	// A policy change is in no card until a tick follows it.
 	*now = now.Add(3 * time.Hour)
 	dealRun(t, "standard-history", "policy", "--months", "6")
-	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", filepath.Join(t.TempDir(), "x.json"))
+	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", filepath.Join(t.TempDir(), "x.json"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "deal tick")
 	assert.Equal(t, "the History card was not built: the declaration or policy changed after the last checkpoint: run `deal tick`, then ask again", cli.SafeError(err))
@@ -333,7 +333,7 @@ func TestTheCardCoverageAndDeadline(t *testing.T) {
 	}
 	head := `{"subject":{"full_history":null},"derivation":"standard_history/1","profile":"evidence-interop/0",`
 	shared := filepath.Join(t.TempDir(), "shared.json")
-	dealRun(t, "standard-history", "card", "--out", shared, "--shared")
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", shared, "--shared")
 	anchorTime := shBlock(t, readBundle(t, shared))["as_of"].(map[string]any)["anchor_time"].(string)
 
 	met := respondCard(t, write(head+`"coverage":{"min_freshness":"`+anchorTime+`"}}`))
@@ -401,7 +401,7 @@ func TestTheStandardHistoryGoldens(t *testing.T) {
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 				require.NoError(t, err)
 			}
-			dealRun(t, append([]string{"standard-history", "card", "--out", path}, extra...)...)
+			dealRun(t, append([]string{"standard-history", "card", "--derivation", "standard_history/1", "--out", path}, extra...)...)
 			out, err := invoke(t, "", "verify", "--bundle", path)
 			require.NoError(t, err, out)
 			var v any
@@ -447,7 +447,7 @@ func TestAFailedPolicyChangeLeavesThePolicyAlone(t *testing.T) {
 	require.Error(t, err)
 	require.NoError(t, os.Chmod(settings, 0o600))
 	assert.Equal(t, map[string]any{"months": float64(3)}, dealRun(t, "standard-history", "policy")["window"])
-	dealRun(t, "standard-history", "card", "--out", filepath.Join(t.TempDir(), "card.json"))
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", filepath.Join(t.TempDir(), "card.json"))
 }
 
 // A request whose member is a case variant of derivation asks for no derivation.
@@ -477,9 +477,9 @@ func TestTheSamePolicyAgainMakesNoAnchorStale(t *testing.T) {
 	*now = now.Add(3 * time.Hour)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	dealRun(t, "standard-history", "policy", "--months", "3")
-	dealRun(t, "standard-history", "card", "--out", filepath.Join(t.TempDir(), "card.json"))
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", filepath.Join(t.TempDir(), "card.json"))
 	dealRun(t, "standard-history", "policy", "--months", "6")
-	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", filepath.Join(t.TempDir(), "again.json"))
+	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", filepath.Join(t.TempDir(), "again.json"))
 	require.Error(t, err, "a different policy does")
 }
 
@@ -522,7 +522,7 @@ func statedClassReachesTheCard(t *testing.T, class, want string) {
 		*now = now.Add(2 * time.Minute)
 		require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 		own := filepath.Join(t.TempDir(), "own.json")
-		dealRun(t, "standard-history", "card", "--out", own)
+		dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 		entry := shBlock(t, readBundle(t, own))["deals"].([]any)[0].(map[string]any)
 		if want == "" {
 			assert.NotContains(t, entry, "counterparty_class", class)
@@ -646,7 +646,7 @@ func TestAWitnessedCardCarriesItsAnchorReceipt(t *testing.T) {
 	require.NoError(t, err)
 	for name, extra := range map[string][]string{"own": nil, "shared": {"--shared"}} {
 		path := filepath.Join(t.TempDir(), name+".json")
-		dealRun(t, append([]string{"standard-history", "card", "--out", path}, extra...)...)
+		dealRun(t, append([]string{"standard-history", "card", "--derivation", "standard_history/1", "--out", path}, extra...)...)
 		result, err := verifyBundleOutput(t, path)
 		require.NoError(t, err, name)
 		assert.Equal(t, "VALID", result["verdict"], name)
@@ -690,7 +690,7 @@ func TestACllWitnessedCardCarriesNoReceipt(t *testing.T) {
 	require.True(t, anchor.Tick.Witnessed, "the cll witness did witness the tick")
 
 	path := filepath.Join(t.TempDir(), "card.json")
-	dealRun(t, "standard-history", "card", "--out", path)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", path)
 	asOf := shBlock(t, readBundle(t, path))["as_of"].(map[string]any)
 	assertCheckpointIsTheAnchor(t, asOf, "cll")
 	assert.NotContains(t, asOf, "receipts")
@@ -739,7 +739,7 @@ func happenedOnTheCard(t *testing.T, now *time.Time) map[string]any {
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	own := filepath.Join(t.TempDir(), "own.json")
-	dealRun(t, "standard-history", "card", "--out", own)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 	deals, ok := shBlock(t, readBundle(t, own))["deals"].([]any)
 	require.True(t, ok)
 	require.Len(t, deals, 1)
@@ -806,7 +806,7 @@ func TestAnUnpricedDealSaysWhyItIsNotOnTheCard(t *testing.T) {
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 
 	out := filepath.Join(t.TempDir(), "card.json")
-	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", out)
+	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", out)
 	require.Error(t, err)
 	shown := cli.SafeError(err)
 	assert.Contains(t, shown, "deal "+dealID+" can't be counted yet: its agreed amount isn't recorded")
@@ -826,7 +826,7 @@ func TestAnUnpricedDealSaysWhyItIsNotOnTheCard(t *testing.T) {
 func TestNoCardWithoutATickSaysSo(t *testing.T) {
 	dealFixture(t)
 	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
-	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", filepath.Join(t.TempDir(), "card.json"))
+	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", filepath.Join(t.TempDir(), "card.json"))
 	require.Error(t, err)
 	assert.Equal(t, "the History card was not built: no finished checkpoint yet: run `deal tick`, then ask again", cli.SafeError(err))
 	assert.ErrorIs(t, err, errNoTick)
@@ -848,7 +848,7 @@ func TestAnUnrelatedCardFailureStaysMasked(t *testing.T) {
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	// A card that is built but cannot be written (the path is a directory): not a refusal, so nothing is shown.
-	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", t.TempDir())
+	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", t.TempDir())
 	require.Error(t, err)
 	assert.Contains(t, cli.SafeError(err), "sensitive details suppressed")
 }
@@ -862,7 +862,7 @@ func TestALegacyDealSaysWhyItIsNotOnTheCard(t *testing.T) {
 	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
-	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", filepath.Join(t.TempDir(), "card.json"))
+	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", filepath.Join(t.TempDir(), "card.json"))
 	require.Error(t, err)
 	assert.Contains(t, cli.SafeError(err), "deal "+dealID+" was recorded in an older format")
 	assert.ErrorIs(t, err, errLegacyDeal)
@@ -883,7 +883,7 @@ func TestCardRightAfterDeclareAndTickInTheSameMinute(t *testing.T) {
 	tick := dealRun(t, "tick")
 	require.Equal(t, "ticked", tick["state"])
 	out := filepath.Join(t.TempDir(), "card.json")
-	dealRun(t, "standard-history", "card", "--out", out)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", out)
 	assert.FileExists(t, out)
 
 	*now = now.Add(10 * time.Second)
@@ -892,7 +892,7 @@ func TestCardRightAfterDeclareAndTickInTheSameMinute(t *testing.T) {
 	// retried later (still before its due time) it would otherwise admit the change.
 	*now = now.Add(10 * time.Second)
 	assert.Equal(t, "not_due", dealRun(t, "tick")["state"])
-	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", filepath.Join(t.TempDir(), "x.json"))
+	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", filepath.Join(t.TempDir(), "x.json"))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errStaleAnchor)
 	assert.Contains(t, cli.SafeError(err), tick["due"].(string), "the refusal says when the next tick can be cut")

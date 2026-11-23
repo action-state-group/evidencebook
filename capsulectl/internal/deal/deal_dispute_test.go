@@ -137,7 +137,7 @@ func TestTheCardCountsTheRulingForTheBuyer(t *testing.T) {
 		*now = now.Add(2 * time.Minute)
 		require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 		own := filepath.Join(t.TempDir(), "own.json")
-		dealRun(t, "standard-history", "card", "--out", own)
+		dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 		entry := shBlock(t, readBundle(t, own))["deals"].([]any)[0].(map[string]any)
 		assert.Equal(t, []any{map[string]any{"side": "raised", "outcome": want, "forum": "external"}}, entry["disputes"], finding)
 	}
@@ -217,7 +217,7 @@ func TestADisputeAndRulingAfterTheCloseDoNotConfirmIt(t *testing.T) {
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	own := filepath.Join(t.TempDir(), "own.json")
-	dealRun(t, "standard-history", "card", "--out", own)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 	entry := shBlock(t, readBundle(t, own))["deals"].([]any)[0].(map[string]any)
 	assert.Equal(t, []any{map[string]any{"side": "raised", "outcome": "against", "forum": "external"}}, entry["disputes"])
 }
@@ -264,7 +264,7 @@ func TestTheSellersCardCountsTheRulingReceived(t *testing.T) {
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	own := filepath.Join(t.TempDir(), "own.json")
-	dealRun(t, "standard-history", "card", "--out", own)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 	card := shBlock(t, readBundle(t, own))
 	entries, _ := card["deals"].([]any)
 	require.Len(t, entries, 1)

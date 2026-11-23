@@ -71,8 +71,9 @@ const (
 	sentWritten = "written"
 )
 
-// dealVersionSetting is what the profile writes new deals as: x-deal-v0
-// until `deal set-version x-deal-v1`.
+// dealVersionSetting is what the profile writes new deals as: x-deal-v1,
+// the default (evidencebook#626), unless the profile set the legacy x-deal-v0
+// with `deal set-version x-deal-v0`.
 func dealVersionSetting(p cli.Profile) (string, error) {
 	dir, err := shDir(p)
 	if err != nil {
@@ -80,7 +81,7 @@ func dealVersionSetting(p cli.Profile) (string, error) {
 	}
 	raw, err := readSetting(filepath.Join(dir, dealVersionFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return dealVersionV0, nil
+		return dealVersionV1, nil
 	}
 	if err != nil {
 		return "", err
@@ -138,7 +139,7 @@ func v1Refusal(verb, dealID string) error {
 // errNotMigrated is what a v1 verb says on a deal store still in the old
 // layout, never the library's error (§3a, item 3).
 func errNotMigrated() error {
-	return fmt.Errorf("%w: %w", errNotMigratedSentinel, cli.InputError("This deal store is not yet in the layout x-deal-v1 deals need. See `deal set-version --help`; moving it is one-way."))
+	return fmt.Errorf("%w: %w", errNotMigratedSentinel, cli.InputError("This deal store is in an older layout, and x-deal-v1 deals (the default) need the new one. Move it once with `deal set-version x-deal-v1 --migrate` (one-way; a backup is kept beside the store, and `deal set-version --help` says more). Your open deals keep their version and keep working after the move."))
 }
 
 // errNotMigratedSentinel marks errNotMigrated for errors.Is.
@@ -152,7 +153,7 @@ func (s *dealSession) requireV1(ctx context.Context) (*evidencebook.Cadence, err
 		return nil, err
 	}
 	if v != dealVersionV1 {
-		return nil, cli.InputError("this profile writes x-deal-v0 deals: run `deal set-version x-deal-v1` first")
+		return nil, cli.InputError("this profile is set to the legacy x-deal-v0: run `deal set-version x-deal-v1` to write x-deal-v1 deals")
 	}
 	return s.requireMigrated(ctx)
 }
@@ -178,10 +179,12 @@ func (s *dealSession) requireMigrated(ctx context.Context) (*evidencebook.Cadenc
 func dealSetVersionCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set-version VERSION",
-		Short: "Choose the deal version this profile writes: x-deal-v0 (the default) or x-deal-v1 (with --migrate it also moves the deal store, one-way)",
-		Long: `Choose the deal version this profile writes new deals as: x-deal-v0 (the
-default) or x-deal-v1. It governs only the offers this profile writes: a deal
-follows its offer's version, and deals already open keep theirs.
+		Short: "Choose the deal version this profile writes: x-deal-v1 (the default) or the legacy x-deal-v0 (with --migrate it also moves the deal store, one-way)",
+		Long: `Choose the deal version this profile writes new deals as: x-deal-v1 (the
+default) or the legacy x-deal-v0, which is frozen and kept only for a
+counterparty that runs x-deal-v0 alone; it will be removed once those have
+moved. It governs only the deals this profile starts: a deal follows its
+offer's version, and deals already open keep theirs.
 
 x-deal-v1 deals need the deal store in a new layout. Moving it is one-way:
 older capsulectl builds, including one an app such as Muse or Goose bundles,
@@ -471,4 +474,52 @@ func (s *dealSession) sentOfferPair(ctx context.Context, offerDigest string) ([]
 		}
 	}
 	return pair, err
+}
+
+// initMigratesStore makes `deal init` start a new store in the new layout; a
+// seam, so the x-deal-v0 suite can build the old layout it tests.
+var initMigratesStore = true
+
+// migrateNewStoreFn is migrateNewStore, a seam for tests.
+var migrateNewStoreFn = migrateNewStore
+
+// migrateNewStore moves a store `deal init` just made, which holds nothing,
+// to the layout x-deal-v1 deals need, and removes the backup the move writes,
+// which holds nothing either.
+func migrateNewStore(ctx context.Context, p cli.Profile) (err error) {
+	s, err := openDealSession(ctx, p)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, s.close()) }()
+	cad, _, err := s.cadenceOf(ctx)
+	if err != nil {
+		return err
+	}
+	if err := cad.Migrate(ctx, cli.DealClock()); err != nil {
+		return err
+	}
+	// The backup of a store that held nothing is removed; failing to remove
+	// it leaves an empty file, which harms nothing, so it is not an error.
+	if backup, err := backupPath(p); err == nil {
+		_ = os.Remove(backup)
+	}
+	return nil
+}
+
+// requireLegacyV0 refuses a verb that starts an x-deal-v0 deal or sale unless
+// the profile set the legacy version: x-deal-v1 is the default (#626).
+func requireLegacyV0(c *cobra.Command, what string) error {
+	p, err := cli.Selected(c)
+	if err != nil {
+		return err
+	}
+	v, err := dealVersionSetting(p)
+	if err != nil {
+		return err
+	}
+	if v == dealVersionV0 {
+		return nil
+	}
+	return cli.InputError(what + ", and this profile writes x-deal-v1 deals: start one with `deal offer`. For a counterparty that runs only x-deal-v0, set the legacy version first: `deal set-version x-deal-v0`.")
 }
