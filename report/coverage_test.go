@@ -167,7 +167,7 @@ func TestBuildStatesTheCheckedCoverageOfAReportOverWindows(t *testing.T) {
 	page, err := Build(bundle, View{Card: "outcome", Coverage: &Coverage{HolderCheckpointKey: holderKey}})
 	require.NoError(t, err)
 	html := string(page.HTML)
-	assert.Contains(t, html, `<div class="aac-banner" data-state="verified" role="status"><strong>Covers 2026-10 to 2026-12.</strong> Each of the 3 windows has its answer from the holder's book for that window, and the windows link with no gap, as checked from this page's bundle when it was built.`)
+	assert.Contains(t, html, `<div class="aac-banner" data-state="verified" role="status"><strong>Covers 2026-10 to 2026-12.</strong> Each of the 3 windows has its answer from the holder's book for that window, and the windows link with no gap. The page's builder checked this from this page's bundle, under the holder checkpoint key the builder obtained, when the page was built; the page does not check it again when opened.`)
 	assert.Contains(t, html, "Without witness receipts the windows' continuity is as the holder signed it; no check shows that an answer holds every row of its window.")
 	require.NotNil(t, page.Coverage)
 	assert.Len(t, page.Coverage.Windows, 3)
@@ -209,3 +209,17 @@ func TestBuildRendersNoPageOverAGapOrUnderAnotherKey(t *testing.T) {
 }
 
 func sha256Sum(b []byte) [32]byte { return sha256.Sum256(b) }
+
+// The range comes from the bundle's window chain statement, so the banner
+// escapes it.
+func TestTheCoverageBannerEscapesItsRange(t *testing.T) {
+	out, err := markCoverage(`<div id="app"></div>`, evidencebook.ReportCoverage{From: "<b>", To: "x", Windows: make([]evidencebook.VerifiedWindow, 1)}, false)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Covers &lt;b&gt; to x.")
+	assert.NotContains(t, out, "Covers <b>")
+	assert.Contains(t, out, "Each of the 1 window has its answer")
+	witnessed, err := markCoverage(`<div id="app"></div>`, evidencebook.ReportCoverage{From: "a", To: "b", Windows: make([]evidencebook.VerifiedWindow, 2)}, true)
+	require.NoError(t, err)
+	assert.Contains(t, witnessed, "carries a receipt from a witness the page's builder named")
+	assert.NotContains(t, witnessed, "Without witness receipts")
+}

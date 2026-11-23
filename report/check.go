@@ -50,9 +50,9 @@ func markCoverage(page string, c evidencebook.ReportCoverage, witnessed bool) (s
 	windows := plural(len(c.Windows), "window", "windows")
 	continuity := "Without witness receipts the windows' continuity is as the holder signed it; no check shows that an answer holds every row of its window."
 	if witnessed {
-		continuity = "Each window's final checkpoint carries a witness receipt that verified when this page was built; no check shows that an answer holds every row of its window."
+		continuity = "Each window's final checkpoint carries a receipt from a witness the page's builder named, and it verified when this page was built; no check shows that an answer holds every row of its window."
 	}
-	banner := fmt.Sprintf(`<div class="aac-banner" data-state="verified" role="status"><strong>Covers %s to %s.</strong> Each of the %d %s has its answer from the holder's book for that window, and the windows link with no gap, as checked from this page's bundle when it was built. %s</div>`,
+	banner := fmt.Sprintf(`<div class="aac-banner" data-state="verified" role="status"><strong>Covers %s to %s.</strong> Each of the %d %s has its answer from the holder's book for that window, and the windows link with no gap. The page's builder checked this from this page's bundle, under the holder checkpoint key the builder obtained, when the page was built; the page does not check it again when opened. %s</div>`,
 		htmlstd.EscapeString(c.From), htmlstd.EscapeString(c.To), len(c.Windows), windows, continuity)
 	return strings.Replace(page, appElement, banner+appElement, 1), nil
 }
