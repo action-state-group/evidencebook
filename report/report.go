@@ -180,6 +180,32 @@ type View struct {
 	// not in the bundle, so a page built with them gets no permalink, and a
 	// diagnostic page carries none.
 	Receipts *Receipts
+	// Coverage, for a report over a range of a holder's time windows
+	// (evidencebook#689), has Build check from the bundle alone that the
+	// windows link, tile the range the Result's window chain states, and
+	// each has its answer, under the holder's checkpoint key the caller
+	// obtained. A range with any gap is refused, every gap named, and no page
+	// is rendered; a covered range is stated in a banner above the report,
+	// with what the check does not show. A diagnostic page carries none.
+	// Like Wording, the banner lives in the page, not in the bundle, so a
+	// page built with one gets no permalink.
+	Coverage *Coverage
+}
+
+// Coverage is what checking a report over windows needs that the bundle
+// does not carry: the holder's checkpoint key, obtained independently, and
+// the witness directory when the agreement names witnesses (every window's
+// final checkpoint must then carry a receipt that verifies under it).
+type Coverage struct {
+	HolderCheckpointKey string
+	Witnesses           []evidencebook.WitnessRow
+}
+
+func (c Coverage) check() error {
+	if c.HolderCheckpointKey == "" {
+		return refusal("coverage needs the holder's checkpoint key, obtained independently of the bundle")
+	}
+	return nil
 }
 
 // Wording is an aac.wording-pack/v0 wording pack as distributed: its exact
@@ -260,6 +286,9 @@ type Page struct {
 	// meant to carry one reads it here: an id that is not a deal's is
 	// otherwise indistinguishable from a deal the caller handed nothing for.
 	IgnoredReceipts []string
+	// Coverage is what Build's check of a report over windows found, when
+	// View.Coverage asked for it: the range and the windows proved.
+	Coverage *evidencebook.ReportCoverage
 
 	bundle map[string]interface{}
 	// failure is what kept a diagnostic page's bundle from VALID, with the
@@ -267,7 +296,7 @@ type Page struct {
 	failure error
 	// worded is set when the page carries a wording layer; contracted when
 	// it carries a contract.
-	worded, contracted, charted, receipted bool
+	worded, contracted, charted, receipted, covered bool
 }
 
 // Build verifies bundle, a held and disclosed Evidence Bundle (JSON) whose
@@ -288,6 +317,14 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if view.Presentation != nil {
 		if err := view.Presentation.check(); err != nil {
 			return nil, err
+		}
+	}
+	if view.Coverage != nil {
+		if err := view.Coverage.check(); err != nil {
+			return nil, err
+		}
+		if view.Diagnostic {
+			return nil, refusal("a diagnostic page carries no coverage: a report whose bundle fails has no checked range")
 		}
 	}
 	var wording *emitter.Wording
@@ -437,11 +474,27 @@ func Build(bundle []byte, view View) (*Page, error) {
 		Root: root.id, Form: root.form, Member: root.member, Card: view.Card, Draft: view.Draft,
 		Claims: len(checked.Claims), UnsupportedClaims: unsupportedClaims(value, checked.Claims), ContractRefs: checked.Contracts,
 		Diagnostic: diagnostic, DiagnosticReasons: reasons,
-		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0, receipted: view.Receipts != nil,
+		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0, receipted: view.Receipts != nil, covered: view.Coverage != nil,
 		IgnoredReceipts: receipts.ignored,
 	}
 	if view.Contract != nil {
 		page.ContractRef, page.ContractSHA256, page.Tiers = contract.ref, view.Contract.SHA256, tiers
+	}
+	if view.Coverage != nil {
+		// Checked here, from the bundle the page embeds, as the verdict is:
+		// the banner is never the caller's word.
+		coverage, err := evidencebook.VerifyReportCoverage(bundle, evidencebook.CoverageOptions{CheckpointKey: view.Coverage.HolderCheckpointKey, Witnesses: view.Coverage.Witnesses})
+		if err != nil {
+			return nil, refusal("coverage: " + err.Error())
+		}
+		if len(coverage.Findings) > 0 {
+			texts := make([]string, len(coverage.Findings))
+			for i, f := range coverage.Findings {
+				texts[i] = f.Text
+			}
+			return nil, refusal("the report does not cover its range, so no page was rendered: " + strings.Join(texts, "; "))
+		}
+		page.Coverage = &coverage
 	}
 	// The bundle is judged as `verify --bundle` reads it from a file.
 	if reread, err := json.Marshal(value); err == nil {
@@ -498,6 +551,10 @@ func Build(bundle []byte, view View) (*Page, error) {
 		if html, err = markDiagnostic(html); err != nil {
 			return nil, err
 		}
+	} else if page.Coverage != nil {
+		if html, err = markCoverage(html, *page.Coverage, len(view.Coverage.Witnesses) > 0); err != nil {
+			return nil, err
+		}
 	}
 	// Nothing is published that fails the checks every page must pass.
 	if err := checkPage(html, charts); err != nil {
@@ -543,6 +600,9 @@ func (p *Page) Permalink(base string) (string, error) {
 	}
 	if p.receipted {
 		return "", refusal("a page with receipts gets no permalink: the permalink carries the bundle alone, and the viewer would draw no receipt")
+	}
+	if p.covered {
+		return "", refusal("a page with coverage gets no permalink: the permalink carries the bundle alone, and the viewer would state no range")
 	}
 	fragment, err := aacbundle.EncodeFragment(p.bundle)
 	if err != nil {
