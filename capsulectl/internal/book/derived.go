@@ -14,7 +14,7 @@ import (
 
 // derivedInputsOutput is what `result derived-inputs` prints: the contract with
 // an evaluator. A holder's answer to a request that named a Terms Pack by the
-// digest of its definition, as this book recorded and verified it.
+// digest of its definition, as this book recorded it.
 type derivedInputsOutput struct {
 	// Response is the response record the Result must cite as the evidence of
 	// every claim.
