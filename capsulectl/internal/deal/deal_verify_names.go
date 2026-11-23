@@ -70,28 +70,32 @@ var earlierCadenceExtensions = []string{"cadence-witness/v0", "x-deal-cadence-v0
 // checkpoint_at, steps_witnessed, steps, rest) stay; a verifier ignores them
 // and computes the extent from the checkpoints. A state that is not a
 // witnessed chain (scheduled, pending, unverified, not_configured) names no
-// leaf and no receipt, so it is no block a verifier could check: it stays
-// under the old name, which no verifier reads as a witness, and never beside
-// a block.
-func cadenceExtensionEntry(chain map[string]interface{}) (string, map[string]interface{}) {
+// leaf and no receipt, so it is no block a verifier could check, and no new
+// bundle carries it under any name (Sherlock2, buzz 8c3ec04f: not under
+// x-cadence-witness/v0, which a reader would take for a chain to check
+// elsewhere). The words for such a state come from the producer's own state
+// when the report is made (dealAssuranceRung's producer), not from the bundle.
+// ok is false for those states.
+func cadenceExtensionEntry(chain map[string]interface{}) (name string, block map[string]interface{}, ok bool) {
 	parent, isObject := chain["cadence"].(map[string]interface{})
 	if chain["state"] != "witnessed" || !isObject {
-		return DealCadenceExtension, chain
+		return "", nil, false
 	}
-	block := make(map[string]interface{}, len(chain))
+	block = make(map[string]interface{}, len(chain))
 	for k, v := range chain {
 		if k != "cadence" {
 			block[k] = v
 		}
 	}
 	block["parent"] = parent
-	return DealParentWitnessExtension, block
+	return DealParentWitnessExtension, block, true
 }
 
 // setCadenceExtension adds a bundle's cadence chain to its extensions.
 func setCadenceExtension(extensions map[string]interface{}, chain map[string]interface{}) {
-	name, value := cadenceExtensionEntry(chain)
-	extensions[name] = value
+	if name, block, ok := cadenceExtensionEntry(chain); ok {
+		extensions[name] = block
+	}
 }
 
 // cadenceChainOf is the cadence chain a bundle carries, under its name
@@ -107,6 +111,17 @@ func CadenceChainOf(b map[string]interface{}) map[string]interface{} {
 			}
 		}
 		chain["cadence"] = block["parent"]
+		// The block's presence is the claim, and -03 has a verifier take the
+		// extent from `earlier` (a covered checkpoint before the bundle's),
+		// never from members it does not define: so a foreign block with no
+		// state, or an extent that contradicts its `earlier`, reads as AAC's
+		// verifier reads it.
+		chain["state"] = "witnessed"
+		if _, part := chain["earlier"]; part {
+			chain["extent"] = "part"
+		} else {
+			chain["extent"] = "all"
+		}
 		return chain
 	}
 	for _, name := range append([]string{DealCadenceExtension}, earlierCadenceExtensions...) {

@@ -132,5 +132,5 @@ func TestDealDidLineNamesAnIndependentSourceOnlyWhenOneIsAttached(t *testing.T) 
 	assert.Equal(t, dealDidLine(nil), dealDidLineOf(map[string]interface{}{}))
 	b := map[string]interface{}{"extensions": map[string]interface{}{"x-deal-v0": map[string]interface{}{"did_line": with}}}
 	assert.Equal(t, with, dealDidLineOf(b))
-	assert.Contains(t, dealAssurance(b)["text"], with)
+	assert.Contains(t, dealAssurance(b, nil)["text"], with)
 }

@@ -247,7 +247,7 @@ position; it does not show the record's content is true.`,
 			}
 			var cadenceExtent any
 			if chain, e := cadence.Chain(ctx, req.At.Statement); e == nil {
-				name, value := cadenceExtensionEntry(chain)
+				name, value, _ := cadenceExtensionEntry(chain) // Chain returns only a witnessed chain
 				raw, e := json.Marshal(value)
 				if e != nil {
 					return e

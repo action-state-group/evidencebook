@@ -73,10 +73,10 @@ func TestDealBundleIsTheDealsOwnLog(t *testing.T) {
 	}
 	reportID := bundle["extensions"].(map[string]any)[dealprofile.Profile].(map[string]any)[dealprofile.ReportPointer]
 	assert.Equal(t, onLog[len(onLog)-1], reportID, "the copy's sealed report is the last entry")
-	// The cadence chain rides as its own extension (it anchors the deal's
-	// checkpoint to the witness); nothing else names the cadence log.
+	// A witnessed cadence chain rides as its own extension (it anchors the
+	// deal's checkpoint to the witness); nothing else names the cadence log.
 	ext := bundle["extensions"].(map[string]any)
-	require.Contains(t, ext, DealCadenceExtension, "no witness here, so its state keeps the old name: no chain to carry")
+	assert.NotContains(t, ext, DealCadenceExtension, "no witness here: no chain to carry, under no name")
 	assert.NotContains(t, ext, DealParentWitnessExtension)
 	assert.Equal(t, cli.DealAudienceKeep, dealReportOf(bundle)["audience"])
 	rest := map[string]any{}

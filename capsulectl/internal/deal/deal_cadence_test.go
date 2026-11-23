@@ -759,7 +759,7 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 		result, _ := verifyWithDirectory(t, path, directory)
 		status, findings := bundleWitnesses(result)
 		assert.Equal(t, "pass", status, "%s: %v", name, findings)
-		assert.Equal(t, "witnessed_in_part", dealAssuranceRung(renamed)["rung"], name)
+		assert.Equal(t, "witnessed_in_part", dealAssuranceRung(renamed, nil)["rung"], name)
 	}
 
 	// Tampering with the earlier checkpoint or its proof fails.
@@ -772,7 +772,7 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 		"checkpoint": func(c map[string]any) {
 			c["earlier"].(map[string]any)["checkpoint"].(map[string]any)["cose"] = c["parent"].(map[string]any)["checkpoint"].(map[string]any)["cose"]
 		},
-		"extent": func(c map[string]any) { c["extent"] = "all" },
+		"earlier removed": func(c map[string]any) { delete(c, "earlier") },
 	} {
 		var copy map[string]any
 		require.NoError(t, json.Unmarshal(mustRead(t, partPath), &copy))

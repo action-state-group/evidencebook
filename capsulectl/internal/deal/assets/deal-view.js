@@ -700,16 +700,18 @@ const dealSettlement = async (steps) => {
   return { rail, legs: true, preimage, proof, failed, band };
 };
 
-// The cadence witness (F8.1): the runtime walks the bundle's
-// cadence chain (parent-log-witness/v1 or an older name) from the context's own checkpoint and checks its
-// receipts under the reader's witness list (readerCadenceWitness, viewer
-// 0.10.0, capsule-viewer#214). Undefined when the runtime has no such check.
 // A bundle carries the chain as parent-log-witness/v1 (Evidence Bundle -03;
 // evidencebook#737) or, in a bundle written before, x-cadence-witness/v0.
 const dealCarriesChain = (bundle) => {
   const extensions = (bundle || {}).extensions || {};
   return extensions["parent-log-witness/v1"] !== undefined || extensions["x-cadence-witness/v0"] !== undefined;
 };
+// The cadence witness (F8.1): the runtime walks the bundle's
+// cadence chain from the context's own checkpoint and checks its receipts
+// under the reader's witness list (readerCadenceWitness, viewer 0.10.0,
+// capsule-viewer#214). Undefined when the runtime has no such check. A
+// runtime reads parent-log-witness/v1 from the release that closes
+// capsule-viewer#362; an older one answers NOT_PRESENT for it.
 const dealWitnessOf = async (context) => {
   if (typeof EvidenceGraph.readerCadenceWitness !== "function") return undefined;
   try {

@@ -82,7 +82,7 @@ regions, and only when it is still a whole id after the steps that run before th
    code review). `cose` is the one base64url field in the counterparty copy dumped for this note: the checkpoint
    (`evidencebook` `substrate_cll.go:332`); a cadence chain's checkpoint (`cadence_chain.go:79`)
    has the same key. Every other string value in that copy is hex, a date, a word or prose, and
-   its extensions are `x-cadence-witness/v0`, `x-deal-report/v0` and `x-deal-v0` only.
+   its extensions are `parent-log-witness/v1` (`x-cadence-witness/v0` in a copy written before evidencebook#737), `x-deal-report/v0` and `x-deal-v0` only.
    `evidencebook` also writes selected payloads as base64url (`bundle.go:300`, under
    `extensions["evidencebook/payloads"]`, `bundle.go:317-318`); that extension is absent from the
    dumped copy, and the guard test below settles whether any other copy kind carries it.

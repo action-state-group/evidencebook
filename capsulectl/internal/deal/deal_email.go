@@ -101,8 +101,8 @@ const dealEmailVerifyLine = "The attached page checks itself when it is opened. 
 // checkpoint the deal's checkpoint is anchored in. Otherwise the record is
 // sealed by the agent's own device, and the text says whether it is still
 // scheduled for the next tick or waiting for the witness.
-func dealAssurance(b map[string]interface{}) map[string]any {
-	out := dealAssuranceRung(b)
+func dealAssurance(b, producer map[string]interface{}) map[string]any {
+	out := dealAssuranceRung(b, producer)
 	if line := dealProducedByLine(b); line != "" {
 		out["text"] = out["text"].(string) + " " + line
 		out["produced_by"] = line
@@ -132,8 +132,15 @@ func dealProducedByLine(b map[string]interface{}) string {
 	return "Produced by " + strings.Join(names, ", then ") + "."
 }
 
-func dealAssuranceRung(b map[string]interface{}) map[string]any {
+// A bundle carries a witnessed chain only; a checkpoint that is not witnessed
+// yet carries no state (evidencebook#737). Its words (scheduled, pending, the
+// witness signature did not verify) come from producer, the producer's own state
+// at the time the report was made, nil for a bundle read from a file.
+func dealAssuranceRung(b, producer map[string]interface{}) map[string]any {
 	cadence := CadenceChainOf(b)
+	if len(cadence) == 0 && producer != nil {
+		cadence = producer
+	}
 	state, _ := cadence["state"].(string)
 	cp, _ := b["checkpoint"].(map[string]interface{})
 	witnesses, _ := cp["witnesses"].([]interface{})

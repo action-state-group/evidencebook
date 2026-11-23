@@ -208,12 +208,34 @@ func TestTheWitnessLineIsPassedOnlyFromTheRuntimesCheck(t *testing.T) {
 	assert.Regexp(t, `^An outside witness saw your book · passed · recorded by Acme Witness at .+$`, stub(false, "witness:PASS"))
 	assert.Regexp(t, `^An outside witness saw the holder's book · passed · recorded by Acme Witness at .+$`, stub(true, "witness:PASS"))
 	assert.Equal(t, own+" · missing", stub(false, "witness:NOT_PRESENT"), "no receipt is missing")
+	// This deal has no witness, so its bundle carries no chain: a runtime that
+	// cannot check leaves "missing" (a witnessed bundle reads "not checked",
+	// which needs a runtime that reads parent-log-witness/v1, capsule-viewer#362).
 	for _, edit := range []string{"witness:NOT_CHECKED", "no-checks"} {
-		assert.Equal(t, own+" · not checked · this page can't check the witness's signature", stub(false, edit), edit)
+		assert.Equal(t, own+" · missing", stub(false, edit), edit)
 	}
 	// A FAIL is a check that ran and did not verify.
 	assert.Equal(t, own+" · failed · the witness's signature did not verify", stub(false, "witness:FAIL"))
 	assert.Equal(t, shared+" · failed · the witness's signature did not verify", stub(true, "witness:FAIL"))
+}
+
+// A bundle that carries its witnessed chain as parent-log-witness/v1
+// (evidencebook#737) is witnessed as far as the page can tell: with a runtime
+// that does not pass it, or has no check, the line reads "not checked", never
+// "missing"; a runtime that passes it names the witness; one that finds no
+// receipt says missing.
+func TestTheWitnessLineOfAParentLogWitnessBundle(t *testing.T) {
+	dealFixture(t)
+	id, _, _ := fawnDeal(t)
+	const own = "An outside witness saw your book"
+	line := func(edit string) string { return stampLine(t, renderJourney(t, id, false, edit), own) }
+
+	assert.Regexp(t, `^`+own+` · passed · recorded by Acme Witness at .+$`, line("v1:witness:PASS"))
+	for _, edit := range []string{"v1:witness:NOT_CHECKED", "v1:no-checks"} {
+		assert.Equal(t, own+" · not checked · this page can't check the witness's signature", line(edit), edit)
+	}
+	assert.Equal(t, own+" · failed · the witness's signature did not verify", line("v1:witness:FAIL"))
+	assert.Equal(t, own+" · missing", line("v1:witness:NOT_PRESENT"))
 }
 
 // The same line on the receipt with the other party's half, in its three
@@ -251,7 +273,12 @@ func TestTheComposedWitnessLineNamesWhatWasChecked(t *testing.T) {
 	}
 	const label = "An outside witness recorded both books' snapshots"
 
-	asIs := label + " · not checked · this page can't check the witness's signature"
+	// These deals have no witness: their bundles carry no witness chain (a
+	// bundle carries a witnessed chain only, evidencebook#737), so a runtime
+	// that cannot check leaves the line as "missing", not "not checked". The
+	// "not checked" line for a witnessed bundle needs a runtime that reads
+	// parent-log-witness/v1 (capsule-viewer#362).
+	asIs := label + " · missing"
 	yours := `^` + label + ` · %s · your book is recorded by Acme Witness at .+; %s$`
 	both := page(keep, theirs)
 	assert.Regexp(t, `^`+label+` · passed · yours recorded by Acme Witness at .+; theirs recorded by Acme Witness at .+$`, line(both, "witness:PASS,PASS"))

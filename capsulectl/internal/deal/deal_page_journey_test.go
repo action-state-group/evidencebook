@@ -22,7 +22,7 @@ const dealPageJourneyDriver = `
 const fs = require("fs");
 const vm = require("vm");
 const { webcrypto } = require("crypto");
-const [pagePath, edit] = process.argv.slice(2);
+let [pagePath, edit] = process.argv.slice(2);
 const html = fs.readFileSync(pagePath, "utf8");
 const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
 const bundleJSON = scripts.find((s) => html.slice(0, html.indexOf(s)).endsWith('<script type="application/json">'));
@@ -50,6 +50,13 @@ vm.runInContext(bootstrap.slice(0, bootstrap.indexOf("\nrenderEvidenceGraph(")),
 const EG = vm.runInContext("EvidenceGraph", context);
 ` + verifiedContextJS + `const bundle = vm.runInContext("window.__BUNDLE__", context);
 const words = vm.runInContext("globalThis.capsulectlDealPage.words", context) || {};
+// "v1:<edit>": the bundle carries a parent-log-witness/v1 block (a stand-in:
+// the page reads only its presence, the runtime's answer is the check), then
+// <edit> as below (evidencebook#737).
+if (edit && edit.startsWith("v1:")) {
+  edit = edit.slice(3);
+  bundle.extensions["parent-log-witness/v1"] = {};
+}
 // "withhold": the switch step's disclosure is dropped from the file.
 if (edit === "withhold") {
   const report = bundle.extensions["x-deal-report/v0"].agent_input.report;

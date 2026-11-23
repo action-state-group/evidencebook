@@ -69,6 +69,9 @@ type dealSession struct {
 	dkey   []byte // the current deal's key
 	unlock func() error
 	shared bool // a read under the shared lock (openDealStoreRead)
+	// hostCadence is the witness state dealReportBundle found for the bundle
+	// it last built: what a bundle that is not witnessed no longer carries.
+	hostCadence map[string]interface{}
 	// htmlDeferred is a --html given with an email that is deferred: no
 	// page is written until the email is sealed, and the result says so.
 	htmlDeferred bool
@@ -2913,7 +2916,7 @@ func dealReportCommand() *cobra.Command {
 				// Every report states its rung, read from the same bundle the
 				// page and the email would carry.
 				if s.dp.Checkpoint.Signing == (cli.Secret{}) {
-					out["assurance"] = dealAssurance(map[string]interface{}{})
+					out["assurance"] = dealAssurance(map[string]interface{}{}, nil)
 					grade, err := s.dealGradeOf(ctx, map[string]interface{}{}, events)
 					if err != nil {
 						return err
@@ -2931,7 +2934,7 @@ func dealReportCommand() *cobra.Command {
 					return err
 				}
 				if b != nil {
-					out["assurance"] = s.withStaleness(ctx, dealAssurance(b))
+					out["assurance"] = s.withStaleness(ctx, dealAssurance(b, s.hostCadence))
 				}
 				grade, err := s.dealGradeOf(ctx, b, events)
 				if err != nil {
@@ -2965,7 +2968,7 @@ func dealReportCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			assurance := s.withStaleness(ctx, dealAssurance(b))
+			assurance := s.withStaleness(ctx, dealAssurance(b, s.hostCadence))
 			if audience != cli.DealAudienceKeep {
 				// The final bytes are checked before anything is on record.
 				if err = dealShareGate([]byte(page), events, audience); err != nil {

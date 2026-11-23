@@ -49,19 +49,28 @@ func requireParentWitness(t *testing.T, raw []byte, directoryPath string) {
 }
 
 // A state that is not a witnessed chain names no leaf and no receipt, so it
-// is no parent-log-witness/v1 block.
+// is no parent-log-witness/v1 block, and no new bundle carries it under any
+// name (Sherlock2, buzz 8c3ec04f): its words come from the producer's state.
 func TestCadenceExtensionEntryByState(t *testing.T) {
 	for _, state := range []string{"scheduled", "pending", "unverified", "not_configured"} {
-		name, value := cadenceExtensionEntry(map[string]interface{}{"state": state})
-		assert.Equal(t, DealCadenceExtension, name, state)
-		assert.Equal(t, map[string]interface{}{"state": state}, value)
+		extensions := map[string]interface{}{}
+		setCadenceExtension(extensions, map[string]interface{}{"state": state})
+		assert.Empty(t, extensions, state)
 	}
 	chain := map[string]interface{}{"state": "witnessed", "extent": "all", "salt": "s", "cadence": map[string]interface{}{"log_id": "c"}}
-	name, block := cadenceExtensionEntry(chain)
+	name, block, ok := cadenceExtensionEntry(chain)
+	require.True(t, ok)
 	assert.Equal(t, DealParentWitnessExtension, name)
 	assert.Equal(t, map[string]interface{}{"state": "witnessed", "extent": "all", "salt": "s", "parent": map[string]interface{}{"log_id": "c"}}, block)
 	assert.Contains(t, chain, "cadence", "the chain the cadence built is not changed")
 	assert.Equal(t, chain["cadence"], CadenceChainOf(map[string]interface{}{"extensions": map[string]interface{}{name: block}})["cadence"], "readers get it back as cadence")
+
+	// A foreign block carries no state and may state an extent that contradicts
+	// its `earlier`: a reader takes both from the block's shape, as AAC's
+	// verifier does.
+	read := CadenceChainOf(map[string]interface{}{"extensions": map[string]interface{}{DealParentWitnessExtension: map[string]interface{}{"extent": "all", "earlier": map[string]interface{}{}}}})
+	assert.Equal(t, "witnessed", read["state"])
+	assert.Equal(t, "part", read["extent"])
 }
 
 // A sale's bundle and a History's deals carry their witnessed chain as

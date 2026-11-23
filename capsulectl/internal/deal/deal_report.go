@@ -155,6 +155,7 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 	}
 	extensions := map[string]interface{}{dealprofile.Profile: ext}
 	setCadenceExtension(extensions, cadence)
+	s.hostCadence = cadence
 	if standalone != nil {
 		extensions[dealprofile.ReportExtension] = standalone
 	}
