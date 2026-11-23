@@ -175,8 +175,30 @@ func optionsOf(t *testing.T, html string) map[string]any {
 func TestAModuleManifestTakesABundleByItsExtensions(t *testing.T) {
 	var m moduleManifest
 	require.NoError(t, json.Unmarshal([]byte(`{"id":"x","requires":{"extensions":{"required":["x-deal-v0"]}},"forbids":{"extensions":["composed/v1"]}}`), &m))
-	assert.True(t, m.accepts(map[string]interface{}{"x-deal-v0": 1}))
-	assert.False(t, m.accepts(nil), "a required extension is missing")
-	assert.False(t, m.accepts(map[string]interface{}{"x-deal-v0": 1, "composed/v1": 1}), "a forbidden extension is present")
-	assert.True(t, moduleManifest{}.accepts(nil), "a manifest with no requires takes any bundle")
+	assert.True(t, m.accepts(map[string]interface{}{"x-deal-v0": 1}, nil))
+	assert.False(t, m.accepts(nil, nil), "a required extension is missing")
+	assert.False(t, m.accepts(map[string]interface{}{"x-deal-v0": 1, "composed/v1": 1}, nil), "a forbidden extension is present")
+	assert.True(t, moduleManifest{}.accepts(nil, nil), "a manifest with no requires takes any bundle")
+}
+
+func TestAModuleManifestForbidsTheProfilesOfAResultRoot(t *testing.T) {
+	var m moduleManifest
+	require.NoError(t, json.Unmarshal([]byte(`{"id":"x","forbids":{"profiles":["spec_version:report/v1","result_version:evidence-result-v0"]}}`), &m))
+	bundleWith := func(input map[string]any) map[string]any {
+		return map[string]any{"root": "r", "disclosures": map[string]any{"r": map[string]any{"agent_input": input}}}
+	}
+	assert.True(t, m.accepts(nil, profilesOf(bundleWith(map[string]any{"deal": "x"}))))
+	assert.False(t, m.accepts(nil, profilesOf(bundleWith(map[string]any{"spec_version": "report/v1"}))))
+	assert.False(t, m.accepts(nil, profilesOf(bundleWith(map[string]any{"result_version": "evidence-result-v0"}))))
+	assert.False(t, m.accepts(nil, profilesOf(bundleWith(map[string]any{"statement": map[string]any{"result_version": "evidence-result-v0"}}))), "a book-form Result root")
+	assert.Empty(t, profilesOf(map[string]any{}), "a bundle with no disclosed root declares no profile")
+}
+
+func TestProfilesOfReadsAResultRootAsTheBuilderGetsIt(t *testing.T) {
+	var bundle map[string]any
+	require.NoError(t, json.Unmarshal(mustRead(t, settlementBundle), &bundle))
+	assert.Equal(t, map[string]bool{"result_version:evidence-result-v0": true}, profilesOf(bundle), "the settlement Result's root, in book form, declares its result version")
+	var receipt map[string]any
+	require.NoError(t, json.Unmarshal(mustRead(t, settlementReceipt), &receipt))
+	assert.Empty(t, profilesOf(receipt), "a receipt rooted at a response record declares no profile")
 }

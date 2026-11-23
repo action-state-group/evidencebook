@@ -145,12 +145,18 @@ type moduleManifest struct {
 	} `json:"requires"`
 	Forbids struct {
 		Extensions []string `json:"extensions"`
+		Profiles   []string `json:"profiles"`
 	} `json:"forbids"`
 }
 
 // accepts says whether the module's manifest takes a bundle with these
-// extension blocks.
-func (m moduleManifest) accepts(extensions map[string]interface{}) bool {
+// extension blocks and root profiles (profilesOf).
+func (m moduleManifest) accepts(extensions map[string]interface{}, profiles map[string]bool) bool {
+	for _, profile := range m.Forbids.Profiles {
+		if profiles[profile] {
+			return false
+		}
+	}
 	for _, kind := range m.Requires.Extensions.Required {
 		if _, ok := extensions[kind]; !ok {
 			return false
@@ -177,7 +183,7 @@ func checkReceiptBundle(r Receipt, cited map[string]bool, module moduleManifest)
 		return refusef("receipts: the receipt bundle of deal %q does not pass the page gate, so it is not carried: %s", r.Deal, cli.SafeError(err))
 	}
 	extensions, _ := value["extensions"].(map[string]interface{})
-	if !module.accepts(extensions) {
+	if !module.accepts(extensions, profilesOf(value)) {
 		return refusef("receipts: the receipt bundle of deal %q is not one the %s module draws (its extensions do not meet the module's requires and forbids)", r.Deal, module.ID)
 	}
 	root, _ := value["root"].(string)
@@ -185,4 +191,28 @@ func checkReceiptBundle(r Receipt, cited map[string]bool, module moduleManifest)
 		return refusef("receipts: the receipt bundle of deal %q is rooted at %q, which no claim of that deal cites as evidence", r.Deal, root)
 	}
 	return nil
+}
+
+// profilesOf are the profiles a bundle's root declares, as the viewer's
+// module resolution reads them: "spec_version:<v>" from the root's disclosed
+// agent_input, and "result_version:<v>" when that input is, or in book form
+// its record header's statement is, an Evidence Result.
+func profilesOf(bundle map[string]interface{}) map[string]bool {
+	profiles := make(map[string]bool)
+	root, _ := bundle["root"].(string)
+	disclosures, _ := bundle["disclosures"].(map[string]interface{})
+	members, _ := disclosures[root].(map[string]interface{})
+	input, _ := members["agent_input"].(map[string]interface{})
+	if version, ok := input["spec_version"].(string); ok {
+		profiles["spec_version:"+version] = true
+	}
+	if version, ok := input["result_version"].(string); ok {
+		profiles["result_version:"+version] = true
+	}
+	if statement, ok := input["statement"].(map[string]interface{}); ok {
+		if version, ok := statement["result_version"].(string); ok {
+			profiles["result_version:"+version] = true
+		}
+	}
+	return profiles
 }
