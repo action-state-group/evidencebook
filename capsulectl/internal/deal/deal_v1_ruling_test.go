@@ -135,7 +135,16 @@ func TestARulingRefusals(t *testing.T) {
 	one := dealRun(t, append(base, "--copy", buyerCopy, "--out", filepath.Join(t.TempDir(), "r.json"))...)
 	assert.Equal(t, true, one["sealed"], "one copy is enough: the buyer's agreement names the seller's key")
 
-	// A buyer's profile is not the adjudicator: its copy does not name it.
+	// An --out that holds another record is refused before anything is
+	// sealed: the case book does not grow.
+	other := filepath.Join(t.TempDir(), "other.json")
+	require.NoError(t, os.WriteFile(other, []byte(`{"record":{}}`), 0o600))
+	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy, "--value", "not_met", "--out", other)...), "holds another record")
+	again := dealRun(t, append(base, "--copy", buyerCopy, "--out", filepath.Join(t.TempDir(), "r2.json"))...)
+	assert.Equal(t, false, again["sealed"], "only the first ruling was sealed")
+
+	// The seller's profile checkpoints with a key of its own, so it cannot
+	// rule.
 	h.seller.act(t)
 	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy)...), "checkpoints with its record key")
 }
@@ -159,7 +168,9 @@ func TestAChallengeOfAHeldRuling(t *testing.T) {
 	grounds := filepath.Join(t.TempDir(), "grounds.txt")
 	require.NoError(t, os.WriteFile(grounds, []byte("the parcel was delivered on time"), 0o600))
 	assert.Contains(t, v1Err(t, "dispute", "--deal", h.dealID, "--challenge", digest, "--grounds", grounds), "unavailable")
-	dealRun(t, "receive", rulingFile)
+	naming := filepath.Join(t.TempDir(), "naming.json")
+	got := dealRun(t, "receive", rulingFile, "--out", naming)
+	assert.Equal(t, naming, got["file"], "the statement naming the ruling is written to send")
 
 	file := filepath.Join(t.TempDir(), "challenge.json")
 	out := dealRun(t, "dispute", "--deal", h.dealID, "--challenge", digest, "--grounds", grounds, "--out", file)
@@ -180,9 +191,11 @@ func TestAChallengeOfAHeldRuling(t *testing.T) {
 	assert.Contains(t, v1Err(t, "dispute", "--deal", h.dealID, "--challenge", digest), "needs --grounds")
 	assert.Contains(t, v1Err(t, "dispute", "--deal", h.dealID, "--challenge", "abc", "--grounds", grounds), "64 lowercase hex")
 
-	// The buyer, the other side, keeps it. It is not counted yet: the
-	// seller's book named the ruling before the challenge, and that naming
-	// statement has not been sent to the buyer.
+	// The buyer, the other side, takes the seller's naming statement first,
+	// then counts the challenge after it.
 	h.buyer.act(t)
-	assert.Contains(t, dealRun(t, "receive", file)["record"], "an earlier record from the other side is missing")
+	assert.Equal(t, "kept, and counted", dealRun(t, "receive", naming)["record"])
+	assert.Equal(t, "kept, and counted", dealRun(t, "receive", file)["record"])
+	// --out goes with a ruling only.
+	assert.Contains(t, v1Err(t, "receive", file, "--out", filepath.Join(t.TempDir(), "x.json")), "--out goes with a ruling")
 }

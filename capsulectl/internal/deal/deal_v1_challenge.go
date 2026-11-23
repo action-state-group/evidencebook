@@ -15,8 +15,9 @@ import (
 // (evidencebook#773): it seals a dispute of kind challenge in the holder's
 // deal book, naming a ruling of the deal the holder holds and the SHA-256 of
 // the grounds file, and writes the file to send. A challenge changes no row
-// status (Sherlock2, evidencebook#773: the first final ruling stays
-// effective, and the adjudicator may rule again); the record shows that the
+// status (evidencebook#773: the first final ruling stays effective and is
+// never replaced; the adjudicator may issue a later ruling that is not final);
+// the record shows that the
 // party objected, and when. The same challenge run again writes the same
 // record and seals nothing.
 func runChallenge(c *cobra.Command, dealID, ruling, grounds, out string, withRowFlags bool) error {

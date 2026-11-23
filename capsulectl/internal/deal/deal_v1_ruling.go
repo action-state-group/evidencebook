@@ -122,8 +122,8 @@ func dealRulingCommand() *cobra.Command {
 		Use:   "ruling",
 		Short: "As a deal's adjudicator, seal your ruling on a disputed row and write the file both parties take",
 		Long: `As the adjudicator an x-deal-v1 agreement names, seal your ruling on one row
-of a deal and write the file to send to both parties (--out, or standard output
-with none). Each party takes it with deal receive, which enters it in their
+of a deal, stamp it (a new stamp when none covers it yet), and write the file to
+send to both parties (--out, or standard output with none). Each party takes it with deal receive, which enters it in their
 deal book.
 
 The ruling is your decision; this command records it. It is checked against
@@ -211,6 +211,14 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 		return cli.InputError("the dispute is on row " + cs.Row + ", not " + f.row)
 	}
 	body := cs.RulingOf(f.value, f.against, f.remedy, f.final, f.forum)
+	// A file already at --out is an earlier run's only if it holds this same
+	// ruling of this case book: an old command run again must not seal a
+	// ruling only to fail on its file.
+	if f.out != "" {
+		if err := sameRulingFile(f.out, cs.LogID, body); err != nil {
+			return err
+		}
+	}
 	sealed, err := xdealv1.SealRuling(ctx, s.shelf, cs, body, cli.DealClock())
 	switch {
 	case errors.Is(err, xdealv1.ErrRulingConflict):
@@ -240,11 +248,18 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 		return err
 	}
 	if err := cli.AtomicFile(f.out, data, false); err != nil {
-		// A file already there is an earlier run's only if it holds this ruling.
+		// A file already there is an earlier run's only if it holds this
+		// ruling; it is written again with the proof that covers it, so the
+		// file the output describes is the file on disk.
 		prev, rerr := os.ReadFile(f.out)
 		var was v1Push
 		if rerr != nil || json.Unmarshal(prev, &was) != nil || !bytes.Equal(was.Record, sealed.Pair) {
 			return err
+		}
+		if !bytes.Equal(prev, data) {
+			if err := cli.AtomicFile(f.out, data, true); err != nil {
+				return err
+			}
 		}
 	}
 	result["file"] = f.out
@@ -273,4 +288,36 @@ func (s *dealSession) caseProof(ctx context.Context, cad *evidencebook.Cadence, 
 		return evidencebook.StampProof{}, fmt.Errorf("%w: the case book's newest stamp does not cover the ruling", cli.ErrConflict)
 	}
 	return proof, nil
+}
+
+// sameRulingFile refuses an existing file at out unless it is a push of a
+// ruling in the case book logID with body: the earlier run of the same
+// command. A missing file is fine.
+func sameRulingFile(out, logID string, body xdealv1.RulingBody) error {
+	prev, err := os.ReadFile(out)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	refuse := cli.InputError(out + " exists and holds another record: --out names a new file, or the file an earlier run of this same ruling wrote")
+	var was v1Push
+	if json.Unmarshal(prev, &was) != nil || was.Record == nil {
+		return refuse
+	}
+	read, err := xdealv1.VerifyBook(was.Record)
+	if err != nil || read.LogID != logID {
+		return refuse
+	}
+	rb, ok := read.Record.Body.(*xdealv1.RulingBody)
+	if !ok {
+		return refuse
+	}
+	got, err1 := json.Marshal(rb)
+	want, err2 := json.Marshal(body)
+	if err1 != nil || err2 != nil || !bytes.Equal(got, want) {
+		return refuse
+	}
+	return nil
 }
