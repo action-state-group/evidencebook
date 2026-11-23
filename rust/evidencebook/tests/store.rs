@@ -1058,41 +1058,17 @@ mod set_proofs {
         assert!(err.0.contains("does not hash to its digest"), "{err}");
         art["records"][0]["body"] = json!("not hex");
         assert!(derived_inputs(&resign(&a, &art, vec![]), &a.req, &log_key()).is_err());
-        // A fraction in a field is the holder's value, read as written.
-        let mut art = artifact(&a.env);
-        art["records"][0]["seq"] = json!(1.5);
-        let text = String::from_utf8(serde_json::to_vec(&art).unwrap()).unwrap();
-        let env = {
-            let mut e = a.env.clone();
-            e.artifact = text.into_bytes();
-            e
-        };
-        // Signed again as the holder would: the artifact's text, not its JCS.
-        let env = sign_with_profile(
-            PROFILE,
-            &a.bytes,
-            EnvelopeParts {
-                subject: a.req.subject.clone(),
-                derivation: a.req.derivation.clone(),
-                anchor: Anchor {
-                    digest: a.env.anchor.digest.clone(),
-                    freshness: None,
-                },
-                artifact: env.artifact,
-                verification: vec![],
-                issued_at: ISSUED_AT.into(),
-            },
-            &key("responder") as &dyn EnvelopeSigner,
-        )
-        .unwrap();
-        let inputs = derived_inputs(&env, &a.req, &log_key()).unwrap();
-        assert_eq!(inputs.records[0].fields["seq"], json!(1.5));
-        // A number the reader cannot hold is refused, never read as `null`
-        // or as a rounded float.
-        for number in ["1e400", "12345678901234567890"] {
-            let text = String::from_utf8(env.artifact.clone())
+        // The only number a derived row holds is a safe integer (a record
+        // header is canonical JSON): a fraction, an exponent that overflows or
+        // underflows and a long integer are refused, never read as `null`,
+        // rounded or flushed to zero.
+        for number in ["1.5", "1e400", "1e-400", "12345678901234567890"] {
+            let mut art = artifact(&a.env);
+            art["records"][0]["seq"] = json!(1);
+            let text = String::from_utf8(serde_json::to_vec(&art).unwrap())
                 .unwrap()
-                .replace("1.5", number);
+                .replacen("\"seq\":1", &format!("\"seq\":{number}"), 1);
+            assert!(text.contains(number), "{number}");
             let env = sign_with_profile(
                 PROFILE,
                 &a.bytes,
