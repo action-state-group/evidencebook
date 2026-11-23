@@ -26,13 +26,9 @@ const (
 	v1ListNotCheckpointed = "not_checkpointed"
 )
 
-// v1Listings lists the store's x-deal-v1 deals, in deal id order. It
-// writes nothing: a deal's own book is opened only once the shelf shows it
-// holds records (Shelf.Open creates a missing log), and its status is a
-// keep copy computed now and never sealed. With in set (a --since/--until
-// range), only the deals with a record in it are listed, and no state is
-// computed for the others.
-func (s *dealSession) v1Listings(ctx context.Context, p cli.Profile, in *dealListBounds) ([]dealListing, error) {
+// v1DealIDs lists the store's x-deal-v1 deals in id order: none on a store
+// with no deal_versions table yet.
+func (s *dealSession) v1DealIDs(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT deal_id FROM deal_versions WHERE version=? ORDER BY deal_id`, dealVersionV1)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table") {
@@ -40,20 +36,27 @@ func (s *dealSession) v1Listings(ctx context.Context, p cli.Profile, in *dealLis
 		}
 		return nil, err
 	}
+	defer rows.Close()
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			_ = rows.Close()
 			return nil, err
 		}
 		ids = append(ids, id)
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
+	return ids, rows.Err()
+}
+
+// v1Listings lists the store's x-deal-v1 deals, in deal id order. It
+// writes nothing: a deal's own book is opened only once the shelf shows it
+// holds records (Shelf.Open creates a missing log), and its status is a
+// keep copy computed now and never sealed. With in set (a --since/--until
+// range), only the deals with a record in it are listed, and no state is
+// computed for the others.
+func (s *dealSession) v1Listings(ctx context.Context, p cli.Profile, in *dealListBounds) ([]dealListing, error) {
+	ids, err := s.v1DealIDs(ctx)
+	if err != nil {
 		return nil, err
 	}
 	if len(ids) == 0 {

@@ -590,5 +590,21 @@ func (s *dealSession) allCoverSteps(ctx context.Context) (_ []*dealCoverStep, er
 		}
 		steps = append(steps, dealCoverSteps(id, events)...)
 	}
+	// An x-deal-v1 deal's steps are its local events, read as stored: a
+	// payer leg is an act, a check its snapshot's (evidencebook#758). A deal
+	// with no event yet (an offer only) holds no step.
+	v1, err := s.v1DealIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range v1 {
+		events, _, _, err := s.v1StoredEvents(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if len(events) > 0 {
+			steps = append(steps, dealCoverSteps(id, events)...)
+		}
+	}
 	return steps, nil
 }

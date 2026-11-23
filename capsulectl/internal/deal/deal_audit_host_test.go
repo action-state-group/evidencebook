@@ -318,3 +318,48 @@ func TestDealMetadataListsEveryDealSubcommand(t *testing.T) {
 	}
 	assert.ElementsMatch(t, DealMetadata.Subcommands, names)
 }
+
+// An x-deal-v1 deal's own records account for the host's actions on it
+// (evidencebook#758): a settled payment covers the host's pay record, by deal
+// id or by amount, currency, merchant and time; a pay it does not hold stays
+// unrecorded. Beside a v0 deal in the same store, each covers its own.
+func TestAuditHostReadsAV1Deal(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+
+	run := func(lines ...string) map[string]any {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "executions.jsonl")
+		require.NoError(t, os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600))
+		result, _ := auditHostRun(t, "--executions", path, "--from", "2026-09-27T00:00:00Z", "--to", "2026-09-28T00:00:00Z")
+		return result
+	}
+	unrecorded := func(result map[string]any) []string {
+		var ids []string
+		for _, u := range result["unrecorded"].([]any) {
+			ids = append(ids, u.(map[string]any)["id"].(string))
+		}
+		return ids
+	}
+	pay := func(id, extra string) string {
+		return `{"id":"` + id + `","at":"2026-09-27T18:00:00Z","task":"t","tool":"make_payment","action":"pay","currency":"USD","status":"succeeded"` + extra + `}`
+	}
+
+	byID := run(pay("c1", `,"amount_minor":4500,"deal_id":"`+h.dealID+`"`))
+	assert.Empty(t, unrecorded(byID), "the v1 deal's payment covers the host's pay by deal id: %v", byID)
+	byMatch := run(pay("c1", `,"amount_minor":4500,"merchant_domain":"kettle.example"`))
+	assert.Empty(t, unrecorded(byMatch), "and by amount, currency, merchant and time: %v", byMatch)
+	other := run(pay("c1", `,"amount_minor":999,"deal_id":"`+h.dealID+`"`))
+	assert.Equal(t, []string{"c1"}, unrecorded(other), "a pay the deal does not hold stays unrecorded")
+
+	// A v0 deal beside it, its payment noted as an act.
+	v0 := openJetSki(t)
+	dealRun(t, "note", "--deal", v0, "--kind", "act", "--input", writeJSON(t, `{"action":"pay","amount_minor":20000,"payee":"M. Torres","rail":"zelle","reference":"z1"}`))
+	mixed := run(
+		pay("c1", `,"amount_minor":4500,"deal_id":"`+h.dealID+`"`),
+		pay("c2", `,"amount_minor":20000,"deal_id":"`+v0+`"`),
+		pay("c3", `,"amount_minor":4500,"deal_id":"`+v0+`"`),
+	)
+	assert.Equal(t, []string{"c3"}, unrecorded(mixed), "each deal covers its own action, and only its own: %v", mixed)
+}
