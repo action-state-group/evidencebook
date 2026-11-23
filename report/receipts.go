@@ -73,6 +73,9 @@ type Receipt struct {
 type checkedReceipts struct {
 	texts    map[string]string
 	withheld []string
+	// ignored are the exchange capsule ids of receipts no deal's claims cite,
+	// in the order given.
+	ignored []string
 }
 
 // dealOf is a claim id's deal: the part before "::", as the viewer reads it.
@@ -121,7 +124,9 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 		case 0:
 			// A node hands over a receipt for every exchange it holds, before
 			// the report decides which became deals of its window: one no deal
-			// cites is not on this page, carried or held.
+			// cites is not on this page, carried or held. The caller is told
+			// which (Page.IgnoredReceipts), so a mis-keyed id is not silent.
+			out.ignored = append(out.ignored, r.Exchange)
 			continue
 		case 1:
 		default:

@@ -253,6 +253,13 @@ type Page struct {
 	ContractRef, ContractSHA256 string
 	Tiers                       map[string]string
 	HTML                        []byte
+	// IgnoredReceipts are the exchange capsule ids of View.Receipts entries
+	// no deal of the report cites, in the order given. Such a receipt is
+	// neither carried nor held (a node hands over every exchange it holds,
+	// and the report's window decides which became deals), so a caller that
+	// meant to carry one reads it here: an id that is not a deal's is
+	// otherwise indistinguishable from a deal the caller handed nothing for.
+	IgnoredReceipts []string
 
 	bundle map[string]interface{}
 	// failure is what kept a diagnostic page's bundle from VALID, with the
@@ -431,6 +438,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 		Claims: len(checked.Claims), UnsupportedClaims: unsupportedClaims(value, checked.Claims), ContractRefs: checked.Contracts,
 		Diagnostic: diagnostic, DiagnosticReasons: reasons,
 		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0, receipted: view.Receipts != nil,
+		IgnoredReceipts: receipts.ignored,
 	}
 	if view.Contract != nil {
 		page.ContractRef, page.ContractSHA256, page.Tiers = contract.ref, view.Contract.SHA256, tiers

@@ -93,6 +93,13 @@ func TestAReceiptNoDealCitesIsIgnored(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{}, optionsOf(t, string(page.HTML))["receipts"])
 	assert.NotContains(t, string(page.HTML), "an-exchange-out-of-the-window")
+	assert.Equal(t, []string{"an-exchange-out-of-the-window", "another"}, page.IgnoredReceipts, "the caller is told which receipts reached no deal")
+
+	// A matched receipt is carried and not reported as ignored; an empty id is ignored and reported.
+	page, err = Build(mustRead(t, settlementBundle), settlementView(t, carried(t), Receipt{Exchange: "", Held: true}))
+	require.NoError(t, err)
+	assert.Equal(t, []string{""}, page.IgnoredReceipts)
+	assert.Contains(t, optionsOf(t, string(page.HTML))["receipts"], "d1")
 }
 
 func TestADealNoReceiptNamesIsNotCarried(t *testing.T) {
