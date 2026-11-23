@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	emit "github.com/action-state-group/capsule-emit/go"
 )
 
-// WindowChainVersion is the v member of a window chain document.
-const WindowChainVersion = 1
+// WindowChainVersion is the v member of a window chain document: 2 when a
+// window carries its boundary (a store with a grace, evidencebook#807), 1
+// otherwise. A verifier takes both.
+const WindowChainVersion = 2
 
 // WindowChain is a run of consecutive closed windows of one windowed shelf,
 // handed over with nothing else (evidencebook#689 §5, window_chain/v1): each
@@ -49,6 +52,29 @@ type ChainWindow struct {
 	// Receipts are witness receipts of FinalCheckpoint in the bundle form
 	// (checkpoint.witnesses), when the holder has them.
 	Receipts []json.RawMessage `json:"receipts,omitempty"`
+	// Boundary is the tree the window held when it ended, for a window with
+	// a grace: the next window's open record names it, and the final tree
+	// must extend it with only late Closes and index roots.
+	Boundary *ChainBoundary `json:"boundary,omitempty"`
+}
+
+// ChainBoundary is a window's boundary in a chain (evidencebook#807): the
+// boundary checkpoint, a CLL consistency proof from it to the final
+// checkpoint, and every record after it up to the close record.
+type ChainBoundary struct {
+	Checkpoint  []byte            `json:"checkpoint"`
+	Receipts    []json.RawMessage `json:"receipts,omitempty"`
+	Consistency []byte            `json:"consistency"`
+	// Tail is every record after the boundary's last leaf up to the one
+	// before the close record, in position order, each with its inclusion
+	// proof under the final checkpoint.
+	Tail []ChainTail `json:"tail"`
+}
+
+// ChainTail is one record of a boundary's tail.
+type ChainTail struct {
+	Record StoredRecord `json:"record"`
+	Proof  []byte       `json:"proof"`
 }
 
 // WindowChainOptions selects what Shelf.WindowChain carries.
@@ -100,6 +126,9 @@ func (s *Shelf) WindowChain(ctx context.Context, from, to string, opts WindowCha
 		if !ok {
 			return WindowChain{}, fmt.Errorf("%w: window %s has no book on this shelf", ErrNotFound, w.Label)
 		}
+		if row.inGrace() {
+			return WindowChain{}, fmt.Errorf("%w: window %s is in grace until %s; no final checkpoint yet", ErrInGrace, w.Label, windowTime(w.End.Add(policy.Grace)))
+		}
 		if row.state != windowClosed {
 			return WindowChain{}, fmt.Errorf("%w: window %s is still open: it has no final tree yet", ErrInvalid, w.Label)
 		}
@@ -108,6 +137,12 @@ func (s *Shelf) WindowChain(ctx context.Context, from, to string, opts WindowCha
 			return WindowChain{}, err
 		}
 		chain.Windows = append(chain.Windows, entry)
+	}
+	chain.V = 1
+	for _, w := range chain.Windows {
+		if w.Boundary != nil {
+			chain.V = WindowChainVersion
+		}
 	}
 	return chain, nil
 }
@@ -149,6 +184,43 @@ func (s *Shelf) chainWindowLocked(ctx context.Context, row windowRow, opts Windo
 			return ChainWindow{}, err
 		}
 	}
+	if row.boundaryEntries > 0 {
+		if out.Boundary, err = chainBoundary(ctx, book, prover, row, log, final, opts); err != nil {
+			return ChainWindow{}, err
+		}
+	}
+	return out, nil
+}
+
+// chainBoundary builds a window's boundary entry: its checkpoint, the
+// consistency proof to the final checkpoint, and the tail's records with
+// their proofs under it.
+func chainBoundary(ctx context.Context, book *Book, prover *cllProver, row windowRow, log []Record, final Checkpoint, opts WindowChainOptions) (*ChainBoundary, error) {
+	boundary, err := finalCheckpoint(ctx, book, row.boundaryEntries, row.boundaryRoot)
+	if err != nil {
+		return nil, err
+	}
+	consistency, err := prover.consistencyProof(boundary.TreeSize, final.TreeSize)
+	if err != nil {
+		return nil, err
+	}
+	out := &ChainBoundary{Checkpoint: bytes.Clone(boundary.Statement), Consistency: consistency, Tail: []ChainTail{}}
+	if opts.Receipts != nil {
+		if out.Receipts, err = opts.Receipts(ctx, boundary); err != nil {
+			return nil, err
+		}
+	}
+	for seq := boundary.Entries + 1; seq < final.Entries; seq++ {
+		stored, err := book.store.GetRecord(ctx, log[seq-1].RecordID)
+		if err != nil {
+			return nil, err
+		}
+		proof, err := prover.inclusionProof(seq)
+		if err != nil {
+			return nil, err
+		}
+		out.Tail = append(out.Tail, ChainTail{Record: stored, Proof: proof})
+	}
 	return out, nil
 }
 
@@ -168,6 +240,9 @@ type VerifyChainOptions struct {
 type VerifiedWindow struct {
 	Window
 	Final WindowTree `json:"final"`
+	// Boundary is the tree the window held when it ended and entered its
+	// grace, the one the next window's open record names; nil with no grace.
+	Boundary *WindowTree `json:"boundary,omitempty"`
 	// RecordKey is the hex public key that signed the window's records.
 	RecordKey string `json:"record_key"`
 }
@@ -195,8 +270,8 @@ func VerifyWindowChain(chain WindowChain, opts VerifyChainOptions) ([]VerifiedWi
 	fail := func(window, format string, args ...any) {
 		findings = append(findings, ChainFinding{Window: window, Text: fmt.Sprintf(format, args...)})
 	}
-	if chain.V != WindowChainVersion {
-		fail("", "window chain version %d is not %d", chain.V, WindowChainVersion)
+	if chain.V != 1 && chain.V != WindowChainVersion {
+		fail("", "window chain version %d is not 1 or %d", chain.V, WindowChainVersion)
 		return nil, findings
 	}
 	if !chain.Period.valid() {
@@ -322,11 +397,108 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 	case !w.Start.Equal(since) && os.Previous == nil:
 		fail(label, "chain breaks at %s: a new chain began", label)
 		return VerifiedWindow{}, false
-	case prior != nil && *os.Previous != prior.Final:
+	case prior != nil && *os.Previous != prior.next():
 		fail(label, "chain breaks at %s: its open record names a previous tree other than window %s's final tree", label, prior.Label)
 		return VerifiedWindow{}, false
 	}
-	return VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey}, true
+	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey}
+	if cw.Boundary != nil {
+		boundary, ok := verifyBoundary(cw, cp, w, openKey, opts, fail)
+		if !ok {
+			return VerifiedWindow{}, false
+		}
+		verified.Boundary = boundary
+	}
+	return verified, true
+}
+
+// next is the tree the next window's open record must name.
+func (v VerifiedWindow) next() WindowTree {
+	if v.Boundary != nil {
+		return *v.Boundary
+	}
+	return v.Final
+}
+
+// verifyBoundary checks a window's boundary (evidencebook#807): its
+// checkpoint, that the final tree extends it, and that every record after
+// it up to the close record is in the tail, contiguous, and a close/v1 for
+// a period inside the window or an index root. The tail is positional, so a
+// record whose commit time was set back cannot be left out of it.
+func verifyBoundary(cw ChainWindow, final signedCheckpoint, w Window, recordKey string, opts VerifyChainOptions, fail func(string, string, ...any)) (*WindowTree, bool) {
+	label, b := w.Label, cw.Boundary
+	bcp, err := readSignedCheckpoint(b.Checkpoint, opts.CheckpointKey)
+	if err != nil {
+		fail(label, "window %s's boundary checkpoint: %v", label, err)
+		return nil, false
+	}
+	if bcp.LogID != cw.LogID || bcp.Entries == 0 || bcp.Entries >= final.Entries {
+		fail(label, "window %s's boundary checkpoint is not of its log before its final tree", label)
+		return nil, false
+	}
+	if len(opts.Witnesses) > 0 {
+		if len(b.Receipts) == 0 {
+			fail(label, "window %s not witnessed: its boundary checkpoint carries no receipt", label)
+			return nil, false
+		}
+		if err := verifyCarriedReceipts(b.Checkpoint, b.Receipts, opts.Witnesses); err != nil {
+			fail(label, "window %s not witnessed: %v", label, err)
+			return nil, false
+		}
+	}
+	if !consistencySizes(b.Consistency, bcp.TreeSize, final.TreeSize) || checkCLLConsistency(bcp.commitment, final.commitment, b.Consistency) != nil {
+		fail(label, "window %s's final tree does not extend its boundary", label)
+		return nil, false
+	}
+	if want := final.Entries - 1 - bcp.Entries; uint64(len(b.Tail)) != want {
+		fail(label, "window %s's tail carries %d of the %d records after its boundary", label, len(b.Tail), want)
+		return nil, false
+	}
+	for i, t := range b.Tail {
+		seq := bcp.Entries + 1 + uint64(i)
+		h, key, err := windowChainRecord(t.Record, final, seq, t.Proof)
+		if err != nil {
+			fail(label, "window %s's late record at %d: %v", label, seq, err)
+			return nil, false
+		}
+		if key != recordKey || h.BookID != cw.LogID {
+			fail(label, "window %s's late record at %d is not its own", label, seq)
+			return nil, false
+		}
+		switch h.RecordType {
+		case RecordTypeIndexRoot:
+			var root struct {
+				IndexRoot
+				AsOfSeq uint64 `json:"as_of_seq"`
+			}
+			if decodeStrict(h.Statement, &root) != nil {
+				fail(label, "window %s holds a malformed index_root record at %d", label, seq)
+				return nil, false
+			}
+		case RecordTypeClose:
+			if err := (&bookWindow{Window: w}).closeInside(h); err != nil {
+				fail(label, "window %s holds a late Close at %d that is not a close/v1 for a period inside it", label, seq)
+				return nil, false
+			}
+		default:
+			fail(label, "window %s holds a late %s record at %d", label, h.RecordType, seq)
+			return nil, false
+		}
+	}
+	return &WindowTree{LogID: cw.LogID, Entries: bcp.Entries, Root: bcp.Root}, true
+}
+
+// consistencySizes reports whether cll-consistency-proof octets are from
+// MMR size from to size to.
+func consistencySizes(proof []byte, from, to uint64) bool {
+	decoded, err := evidencerequest.DecodeCBOR(proof)
+	parts, ok := decoded.([]any)
+	if err != nil || !ok || len(parts) != 4 {
+		return false
+	}
+	a, okA := evidencerequest.UintValue(parts[0])
+	b, okB := evidencerequest.UintValue(parts[1])
+	return okA && okB && a == from && b == to
 }
 
 // windowChainRecord checks a sealed record of a chain: its capsule commits its

@@ -101,7 +101,9 @@ package	kind	symbol	feature	rust	python
 .	type	CapsuleSealer	originals-and-stores	frozen #640	ported
 .	type	CardRegisteredReport	card-registration	frozen #618	frozen #619
 .	type	CardStatementRegistrar	card-registration	frozen #618	frozen #619
+.	type	ChainBoundary	window-books	frozen #798	frozen #799
 .	type	ChainFinding	window-books	frozen #798	frozen #799
+.	type	ChainTail	window-books	frozen #798	frozen #799
 .	type	ChainWindow	window-books	frozen #798	frozen #799
 .	type	Checkpoint	substrates	ported	ported
 .	type	CloseInput	close-record	frozen #629	frozen #628
@@ -300,6 +302,7 @@ package	kind	symbol	feature	rust	python
 .	var	ErrClockBehind	sentinel-errors	not needed	not needed
 .	var	ErrCorrupt	sentinel-errors	not needed	not needed
 .	var	ErrDeleted	sentinel-errors	not needed	not needed
+.	var	ErrInGrace	sentinel-errors	not needed	not needed
 .	var	ErrInvalid	sentinel-errors	not needed	not needed
 .	var	ErrLegalHold	sentinel-errors	not needed	not needed
 .	var	ErrMaterialWithheld	standard-history	not needed	not needed

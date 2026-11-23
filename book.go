@@ -528,9 +528,6 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	}
 	seq := uint64(len(b.log)) + 1
 	committedAt := b.now().UTC().Truncate(time.Microsecond)
-	if err := b.window.admits(entry.RecordType, seq, committedAt, b.checkpointing); err != nil {
-		return Record{}, err
-	}
 	header := Header{
 		Version: HeaderVersion, BookID: b.id, Seq: seq,
 		RecordType: entry.RecordType, EpistemicType: entry.EpistemicType,
@@ -546,6 +543,9 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 		if header.Statement, err = statementAt(seq, header.CommittedAt); err != nil {
 			return Record{}, err
 		}
+	}
+	if err := b.window.admits(header, committedAt, b.checkpointing); err != nil {
+		return Record{}, err
 	}
 	if !entry.EventTimeClaim.IsZero() {
 		header.EventTimeClaim = entry.EventTimeClaim.UTC().Format(time.RFC3339Nano)

@@ -18,7 +18,9 @@ import (
 // be read) goes to the current window's book. The evidence_request_answered
 // record is sealed in the current window's book, where the answer happened.
 // A closed window's book issues no new anchor, so a floor its final
-// checkpoint cannot meet is answered coverage_unsatisfiable. Book.Respond is
+// checkpoint cannot meet is answered coverage_unsatisfiable. A window in its
+// grace (evidencebook#807) may issue anchors; its answers are not at its
+// final tree, so a report over windows cannot use them until it closes. Book.Respond is
 // the rule for everything else.
 func (s *Shelf) Respond(ctx context.Context, request Message, opts RespondOptions) (Reply, Record, error) {
 	for attempt := 0; ; attempt++ {

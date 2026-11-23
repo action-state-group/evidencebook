@@ -53,4 +53,7 @@ var (
 	// the start of its newest window: the clock stepped back over a window
 	// boundary, and the shelf never reopens a window it has moved past.
 	ErrClockBehind = errors.New("evidencebook: clock behind the newest window")
+	// ErrInGrace reports a window that has ended but is still in its grace
+	// (evidencebook#807): it has no final tree yet, so it is in no chain.
+	ErrInGrace = errors.New("evidencebook: window in grace")
 )
