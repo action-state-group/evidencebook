@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # check-deal-pages.sh -- a deal receipt's page, opened in headless Chrome, says
 # what a reader must see: its sealed text rendered and checked; an edited
-# line, or the report dropped for inline text, refused; and
-# `capsulectl verify --bundle` agreeing with each (VALID, exit 0; INVALID,
-# exit 1). The deal is the synthetic retail-checkout demo. Until the plugins
+# line, or the report dropped for inline text, refused; and the verdicts
+# agreeing with each: `capsulectl verify --bundle` VALID (exit 0) on the
+# receipt, and the plugin's `capsulectl deal verify --bundle`, which carries
+# the deal-format checks (evidencebook#735), INVALID (exit 1) on the edited
+# and the downgraded copy. The deal is the synthetic retail-checkout demo. Until the plugins
 # left capsule-cli (capsule-cli#326) this was the second half of its
 # scripts/check-html-render.sh; the page-check helpers are still capsule-cli's
 # (scripts/lib/page-checks.sh), read from the module this plugin builds
