@@ -186,6 +186,7 @@ func TestDealShareGateReadsACardByItsNetworkPrefix(t *testing.T) {
 		"3530111333300000",    // JCB
 		"30569309025904",      // Diners Club
 		"6200000000000005",    // UnionPay
+		"9792000000000003",    // Troy
 		"4111111111111111123", // with a code after it
 	} {
 		assert.Error(t, dealPageGate(gatePage(t, "Paid with "+card), nil), card)

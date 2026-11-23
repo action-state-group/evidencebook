@@ -102,7 +102,9 @@ func cardLike(ref string) bool {
 // Visa 4; Mastercard 51-55 and 2221-2720; Maestro 50 and 56-69; American
 // Express 34 and 37; Discover 6011, 644-649 and 65; JCB 3528-3589; Diners
 // Club 300-305, 3095, 36, 38 and 39; UnionPay 62 and 81; Mir 2200-2204;
-// RuPay 60 and 81-82. Every 4, 5 and 6 is one of these.
+// RuPay 60 and 81-82; Troy 9792. Every 4, 5 and 6 is one of these. UATP
+// (1) is left out on purpose: it would make an order number such as
+// 1002003004005005 a card again (Sherlock2, #817).
 func cardPrefix(d string) bool {
 	in := func(n, lo, hi int) bool {
 		v := 0
@@ -120,6 +122,8 @@ func cardPrefix(d string) bool {
 		return in(3, 300, 305) || in(4, 3095, 3095) || in(2, 34, 34) || in(4, 3528, 3589) || in(2, 36, 39)
 	case '8':
 		return in(2, 81, 82)
+	case '9':
+		return in(4, 9792, 9792)
 	}
 	return false
 }
