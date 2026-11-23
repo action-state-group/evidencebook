@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -385,4 +386,27 @@ func TestAShelfVersionThatDisagreesWithItsGraceIsRefused(t *testing.T) {
 	require.NoError(t, db.Close())
 	_, err = OpenSQLiteShelf(context.Background(), f.cfg)
 	assert.ErrorIs(t, err, ErrCorrupt)
+}
+
+// A refused window policy leaves no shelf file and no lock file behind
+// (evidencebook#827).
+func TestARefusedWindowPolicyLeavesNoFile(t *testing.T) {
+	for _, policy := range []WindowPolicy{
+		{Period: WindowDay, Base: "acme", Since: utc(2026, 10, 1), Grace: 24 * time.Hour},
+		{Period: WindowMonth, Base: "acme", Since: utc(2026, 10, 2)},
+		{Period: "fortnight", Base: "acme", Since: utc(2026, 10, 1)},
+	} {
+		f := newShelfFixture(t)
+		f.cfg.Window = &policy
+		_, err := OpenSQLiteShelf(context.Background(), f.cfg)
+		require.ErrorIs(t, err, ErrInvalid)
+		for _, path := range []string{f.cfg.Path, f.cfg.Path + ".lock"} {
+			_, statErr := os.Stat(path)
+			assert.ErrorIs(t, statErr, os.ErrNotExist, path)
+		}
+		f.cfg.Window = &WindowPolicy{Period: WindowDay, Base: "acme", Since: utc(2026, 10, 1)}
+		shelf, err := OpenSQLiteShelf(context.Background(), f.cfg)
+		require.NoError(t, err)
+		require.NoError(t, shelf.Release())
+	}
 }

@@ -144,6 +144,15 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	if cfg.Path == "" || cfg.Operator == "" || cfg.Signer == nil || cfg.Originals == nil || len(cfg.CheckpointKey) == 0 {
 		return nil, fmt.Errorf("%w: path, operator, signer, checkpoint key and originals are required", ErrInvalid)
 	}
+	// A window policy is checked before anything touches the disk, so a
+	// refused one leaves no file behind (evidencebook#827). A stored policy
+	// passed these checks when its shelf was created, so a policy that fails
+	// them could never match it either.
+	if cfg.Window != nil {
+		if err := cfg.Window.validate(); err != nil {
+			return nil, err
+		}
+	}
 	var unlock func() error
 	if cfg.HeldLock != nil {
 		if cfg.LockPath != "" {
