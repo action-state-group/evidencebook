@@ -266,26 +266,35 @@ func TestTheCloseRecordPinsALastWindowsBoundary(t *testing.T) {
 	assert.Contains(t, findingTexts(stripped, key), "window 2026-10's close record names a boundary the chain does not carry")
 
 	// A swapped boundary: another checkpoint October signed, after the
-	// real boundary.
-	oct, _, err := shelf.WindowBook(context.Background(), "2026-10")
+	// real boundary, with its own consistency proof and tail, so only the
+	// close record's naming tells it apart.
+	ctx := context.Background()
+	oct, _, err := shelf.WindowBook(ctx, "2026-10")
 	require.NoError(t, err)
-	checkpoints, err := oct.Checkpoints(context.Background())
+	checkpoints, err := oct.Checkpoints(ctx)
 	require.NoError(t, err)
-	var later []byte
 	real, err := checkpointFromStatement(chain.Windows[0].Boundary.Checkpoint)
 	require.NoError(t, err)
-	for _, cp := range checkpoints {
-		if cp.Entries > real.Entries && cp.Entries < oct.Size() {
-			later = cp.Statement
+	final, err := checkpointFromStatement(chain.Windows[0].FinalCheckpoint)
+	require.NoError(t, err)
+	var later *Checkpoint
+	for i := range checkpoints {
+		if checkpoints[i].Entries > real.Entries && checkpoints[i].Entries < final.Entries {
+			later = &checkpoints[i]
 		}
 	}
 	require.NotNil(t, later)
+	prover, err := oct.commitments.(*CLLSubstrate).cllProver(ctx, final)
+	require.NoError(t, err)
+	consistency, err := prover.consistencyProof(later.TreeSize, final.TreeSize)
+	require.NoError(t, err)
 	swapped := chain
 	swapped.Windows = append([]ChainWindow{}, chain.Windows...)
 	b := *chain.Windows[0].Boundary
-	b.Checkpoint = later
+	b.Checkpoint, b.Consistency = later.Statement, consistency
+	b.Tail = b.Tail[later.Entries-real.Entries:]
 	swapped.Windows[0].Boundary = &b
-	assert.NotEmpty(t, findingTexts(swapped, key))
+	assert.Contains(t, findingTexts(swapped, key), "window 2026-10 carries a boundary other than the one its close record names")
 
 	extra := chain
 	extra.Windows = append([]ChainWindow{}, chain.Windows...)
