@@ -19,13 +19,72 @@ host runs `deal check` from a pre-action hook. Without one:
   `approval_text`: what, who, the amount, the rail, what the check found, the
   check time and when it goes stale. An agent that asks the user with that
   text has run the check.
-- **The skill is written as procedures** (purchase, booking, signature,
-  disclosure) whose final-review step is `deal open` plus `deal check`. The
+- **The skill is written as procedures** (purchase, sale, disclosure,
+  cancellation, dispute) whose final-review step is `deal check`. The
   trigger is the action, never the counterparty: a retail checkout from a
   known merchant at a fixed price is in scope. This helps once the skill is
   in use; it does not make the host invoke it.
 
-## Commands
+## How an x-deal-v1 deal goes
+
+capsulectl-deal writes x-deal-v1 deals by default. A deal is between two
+parties, each keeping its own book on its own device; records go between them
+as files the user sends, and the other side keeps each with `deal receive`.
+In order:
+
+1. **Offer.** One side runs `deal offer` and sends the file; the other keeps
+   it with `deal receive`.
+2. **Admission.** Each side seals capsule-engine's admission decision on the
+   other with `deal admit`.
+3. **Intent.** Each side seals what its user asked (`deal note --kind intent
+   --opening FILE`), and the journey and the user's pick as notes.
+4. **Agreement.** The side the offer was sent to runs `deal agree` first;
+   the offerer receives that, agrees, and sends its own back. Each side
+   checkpoints right after its agreement.
+5. **Final review.** `deal check` before every point of no return, the
+   user's answer sealed with the card they saw.
+6. **Acts.** A payment is `deal settle --sent` before the rail, then `deal
+   settle --status` when it answers; what was received is a payee leg; a
+   delivery is `deal perform`. `deal statement` says how each row went, and
+   `deal dispute` takes a row to the agreement's referee.
+7. **Reading it.** Once the cadence has checkpointed the book, `deal
+   settlement` and `deal report` read it; `deal report --share counterparty --bundle`
+   writes the copy for the other side.
+
+The x-deal-v0 sections below (Commands: legacy x-deal-v0, the receipt page,
+Records: the x-deal-v0 profile, cancel-by dates) describe the legacy version,
+which a deal already open keeps and [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md)
+covers. The demo is `scripts/run-demo.sh` (below).
+
+## Commands: x-deal-v1
+
+All commands take `--profile deal` and print one JSON object (`deal list`
+without `--json` prints lines). `--help` on each gives every flag.
+
+| Command | What it does |
+|---|---|
+| `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates the profile: its store, signing and checkpoint seeds (mode 0600) and its cadence log. Prints `public_key`, the key the other side names in an offer's `to`. |
+| `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). |
+| `deal offer cancel OFFER` / `deal offer decline OFFER` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
+| `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof) and says whether it counts yet. Seals nothing. |
+| `deal admit --deal ID --input FILE` | Seals capsule-engine's admission decision (`capsule-engine admission evaluate --admit FILE`) for the deal; only `"admits_deal": true` is accepted. |
+| `deal note --deal ID --kind intent --input FILE [--opening FILE]` | Seals what the user asked; the deal's first intent carries `--opening`. Other kinds on x-deal-v1: `searched`, `options`, `recommended`, `chose`, `couldnt`, `message`, `claim`, `evidence`, `change`, `disclosure`, and `approval` (`--check CHECK_ID --choice OPTION --said WORDS --shown-card FILE`). |
+| `deal agree OFFER --out FILE [--intent DIGEST]` | Seals your agreement as the first record of your deal book and writes the file to send. The side the offer was sent to agrees first; the offerer agrees once it holds that agreement. |
+| `deal check --deal ID --input FILE` | The final review: seals the snapshot, compares it with what was asked and agreed, and returns `proceed`, or a `pause` or `deny` with its card. A pay check carries `payment_ref`. |
+| `deal settle --deal ID --sent --check CHECK_ID --payment-ref-type TYPE` | Before the handoff to the rail: checks the payment and counts it as in flight. Seals no leg. |
+| `deal settle --deal ID --check CHECK_ID --status settled\|failed --out FILE` | When the rail answers: seals your payer leg and writes the file to send. |
+| `deal settle --deal ID --received N --receive-fee N --status S --payment-ref-type T --payment-ref R --out FILE` | What you received: your payee leg. `--reverses LEG` makes a leg a refund of a leg of your own book; `--supersedes LEG` replaces an earlier observation. |
+| `deal perform --deal ID --act ACT --check CHECK_ID --observed HOW --out FILE` | An act other than a payment (a delivery), on a passing commit check. |
+| `deal statement --deal ID --statement ROW=VALUE --out FILE` | How a row went: `met`, `not_met` or `cannot_tell`. |
+| `deal dispute --deal ID --row ROW --out FILE [--forum F] [--withdraw]` | Disputes a row before the agreement's referee, or takes it back. |
+| `deal tick` | The checkpoint cadence's poll. Prints `state` (`ticked` or `not_due`) and `due`. Schedule `cll checkpoint cadence --wait-up-to 5m` every 5 minutes (Setup). |
+| `deal settlement --deal ID` | Each payment row's check over both sides' legs you hold, as your records read it now. |
+| `deal report --deal ID [--bundle FILE] [--out FILE] [--share counterparty --to NAME]` | Each row's status, read at your last checkpoint. `--bundle` writes an Evidence Bundle; `--share counterparty` makes it the copy for the other side, put on record first; `--out` seals the report. |
+| `deal list [--json] [--since D] [--until D]` | Every deal in the store with its state; read-only. |
+| `deal audit-host --executions FILE` | The daily check of host actions (below). |
+| `deal set-version x-deal-v1 --migrate` | Moves a store made before x-deal-v1 was the default to the new layout, once, keeping a backup. The user's step: never run it yourself. |
+
+## Commands: legacy x-deal-v0
 
 | Command | What it does |
 |---|---|
@@ -1009,14 +1068,22 @@ agent.
 
 ## Demo
 
-`demo/jet-ski/` is a scripted DEMO rental with a payee switch to Zelle. Run
-`scripts/run-demo.sh [report.html]` (set `CAPSULECTL` to use a release
-binary instead of building from source). The card it must produce is in
-`demo/jet-ski/expected-card.txt`; the Go tests assert the same card.
+`demo/lamp/` is a scripted DEMO desk lamp purchase on x-deal-v1, played on
+both sides in two throwaway profiles: offer, receive, admission on each
+side, intent, the agreement exchange, and the buyer's check before paying,
+which pauses on the item the agent picked; the user holds, and the report
+prints. Run `scripts/run-demo.sh` (set `CAPSULECTL` to use a release binary
+instead of building from source). The card it must produce is in
+`demo/lamp/expected-card.txt`. Its admission decisions are capsule-engine's
+real output, kept so the demo needs no engine install.
+
+The legacy x-deal-v0 demo is `demo/jet-ski/`, a rental with a payee switch
+to Zelle: `scripts/run-demo-x-deal-v0.sh [report.html]`. The Go tests run
+both demos and assert both cards.
 
 `demo/retail-checkout/` is a DEMO retail order from a known merchant at a
 fixed price, where nothing differs. The user's request does not name the
-skill. The Go tests walk the Purchase procedure in SKILL.md step by step
+skill. The Go tests walk the legacy x-deal-v0 Purchase procedure step by step
 against it: its final-review step seals the deal, the check passes quietly,
 and a `deal audit-host` over the host's execution records for the same period
 lists no unrecorded action.

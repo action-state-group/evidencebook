@@ -2139,7 +2139,7 @@ func dealNoteCommand() *cobra.Command {
 		})
 	}}
 	cmd.Annotations = map[string]string{saleStepsAnnotation: "post"}
-	cmd.Flags().String("deal", "", "Deal ID from `deal open`, or a sale id from `deal sale new` for a listing post's approval and act")
+	cmd.Flags().String("deal", "", "The deal id (`deal offer` or `deal receive` printed it; `deal open` for an x-deal-v0 deal), or a sale id from `deal sale new` for a listing post's approval and act")
 	cmd.Flags().String("kind", "", "message, claim, evidence, change, intent, approval, act, disclosure, platform_approval, acceptance, payment_received, delivered, dispute or ruling")
 	cmd.Flags().String("html", "", "With --kind act or --kind evidence --email: also write the updated receipt page (your own copy) to this new file, as `deal report --html` does")
 	addSettlementNoteFlags(cmd)
@@ -2624,7 +2624,7 @@ func dealCheckCommand() *cobra.Command {
 		})
 	}}
 	cmd.Annotations = map[string]string{saleStepsAnnotation: "post"}
-	cmd.Flags().String("deal", "", "Deal ID from `deal open`, or a sale id from `deal sale new` for a listing's post check")
+	cmd.Flags().String("deal", "", "The deal id (`deal offer` or `deal receive` printed it; `deal open` for an x-deal-v0 deal), or a sale id from `deal sale new` for a listing's post check")
 	cmd.Flags().String("input", "", "Snapshot JSON: the action and exactly what is about to happen")
 	cmd.Flags().Duration("stale-after", 15*time.Minute, "How long the check stays current; the approval text says when it goes stale")
 	cmd.Flags().String("received", "", "A JSON array of cards received about the counterparty, handed to the rules checker in a second run read for its notice only: never stored, sealed or shared")
@@ -3046,7 +3046,7 @@ func dealReportCommand() *cobra.Command {
 			return cli.Output(c, reportSay(out, s.p, events, htmlPath))
 		})
 	}}
-	cmd.Flags().String("deal", "", "Deal ID from `deal open`")
+	cmd.Flags().String("deal", "", "The deal id (`deal offer` or `deal receive` printed it; `deal open` for an x-deal-v0 deal)")
 	cmd.Flags().String("html", "", "Write the report as one local, self-contained page to this new file")
 	cmd.Flags().String("email", "", "Write the receipt as a ready-to-send email (.eml, no sender or recipient) to this new file, for the agent host's own email tool to send")
 	cmd.Flags().String("bundle", "", "Write the deal's Evidence Bundle (for `capsulectl verify --bundle`) to this new file. On an x-deal-v1 deal: your deal book at the report's checkpoint, with the sealed report beside it; with --share counterparty or adjudicator, a disclose act, put on record before the file is written. A shared bundle carries every record of your deal book with its contents and the other side's records your report relies on: an adjudicator sees all of it. Your own notes are never in a bundle")

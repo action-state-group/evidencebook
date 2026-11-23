@@ -721,7 +721,7 @@ func TestDealPickedItemIsNotAFalsePause(t *testing.T) {
 // note before the check, and to keep what it picked itself out of `asked`.
 func TestDealPurchaseProcedureSealsThePickBeforeTheCheck(t *testing.T) {
 	var review string
-	for _, step := range procedureSteps(t, "Purchase") {
+	for _, step := range procedureSteps(t, legacyFile, "Purchase") {
 		if strings.HasPrefix(step, "**Final review:**") {
 			review = step
 		}
@@ -729,9 +729,16 @@ func TestDealPurchaseProcedureSealsThePickBeforeTheCheck(t *testing.T) {
 	note, check := strings.Index(review, "`deal note --kind intent`"), strings.Index(review, "`deal check`")
 	require.GreaterOrEqual(t, note, 0, "the final review seals the pick")
 	assert.Less(t, note, check, "the pick is sealed before the check")
-	raw, err := os.ReadFile("../../skills/deal/SKILL.md")
-	require.NoError(t, err)
-	skill := strings.Join(strings.Fields(string(raw)), " ")
-	assert.Contains(t, skill, "#### The user picked from options")
-	assert.Contains(t, skill, "What you picked yourself (a size, a colour or a delivery option the user never mentioned) stays out of `asked`")
+	for _, file := range []string{skillFile, legacyFile} {
+		raw, err := os.ReadFile(file)
+		require.NoError(t, err)
+		skill := strings.Join(strings.Fields(string(raw)), " ")
+		assert.Contains(t, skill, "#### The user picked from options", file)
+		assert.Contains(t, skill, "What you picked yourself (a size, a colour or a delivery option the user never mentioned) stays out of `asked`", file)
+	}
+	// On x-deal-v1 the pick is an intent note sealed before the check.
+	purchase := skillSection(t, "Purchase")
+	intent, final := strings.Index(purchase, "the intent for the user's pick"), strings.Index(purchase, "**Final review:**")
+	require.GreaterOrEqual(t, intent, 0, "the x-deal-v1 Purchase seals the user's pick")
+	assert.Less(t, intent, final, "the pick is sealed before the check")
 }
