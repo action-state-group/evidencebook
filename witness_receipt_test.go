@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -25,8 +26,18 @@ func TestCadenceReceipts(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0].TSURL != testWitnessURL {
 		t.Fatalf("receipts: %+v %v", got, err)
 	}
+	// What a party hands over verifies as the reader checks it.
+	if check, keyID, err := VerifyWitnessReceipt(tick.Checkpoint, got[0], testWitnesses(t)); err != nil || check.State != WitnessVerified || keyID == "" {
+		t.Fatalf("a held receipt does not verify: %+v %q %v", check, keyID, err)
+	}
 	if other, err := c.Receipts(ctx, []byte("another statement")); err != nil || len(other) != 0 {
 		t.Fatalf("another checkpoint: %v %v", other, err)
+	}
+	if err := shelf.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Receipts(ctx, tick.Checkpoint); !errors.Is(err, ErrReleased) {
+		t.Fatalf("a released shelf: %v", err)
 	}
 }
 

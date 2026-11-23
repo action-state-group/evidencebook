@@ -32,7 +32,8 @@ func VerifyWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aa
 // checkpoint statement (as Cadence.Witnessed kept them), in witness and key
 // order, none when it holds none. A party sends them beside its stamp proof
 // so a reader can see that a witness timed its checkpoint (x-deal-v1's entry
-// check, evidencebook#788); they carry hashes and signatures only.
+// check, evidencebook#788). A receipt carries no record content: only the
+// witness's URL, its signed receipt, and the entry hash and its position.
 func (c *Cadence) Receipts(ctx context.Context, statement []byte) ([]WitnessReceipt, error) {
 	c.shelf.mu.Lock()
 	defer c.shelf.mu.Unlock()
