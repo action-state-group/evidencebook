@@ -496,7 +496,9 @@ capsulectl --profile deal deal receive ruling.json --out naming.json
 
 The user sends `naming.json` to the other side, before anything later they
 send: the other side counts none of the user's later records until it holds
-it. The output says when the ruling was stamped (`stamped_at`, or "unknown").
+it. The output says when the ruling was stamped (`stamped_at`). "unknown"
+means no witness the agreement names has registered the referee's stamp yet:
+the ruling still counts, and the independence check could not run.
 When it says `"independence": "not independent (shared operator)"`, tell the
 user that line as it is: the referee's key is a party's, or bound to one.
 Never say a referee is independent. A controller binding the user holds, such
