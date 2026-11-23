@@ -246,8 +246,8 @@ func canonicalStatement(doc []byte) ([]byte, error) {
 // checkDerivedResult validates the Result an evaluator returned with the
 // whole Evidence Result v0 gate (schema and cross-claim rules) and returns
 // the one contract its claims report: at least one claim, one contract_ref
-// across them, and each claim's evidence exactly the response record. A Result
-// held to UnprovenInputsTitle is checked by its caller.
+// across them, and each claim's evidence exactly the response record. An
+// answer without proofs adds the title rule of UnprovenInputsTitle.
 func checkDerivedResult(result []byte, inputs DerivedInputs) (string, error) {
 	doc, err := evidenceresult.Decode(result)
 	if err != nil {

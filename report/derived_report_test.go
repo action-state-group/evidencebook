@@ -15,10 +15,10 @@ import (
 // testdata/derived-report/bundle.json is the bundle the root package's
 // TestTermsPackReportEndToEnd builds (evidencebook#606): a requester's Result
 // over a holder's answer to a Terms Pack requested by digest, with the
-// contract-report/v1 extension. Regenerate it with
-// EB_WRITE_DERIVED_REPORT_FIXTURE=<this directory> go test -run
-// TestTermsPackReportEndToEnd . from the repository root. The same bundle that
-// verifies renders as the report page, with every claim resolved.
+// contract-report/v1 extension, and that test holds this file to what the
+// producer builds. Regenerate it with EB_WRITE_DERIVED_REPORT_FIXTURE=1 go test
+// -run TestTermsPackReportEndToEnd . from the repository root. The same bundle
+// that verifies renders as the report page, with every claim resolved.
 func TestDerivedReportBundleRendersAsTheReportPage(t *testing.T) {
 	bundle, err := os.ReadFile("testdata/derived-report/bundle.json")
 	require.NoError(t, err)
