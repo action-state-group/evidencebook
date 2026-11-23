@@ -15,6 +15,15 @@ import (
 // its own copy of these pages in a browser; a change here goes there too.
 const presentationDir = "../../../report/testdata/presentation"
 
+// ownPresentationDir is capsulectl's copy of the same fixtures, which the deal
+// package's browser checks open.
+const ownPresentationDir = "../../testdata/presentation"
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // TestReportBuildGoldens re-emits each fixture page `book report build`
 // wrote and holds the committed page to it byte for byte, so the browser
 // checks that read the committed page measure what this plugin writes.
@@ -53,6 +62,13 @@ func TestReportBuildGoldens(t *testing.T) {
 			// build writes: a page from an older viewer fails here, and
 			// CAPSULECTL_UPDATE_PRESENTATION_PAGES=1 rewrites it.
 			require.Equal(t, string(page), string(mustRead(t, pageFile)), "the committed page is not what `book report build` writes now; rewrite it with CAPSULECTL_UPDATE_PRESENTATION_PAGES=1")
+			// capsulectl's own copy of the fixture is the page the deal package's
+			// browser checks open (its report-build case reads it as committed),
+			// and nothing else re-emits it: a viewer bump that left it behind
+			// failed only there (evidencebook#778). Copy the page above to it.
+			if copyFile := filepath.Join(ownPresentationDir, entry.Name(), "page.html"); fileExists(copyFile) {
+				require.Equal(t, string(page), string(mustRead(t, copyFile)), "capsulectl's copy %s is not what `book report build` writes now; copy the page from %s over it", copyFile, pageFile)
+			}
 		})
 	}
 	require.Positive(t, seen, "no report-build fixture found")
