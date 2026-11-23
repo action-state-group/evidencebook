@@ -318,19 +318,38 @@ func TestAClosedOverLastMonthIsSealedInItsWindowDuringTheGrace(t *testing.T) {
 		assert.NotEqual(t, evidencebook.RecordTypeDisclosure, r.Header.RecordType, "September took no disclosure")
 	}
 	assert.True(t, found, "the Close is in September's book")
+	// The hand-over is on record in October, the current window: a
+	// disclosure naming the bundle and citing the Close.
+	var closedOut closeResult
+	require.NoError(t, json.Unmarshal([]byte(out), &closedOut), out)
 	// The exchange appended on 2 October is in October's book.
 	shelf, err = windowedShelfForReading(t.Context(), b)
 	require.NoError(t, err)
 	october, err := shelf.Records(t.Context(), "b/2026-10")
 	require.NoError(t, err)
 	require.NoError(t, shelf.Release())
-	exchanges := 0
+	exchanges, disclosures := 0, 0
 	for _, r := range october.Records {
 		if r.Header.Correlation != nil && r.Header.Correlation.ExchangeID == "x2" {
 			exchanges++
 		}
+		if r.Header.RecordType != evidencebook.RecordTypeDisclosure {
+			continue
+		}
+		var stated evidencebook.DisclosureStatement
+		require.NoError(t, json.Unmarshal(r.Header.Statement, &stated))
+		if stated.BundleDigest != closedOut.BundleDigest {
+			continue
+		}
+		disclosures++
+		cited := false
+		for _, l := range r.Header.Links {
+			cited = cited || l.Target == closed.RecordID
+		}
+		assert.True(t, cited, "the disclosure cites the Close")
 	}
 	assert.Positive(t, exchanges, "the October exchange is in October's book")
+	assert.Equal(t, 1, disclosures, "the bundle's disclosure is in October's book")
 
 	// September has no final checkpoint yet, so no chain covers it.
 	_, err = invoke(t, "", "book", "window", "chain", "--profile", "b", "--from", "2026-09", "--to", "2026-09", "--out", filepath.Join(t.TempDir(), "chain.json"))
@@ -386,10 +405,10 @@ func TestWindowInitFixesTheGrace(t *testing.T) {
 	for _, c := range []struct{ period, grace, want string }{
 		{"week", "7d", "shorter than"},
 		{"day", "1d", "shorter than"},
-		{"month", "soon", "whole days (7d) or a duration in whole seconds (36h)"},
-		{"month", "-1h", "whole days (7d) or a duration in whole seconds (36h)"},
-		{"month", "200000d", "whole days (7d) or a duration in whole seconds (36h)"},
-		{"month", "1500ms", "whole days (7d) or a duration in whole seconds (36h)"},
+		{"month", "soon", "whole days (7d) or a duration such as 36h (no fraction of a second)"},
+		{"month", "-1h", "whole days (7d) or a duration such as 36h (no fraction of a second)"},
+		{"month", "200000d", "whole days (7d) or a duration such as 36h (no fraction of a second)"},
+		{"month", "1500ms", "whole days (7d) or a duration such as 36h (no fraction of a second)"},
 		{"none", "1d", "not --period none"},
 	} {
 		p, _ := bookProfile(t, "bad"+c.period+strings.TrimPrefix(c.grace, "-"))

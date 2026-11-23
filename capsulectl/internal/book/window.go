@@ -73,13 +73,13 @@ func parseGrace(raw string) (time.Duration, error) {
 	if days, ok := strings.CutSuffix(raw, "d"); ok {
 		n, err := strconv.Atoi(days)
 		if err != nil || n < 0 || n > int(math.MaxInt64/int64(24*time.Hour)) {
-			return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration in whole seconds (36h)")
+			return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration such as 36h (no fraction of a second)")
 		}
 		return time.Duration(n) * 24 * time.Hour, nil
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil || d < 0 || d%time.Second != 0 {
-		return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration in whole seconds (36h)")
+		return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration such as 36h (no fraction of a second)")
 	}
 	return d, nil
 }
@@ -330,6 +330,7 @@ func (o openedBook) forPeriod(ctx context.Context, start, end time.Time) (opened
 		if err != nil {
 			return openedBook{}, err
 		}
+		o.current = o.book
 		o.book, o.store, o.window, o.inGrace = book, sealedStore{book}, window, true
 		return o, nil
 	}

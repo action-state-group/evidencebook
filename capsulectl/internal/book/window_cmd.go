@@ -20,7 +20,7 @@ import (
 // `capsulectl book window`: a book store split into one book per time window
 // (evidencebook#689). The window is fixed when the store is created.
 
-const windowHelp = "Windows are calendar periods in UTC (a month runs from the 1st 00:00 UTC to the next 1st). A window's grace is how long after it ends it still takes a Close over a period inside it, then closes (default 7 days for month, quarter and year, 1 day for week, none for day). A store's window and grace are fixed when it is created and can never change: records are never moved between windows."
+const windowHelp = "Windows are calendar periods in UTC (a month runs from the 1st 00:00 UTC to the next 1st). A window's grace is how long after it ends it still takes a Close over a period inside it, then closes and takes its final checkpoint (default 7 days for month, quarter and year, 1 day for week, none for day). A store's window and grace are fixed when it is created and can never change: records are never moved between windows."
 
 type windowInitResult struct {
 	Profile string                    `json:"profile"`
@@ -110,7 +110,7 @@ func windowCommands() *cobra.Command {
 		return cli.Output(c, windowInitResult{Profile: p.Name, Period: period, Since: policy.Since.Format(time.RFC3339), Grace: graceText(policy.Grace), Notice: windowNotice(period, policy.Grace)})
 	}}
 	initCmd.Flags().String("period", string(defaultWindow), "day, week (ISO, from Monday), month, quarter or year, in UTC; or none for one book over the store's whole history")
-	initCmd.Flags().String("grace", "", "How long after a window ends it still takes a Close over a period inside it, then closes: whole days (7d) or a duration in whole seconds (36h), shorter than the period; default 7d for month, quarter and year, 1d for week, none for day")
+	initCmd.Flags().String("grace", "", "How long after a window ends it still takes a Close over a period inside it, then closes: whole days (7d) or a duration such as 36h (no fraction of a second), shorter than the period; default 7d for month, quarter and year, 1d for week, none for day")
 
 	list := &cobra.Command{Use: "list", Short: "List the store's windows, oldest first: when each closes, which are in their grace, and each closed window's final tree (reads only)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		p, shelf, err := selectedShelfForReading(c)
