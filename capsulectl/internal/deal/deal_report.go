@@ -20,6 +20,7 @@ import (
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
+	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
 	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
@@ -607,34 +608,7 @@ func dealPageReport(b map[string]interface{}) map[string]interface{} {
 // checks a builder makes on a module it puts in a page: the page's runtime
 // would not refuse it, and it is ambiguous with none of the built-in page
 // modules (presentation_build.go). Its manifest pins the script's digest.
-func dealViewModule() (emitter.Module, error) {
-	var manifest map[string]interface{}
-	if err := json.Unmarshal(DealViewManifestJSON, &manifest); err != nil {
-		return emitter.Module{}, fmt.Errorf("the deal view's manifest: %w", err)
-	}
-	executable := cli.ManifestMap(manifest, "executable")
-	pin := strings.TrimSpace(DealViewJSSHA256)
-	if cli.ManifestString(executable, "script_sha256") != pin {
-		return emitter.Module{}, errors.New("the deal view's manifest does not pin its script")
-	}
-	if r := cli.RuntimeRefusal(manifest); r != nil {
-		return emitter.Module{}, r
-	}
-	builtins, err := cli.BuiltinPresentationManifests()
-	if err != nil {
-		return emitter.Module{}, err
-	}
-	if err := cli.StaticPresentationCheck(append(builtins, manifest)); err != nil {
-		return emitter.Module{}, err
-	}
-	var styles []string
-	for _, s := range cli.AsList(executable["style_sha256"]) {
-		if digest, ok := s.(string); ok {
-			styles = append(styles, digest)
-		}
-	}
-	return emitter.Module{Code: []byte(DealViewJS), SHA256: pin, StyleSHA256: styles}, nil
-}
+func dealViewModule() (emitter.Module, error) { return assets.Module() }
 
 // dealThemeCSS is the deal page's theme: tokens only (the shell's --aac-*
 // custom properties). The deal view's own layout is its module stylesheet,

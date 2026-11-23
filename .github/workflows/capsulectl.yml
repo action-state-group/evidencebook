@@ -231,12 +231,13 @@ jobs:
         with:
           chrome-version: 155.0.8059.39
           install-dependencies: true
-      # The page's runtime draws a claim's reason words, which only a browser
-      # shows (internal/book/report_reason_test.go).
-      - name: A claim's reason on the report page
+      # The page's runtime draws a claim's reason words, and the deal view
+      # opens a carried receipt on a settlement report, which only a browser
+      # shows (internal/book/report_reason_test.go, report_receipts_test.go).
+      - name: A claim's reason and a deal's receipt on the report page
         env:
           EVIDENCEBOOK_CHROME: ${{ steps.chrome.outputs.chrome-path }}
-        run: go test -count=1 -v -run '^TestContractReportDrawsAClaimReason$' ./internal/book
+        run: go test -count=1 -v -run '^(TestContractReportDrawsAClaimReason|TestTheBrowserOpensACarriedReceiptAndReadsAHeldOne)$' ./internal/book
       - name: Install the pinned fonts
         run: |
           sudo apt-get update -qq

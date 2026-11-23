@@ -114,6 +114,10 @@ type reportBuildResult struct {
 	RecordsVerified    int    `json:"records_verified"`
 	ClaimsNotEvaluable int    `json:"claims_not_evaluable"`
 	StatusLine         string `json:"status_line"`
+	// IgnoredReceipts are the exchange capsule ids of --receipts entries no
+	// deal of the report cites: neither carried nor held, listed so a
+	// mis-keyed id does not pass unnoticed.
+	IgnoredReceipts []string `json:"ignored_receipts,omitempty"`
 	// Diagnostic is true for a page written under --diagnostic from a bundle
 	// that does not verify; the command then still ends in the failure the
 	// bundle earns, and DiagnosticReasons says what failed.
@@ -161,7 +165,17 @@ func reportCommands() *cobra.Command {
 		if contractPath != "" && permalink {
 			return cli.InputError("--permalink cannot be used with --contract: the permalink carries the bundle alone, and the viewer it opens in would draw every tier undecided")
 		}
+		receiptsPath, _ := c.Flags().GetString("receipts")
+		if receiptsPath != "" && permalink {
+			return cli.InputError("--permalink cannot be used with --receipts: the permalink carries the bundle alone, and the viewer would draw no receipt")
+		}
+		if receiptsPath != "" && diagnostic {
+			return cli.InputError("--diagnostic cannot be used with --receipts: a diagnostic page carries no receipt")
+		}
 		var err error
+		if view.Receipts, err = readReceipts(receiptsPath); err != nil {
+			return err
+		}
 		if view.Wording, err = readWording(wordingPath, wordingDigest); err != nil {
 			return err
 		}
@@ -187,6 +201,7 @@ func reportCommands() *cobra.Command {
 		result := reportBuildResult{Root: page.Root, Form: page.Form, Member: page.Member, Card: card, Claims: page.Claims, UnsupportedClaims: page.UnsupportedClaims, ContractRefs: page.ContractRefs, Report: out, BundleDigest: page.BundleDigest, Verification: page.Verification, Draft: dryRun, ContractRef: page.ContractRef, ContractSHA256: page.ContractSHA256, Verdict: page.Verdict, UnmetClaims: page.UnmetClaims, Page: "written"}
 		result.Records, result.RecordsVerified, result.ClaimsNotEvaluable, result.StatusLine = page.Records, page.RecordsVerified, page.UnsupportedClaims, page.StatusLine()
 		result.Diagnostic, result.DiagnosticReasons = page.Diagnostic, page.DiagnosticReasons
+		result.IgnoredReceipts = page.IgnoredReceipts
 		if page.Diagnostic {
 			result.Page = "diagnostic"
 		}
@@ -229,6 +244,7 @@ func reportCommands() *cobra.Command {
 	build.Flags().String("wording-digest", "", "Lowercase hex SHA-256 of the --wording file's bytes; the build is refused and no page is written if they differ")
 	build.Flags().String("contract", "", "The compiled Evidence Contract v0 the Result cites; the page reads each requirement's tier from it. Needs --contract-digest. Cannot be used with --permalink")
 	build.Flags().String("contract-digest", "", "Lowercase hex SHA-256 of the --contract file's bytes; the build is refused and no page is written if they differ")
+	build.Flags().String("receipts", "", "A JSON list of the deal receipts the page carries: {\"exchange_capsule_id\", \"receipt\": <the bundle the node served>} or {\"exchange_capsule_id\", \"held\": true} when the holder's share policy keeps it off the page. Each entry is mapped to the deal whose claims cite its exchange capsule (an id no deal cites is ignored; one two deals cite is refused); a deal with no entry reads \"Receipt not carried with this page\". Nothing is carried without it. Cannot be used with --permalink or --diagnostic")
 	build.Flags().String("out", "", "Write the offline report.html here (new file)")
 	build.Flags().Bool("permalink", false, "Also mint a viewer permalink over the same embedded bundle")
 	build.Flags().String("base-url", cli.DefaultBundleURL, "Bundle viewer base URL for --permalink")

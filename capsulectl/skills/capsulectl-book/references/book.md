@@ -143,7 +143,7 @@ owner and never bundled.
 ## Render a report
 
 ```sh
-capsulectl book report build --bundle B.json --card CARD --out report.html [--presentation P.json] [--permalink] [--base-url URL] [--dry-run] [--diagnostic]
+capsulectl book report build --bundle B.json --card CARD --out report.html [--presentation P.json] [--permalink] [--base-url URL] [--dry-run] [--diagnostic] [--receipts FILE]
 ```
 
 Read-only over a held file; no profile, no store, no record, unless `--seal`
