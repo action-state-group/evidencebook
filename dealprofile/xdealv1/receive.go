@@ -300,6 +300,23 @@ func (p *ReceiveProfile) Read(_ context.Context, record []byte) (evidencebook.Re
 type ours struct {
 	journal    []Record
 	agreements []Record
+	// cases are the rulings opening each of our case books, when the
+	// holder is an adjudicator, by their log id.
+	cases map[string]Record
+}
+
+// caseParty reports whether sender is a party of a deal whose agreement
+// cites offerDigest and names adjudicatorKey, by our case book of that deal:
+// the case log of that offer and adjudicator is one of ours, and its first
+// ruling, of the same deal, names sender among its keys. An adjudicator then
+// takes the parties' book records after its ruling, to check each entered it.
+func (o ours) caseParty(dealID, offerDigest, adjudicatorKey, sender string) bool {
+	r, ok := o.cases[CaseLogID(offerDigest, adjudicatorKey)]
+	if !ok || r.Block.DealID != dealID {
+		return false
+	}
+	rb, ok := bodyOf[RulingBody](r.Body)
+	return ok && (rb.Keys.Buyer == sender || rb.Keys.Seller == sender)
 }
 
 // offerByDigest is our journal's propose whose record digest is d: an offer
@@ -462,13 +479,23 @@ func (p *ReceiveProfile) ours(ctx context.Context) (ours, error) {
 				if a, isAgree := asAgree(rec.Body); kind == payloadV1 && isAgree && a.Kind == KindAgreement {
 					first = &rec
 				}
+				if kind == payloadV1 && rec.Block.RecordType == TypeRuling && strings.HasPrefix(logID, CaseLogPrefix) {
+					first = &rec
+				}
 				unavailable = kind == payloadUnavailable
 			}
 			if !unavailable {
 				c.firsts[logID] = first
 			}
 		}
-		if first != nil {
+		switch {
+		case first == nil:
+		case first.Block.RecordType == TypeRuling:
+			if o.cases == nil {
+				o.cases = map[string]Record{}
+			}
+			o.cases[logID] = *first
+		default:
 			o.agreements = append(o.agreements, *first)
 		}
 	}
@@ -494,7 +521,9 @@ func (p *ReceiveProfile) heldSent(ctx context.Context, digest string) (Record, s
 // spec/shelf-forms-v0.md; design §8.3; evidencebook ReceiveProfile.Admit):
 // an offer from any key; a decline of an offer of ours from the key it was
 // sent to; a cancellation of an offer of this deal from that offer's signer;
-// a ruling from our agreement's adjudicator; and a deal-book record from the
+// a ruling from our agreement's adjudicator, on the deal's case log
+// (CaseLogID), whoever carries it; at an adjudicator holding a deal's case
+// book, a deal-book record of either party it names; and a deal-book record from the
 // counterparty of the deal: our agreement's counterparty_key, or, at an
 // offerer holding only its offer, the key the offer was sent to. A deal-book
 // record is admitted only on a log whose first record from that sender is
@@ -528,8 +557,13 @@ func (p *ReceiveProfile) Admit(ctx context.Context, r evidencebook.ReceivedRecor
 		return false, nil
 	}
 	if rec.Block.RecordType == TypeRuling {
+		// From our agreement's adjudicator, on the deal's one case book
+		// (CaseLogID), whoever carried it: a party forwards the ruling it
+		// received, so a judge that gave each side another ruling shows as a
+		// fork of that log.
 		a, held := o.agreement(rec.Block.DealID)
-		return held && a.Adjudicator.V != nil && a.Adjudicator.V.KeyID == r.SenderKey, nil
+		return held && a.Adjudicator.V != nil && a.Adjudicator.V.KeyID == r.SenderKey &&
+			r.LogID == CaseLogID(a.Offer.Digest, r.SenderKey), nil
 	}
 	// The log's first record from this sender: this record, or the one held.
 	genesis := rec
@@ -543,6 +577,10 @@ func (p *ReceiveProfile) Admit(ctx context.Context, r evidencebook.ReceivedRecor
 	gag, isAgree := asAgree(genesis.Body)
 	if !isAgree || gag.Kind != KindAgreement || genesis.Block.DealID != r.DealID {
 		return false, nil
+	}
+	if gag.Adjudicator.V != nil && o.caseParty(r.DealID, gag.Offer.Digest, gag.Adjudicator.V.KeyID, r.SenderKey) {
+		// We are the deal's adjudicator and ruled on it: a party's book.
+		return true, nil
 	}
 	if a, held := o.agreement(r.DealID); held {
 		// The counterparty of our deal, on a book that answers the same offer.
@@ -641,8 +679,11 @@ func (p *ReceiveProfile) Answered(ctx context.Context, offer evidencebook.Receiv
 // of that log, across senders, it refuses a sender holding two different
 // ones (a fork at the genesis), then keeps an x-deal-v1 agreement under this
 // checkpoint key, of a deal of ours, signed by the key that deal expects (our
-// offer's to, or our agreement's counterparty_key). Exactly one candidate
-// gives its signer; none or more refuses the proof.
+// offer's to, or our agreement's counterparty_key, or at an adjudicator a
+// party its case book names). A case book's first ruling binds the proof
+// when its checkpoint key is the adjudicator key our agreement names and the
+// log is the deal's case log. Exactly one candidate gives its signer; none or
+// more refuses the proof.
 func (p *ReceiveProfile) ProofSender(ctx context.Context, checkpointKeyID, logID string) (string, bool, error) {
 	held, err := p.Shelf.HeldFirst(ctx, logID)
 	if err != nil {
@@ -669,6 +710,16 @@ func (p *ReceiveProfile) ProofSender(ctx context.Context, checkpointKeyID, logID
 		if err != nil {
 			continue
 		}
+		if b.Record.Block.RecordType == TypeRuling {
+			// A case book: the adjudicator checkpoints it with the key our
+			// agreement names it by, so the proof binds to that key.
+			a, held := o.agreement(b.Record.Block.DealID)
+			if held && a.Adjudicator.V != nil && a.Adjudicator.V.KeyID == h.SenderKey &&
+				checkpointKeyID == h.SenderKey && logID == CaseLogID(a.Offer.Digest, h.SenderKey) {
+				candidates = append(candidates, h.SenderKey)
+			}
+			continue
+		}
 		ag, ok := asAgree(b.Record.Body)
 		if !ok || ag.Kind != KindAgreement || ag.CheckpointKey != checkpointKeyID {
 			continue
@@ -679,6 +730,9 @@ func (p *ReceiveProfile) ProofSender(ctx context.Context, checkpointKeyID, logID
 			expected = *a.CounterpartyKey.V
 		} else if of, offer, ok := o.offerByDigest(ag.Offer.Digest); ok && offer.Block.DealID == deal && of.To.V != nil {
 			expected = *of.To.V
+		}
+		if expected == "" && ag.Adjudicator.V != nil && o.caseParty(deal, ag.Offer.Digest, ag.Adjudicator.V.KeyID, h.SenderKey) {
+			expected = h.SenderKey
 		}
 		if expected != "" && expected == h.SenderKey {
 			candidates = append(candidates, h.SenderKey)

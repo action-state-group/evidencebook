@@ -365,7 +365,8 @@ func countedWith(ctx context.Context, shelf *evidencebook.Shelf, held []evidence
 func caseBook(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, adjudicator string, own, theirs []StatusRecord) ([]StatusRecord, []string, int, error) {
 	var rulings []StatusRecord
 	var conflicting []string
-	// One case book per case, so a deal may have several (design §3.2).
+	// Every held log of the adjudicator: receive keeps a ruling only on the
+	// deal's one case log (CaseLogID), and this reader stays general.
 	for _, logID := range logsOf(held, adjudicator, func(r Record) bool { return r.Block.RecordType == TypeRuling }) {
 		recs, err := counted(ctx, shelf, held, adjudicator, logID)
 		if err != nil {

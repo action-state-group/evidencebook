@@ -454,7 +454,7 @@ store and never into the book. A `statement` with empty `statements` and no `nam
 - `kind: "withdrawal"`: `row` (same table).
 - `kind: "challenge"`: `ruling`, digest ref; `grounds_commitment` (same table).
 
-**`ruling`** (the adjudicator's case book; one book per case, design §8). Members are design §8's
+**`ruling`** (the adjudicator's case book; one book per deal and adjudicator at a log id both parties compute, PROFILE.md §4 "The case book", evidencebook#615; this replaced one book per case). Members are design §8's
 table: `row`; `keys`, `{"buyer", "seller"}`; `against`, `buyer` | `seller` | `null`; `value`,
 `met` | `not_met`; `remedy`, `{"kind", "amount_minor"?, "currency"?, "due"}` or absent; `read`,
 the last record id of each deal book the adjudicator read; `rules_digest`; `forum`, the process that
@@ -1370,8 +1370,9 @@ the witness receipts it is handed (A, above).
     x-deal-v1, and only while the counterparty names it neither. An `open` outcome
     may then hide an unnamed ruling; `rulings_unnamed` says one is held, and PR 5's card shows it
     beside the outcome rather than present the dispute as unresolved.
-- **Every case book.** One book per case (3.2), so the provider reads every log of the
-  adjudicator held for the deal. Each counted prefix is walked from position 1, one held follower
+- **Every case book.** The provider reads every log of the adjudicator held for the deal. Since
+  evidencebook#615 a holder receives a ruling only on the deal's one case log (PROFILE.md §4), so
+  that is the only one held; the reader stays general, as Rust and Python have it. Each counted prefix is walked from position 1, one held follower
   at a time, and the walk stops at a counted record not held for the deal: another deal's in the
   same log, one received after the held records were read, or one forgotten under retention.
 - **A forked case book.** Each held branch of the adjudicator's log, from position 1 to a record

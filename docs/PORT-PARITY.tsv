@@ -430,6 +430,7 @@ dealprofile/xdealv1	func	BookEntry	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	BookPair	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	BuildReport	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	BuildStatus	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CaseLogID	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	func	ChangesDetails	x-deal-v1	frozen #710	frozen #710
 dealprofile/xdealv1	func	Check	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckActs	x-deal-v1	frozen #710	frozen #710
@@ -441,6 +442,7 @@ dealprofile/xdealv1	func	CheckSealed	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Decode	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Digest	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Encode	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	HeldRuling	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	func	KnownTime	x-deal-v1	ported	frozen #653
 dealprofile/xdealv1	func	NameAllRulings	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	NameRulings	x-deal-v1	ported	ported
