@@ -58,7 +58,7 @@ func readReceipts(path string) (*report.Receipts, error) {
 	}
 	deals := make([]report.Receipt, len(items))
 	for i, item := range items {
-		// An entry decides whether a receipt is carried or held, so a field
+		// An entry decides whether a receipt is carried, held or not closed, so a field
 		// written twice, or under a spelling Go's decoder would fold onto a
 		// field, is refused rather than read as its last value.
 		if err := entryKeysOnce(item); err != nil {

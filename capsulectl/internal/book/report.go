@@ -115,7 +115,7 @@ type reportBuildResult struct {
 	ClaimsNotEvaluable int    `json:"claims_not_evaluable"`
 	StatusLine         string `json:"status_line"`
 	// IgnoredReceipts are the exchange capsule ids of --receipts entries no
-	// deal of the report cites: neither carried nor held, listed so a
+	// deal of the report cites: neither carried, held nor not closed, listed so a
 	// mis-keyed id does not pass unnoticed.
 	IgnoredReceipts []string `json:"ignored_receipts,omitempty"`
 	// Diagnostic is true for a page written under --diagnostic from a bundle
