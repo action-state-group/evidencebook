@@ -4,12 +4,12 @@ go 1.27.0
 
 require (
 	github.com/action-state-group/agent-action-capsule/go v0.24.0
-	github.com/action-state-group/capsule-cli v0.1.0-rc48
+	github.com/action-state-group/capsule-cli v0.1.0-rc49
 	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
 	github.com/action-state-group/capsule-engine/go v0.6.0
-	github.com/action-state-group/capsule-viewer/go v0.20.0
+	github.com/action-state-group/capsule-viewer/go v0.22.0
 	github.com/action-state-group/checkpointed-local-log/go v0.4.0
-	github.com/action-state-group/evidencebook v0.26.1-0.20261123030510-362d765c87c7
+	github.com/action-state-group/evidencebook v0.26.1-0.20261123072637-ae9169d4e6b7
 	github.com/action-state-group/evidencebook/report v0.4.1-0.20261107191006-dc3fd0ea02f1
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/fxamacker/cbor/v2 v2.9.0
