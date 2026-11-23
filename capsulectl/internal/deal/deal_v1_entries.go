@@ -59,8 +59,9 @@ adjudicator --bundle), whether it entered your ruling in its deal book:
 its checkpoint at <time>", or "not shown entered". The ruling's witnessed time
 is the time a witness the agreement names gave your stamp that covers it. A
 party is shown as not having entered a ruling only by a checkpoint after that
-time; with no witnessed time, a copy without the entry is "not shown entered". --proof gives a party's stamp proof file with its witness receipts,
-for "entered" rather than "entered, not witnessed". Seals nothing.`,
+time; with no witnessed time, a copy without the entry is "not shown entered".
+--proof gives a party's stamp proof file with its witness receipts, for
+"entered" rather than "entered, not witnessed". Seals nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			str := func(name string) string { v, _ := c.Flags().GetString(name); return strings.TrimSpace(v) }
