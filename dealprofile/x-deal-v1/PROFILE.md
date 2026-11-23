@@ -1,7 +1,8 @@
 # x-deal-v1: the deal record profile
 
-**Status: draft, v1. Not registered.** This profile ships with EvidenceBook beside x-deal-v0
-(`dealprofile/x-deal-v0/`), which stays the default and stays readable. It is the record format
+**Status: draft, v1. Not registered. The default for new deals** from capsulectl-deal capsulectl/v0.1.0-rc50
+(evidencebook#626). This profile ships with EvidenceBook beside x-deal-v0
+(`dealprofile/x-deal-v0/`), which is frozen and stays readable and verifiable. It is the record format
 of the evidence layer's deal (evidencebook#461 step 5). The design note
 [docs/design/461-deal-profile.md](../../docs/design/461-deal-profile.md) holds the reasons and the
 sources for each rule below; this document states the rules a record must meet. Sections of that
