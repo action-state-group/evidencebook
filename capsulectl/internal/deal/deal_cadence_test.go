@@ -954,3 +954,50 @@ func TestACadenceJitterTooLargeForItsIntervalSaysWhy(t *testing.T) {
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, err.Error(), "cadence.jitter must be at least 0")
 }
+
+func TestTickStalenessLine(t *testing.T) {
+	last := time.Date(2026, 11, 23, 1, 5, 40, 0, time.UTC)
+	iv := 5 * time.Minute
+	assert.Empty(t, tickStalenessLine(last, iv, last.Add(iv), false), "fresh: one interval")
+	assert.Empty(t, tickStalenessLine(last, iv, last.Add(2*iv), false), "exactly two intervals is not stale")
+	assert.Empty(t, tickStalenessLine(last, iv, last.Add(-time.Hour), false), "a tick in the future is not stale")
+	assert.Empty(t, tickStalenessLine(last, 0, last.Add(time.Hour), false), "no interval, no line")
+	line := tickStalenessLine(last, iv, last.Add(2*iv+time.Second), false)
+	assert.Contains(t, line, "Checkpoints stopped at 2026-11-23T01:05Z:")
+	assert.Contains(t, line, "every 5m")
+	assert.Contains(t, line, "the next tick covers it.")
+	assert.NotContains(t, line, "witness")
+	assert.Contains(t, tickStalenessLine(last, iv, last.Add(time.Hour), true), "covers it and sends it to your witness")
+}
+
+// A report says the checkpoints stopped when the newest tick is older than two
+// intervals, in its assurance and its email, and says nothing while it is fresh.
+func TestReportSaysCheckpointsStopped(t *testing.T) {
+	dealFixture(t)
+	dealID := retailDeal(t)
+	assert.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	dir := t.TempDir()
+	eml := filepath.Join(dir, "fresh.eml")
+	fresh := dealRun(t, "report", "--deal", dealID, "--email", eml)
+	a := fresh["assurance"].(map[string]any)
+	assert.NotContains(t, a["text"], "Checkpoints stopped")
+	assert.NotContains(t, a, "checkpoints_stopped")
+	raw, err := os.ReadFile(eml)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "Checkpoints stopped")
+
+	old := cli.DealClock
+	later := old().Add(time.Hour)
+	cli.DealClock = func() time.Time { return later }
+	t.Cleanup(func() { cli.DealClock = old })
+	eml2 := filepath.Join(dir, "stale.eml")
+	stale := dealRun(t, "report", "--deal", dealID, "--email", eml2)
+	a = stale["assurance"].(map[string]any)
+	assert.Contains(t, a["text"], "Checkpoints stopped at ")
+	assert.Contains(t, a["checkpoints_stopped"], "every 5m")
+	raw, err = os.ReadFile(eml2)
+	require.NoError(t, err)
+	_, bodies, _ := emailParts(t, raw)
+	assert.Contains(t, bodies["text/plain"], "Checkpoints stopped at ")
+	assert.Contains(t, bodies["text/html"], "Checkpoints stopped at ")
+}

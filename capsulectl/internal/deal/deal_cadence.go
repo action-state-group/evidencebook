@@ -512,3 +512,54 @@ func mmrLeafCount(size uint64) uint64 {
 	}
 	return leaves
 }
+
+// tickStalenessLine is the receipt's warning that the checkpoint schedule has
+// stopped: the newest tick is older than two cadence intervals (Steven's
+// ruling, capsule-cli#600). It is "" while the schedule is on time, and for a
+// newest tick in the future (a clock set back). The age is measured from the
+// tick's own time, not its due time, which a late tick would push forward.
+func tickStalenessLine(last time.Time, interval time.Duration, now time.Time, witness bool) string {
+	if interval <= 0 || now.Sub(last) <= 2*interval {
+		return ""
+	}
+	covers := "the next tick covers it"
+	if witness {
+		covers += " and sends it to your witness"
+	}
+	return "Checkpoints stopped at " + last.UTC().Format("2006-01-02T15:04Z") + ": the newest checkpoint tick is more than two cadence intervals old (every " + ShortDuration(interval) + "), so nothing may be running the schedule here. A receipt made since then is not yet covered by a checkpoint; " + covers + ". To keep the schedule running, see \"Keeping the poll running\" in the capsule-cli README."
+}
+
+// stalenessLine is tickStalenessLine for this profile's newest tick, or "".
+// It is advisory: a profile with no tick yet, or a cadence that cannot be
+// read, says nothing rather than failing the report.
+func (s *dealSession) stalenessLine(ctx context.Context) string {
+	cfg, err := dealCadenceOf(s.p)
+	if err != nil {
+		return ""
+	}
+	c, _, err := s.cadenceOf(ctx)
+	if err != nil {
+		return ""
+	}
+	last, ok, err := c.Last(ctx)
+	if err != nil || !ok {
+		return ""
+	}
+	service, err := cli.ServiceID(s.p)
+	if err != nil {
+		return ""
+	}
+	return tickStalenessLine(last.At, cfg.Interval, cli.DealClock(), service != "")
+}
+
+// withStaleness adds the stopped-schedule line to a report's assurance, as
+// text and as checkpoints_stopped_at, when the schedule has stopped.
+func (s *dealSession) withStaleness(ctx context.Context, assurance map[string]any) map[string]any {
+	line := s.stalenessLine(ctx)
+	if line == "" {
+		return assurance
+	}
+	assurance["text"] = assurance["text"].(string) + " " + line
+	assurance["checkpoints_stopped"] = line
+	return assurance
+}
