@@ -888,6 +888,9 @@ func (s *dealSession) settleSent(ctx context.Context, c *cobra.Command, a *v1Act
 	if err != nil {
 		return err
 	}
+	if err := refuseStaleApproval(events, auth); err != nil {
+		return err
+	}
 	if cb.Action == "pay" {
 		if err := s.recheckAtSend(ctx, in.dealID, events, in.check); err != nil {
 			return err
