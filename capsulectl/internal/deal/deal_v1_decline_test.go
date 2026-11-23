@@ -1,6 +1,9 @@
 package deal
 
 import (
+	"context"
+	"errors"
+	evidencebook "github.com/action-state-group/evidencebook"
 	"os"
 	"path/filepath"
 	"strings"
@@ -228,5 +231,42 @@ func TestAResumedDeclineKeepsALaterState(t *testing.T) {
 	_, err = openWritableDB(t).Exec(`UPDATE deal_versions SET state='cancelled' WHERE deal_id=?`, h.dealID)
 	require.NoError(t, err)
 	dealRun(t, "offer", "decline", h.offer, "--out", filepath.Join(t.TempDir(), "d2.json"))
+	assert.Equal(t, "cancelled", v1DealState(t, h.dealID))
+}
+
+// A decline that never reached the journal (the library sealed nothing) is
+// not sealed once the deal moved on: re-run after the offer's cancellation
+// was received, it is refused, nothing is sealed or written, and the state
+// stays cancelled.
+func TestANeverSealedDeclineIsRefusedAfterACancellation(t *testing.T) {
+	real := sealSentLib
+	t.Cleanup(func() { sealSentLib = real })
+	h := offeredTo(t, offerTo)
+	sealSentLib = func(context.Context, *evidencebook.Shelf, evidencebook.Entry, string) (evidencebook.Record, evidencebook.SentCapsule, error) {
+		return evidencebook.Record{}, evidencebook.SentCapsule{}, errors.New("the journal is busy")
+	}
+	first := filepath.Join(t.TempDir(), "d1.json")
+	v1Err(t, "offer", "decline", h.offer, "--out", first)
+	sealSentLib = real
+	var state string
+	require.NoError(t, v1DB(t).QueryRow(`SELECT state FROM deal_sent WHERE kind=?`, xdealv1.KindDecline).Scan(&state))
+	require.Equal(t, sentSealing, state, "stored, never sealed")
+	_, err := openWritableDB(t).Exec(`UPDATE deal_versions SET state='cancelled' WHERE deal_id=?`, h.dealID)
+	require.NoError(t, err)
+
+	again := filepath.Join(t.TempDir(), "d2.json")
+	assert.Contains(t, v1Err(t, "offer", "decline", h.offer, "--out", again), "this offer is cancelled")
+	_, err = os.Stat(again)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	var rows int
+	require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_sent WHERE kind=?`, xdealv1.KindDecline).Scan(&rows))
+	assert.Equal(t, 1, rows, "no repeat stored")
+	withSession(t, func(s *dealSession) {
+		var digest string
+		require.NoError(t, s.db.QueryRow(`SELECT record_digest FROM deal_sent WHERE kind=?`, xdealv1.KindDecline).Scan(&digest))
+		held, err := s.journalHolds(t.Context(), digest)
+		require.NoError(t, err)
+		assert.False(t, held, "nothing sealed in the journal")
+	})
 	assert.Equal(t, "cancelled", v1DealState(t, h.dealID))
 }
