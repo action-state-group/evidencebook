@@ -2060,7 +2060,8 @@ the free-text reason stays a commitment only the buyer can open.
   Reason: the 2026-11-19 demo and the `/1` card stay untouched. The plugin applies it
   (evidencebook-deal#212). **Revised** (Ethan, 2026-11-22: switch fully to x-deal-v1):
   `/3` is served (evidencebook-deal#226), so new deals are x-deal-v1 by default and x-deal-v0 is
-  frozen: no new features, and a new v0 deal only by an explicit legacy setting. Books sealed
+  frozen: no new features, and a new v0 deal only under the legacy setting, which `deal canary
+  run` also sets on a profile that has none. Books sealed
   under v0 stay readable and verifiable, unchanged, and a v0 deal opened before the switch
   finishes under v0 (evidencebook#626).
 - **Q8. The witnessed follow-up message** (receipts and the shelf consistency proof, design §4.2,
