@@ -968,6 +968,8 @@ func TestTickStalenessLine(t *testing.T) {
 	assert.Contains(t, line, "the next tick covers it.")
 	assert.NotContains(t, line, "witness")
 	assert.Contains(t, tickStalenessLine(last, iv, last.Add(time.Hour), true), "covers it and sends it to your witness")
+	assert.Empty(t, tickStalenessLine(last, time.Hour, last.Add(2*time.Hour), false), "a 1h cadence is on time at 2h")
+	assert.Contains(t, tickStalenessLine(last, time.Hour, last.Add(2*time.Hour+time.Minute), false), "every 1h")
 }
 
 // A report says the checkpoints stopped when the newest tick is older than two
@@ -975,6 +977,14 @@ func TestTickStalenessLine(t *testing.T) {
 func TestReportSaysCheckpointsStopped(t *testing.T) {
 	dealFixture(t)
 	dealID := retailDeal(t)
+	// Before the first tick (opening a deal already set the cadence log) the report says nothing and writes no profile.
+	pBefore, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	early := dealRun(t, "report", "--deal", dealID)
+	assert.NotContains(t, early["assurance"].(map[string]any)["text"], "Checkpoints stopped")
+	pAfter, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	assert.Equal(t, pBefore, pAfter, "a report writes no profile")
 	assert.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	dir := t.TempDir()
 	eml := filepath.Join(dir, "fresh.eml")

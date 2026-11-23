@@ -533,6 +533,11 @@ func tickStalenessLine(last time.Time, interval time.Duration, now time.Time, wi
 // It is advisory: a profile with no tick yet, or a cadence that cannot be
 // read, says nothing rather than failing the report.
 func (s *dealSession) stalenessLine(ctx context.Context) string {
+	// A profile that never ticked has no cadence log yet; cadenceOf would
+	// create one and save the profile, which a report must not do.
+	if s.p.LogID == "" {
+		return ""
+	}
 	cfg, err := dealCadenceOf(s.p)
 	if err != nil {
 		return ""
