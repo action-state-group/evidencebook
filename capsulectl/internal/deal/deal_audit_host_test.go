@@ -346,8 +346,16 @@ func TestAuditHostReadsAV1Deal(t *testing.T) {
 		return `{"id":"` + id + `","at":"2026-09-27T18:00:00Z","task":"t","tool":"make_payment","action":"pay","currency":"USD","status":"succeeded"` + extra + `}`
 	}
 
+	db, err := os.ReadFile(v1Profile(t).Connection.Database)
+	require.NoError(t, err)
 	byID := run(pay("c1", `,"amount_minor":4500,"deal_id":"`+h.dealID+`"`))
 	assert.Empty(t, unrecorded(byID), "the v1 deal's payment covers the host's pay by deal id: %v", byID)
+	recorded := byID["recorded"].([]any)
+	require.Len(t, recorded, 1)
+	assert.Equal(t, "act", recorded[0].(map[string]any)["matched_by"], "the payment's act covers it, before the check")
+	after, err := os.ReadFile(v1Profile(t).Connection.Database)
+	require.NoError(t, err)
+	assert.Equal(t, db, after, "the audit writes nothing to the store")
 	byMatch := run(pay("c1", `,"amount_minor":4500,"merchant_domain":"kettle.example"`))
 	assert.Empty(t, unrecorded(byMatch), "and by amount, currency, merchant and time: %v", byMatch)
 	other := run(pay("c1", `,"amount_minor":999,"deal_id":"`+h.dealID+`"`))
@@ -362,4 +370,65 @@ func TestAuditHostReadsAV1Deal(t *testing.T) {
 		pay("c3", `,"amount_minor":4500,"deal_id":"`+v0+`"`),
 	)
 	assert.Equal(t, []string{"c3"}, unrecorded(mixed), "each deal covers its own action, and only its own: %v", mixed)
+}
+
+// A failed v1 payment moved no money, so it covers no pay: after a failed
+// send and a settled retry, a second charge of the same amount stays
+// unrecorded (#760 review). The pay check of the failed send stays a step,
+// used once.
+func TestAuditHostAFailedV1PaymentCoversNothing(t *testing.T) {
+	h, first := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", first, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", first, "--status", "failed", "--out", filepath.Join(t.TempDir(), "failed.json"))
+	retry := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("cd", 32)+`"`)))
+	require.Equal(t, "pass", retry["verdict"], "%v", retry)
+	second := retry["check_id"].(string)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", second, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", second, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+
+	path := filepath.Join(t.TempDir(), "executions.jsonl")
+	line := func(id string) string {
+		return `{"id":"` + id + `","at":"2026-09-27T18:00:00Z","task":"t","tool":"make_payment","action":"pay","amount_minor":4500,"currency":"USD","deal_id":"` + h.dealID + `","status":"succeeded"}`
+	}
+	require.NoError(t, os.WriteFile(path, []byte(line("c1")+"\n"+line("c2")+"\n"+line("c3")+"\n"), 0o600))
+	result, _ := auditHostRun(t, "--executions", path, "--from", "2026-09-27T00:00:00Z", "--to", "2026-09-28T00:00:00Z")
+	var by []string
+	for _, r := range result["recorded"].([]any) {
+		by = append(by, r.(map[string]any)["matched_by"].(string))
+	}
+	// One settled act and the two pay checks: three steps, and no failed act.
+	assert.ElementsMatch(t, []string{"act", "check", "check"}, by, "%v", result)
+	withSession(t, func(s *dealSession) {
+		steps, err := s.allCoverSteps(t.Context())
+		require.NoError(t, err)
+		acts := 0
+		for _, st := range steps {
+			if st.kind == "act" {
+				acts++
+				require.NotNil(t, st.amount, "no act without an amount covers a pay")
+			}
+		}
+		assert.Equal(t, 1, acts, "the failed send's act is not a step")
+	})
+}
+
+// Money coming in is the other side's act: a refund received (act cancel,
+// direction in) is no step, so it never covers the user's own cancel. A
+// perform's act, which carries no amount, stays a step.
+func TestV1CoverEventsDropsMoneyInAndFailedSends(t *testing.T) {
+	amount := int64(4500)
+	ev := func(kind string, a *dealAct) sealedEvent { return sealedEvent{Event: dealEvent{Kind: kind, Act: a}} }
+	in := []sealedEvent{
+		ev("open", nil),
+		ev("act", &dealAct{Action: "pay", AmountMinor: &amount, Direction: "out"}),
+		ev("act", &dealAct{Action: "pay"}),                                           // a failed send
+		ev("act", &dealAct{Action: "cancel", AmountMinor: &amount, Direction: "in"}), // a refund received
+		ev("act", &dealAct{Action: "commit", Description: "deliver"}),                // a perform
+	}
+	out := v1CoverEvents(in)
+	require.Len(t, out, 3)
+	assert.Equal(t, "open", out[0].Event.Kind)
+	assert.Equal(t, "pay", out[1].Event.Act.Action)
+	assert.Equal(t, "commit", out[2].Event.Act.Action)
+	assert.Len(t, in, 5, "the input is not changed")
 }

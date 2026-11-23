@@ -567,8 +567,9 @@ func dealReconcileAlias() *cobra.Command {
 
 const dealReconcileDeprecation = "warning: `deal reconcile` is now `deal audit-host`; the old name is removed in the next release"
 
-// allCoverSteps reads every deal in the store, verifying each as `deal report`
-// does, and returns the steps that can account for an executed action.
+// allCoverSteps reads every deal in the store and returns the steps that can
+// account for an executed action: an x-deal-v0 deal verified as `deal report`
+// verifies it, an x-deal-v1 deal's local events as stored.
 func (s *dealSession) allCoverSteps(ctx context.Context) (_ []*dealCoverStep, err error) {
 	ids, err := s.index.dealIDs(ctx)
 	if err != nil {
@@ -590,9 +591,11 @@ func (s *dealSession) allCoverSteps(ctx context.Context) (_ []*dealCoverStep, er
 		}
 		steps = append(steps, dealCoverSteps(id, events)...)
 	}
-	// An x-deal-v1 deal's steps are its local events, read as stored: a
-	// payer leg is an act, a check its snapshot's (evidencebook#758). A deal
-	// with no event yet (an offer only) holds no step.
+	// An x-deal-v1 deal's steps are its local events, read as stored and not
+	// verified (deal report verifies them): a payment from `deal settle
+	// --sent` on is an act, a check carries its snapshot's amount and
+	// merchant (evidencebook#758). A deal with no event yet (an offer only)
+	// holds no step.
 	v1, err := s.v1DealIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -602,9 +605,26 @@ func (s *dealSession) allCoverSteps(ctx context.Context) (_ []*dealCoverStep, er
 		if err != nil {
 			return nil, err
 		}
-		if len(events) > 0 {
+		if events = v1CoverEvents(events); len(events) > 0 {
 			steps = append(steps, dealCoverSteps(id, events)...)
 		}
 	}
 	return steps, nil
+}
+
+// v1CoverEvents drops the x-deal-v1 acts that account for no action of the
+// user's: a payment whose send failed (its act keeps the action pay with
+// the amount cleared, closeSend), which moved no money and would otherwise
+// cover a pay of any amount; and money coming in (a refund received, an
+// act cancel with direction in), which is the other side's act, not the
+// user's cancellation. A perform's act carries no amount and stays.
+func v1CoverEvents(events []sealedEvent) []sealedEvent {
+	out := events[:0:0]
+	for _, se := range events {
+		if a := se.Event.Act; se.Event.Kind == "act" && a != nil && ((a.Action == "pay" && a.AmountMinor == nil) || a.Direction == "in") {
+			continue
+		}
+		out = append(out, se)
+	}
+	return out
 }
