@@ -36,11 +36,11 @@ while IFS= read -r verb; do
     echo "FAIL: the skill lists \`$verb\`, which capsulectl-book does not have" >&2
     status=1
   fi
-done < <(grep -o '^| `book [a-z ]*`' "$skill_dir/SKILL.md" | sed 's/^| `//; s/`$//')
+done < <(grep -o '^| `book [a-z -]*`' "$skill_dir/SKILL.md" | sed 's/^| `//; s/`$//')
 
-listed=$(grep -o '^| `book [a-z ]*`' "$skill_dir/SKILL.md" | wc -l | tr -d ' ')
-if [[ "$listed" -ne 6 ]]; then
-  echo "FAIL: expected the 6 book verbs in the table, found $listed" >&2
+listed=$(grep -o '^| `book [a-z -]*`' "$skill_dir/SKILL.md" | wc -l | tr -d ' ')
+if [[ "$listed" -ne 8 ]]; then
+  echo "FAIL: expected the 8 book verbs in the table, found $listed" >&2
   status=1
 fi
 [[ "$status" -eq 0 ]] && echo "skill check passed" >&2

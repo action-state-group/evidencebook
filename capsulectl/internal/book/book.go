@@ -1268,7 +1268,7 @@ type bookResponseResult struct {
 // respondCommand is `capsulectl book respond`: answer a request with the
 // book's signed artifact or refusal, under the share policy.
 func respondCommand() *cobra.Command {
-	return cli.EvidenceRespondCommand(func(c *cobra.Command, p cli.Profile, in cli.EvidenceRespondInput) (err error) {
+	cmd := cli.EvidenceRespondCommand(func(c *cobra.Command, p cli.Profile, in cli.EvidenceRespondInput) (err error) {
 		policy := evidencebook.DefaultSharePolicy()
 		if in.PolicyPath != "" {
 			raw, e := cli.ReadInput(in.PolicyPath)
@@ -1329,6 +1329,10 @@ func respondCommand() *cobra.Command {
 		}
 		return cli.Output(c, result)
 	})
+	// The core's help knows no pack directory. A Terms Pack the holder opted
+	// in to serving by digest is answered from the profile's book/derivations.
+	cmd.Long += "\n\nA Terms Pack named by the digest of its definition is answered only when it is listed in the profile's book/derivations/*.json (see `capsulectl book doctor`). One file that cannot be read stops every answer, public questions included, and the message names the file."
+	return cmd
 }
 
 // bookRequestInput is the request map of draft-mih-agent-evidence-request-00

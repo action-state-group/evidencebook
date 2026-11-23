@@ -96,7 +96,7 @@ assert_no_record() { # BEFORE_OWN BEFORE_PEER VERB
     echo "FAIL: $3 added a record to a book" >&2; exit 1; }
 }
 
-echo "== 1/6 request + respond (each a signed book record; consequential) ==" >&2
+echo "== 1/7 request + respond (each a signed book record; consequential) ==" >&2
 cat >"$work/evidence-request.json" <<'EOF'
 {"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}
 EOF
@@ -117,7 +117,7 @@ jq -e '.outcome=="artifact"' "$work/response-recorded.json" >/dev/null || {
   echo "FAIL: the requester did not record the verified artifact" >&2; exit 1; }
 echo "  asked, answered, and recorded the answer: three book records" >&2
 
-echo "== 2/6 the counterparty closes first, no peer bundle (primary action; signs) ==" >&2
+echo "== 2/7 the counterparty closes first, no peer bundle (primary action; signs) ==" >&2
 # A book's counterparty is named by its book id (the other profile's
 # log_id). The peer holds only its own account, so every exchange reads
 # INSUFFICIENT; its bundle is what it hands over.
@@ -135,7 +135,7 @@ jq -e --arg id "$(jq -r .record_id "$work/peer-close-result.json")" '.already_cl
   echo "FAIL: a second close of the same period and counterparty must return the first, not seal another" >&2; exit 1; }
 echo "  sealed; verify accepts the Close; the AAC bundle verifier passes its bundle; a repeat seals no second Close" >&2
 
-echo "== 3/6 close against the counterparty's held bundle (primary action; signs) ==" >&2
+echo "== 3/7 close against the counterparty's held bundle (primary action; signs) ==" >&2
 "$bin" book close --profile "$profile" --period day --date "$yesterday" --counterparty skill-demo-peer \
   --peer "$work/peer-close-bundle.json" --peer-checkpoint-key "$peer_checkpoint_key" >"$work/close-peer-result.json"
 record_of "$work/close-peer-result.json"
@@ -144,7 +144,7 @@ jq -e '.reconciliation.peer_complete==true and .reconciliation.states.MATCHED==1
   echo "FAIL: one matching and one differing exchange should reconcile MATCHED + CONFLICTING against a complete peer account" >&2; exit 1; }
 echo "  one exchange MATCHED, one CONFLICTING, from the held bundle alone" >&2
 
-echo "== 4/6 reconcile (not-consequential; adds no record) ==" >&2
+echo "== 4/7 reconcile (not-consequential; adds no record) ==" >&2
 sizes=("$(book_size "$store")" "$(book_size "$peer_store")")
 "$bin" book reconcile --profile "$profile" --period day --date "$yesterday" --counterparty skill-demo-peer \
   --peer "$work/peer-close-bundle.json" --peer-checkpoint-key "$peer_checkpoint_key" >"$work/reconcile-result.json"
@@ -165,7 +165,7 @@ done
 assert_no_record "${sizes[@]}" "book reconcile"
 echo "  same states as the sealed Close; a bundle under the wrong key or from another book is refused" >&2
 
-echo "== 5/6 result build (primary action; signs) ==" >&2
+echo "== 5/7 result build (primary action; signs) ==" >&2
 # A Result the skill did not write: one requirement claim citing the
 # request record, one close claim citing the Close sealed in 4/6 by
 # close_ref (REQUIRED, and among the claim's evidence) -- UNILATERAL, since
@@ -200,7 +200,7 @@ set -e
   echo "FAIL: a Result whose buckets do not match its verdicts must be refused (exit 2), got $bad_status" >&2; exit 1; }
 echo "  sealed; verify accepts the record; a Result whose headline values do not recompute is refused" >&2
 
-echo "== 6/6 disclose on the Result + report build (not-consequential; adds no record) ==" >&2
+echo "== 6/7 disclose on the Result + report build (not-consequential; adds no record) ==" >&2
 result_record=$(jq -r .record_id "$work/result-build.json")
 "$bin" disclose --profile "$profile" --root "$result_record" --payloads selected --out "$work/result-bundle.json" >/dev/null
 "$bookdemo" aac-verify "$work/result-bundle.json" >"$work/result-bundle-verify.json"
@@ -223,18 +223,62 @@ set -e
 assert_no_record "${sizes[@]}" "book report build"
 echo "  the Result roots a verified bundle; report.html rendered offline; a non-Result root is refused" >&2
 
+echo "== 7/7 a Terms Pack by digest: respond + request + derived-inputs + derive (derive is a primary action; signs) ==" >&2
+# The counterparty (holder) opts a pack in by listing it in its profile; the
+# requester names the pack by the digest of its definition, runs it (here: a
+# one-row Result written by hand, as an evaluator would), and derive writes the
+# one bundle that verify checks and report build renders.
+mkdir -p "$peer_store/book/derivations"
+cat >"$peer_store/book/derivations/skill-demo-pack.json" <<PACK
+{"document":{"pack":"skill-demo-pack","version":1},"recipients":["$profile"],"forms":["full_history"],"fields":["record_type","committed_at"]}
+PACK
+cat >"$work/pack-request.json" <<REQ
+{"subject":{"full_history":null},"coverage":{"min_freshness":1},"derivation":"$(printf '%s' '{"pack":"skill-demo-pack","version":1}' | jq -cS . | tr -d '\n' | shasum -a 256 | cut -d' ' -f1)"}
+REQ
+pack_digest=$(jq -r .derivation "$work/pack-request.json")
+"$bin" book request --profile "$profile" --request "$work/pack-request.json" --responder "$peer" \
+  --output "$work/pack.sent" >"$work/pack-request-result.json"
+record_of "$work/pack-request-result.json"
+"$bin" book respond --profile "$peer" --request "$work/pack.sent" --requester "$profile" \
+  --output "$work/pack-response.json" >"$work/pack-respond-result.json"
+record_of "$work/pack-respond-result.json"
+jq -e '.outcome=="artifact"' "$work/pack-respond-result.json" >/dev/null || {
+  echo "FAIL: a pack the holder listed and granted to this requester should be answered" >&2; exit 1; }
+"$bin" book request --profile "$profile" --for "$(jq -r .record_id "$work/pack-request-result.json")" \
+  --response "$work/pack-response.json" --responder-key "$peer_public_key" \
+  --responder-checkpoint-key "$peer_checkpoint_key" >"$work/pack-recorded.json"
+record_of "$work/pack-recorded.json"
+pack_response=$(jq -r .record_id "$work/pack-recorded.json")
+"$bin" book result derived-inputs --profile "$profile" --response "$pack_response" >"$work/derived-inputs.json"
+jq -e --arg d "$pack_digest" '.proven==true and .derivation==$d and (.records|length)>0' "$work/derived-inputs.json" >/dev/null || {
+  echo "FAIL: derived-inputs should print the proven rows of the pack the holder answered" >&2; exit 1; }
+jq -n --arg r "$pack_response" '{result_version:"evidence-result-v0",generated_at:"2026-11-22T00:00:00Z",
+  claims:[{id:"has-record",contract_ref:"ec:skill-demo-pack@1",requirement_ref:"has-record",tier:"recomputed",grade:"self-attested",
+    sufficiency:"SATISFIED",verdict:"met",proofs:[],evidence:[{digest:$r,digest_alg:"SHA-256"}],
+    presentation:{kind:"disclosure",status:"SATISFIED",evidence:[{digest:$r,digest_alg:"SHA-256"}]}}],
+  aggregate:{buckets:{met:["has-record"],not_met:[],not_evaluable:[]},coverage:{evaluated_population:1,excluded_not_applicable:0,unknown_count:0}}}' >"$work/pack-result.json"
+"$bin" book report derive --profile "$profile" --response "$pack_response" --pack "$pack_digest" \
+  --result "$work/pack-result.json" --out "$work/pack-bundle.json" >"$work/derive-result.json"
+jq '{record_id: .result_record_id}' "$work/derive-result.json" >"$work/derive-record.json"
+record_of "$work/derive-record.json"
+"$bin" verify --bundle "$work/pack-bundle.json" | jq -e '.verdict=="VALID"' >/dev/null || {
+  echo "FAIL: the derived bundle must verify VALID" >&2; exit 1; }
+"$bin" book report build --bundle "$work/pack-bundle.json" --card outcome --out "$work/pack-report.html" >/dev/null
+[[ -s "$work/pack-report.html" ]] || { echo "FAIL: no report page for the derived bundle" >&2; exit 1; }
+echo "  the pack was served by digest, the answer recorded, the Result sealed and the one bundle verified and rendered" >&2
+
 end_epoch=$(date +%s)
 elapsed=$((end_epoch - start_epoch))
 book_records=$(wc -l <"$book_records_file" | tr -d ' ')
 
 echo >&2
 echo "== summary ==" >&2
-echo "book records from consequential book verbs (request x2, respond, close x2, result build): $book_records (target: 6)" >&2
+echo "book records from consequential book verbs (request x3, respond x2, response x1, close x2, result build, report derive): $book_records (target: 10)" >&2
 echo "not-consequential book verbs (reconcile, report build): ran, added no record" >&2
 echo "elapsed: ${elapsed}s from a fresh build through the last verb (target: under 3600s)" >&2
 
-if [[ "$book_records" -ne 6 ]]; then
-  echo "FAIL: expected exactly 6 book records from consequential book verbs, got $book_records" >&2
+if [[ "$book_records" -ne 10 ]]; then
+  echo "FAIL: expected exactly 10 book records from consequential book verbs, got $book_records" >&2
   exit 1
 fi
 if [[ "$elapsed" -ge 3600 ]]; then

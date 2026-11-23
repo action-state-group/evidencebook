@@ -121,6 +121,9 @@ func TestPackServedByDigestThroughTheCommands(t *testing.T) {
 	for _, member := range []string{"response", "derivation", "anchor", "proven", "records"} {
 		assert.Contains(t, shape, member)
 	}
+	for _, row := range shape["records"].([]any) {
+		assert.ElementsMatch(t, []string{"digest", "leaf_index", "fields"}, keysOf(row.(map[string]any)), "each row's members are the contract with an evaluator")
+	}
 
 	bundle := filepath.Join(x.dir, "bundle.json")
 	out, err = x.derive(response, x.result(response, ""), bundle)
@@ -150,6 +153,8 @@ func TestPackFilesAreReadExactly(t *testing.T) {
 		"unknown member":      packFileBody(`,"extra":1`),
 		"duplicate member":    packFileBody(`,"proofs":true,"proofs":false`),
 		"case variant":        packFileBody(`,"Proofs":false`),
+		"proofs null":         packFileBody(`,"proofs":null`),
+		"recipients null":     strings.Replace(packFileBody(""), `"recipients":["a"]`, `"recipients":null`, 1),
 		"no document":         `{"forms":["full_history"],"fields":["record_type"]}`,
 		"no forms":            `{"document":{"a":1},"fields":["record_type"]}`,
 		"not an object":       `["document"]`,
@@ -219,9 +224,12 @@ func TestReportDeriveRefusals(t *testing.T) {
 		x := newPackExchange(t, packFileBody(`,"proofs":false`))
 		response := x.record()
 		bundle := filepath.Join(x.dir, "bundle.json")
+		before := x.resultRecords()
 		out, err := x.derive(response, x.result(response, ""), bundle)
 		require.Error(t, err, out)
+		assert.ErrorIs(t, err, cli.ErrInput, "a refusal is an input error")
 		assert.NotContains(t, out, "result_record_id", "nothing was sealed")
+		assert.Equal(t, before, x.resultRecords(), "no Result was appended")
 		out, err = x.derive(response, x.result(response, ""), bundle, "--allow-unproven")
 		require.Error(t, err, out)
 		assert.Contains(t, err.Error(), evidencebook.UnprovenInputsTitle, "the title is required")
@@ -256,8 +264,46 @@ func TestReportDeriveRefusals(t *testing.T) {
 		out, err := x.derive(response, x.result(response, ""), bundle)
 		require.Error(t, err, out)
 		assert.Contains(t, out, "result_record_id", "the sealed Result's id is reported with the failure")
+		assert.Contains(t, out, `"proven":true`, "what the answer proved is reported on a late failure too")
 		assert.NoFileExists(t, bundle)
+		assert.Equal(t, 1, x.resultRecords(), "the Result is sealed for the owner")
 	})
+	t.Run("an output that cannot be written after the seal", func(t *testing.T) {
+		x := newPackExchange(t, packFileBody(""))
+		response := x.record()
+		blocker := filepath.Join(x.dir, "blocker")
+		require.NoError(t, os.WriteFile(blocker, []byte("a file, so nothing can be created under it"), 0o600))
+		out, err := x.derive(response, x.result(response, ""), filepath.Join(blocker, "bundle.json"))
+		require.Error(t, err, out)
+		var failed reportDeriveResult
+		require.NoError(t, json.Unmarshal([]byte(out[strings.Index(out, "{"):]), &failed), out)
+		require.NotEmpty(t, failed.ResultRecordID, "the committed Result's id comes back with the failure")
+		// The retry seals nothing new and returns the same Result.
+		retried, err := x.derive(response, x.result(response, ""), filepath.Join(x.dir, "bundle.json"))
+		require.NoError(t, err, retried)
+		assert.Contains(t, retried, failed.ResultRecordID)
+		assert.Equal(t, 1, x.resultRecords())
+	})
+	t.Run("the Result on stdin", func(t *testing.T) {
+		x := newPackExchange(t, packFileBody(""))
+		response := x.record()
+		raw, err := os.ReadFile(x.result(response, ""))
+		require.NoError(t, err)
+		out, err := invoke(t, string(raw), "report", "derive", "--profile", "a", "--response", response, "--pack", x.digest, "--result", "-", "--out", filepath.Join(x.dir, "bundle.json"))
+		require.NoError(t, err, out)
+		assert.FileExists(t, filepath.Join(x.dir, "bundle.json"))
+	})
+}
+
+// resultRecords counts the Evidence Results in the requester's book.
+func (x *packExchange) resultRecords() int {
+	x.t.Helper()
+	opened, err := openBook(x.t.Context(), x.a(), false)
+	require.NoError(x.t, err)
+	defer func() { require.NoError(x.t, opened.release()) }()
+	records, err := opened.book.Query(x.t.Context(), evidencebook.Filter{RecordType: evidencebook.RecordTypeEvidenceResult})
+	require.NoError(x.t, err)
+	return len(records)
 }
 
 func (x *packExchange) a() cli.Profile {

@@ -193,6 +193,12 @@ func readDerivationFile(raw []byte) (derivationFile, error) {
 		if err := dec.Decode(&value); err != nil {
 			return file, err
 		}
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			// json.Unmarshal takes null into a bool or a list without
+			// complaint and leaves the zero value: "proofs": null would
+			// switch proofs off, "recipients": null grant no one.
+			return file, fmt.Errorf("member %q is null", name)
+		}
 		switch name {
 		case "document":
 			file.Document = value

@@ -111,8 +111,9 @@ the JCS of its compiled definition. Nothing is served by default.
 ```
 
 `document`, `forms` and `fields` are required; `recipients` are the requesters
-the pack is granted to (none: answered to no one over `full_history`);
-`proofs` is on unless `false`. `fields` are what each answer reveals of a
+the pack is granted to. With no `recipients` the pack is answered like the
+underived subject, so over `full_history` to no one at all. `proofs` is on
+unless `false`; a member that is `null` refuses. `fields` are what each answer reveals of a
 record: header members or paths into one, and nothing else. Members are read
 exactly: an unknown, repeated or differently-cased member refuses. `book
 respond` and `book doctor` read the directory; one bad file stops every
@@ -123,14 +124,14 @@ lists each digest, its grants, and a pack whose answers carry no proofs.
 
 ```sh
 capsulectl book result derived-inputs --profile NAME --response RECORD_ID
-capsulectl book report derive --profile NAME --response RECORD_ID --pack DIGEST --result RESULT.json --out bundle.json [--allow-unproven]
+capsulectl book report derive --profile NAME --response RECORD_ID --pack DIGEST --result RESULT.json --out bundle.json [--allow-unproven]   # --result - reads stdin
 capsulectl book report build --bundle bundle.json --card CARD --out report.html
 capsulectl verify --bundle bundle.json
 ```
 
 `derived-inputs` prints `{response, derivation, anchor, proven, records:
 [{digest, leaf_index, fields}]}` for your evaluator. The Result it produces is
-yours, signed by this book's key; the holder signed the inputs. Every claim
+yours, signed by this book's key; the holder signed its answer. Every claim
 must cite exactly `response` as its evidence. `proven` means each row's digest
 was checked in the holder's log at a signed checkpoint; the field values are the
 holder's word, and no proof shows that no row was left out. `derive` refuses a
