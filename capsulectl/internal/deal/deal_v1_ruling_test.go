@@ -1,8 +1,11 @@
 package deal
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"github.com/action-state-group/evidencebook"
 	"os"
 	"path/filepath"
 	"strings"
@@ -223,7 +226,7 @@ func TestRulingEntriesFromBothCopies(t *testing.T) {
 	before := dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerBefore, "--copy", sellerBefore)
 	for _, e := range before["entries"].([]any) {
 		row := e.(map[string]any)
-		assert.Equal(t, "not shown to the adjudicator", row["words"], "%v", row)
+		assert.Equal(t, "not shown entered (the ruling has no witnessed time)", row["words"], "%v", row)
 		assert.Contains(t, row["sent"], "(adjudicator's statement)")
 	}
 
@@ -259,4 +262,46 @@ func TestRulingEntriesFromBothCopies(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "the copy carries the ruling: %v", got)
+}
+
+// A copy's receive refuses --out, and exits non-zero when a ruling the copy
+// carries is refused: a fork is what the copy is for, never a quiet success.
+func TestReceiveOfACopyReportsARefusedRuling(t *testing.T) {
+	h, adj := adjudicatedDeal(t)
+	h.buyer.act(t)
+	dispute := filepath.Join(t.TempDir(), "dispute.json")
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
+	buyerCopy := adjudicatorCopy(t, h.buyer, h.dealID)
+	adj.act(t)
+	rulingFile := filepath.Join(t.TempDir(), "ruling.json")
+	dealRun(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "not_met", "--against", "seller", "--final",
+		"--dispute", dispute, "--copy", buyerCopy, "--out", rulingFile)
+	h.seller.act(t)
+	dealRun(t, "receive", rulingFile)
+	cp := filepath.Join(t.TempDir(), "cp.json")
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", cp)
+
+	h.buyer.act(t)
+	assert.Contains(t, v1Err(t, "receive", cp, "--out", filepath.Join(t.TempDir(), "x.json")), "goes with a ruling file, not a copy")
+	old := receiveFromStore
+	t.Cleanup(func() { receiveFromStore = old })
+	receiveFromStore = func(ctx context.Context, shelf *evidencebook.Shelf, record []byte, proof *evidencebook.StampProof) (evidencebook.ReceiveResult, error) {
+		if read, err := xdealv1.VerifyBook(record); err == nil && read.Record.Block.RecordType == xdealv1.TypeRuling {
+			return evidencebook.ReceiveResult{}, fmt.Errorf("%w: two different rulings at one place", evidencebook.ErrRefused)
+		}
+		return old(ctx, shelf, record, proof)
+	}
+	assert.Contains(t, v1Err(t, "receive", cp), "a ruling the copy carries was refused")
+}
+
+// Only a cadence log id of the form a shelf gives is one of the deal's own
+// ids: an agreement that names anything else, such as a card number, does
+// not take it out of the gate.
+func TestV1OwnIDsTakesOnlyACadenceLogID(t *testing.T) {
+	assert.True(t, shelfLogIDForm.MatchString("deal-cadence/9261641132323880"))
+	for _, v := range []string{"4111111111111111", "deal-cadence/4111", "deal-cadence/9261641132323880x", "case/9261641132323880"} {
+		assert.False(t, shelfLogIDForm.MatchString(v), v)
+	}
 }

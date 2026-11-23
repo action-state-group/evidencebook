@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,8 +24,10 @@ import (
 // from a witness the agreement names, Shelf.RecordTimeByKey), never its own
 // at (Sherlock2, #785). It seals nothing, and never says a party refused.
 
-// entryWords are Sherlock2's strings for each state (reply 41f29533).
-func entryWords(e xdealv1.Entry) string {
+// entryWords are the words for each state (#773, #801). A copy that does
+// not show the entry says why: the ruling has no witnessed time, or the
+// copy's checkpoint is not after it.
+func entryWords(e xdealv1.Entry, rulingAt string) string {
 	switch e.State {
 	case xdealv1.EntryEntered:
 		return "entered"
@@ -32,9 +35,11 @@ func entryWords(e xdealv1.Entry) string {
 		return "entered, not witnessed"
 	case xdealv1.EntryNotEntered:
 		return "ruling not entered by the " + e.Role + " as of its checkpoint at " + e.CheckpointAt
-	default:
-		return "not shown to the adjudicator"
 	}
+	if rulingAt == "" {
+		return "not shown entered (the ruling has no witnessed time)"
+	}
+	return "not shown entered (no checkpoint after the ruling's witnessed time)"
 }
 
 // entryProof is a party's stamp proof file with the witness receipts it
@@ -51,10 +56,10 @@ func dealRulingEntriesCommand() *cobra.Command {
 		Long: `Show, for each party whose copy you give (--copy, from deal report --share
 adjudicator --bundle), whether it entered your ruling in its deal book:
 "entered", "entered, not witnessed", "ruling not entered by the <party> as of
-its checkpoint at <time>", or "not shown to the adjudicator". A party is shown
-as not having entered a ruling only by a checkpoint after the ruling's
-witnessed time; with no witnessed time, a copy without the entry shows
-nothing. --proof gives a party's stamp proof file with its witness receipts,
+its checkpoint at <time>", or "not shown entered". The ruling's witnessed time
+is the time a witness the agreement names gave your stamp that covers it. A
+party is shown as not having entered a ruling only by a checkpoint after that
+time; with no witnessed time, a copy without the entry is "not shown entered". --proof gives a party's stamp proof file with its witness receipts,
 for "entered" rather than "entered, not witnessed". Seals nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
@@ -129,7 +134,7 @@ func (s *dealSession) entries(ctx context.Context, c *cobra.Command, dealID, rul
 				return cli.InputError("--copy " + path + " cannot be read for the entry check: " + err.Error())
 			}
 		}
-		row := map[string]any{"party": e.Role, "state": e.State, "words": entryWords(e), "checkpoint_at": e.CheckpointAt,
+		row := map[string]any{"party": e.Role, "state": e.State, "words": entryWords(e, rulingAt), "checkpoint_at": e.CheckpointAt,
 			"sent": "sent " + sentAt + " (adjudicator's statement)"}
 		if rulingAt != "" {
 			row["ruling_witnessed_at"] = rulingAt
@@ -161,7 +166,15 @@ func (s *dealSession) rulingTimes(ctx context.Context, bundle []byte, dealID, ru
 	if !ok || first.Record.Block.DealID != dealID {
 		return "", "", cli.InputError("the copy is not of deal " + dealID)
 	}
-	book, err := s.shelf.Open(ctx, xdealv1.CaseLogID(ag.Offer.Digest, me))
+	logID := xdealv1.CaseLogID(ag.Offer.Digest, me)
+	held, err := s.shelf.Books(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if !slices.Contains(held, logID) {
+		return "", "", cli.InputError("you hold no case book of deal " + dealID + ": run deal ruling first")
+	}
+	book, err := s.shelf.Open(ctx, logID)
 	if err != nil {
 		return "", "", err
 	}

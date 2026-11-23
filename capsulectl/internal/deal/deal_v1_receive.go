@@ -52,6 +52,9 @@ Needs the deal store in the new layout (deal set-version x-deal-v1 --migrate).`,
 				return cli.InputError("the file is not a JSON object: " + err.Error())
 			}
 			if members["bundle_version"] != nil && members["extensions"] != nil {
+				if out, _ := c.Flags().GetString("out"); out != "" {
+					return cli.InputError("--out goes with a ruling file, not a copy: receive the ruling itself with --out to write the statement naming it")
+				}
 				// A copy (deal report --share ... --bundle): take the
 				// records it carries for the rows, rulings included, so a
 				// ruling the other side received reaches you too (PROFILE §5).
@@ -435,7 +438,7 @@ func (s *dealSession) ensureOfferedRow(ctx context.Context, d *v1Deal) error {
 // receiveCopy takes the records a copy's x-deal-v1 extension carries: the
 // agreement and every record its rows rely on, each a book pair, in their
 // books' order, each through the same receive as a single file. A ruling
-// among them reaches this holder as the other side received it, so a judge
+// among them reaches this holder as the other side received it, so an adjudicator
 // that gave each side another ruling shows as a fork (PROFILE.md §5).
 func (s *dealSession) receiveCopy(ctx context.Context, c *cobra.Command, raw []byte) error {
 	vb, err := evidencebook.VerifyBundle(raw)
@@ -451,42 +454,67 @@ func (s *dealSession) receiveCopy(ctx context.Context, c *cobra.Command, raw []b
 		pair []byte
 		read xdealv1.BookRead
 	}
-	pairs := []held{}
-	for _, raw := range append([]json.RawMessage{x.Book.Agreement}, mapValues(x.Book.ReliedOn)...) {
+	agreement, err := xdealv1.VerifyBook(x.Book.Agreement)
+	if err != nil {
+		return cli.InputError("the copy's agreement does not verify: " + err.Error())
+	}
+	// The other side's agreement first, so its book is the one recorded as
+	// theirs; then the records its rows rely on, in their books' order.
+	pairs := []held{{pair: x.Book.Agreement, read: agreement}}
+	var rest []held
+	for _, raw := range mapValues(x.Book.ReliedOn) {
 		read, err := xdealv1.VerifyBook(raw)
 		if err != nil {
 			return cli.InputError("a record of the copy does not verify: " + err.Error())
 		}
-		pairs = append(pairs, held{pair: raw, read: read})
+		rest = append(rest, held{pair: raw, read: read})
 	}
-	slices.SortFunc(pairs, func(a, b held) int {
+	slices.SortFunc(rest, func(a, b held) int {
 		if c := strings.Compare(a.read.LogID, b.read.LogID); c != 0 {
 			return c
 		}
 		return int(a.read.Seq) - int(b.read.Seq)
 	})
+	pairs = append(pairs, rest...)
 	var out []map[string]any
+	var fault, refusedRuling bool
 	for _, h := range pairs {
 		row := map[string]any{"record_type": h.read.Record.Block.RecordType, "seq": h.read.Seq}
 		res, rerr := receiveFromStore(ctx, s.shelf, h.pair, nil)
+		isRuling := h.read.Record.Block.RecordType == xdealv1.TypeRuling
 		switch {
 		case rerr != nil:
 			row["refused"] = rerr.Error()
+			refusedRuling = refusedRuling || isRuling
 		case res.Record != nil:
 			row["record"] = recordWords(res.Record)
-			info := &receivedInfo{kind: h.read.Record.Block.RecordType, dealID: h.read.Record.Block.DealID, book: &h.read}
-			if res.Record.Stored || res.Record.Duplicate {
+			fault = fault || row["record"] == storeFault
+			// Only the other side's own book is noted as theirs: a ruling of
+			// the case book, or a record of this holder's book, is not.
+			if (res.Record.Stored || res.Record.Duplicate) && h.read.LogID == agreement.LogID {
+				info := &receivedInfo{kind: h.read.Record.Block.RecordType, dealID: h.read.Record.Block.DealID, book: &h.read}
 				if err := s.noteReceived(ctx, info); err != nil {
 					return err
 				}
 			}
 		}
-		if h.read.Record.Block.RecordType == xdealv1.TypeRuling {
+		if isRuling {
 			if d, err := xdealv1.Digest(h.read.Record); err == nil {
 				row["ruling"] = d
 			}
 		}
 		out = append(out, row)
+	}
+	switch {
+	case fault:
+		_ = cli.Output(c, map[string]any{"records": out})
+		return fmt.Errorf("%w: %s", cli.ErrConflict, storeFault)
+	case refusedRuling:
+		// A ruling the copy carries that this holder refuses is what the
+		// copy is for (an adjudicator that gave each side another ruling): it is
+		// not a quiet success.
+		_ = cli.Output(c, map[string]any{"records": out})
+		return fmt.Errorf("%w: a ruling the copy carries was refused; see its row", cli.ErrConflict)
 	}
 	return cli.Output(c, map[string]any{"records": out})
 }

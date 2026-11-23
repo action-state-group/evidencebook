@@ -14,6 +14,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -526,6 +527,9 @@ func (s *dealSession) v1ReportBundle(ctx context.Context, logID string, snap xde
 	return b.JSON, nil
 }
 
+// shelfLogIDForm is a cadence log id as a shelf names it.
+var shelfLogIDForm = regexp.MustCompile(`^deal-cadence/[0-9a-f]{16}$`)
+
 // v1OwnIDs are the identifiers every copy of an x-deal-v1 deal carries,
 // random hex and never a private value: the deal id, and the shelf log id
 // each agreement in the copy's book names (deal-cadence/<16 hex>). The share
@@ -539,7 +543,10 @@ func v1OwnIDs(dealID string, book xdealv1.ReportBook) []string {
 		if err != nil {
 			continue
 		}
-		if ag, ok := agreeOf(read.Record); ok && ag.ShelfLogID != "" && !slices.Contains(ids, ag.ShelfLogID) {
+		// Only a cadence log id of the form a shelf gives: an agreement is
+		// the other side's word, and an id it chose freely could whitelist a
+		// card number.
+		if ag, ok := agreeOf(read.Record); ok && shelfLogIDForm.MatchString(ag.ShelfLogID) && !slices.Contains(ids, ag.ShelfLogID) {
 			ids = append(ids, ag.ShelfLogID)
 		}
 	}
