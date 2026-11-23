@@ -295,3 +295,13 @@ func TestAStatementRestatedAfterAPerformsStatementIsSealedAgain(t *testing.T) {
 	again := state("met")
 	assert.NotEqual(t, met["seq"], again["seq"], "a new statement after the perform's")
 }
+
+// deal perform takes the check_id deal check printed, as deal settle does.
+func TestPerformTakesTheCheckIDDealCheckPrinted(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.seller.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
+	checkID := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, v1SellerCommit))["check_id"].(string)
+	out := dealRun(t, "perform", "--deal", h.dealID, "--check", checkID, "--act", "deliver", "--observed", "carrier_scan", "--out", filepath.Join(t.TempDir(), "perform.json"))
+	assert.NotEmpty(t, out["file"], "%v", out)
+}

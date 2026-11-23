@@ -572,7 +572,11 @@ func dealSettleCommand() *cobra.Command {
 			}
 			for name, v := range map[string]string{"--check": in.check, "--reverses": in.reverses, "--supersedes": in.supersedes} {
 				if v != "" && !cli.Hex64.MatchString(v) {
-					return cli.InputError(name + " must be a record digest: 64 lowercase hex characters")
+					what := "a record digest"
+					if name == "--check" {
+						what = "the check_id deal check printed, or the check record's digest"
+					}
+					return cli.InputError(name + " must be " + what + ": 64 lowercase hex characters")
 				}
 			}
 			payer := in.check != ""
@@ -596,10 +600,6 @@ func dealSettleCommand() *cobra.Command {
 			}
 			v1ReceiveContext(c)
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
-				var err error
-				if in.check, err = s.resolveV1Check(ctx, in.dealID, in.check); err != nil {
-					return err
-				}
 				return s.settle(ctx, c, in)
 			})
 		},
@@ -633,6 +633,11 @@ func (s *dealSession) settle(ctx context.Context, c *cobra.Command, in settleIn)
 		return err
 	}
 	if err := s.ensureV1Tables(ctx); err != nil {
+		return err
+	}
+	// After the deal is known to be v1 and its tables exist: --check may be
+	// the check_id deal check printed.
+	if in.check, err = s.resolveV1Check(ctx, in.dealID, in.check); err != nil {
 		return err
 	}
 	row, currency, err := a.paymentRow(in.row)
@@ -1427,10 +1432,11 @@ func (s *dealSession) reconcileV1Settle(ctx context.Context, dealID string, book
 var refundFeeGuard = true
 
 // resolveV1Check is the record digest --check names: the check id `deal
-// check` printed, or the check record's digest itself. The id is the Capsule
-// id of the check's verdict, which refs the journal check record by digest,
-// so the id is followed to that record. A person copies the id the check
-// printed, so both are taken; "" stays "".
+// check` printed (the local id of its check step), or the check record's
+// digest itself. The check step names its snapshot step, whose record is the
+// journal check record, so the id is followed to that record's digest. A
+// person copies the id the check printed, so both are taken; any other value
+// passes through, and "" stays "".
 func (s *dealSession) resolveV1Check(ctx context.Context, dealID, ref string) (string, error) {
 	if ref == "" {
 		return "", nil
@@ -1439,43 +1445,10 @@ func (s *dealSession) resolveV1Check(ctx context.Context, dealID, ref string) (s
 	if err != nil {
 		return "", err
 	}
-	verdict := ""
-	for _, se := range events {
-		if se.Event.Kind == "check" && se.CapsuleID == ref {
-			verdict = se.Digest
-		}
-	}
-	if verdict == "" {
-		return ref, nil
-	}
-	journal, err := s.v1DealJournal(ctx, dealID)
-	if err != nil {
-		return "", err
-	}
-	checks := map[string]bool{}
-	for _, r := range journal {
-		if r.Block.RecordType == xdealv1.TypeCheck {
-			d, err := xdealv1.Digest(r)
-			if err != nil {
-				return "", err
-			}
-			checks[d] = true
-		}
-	}
-	for _, r := range journal {
-		if r.Block.RecordType != xdealv1.TypeVerdict {
-			continue
-		}
-		d, err := xdealv1.Digest(r)
-		if err != nil {
-			return "", err
-		}
-		if d != verdict {
-			continue
-		}
-		for _, rr := range r.Block.Refs {
-			if checks[rr.Digest] {
-				return rr.Digest, nil
+	if v, _, ok := checkedCard(events, ref); ok {
+		for _, se := range events {
+			if se.CapsuleID == v.Event.Check.Snapshot && se.Digest != "" {
+				return se.Digest, nil
 			}
 		}
 	}

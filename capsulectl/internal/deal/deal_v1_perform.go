@@ -446,12 +446,13 @@ func dealPerformCommand() *cobra.Command {
 			}
 			v1ReceiveContext(c)
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
-				check, err := s.resolveV1Check(ctx, dealID, check)
+				a, err := s.loadV1ActDeal(ctx, dealID)
 				if err != nil {
 					return err
 				}
-				a, err := s.loadV1ActDeal(ctx, dealID)
-				if err != nil {
+				// After the deal is known to be v1: --check may be the
+				// check_id deal check printed.
+				if check, err = s.resolveV1Check(ctx, dealID, check); err != nil {
 					return err
 				}
 				stmts, err := a.parseStatements(statements)

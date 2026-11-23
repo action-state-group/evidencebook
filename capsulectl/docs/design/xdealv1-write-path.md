@@ -217,7 +217,7 @@ the v1 decline is a subcommand of `offer`.
 | `deal offer cancel OFFER_DIGEST --out FILE` | `agree` kind `cancellation` | journal, sent | before the deal starts (design §3.5) |
 | `deal agree OFFER --deal ID` | `agree` kind `agreement` | deal book, `seq` 1 | opens the deal book, cites the intent and admission, checks `CheckAgreement` |
 | `deal receive FILE` | nothing | the store | section 4.3 |
-| `deal perform` | `perform` | deal book | a delivery or any other act; `--check DIGEST` cites the passing check; names are the record names (Sherlock2 a864342c) |
+| `deal perform` | `perform` | deal book | a delivery or any other act; `--check CHECK` cites the passing check (CHECK is the check_id `deal check` printed, or the check record's digest); names are the record names (Sherlock2 a864342c) |
 | `deal settle` | `settle` | deal book | a payment leg (`--leg payer\|payee`) or a refund (`--reverses DIGEST`, `--remedy-for ROW`); `--check` on a payer leg. `deal perform` and `deal settle` are new verbs: v0 has neither (it records both through `deal note --kind act`) |
 | `deal statement --row ROW --value met\|not_met\|cannot_tell [--remedy ROW]` | `statement` | deal book | `--remedy` for a statement that chooses a remedy |
 | `deal dispute --row ROW [--forum F]`, `... --withdraw`, `... --challenge RULING` | `dispute` | deal book | `--forum` only picks among the forums the agreement names, and defaults to the only one; an agreement with `adjudicator: null` names none, so `deal dispute` refuses with a message |
@@ -635,7 +635,7 @@ and on §12's local event list.
    - **The flow of a payer leg: two calls of `deal settle`.** capsulectl does not drive the rail; the
      agent does, and tells the plugin at the two moments. The flow applies to every payer leg, a
      payment's on a `pay` check and a refund's on a `cancel` check.
-     1. **`deal settle --sent --check DIGEST`**, before the handoff. The spend lock (Sherlock2's
+     1. **`deal settle --sent --check CHECK`**, before the handoff. The spend lock (Sherlock2's
         condition 1) is the session's shelf writer lock. A write session holds it from open to close
         (`OpenSQLiteShelf` with `LockPath`, `deal_shelf.go:86`, `deal.go:176-178`), so two `--sent`
         calls, or a `--sent` and a `deal check`, run one after the other for the whole command, and
@@ -657,7 +657,7 @@ and on §12's local event list.
         (`changesDetails`). Its `detail_commitment` commits to the check digest, the amount, the
         currency and the reference known then (the payment hash, the nonce). The local `sent` event
         keeps them plain, as §12 keeps an intent's words.
-     2. **`deal settle --check DIGEST --status settled|failed`**, when the rail answers (the Lightning
+     2. **`deal settle --check CHECK --status settled|failed`**, when the rail answers (the Lightning
         payment result, x402's settle response, the ACP/UCP order response).
         - It requires the check's stored `sent` event and refuses without one, so no payer leg skips
           the send and its spend check.
