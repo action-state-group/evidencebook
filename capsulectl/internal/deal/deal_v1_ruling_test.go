@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -392,10 +393,35 @@ func TestRulingEntriesByAWitnessedTime(t *testing.T) {
 	// copy rests on, makes its entry "entered".
 	h.seller.act(t)
 	sellerProof := filepath.Join(t.TempDir(), "seller-proof.json")
-	assert.Equal(t, float64(0), dealRun(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", sellerAfter, "--out", sellerProof)["witness_receipts"])
+	before := dealRun(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", sellerAfter, "--out", sellerProof)
+	assert.Equal(t, float64(0), before["named_witness_receipts"])
+	assert.Contains(t, before["note"], "the file changes nothing")
 	witnessLastStamp(t, endpoint, key, cli.DealClock().UTC().Truncate(time.Second))
-	require.NoError(t, os.Remove(sellerProof))
-	assert.Equal(t, float64(1), dealRun(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", sellerAfter, "--out", sellerProof)["witness_receipts"])
+	// A later stamp of the unchanged book that no witness registered, and an
+	// interrupted tick after it: the proof is still the registered stamp's.
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	withSession(t, func(s *dealSession) {
+		var last int64
+		var leaves string
+		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT tick, leaves FROM cadence_ticks ORDER BY tick DESC LIMIT 1`).Scan(&last, &leaves))
+		_, err := s.db.ExecContext(t.Context(), `INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', ?)`,
+			last+1, cli.DealClock().UTC().Format(time.RFC3339), cli.DealClock().UTC().Add(time.Hour).Format(time.RFC3339), leaves)
+		require.NoError(t, err)
+	})
+	// The run replaces its own earlier proof file.
+	after := dealRun(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", sellerAfter, "--out", sellerProof)
+	assert.Equal(t, float64(1), after["named_witness_receipts"])
+	assert.NotContains(t, after, "note")
+	var written struct {
+		StampProof map[string]any `json:"stamp_proof"`
+	}
+	require.NoError(t, json.Unmarshal(mustRead(t, sellerProof), &written))
+	require.NotEmpty(t, written.StampProof)
+	assert.NotContains(t, written.StampProof, "status_opening", "the adjudicator's audience gets no status opening")
+	notProof := filepath.Join(t.TempDir(), "other.json")
+	require.NoError(t, os.WriteFile(notProof, []byte(`{"other": true}`), 0o600))
+	assert.Contains(t, v1Err(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", sellerAfter, "--out", notProof), "is not a proof file")
 	adj.act(t)
 	out = dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerAfter, "--copy", sellerAfter, "--proof", sellerProof)
 	got = map[string]string{}
