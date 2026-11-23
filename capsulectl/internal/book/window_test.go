@@ -420,6 +420,8 @@ func TestTheCoreChecksAWindowLogsCheckpoint(t *testing.T) {
 
 	assert.True(t, BookBackend{}.OwnsLogID(b, "b/2026-11"))
 	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-13"), "not a label of the store's period")
+	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-10"), "before the store's first window")
+	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-12"), "after the window holding this clock")
 	assert.False(t, BookBackend{}.OwnsLogID(b, "c/2026-11"))
 	renamed := b
 	renamed.LogID = "b2"

@@ -8,8 +8,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/action-state-group/agent-action-capsule/go v0.24.0 h1:RXBD2giWUg6uXcfMZVhix1QmunR3WICeEpLcR+I6Lu4=
 github.com/action-state-group/agent-action-capsule/go v0.24.0/go.mod h1:RENcdbZODNLaxDuPUeEeGjqCg+CdebARCA3ORaG8mZc=
-github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261123185340-f02a488271eb h1:UCca8hTCbJIZQ1GZpW2t8KCyxBiEtCN3YFN7H/4VJe8=
-github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261123185340-f02a488271eb/go.mod h1:eWqkwe0zef85DlAxKMDX0IqRCt+3tTa9B/jyQmrghU0=
+github.com/action-state-group/capsule-cli v0.1.0-rc51 h1:bux4j8jbYparx86pvqo2YmPy6/T0VerHU7Q8G5BJEnM=
+github.com/action-state-group/capsule-cli v0.1.0-rc51/go.mod h1:eWqkwe0zef85DlAxKMDX0IqRCt+3tTa9B/jyQmrghU0=
 github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b h1:GGYqlFX1dZmLl7lNDBVynOjx0z2CAsAMWrChVyDYtsk=
 github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b/go.mod h1:TKXiVniDy7RlksGjEAF6k9rj5NcwvwdQ6EGajzhghuo=
 github.com/action-state-group/capsule-engine/go v0.6.0 h1:v8w0nKR/EDDJG3JLMqSCMCeEk3ys6TLI2QzoovlycGw=

@@ -209,8 +209,9 @@ month's start), and prints `window: month (calendar months, UTC), fixed for this
 window instead, or `--period none` with one JSONL book for the whole history; the help says
 windows are calendar periods in UTC and cannot change later. A reproduced scratch book and a
 profile whose pre-book cll.jsonl still holds entries stay JSONL. The backend declares its window
-logs to the core (`OwnsLogID`, capsule-cli#622), so `cll checkpoint status|publish` and `cll proof
-verify` read a window log's checkpoints. An existing JSONL book is not converted (#808).
+logs to the core (`OwnsLogID`, capsule-cli#622), so `cll checkpoint status|publish` work on the
+current window's checkpoints and `cll proof verify` on any window log's; closed windows' final
+checkpoints go to the witness with `book window publish`. An existing JSONL book is not converted (#808).
 
 **What changes inside.** `openedBook` carries the shelf and the current window; its record
 store is an interface (a window book's records are read as sealed); the clock floors at the

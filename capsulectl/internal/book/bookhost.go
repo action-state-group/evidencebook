@@ -43,8 +43,10 @@ func (BookBackend) OwnsLogID(p cli.Profile, logID string) bool {
 	if err != nil || policy == nil || policy.Base != p.LogID {
 		return false
 	}
-	_, err = policy.Period.ParseWindow(label)
-	return err == nil
+	w, err := policy.Period.ParseWindow(label)
+	// Only a window the store can have: from its first window to the one
+	// holding this clock.
+	return err == nil && !w.Start.Before(policy.Since) && !w.Start.After(policy.Period.WindowAt(bookNow()).Start)
 }
 
 // List is `cll list` on a book profile.
