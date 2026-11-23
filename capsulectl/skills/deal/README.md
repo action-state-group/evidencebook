@@ -563,7 +563,9 @@ An x-deal-v1 `deal report --bundle` (with `--share` too) refuses a copy whose
 standalone report does not verify. The core's generic verbs (`capsulectl
 presentation list`, `presentation build`, `bundle --html`) read no deal
 section, so they can build a page for a copy whose deal, or nested deal,
-fails. To check a deal copy, run `capsulectl deal verify --bundle FILE`.
+fails. `capsulectl presentation build`, `presentation list` and `bundle` no longer check deal sections; check a deal copy with `capsulectl deal verify --bundle` or the deal plugin's page verbs. On capsule-cli rc47 those core verbs refused such a page;
+on rc50 the page lists each deal kind as not interpreted by its checks
+(capsule-cli#624 tracks an optional reader for them).
 
 `--html` alone writes the user's own copy (audience `keep`: nothing withheld). To
 hand a copy to someone else, name the reader:

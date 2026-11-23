@@ -27,7 +27,9 @@ import (
 //
 // The core calls a reader only inside the plugin's own verbs and gates (it
 // passes none itself), so every check of a deal copy goes through
-// dealAssess, dealPageGate or the `verify` verb.
+// dealBundleVerdict, nestedBundleVerdict, dealCopyPageGate,
+// dealDisclosureRecord, CheckDealStandaloneReport or the `verify` verb
+// (dealAssess is their shared core, which tests also call).
 
 // dealReaderName is the reader's name, reported as read_by.
 const dealReaderName = "capsulectl-deal"

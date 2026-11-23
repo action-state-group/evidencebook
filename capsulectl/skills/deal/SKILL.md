@@ -258,7 +258,7 @@ A retail checkout is almost always the second shape.
       is the only copy to make for someone else: other audiences are for
       disputes, run by a person, not the agent.
     - `deal report --bundle` (with `--share` too) refuses a copy whose
-      report does not verify. To check a deal copy, run `capsulectl deal
+      standalone report does not verify. To check a deal copy, run `capsulectl deal
       verify --bundle FILE`: the core's generic verbs (`capsulectl
       presentation list`, `presentation build`, and `capsulectl bundle`
       writing a page) read no deal section, so they can build a page for a
