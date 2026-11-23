@@ -227,7 +227,8 @@ type settlementWire struct {
 // A leg's own content is the counterparty's to get wrong, so a leg whose
 // side, leg or role disagree, or that AAC refuses, takes no part (Excluded)
 // rather than stopping the check. A leg superseded (supersedes) by a later
-// leg of its side is not read; a refund or remedy leg (reverses,
+// leg of its side is not read (a payment leg only by a later payment leg of
+// this terms leg); a refund or remedy leg (reverses,
 // remedy_for) that cites the offer's terms leg is not read either, and is
 // listed in NotChecked when it is not superseded: the check runs on the
 // payment's own legs (evidencebook#722).
@@ -291,12 +292,17 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		refund  bool
 	}
 	var legs []legRead
-	// Every settle record's supersedes counts, whichever terms leg it
-	// answers: a refund replaced by one under its own terms leg is replaced.
+	// Every settle record's supersedes counts against a refund, whichever
+	// terms leg it answers: a refund replaced by one under its own terms leg
+	// is replaced. A payment leg is replaced only by a later payment leg of
+	// this terms leg (payment), so neither a refund nor a record of another
+	// terms leg can take a failing payment out of the check
+	// (evidencebook#722).
 	type supersession struct {
-		key    string
-		target Ref
-		seq    uint64
+		key     string
+		target  Ref
+		seq     uint64
+		payment bool
 	}
 	var supersedes []supersession
 	for i, raw := range in.Legs {
@@ -315,7 +321,9 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		if !known {
 			return bad("leg %d is signed by neither party's key", i)
 		}
+		sp := -1
 		if body.Supersedes != nil {
+			sp = len(supersedes)
 			supersedes = append(supersedes, supersession{key: read.KeyID, target: *body.Supersedes, seq: read.Seq})
 		}
 		var pair struct {
@@ -348,6 +356,9 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 			out.Excluded = append(out.Excluded, read.Digest)
 			continue
 		}
+		if sp >= 0 && !refund {
+			supersedes[sp].payment = true
+		}
 		legs = append(legs, legRead{read: read, capsule: pair.Record, refund: refund})
 	}
 
@@ -356,7 +367,7 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 	superseded := map[string]bool{}
 	for _, l := range legs {
 		for _, sp := range supersedes {
-			if sp.key == l.read.KeyID && sp.target == RefTo(l.read.Digest) && l.read.Seq < sp.seq {
+			if sp.key == l.read.KeyID && sp.target == RefTo(l.read.Digest) && l.read.Seq < sp.seq && (l.refund || sp.payment) {
 				superseded[l.read.Digest] = true
 			}
 		}

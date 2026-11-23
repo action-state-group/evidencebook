@@ -298,6 +298,22 @@ func TestPaymentCheckNotRun(t *testing.T) {
 	assert.Equal(t, ReasonAmount, res.Reason)
 	assert.Len(t, res.NotChecked, 1)
 
+	// Nor by superseding the short payment leg: a refund, or a payer leg
+	// of another terms leg, replaces no payment leg (review of #757).
+	viaRefund := dl.leg(t, false, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(shortRead.Digest)), Supersedes: ptr(RefTo(shortRead.Digest))}, dl.payerMember("settled", "1"))
+	res = dl.check(t, short, shortPayee, viaRefund)
+	assert.Equal(t, PaymentFail, res.Check, "a refund superseding the payment leg does not hide it")
+	assert.Equal(t, ReasonAmount, res.Reason)
+	other := dl.payerMember("settled", "6000")
+	other["terms_ref"] = hex.EncodeToString(make([]byte, 32))
+	viaOther := dl.leg(t, true, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('4'), Supersedes: ptr(RefTo(shortRead.Digest))}, other)
+	res = dl.check(t, short, shortPayee, viaOther)
+	assert.Equal(t, PaymentFail, res.Check, "a leg of another terms leg does not supersede the payment leg")
+	// A later payment leg of this terms leg still replaces it.
+	fixed := dl.leg(t, true, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('1'), Supersedes: ptr(RefTo(shortRead.Digest))}, dl.payerMember("settled", "5000"))
+	res = dl.check(t, short, shortPayee, fixed)
+	assert.Equal(t, []string{dl.offerDigest, digestOf(t, shortPayee), digestOf(t, fixed)}, res.CheckedOver, "the payment leg it supersedes is not read (legs in the order given)")
+
 	// A refund leg its side later superseded is not read.
 	d2 := newPaymentDeal(t, nil, true)
 	p2 := d2.leg(t, true, payerBody(), d2.payerMember("settled", "6000"))
@@ -535,4 +551,11 @@ func TestPaymentCheckRefusesAChainedLeg(t *testing.T) {
 	_, err = PaymentCheck(PaymentInput{Offer: d.offerPair, OfferDigest: d.offerDigest, AcceptorKey: d.seller.key(), Row: "paid_as_agreed",
 		Legs: [][]byte{pending, settled, payee}})
 	assert.ErrorContains(t, err, "carries a chain")
+}
+
+func digestOf(t *testing.T, pair []byte) string {
+	t.Helper()
+	r, err := VerifyBook(pair)
+	require.NoError(t, err)
+	return r.Digest
 }

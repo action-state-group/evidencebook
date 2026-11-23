@@ -283,6 +283,11 @@ func TestPaymentVectors(t *testing.T) {
 		require.NoError(t, err)
 		tiny := &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(shortRead.Digest))}
 		add("short-payment-with-refund-fails", ds, short, ds.leg(t, false, payeeBody(), ds.payeeMember("settled", "5000")), ds.leg(t, false, tiny, ds.payerMember("settled", "1")))
+		viaRefund := &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(shortRead.Digest)), Supersedes: ptr(RefTo(shortRead.Digest))}
+		add("refund-superseding-short-payment-fails", ds, short, ds.leg(t, false, payeeBody(), ds.payeeMember("settled", "5000")), ds.leg(t, false, viaRefund, ds.payerMember("settled", "1")))
+		otherTerms := ds.payerMember("settled", "6000")
+		otherTerms["terms_ref"] = hex.EncodeToString(make([]byte, 32))
+		add("other-terms-leg-superseding-short-payment-fails", ds, short, ds.leg(t, false, payeeBody(), ds.payeeMember("settled", "5000")), ds.leg(t, true, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('4'), Supersedes: ptr(RefTo(shortRead.Digest))}, otherTerms))
 		// A settlement member with terms_ref spelled otherwise is refused:
 		// the refund takes no part (excluded), and the check passes
 		// (evidencebook#559).

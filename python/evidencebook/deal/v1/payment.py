@@ -73,8 +73,9 @@ class PaymentResult:
     reason: str = ""
     checked_over: list[str] = field(default_factory=list)
     excluded: list[str] = field(default_factory=list)
-    not_checked: list[str] = field(default_factory=list)
     settlement: dict | None = None
+    # Last, so positional construction keeps its meaning.
+    not_checked: list[str] = field(default_factory=list)
 
     def value(self) -> dict:
         """The result as Go's ``json.Marshal`` writes it."""
@@ -186,7 +187,12 @@ def payment_check(inp: PaymentInput) -> PaymentResult:
         role_of[key] = _role(party, row["owed_by"])
 
     legs: list[tuple[Any, dict[str, str], bool]] = []
-    supersedes: list[tuple[str, dict, int]] = []
+    # Every settle record's supersedes counts against a refund, whichever
+    # terms leg it answers; a payment leg is replaced only by a later payment
+    # leg of this terms leg (the flag), so neither a refund nor a record of
+    # another terms leg takes a failing payment out of the check
+    # (evidencebook#722).
+    supersedes: list[list[Any]] = []
     for i, raw in enumerate(inp.legs):
         read = verify_book(raw)
         if read.record.block["deal_id"] != r.block["deal_id"]:
@@ -197,8 +203,10 @@ def payment_check(inp: PaymentInput) -> PaymentResult:
         role = role_of.get(read.key_id)
         if role is None:
             raise _bad(f"leg {i} is signed by neither party's key")
+        sp = None
         if body["supersedes"] is not None:
-            supersedes.append((read.key_id, body["supersedes"], read.seq))
+            sp = len(supersedes)
+            supersedes.append([read.key_id, body["supersedes"], read.seq, False])
         members = _record_members(raw)
         chain = members.get("chain")
         if chain is not None and chain.strip() != "null":
@@ -213,12 +221,14 @@ def payment_check(inp: PaymentInput) -> PaymentResult:
         if not refund and (body["leg"] != role or member["leg"] != role + "_observed" or member["sealer_role"] != role):
             out.excluded.append(read.digest)
             continue
+        if sp is not None and not refund:
+            supersedes[sp][3] = True
         legs.append((read, members, refund))
 
     superseded: set[str] = set()
-    for read, _, _ in legs:
-        for key, target, seq in supersedes:
-            if key == read.key_id and target == ref_to(read.digest) and read.seq < seq:
+    for read, _, refund in legs:
+        for key, target, seq, payment in supersedes:
+            if key == read.key_id and target == ref_to(read.digest) and read.seq < seq and (refund or payment):
                 superseded.add(read.digest)
     # A refund or remedy that is a payment needs its own terms leg, which
     # this profile does not define: it is not checked, and the payment's

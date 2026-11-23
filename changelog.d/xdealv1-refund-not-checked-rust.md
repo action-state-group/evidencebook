@@ -3,5 +3,6 @@
 
 - A refund or remedy leg citing the offer's terms leg no longer stops the check with `refund_cites_offer`. That let a 1-unit refund turn a failing payment into "not checked".
 - The check now runs on the payment's own legs. Those refund legs, when not superseded, are listed in the new `PaymentResult::not_checked`, and a status row counts them in `check_not_checked`. This matches Go byte for byte, on the shared vectors.
+- A payment leg is now superseded only by a later payment leg answering the same terms leg. Before, a refund, or a leg of another terms leg, carrying `supersedes` could take the payment leg out of the check, which read "not agreed" instead of failed. A refund is still superseded by any later leg of its side.
 - `REASON_REFUND_CITES_OFFER` is removed.
 - This is a correctness fix to a function the crate already has, not a new port.

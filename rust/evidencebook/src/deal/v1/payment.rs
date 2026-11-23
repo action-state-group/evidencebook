@@ -166,9 +166,13 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         refund: bool,
     }
     let mut legs: Vec<LegRead> = Vec::new();
-    // Every settle record's supersedes counts, whichever terms leg it
-    // answers: a refund replaced by one under its own terms leg is replaced.
-    let mut supersedes: Vec<(String, Ref, u64)> = Vec::new();
+    // Every settle record's supersedes counts against a refund, whichever
+    // terms leg it answers: a refund replaced by one under its own terms leg
+    // is replaced. A payment leg is replaced only by a later payment leg of
+    // this terms leg (the flag), so neither a refund nor a record of another
+    // terms leg can take a failing payment out of the check
+    // (evidencebook#722).
+    let mut supersedes: Vec<(String, Ref, u64, bool)> = Vec::new();
     for (i, raw) in input.legs.iter().enumerate() {
         let read = verify_book(raw)?;
         if read.record.block.deal_id != sent.record.block.deal_id {
@@ -184,9 +188,10 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         let Some(&role) = role_of.get(&read.key_id) else {
             return Err(bad(format!("leg {i} is signed by neither party's key")));
         };
-        if let Some(target) = &body.supersedes {
-            supersedes.push((read.key_id.clone(), target.clone(), read.seq));
-        }
+        let sp = body.supersedes.as_ref().map(|target| {
+            supersedes.push((read.key_id.clone(), target.clone(), read.seq, false));
+            supersedes.len() - 1
+        });
         let capsule = record_of(raw)?;
         // A deal-book record's Capsule has no chain. AAC's verifier reads a
         // chain's supersedes to drop a leg, which would replace the deal's
@@ -214,6 +219,9 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
             out.excluded.push(read.digest.clone());
             continue;
         }
+        if let (Some(sp), false) = (sp, refund) {
+            supersedes[sp].3 = true;
+        }
         legs.push(LegRead {
             read,
             capsule,
@@ -221,12 +229,16 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         });
     }
 
-    // A leg superseded by a later leg of its side is not read.
+    // A leg superseded by a later leg of its side is not read (a payment
+    // leg only by a later payment leg of this terms leg).
     let superseded: HashSet<String> = legs
         .iter()
         .filter(|l| {
-            supersedes.iter().any(|(key, target, seq)| {
-                *key == l.read.key_id && *target == ref_to(&l.read.digest) && l.read.seq < *seq
+            supersedes.iter().any(|(key, target, seq, payment)| {
+                *key == l.read.key_id
+                    && *target == ref_to(&l.read.digest)
+                    && l.read.seq < *seq
+                    && (l.refund || *payment)
             })
         })
         .map(|l| l.read.digest.clone())

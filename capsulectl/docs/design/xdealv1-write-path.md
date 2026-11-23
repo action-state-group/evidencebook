@@ -578,9 +578,10 @@ and on §12's local event list.
      payer leg on a `cancel` check. Only `pay` carries `payment_ref`.
    - A payee leg cites no check, so `CheckActs` does not reach it (it skips an act with no check),
      and the writer holds it to its own rules (item 3).
-   - A refund or a payment remedy has no terms leg of its own (PROFILE §7,
-     `ReasonRefundCitesOffer`). It is sealed and shown, and the help says the payment row's check is
-     not run for it, rather than calling it verified.
+   - A refund or a payment remedy has no terms leg of its own (PROFILE §7). It is sealed and shown,
+     and is not checked: the payment row's check runs on the payment's own legs and lists the refund
+     legs in `not_checked` (evidencebook#722; the plugin's output follows once its pin of the root
+     module moves past #757), rather than calling the refund verified.
 3. **The settlement member, from the deal, not from flags.**
    - **The row.** `--row` names the payment row. It may be left out when the offer has one payment
      row.
