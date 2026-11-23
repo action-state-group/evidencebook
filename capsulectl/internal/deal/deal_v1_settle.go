@@ -690,7 +690,17 @@ func (s *dealSession) settle(ctx context.Context, c *cobra.Command, in settleIn)
 	// beside it, the record does not say who bears the fee, so the refund owed
 	// is not known, and no amount is picked (Sherlock2 on #742; #743).
 	if cb.AmountMinor == nil && cb.Action == "cancel" && cb.CancelledAmountMinor != nil && cb.FeeMinor != nil && *cb.FeeMinor != 0 {
-		return cli.InputError("--check " + in.check + " is a cancel that states a cancellation fee, and the record does not say who bears it, so the refund owed is not known and no refund is built for it (evidencebook#743)")
+		if in.sent && refundFeeGuard {
+			return cli.InputError("--check " + in.check + " is a cancel that states a cancellation fee, and the record does not say who bears it, so the refund owed is not known and no refund is sent for it (evidencebook#743)")
+		}
+		// A refund sent before this rule completes (or is written again)
+		// with the amount its send recorded, which was the full cancelled
+		// amount; that amount is not checked, and the user is told so.
+		if !in.sent {
+			if _, err := fmt.Fprintln(c.ErrOrStderr(), "note: --check "+in.check+" states a cancellation fee and the record does not say who bears it, so this refund's amount (the full cancelled amount its send recorded) is not checked (evidencebook#743)"); err != nil {
+				return err
+			}
+		}
 	}
 	if cb.AmountMinor == nil && cb.Action == "cancel" && cb.CancelledAmountMinor != nil {
 		amount := *cb.CancelledAmountMinor
@@ -1407,3 +1417,7 @@ func (s *dealSession) reconcileV1Settle(ctx context.Context, dealID string, book
 	}
 	return s.v1Events(ctx, dealID)
 }
+
+// refundFeeGuard refuses a new refund send on a cancel check that states a
+// fee; a seam, so a test can make a send as one made before the rule.
+var refundFeeGuard = true

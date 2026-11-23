@@ -642,4 +642,17 @@ func TestARefundOnACancelWithAFeeIsNotBuilt(t *testing.T) {
 	msg := v1Err(t, "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received["digest"].(string), "--sent", "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32))
 	assert.Contains(t, msg, "does not say who bears it")
 	assert.Contains(t, msg, "evidencebook#743")
+
+	// A refund sent before the rule still completes, with the amount its
+	// send recorded, and the user is told that amount is not checked.
+	refundFeeGuard = false
+	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received["digest"].(string), "--sent", "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32))
+	refundFeeGuard = true
+	t.Cleanup(func() { refundFeeGuard = true })
+	refundFile := filepath.Join(t.TempDir(), "refund.json")
+	stdout, stderr := invokeSplit(t, "--profile", "deal", "deal", "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received["digest"].(string), "--status", "settled", "--out", refundFile)
+	assert.Contains(t, stdout, "settled")
+	assert.Contains(t, stderr, "is not checked (evidencebook#743)")
+	_, err := os.Stat(refundFile)
+	require.NoError(t, err, "the in-flight refund completed")
 }
