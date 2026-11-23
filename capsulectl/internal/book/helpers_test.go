@@ -117,7 +117,7 @@ var coreDir = sync.OnceValue(func() string {
 	return strings.TrimSpace(string(out))
 })
 
-// installed is capsulectl with the book plugin installed, as an operator has
+// installed is capsulectl with the book and deal plugins installed, as an operator has
 // it: the core binary in dir, and capsulectl-book in dir/plugins, a trusted
 // plugin root. They are built once per test binary.
 var installed struct {
@@ -144,6 +144,8 @@ func installedCapsulectl(t *testing.T) string {
 		for path, pkg := range map[string]string{
 			filepath.Join(installed.dir, "capsulectl"): "github.com/action-state-group/capsule-cli/cmd/capsulectl",
 			filepath.Join(plugins, "capsulectl-book"):  "github.com/action-state-group/evidencebook/capsulectl/cmd/capsulectl-book",
+			// --receipts checks each receipt with the deal plugin's verify.
+			filepath.Join(plugins, "capsulectl-deal"): "github.com/action-state-group/evidencebook/capsulectl/cmd/capsulectl-deal",
 		} {
 			out, err := exec.Command("go", "build", "-o", path, pkg).CombinedOutput()
 			if err != nil {

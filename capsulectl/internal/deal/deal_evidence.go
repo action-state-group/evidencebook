@@ -493,7 +493,7 @@ func verifyDealCopy(req dealEvidenceRequest, a dealArtifactResponse, checkpointK
 	if value["bundle_kind"] != "evidence-bundle/v2" {
 		return "the artifact is not an evidence-bundle/v2"
 	}
-	if verdict, _ := cli.BundleVerdict(value, directory); verdict != "VALID" {
+	if verdict, _ := nestedBundleVerdict(value, directory); verdict != "VALID" {
 		return "the copy verifies " + verdict + ", not VALID"
 	}
 	_, statement := cli.CheckpointClaim(value)
@@ -508,7 +508,7 @@ func verifyDealCopy(req dealEvidenceRequest, a dealArtifactResponse, checkpointK
 		return "the copy is not of the requested deal's log"
 	}
 	root, _ := signed["root"].(string)
-	size, err := cli.JSONUint(signed["mmr_size"])
+	size, err := JSONUint(signed["mmr_size"])
 	if err != nil {
 		return "the copy's checkpoint states no size"
 	}
@@ -520,7 +520,7 @@ func verifyDealCopy(req dealEvidenceRequest, a dealArtifactResponse, checkpointK
 	}
 	if floor := req.Coverage.MinFreshness; floor != nil {
 		cert, _ := value["completeness_certificate"].(map[string]interface{})
-		last, err := cli.JSONUint(cert["last_seq"])
+		last, err := JSONUint(cert["last_seq"])
 		if err != nil || last < floor.Size {
 			return fmt.Sprintf("the copy covers fewer than the %d records asked for", floor.Size)
 		}
@@ -763,7 +763,7 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 	}
 	cp, _ := b["checkpoint"].(map[string]interface{})
 	root, _ := cp["root"].(string)
-	size, e := cli.JSONUint(cp["mmr_size"])
+	size, e := JSONUint(cp["mmr_size"])
 	if e != nil {
 		return errors.Join(cli.ErrConflict, e)
 	}

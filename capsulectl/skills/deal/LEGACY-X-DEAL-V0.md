@@ -1018,8 +1018,16 @@ confirmed, independent or notarized. When it covers part of the deal, say
 
 Every page opens with its scope (this one exchange, not a record of everything the agent did), whether it is countersigned, and what it does not claim. What
 was verified, the witness signature included, is the page's own verification
-section, said once; anyone can also run `capsulectl verify --bundle
+section, said once; anyone can also run `capsulectl deal verify --bundle
 deal-report.html` on the file.
+
+**Which verbs check a deal page.** The plugin's page writers refuse a copy
+whose deal section does not verify: `deal report --html` (with `--share` too),
+`deal note --kind act --html`, `deal close --html` and `deal compose --html`.
+The core's generic verbs (`capsulectl presentation list`, `presentation
+build`, `bundle --html`) read no deal section, so they can build a page for a
+copy whose deal, or nested deal, fails. To check a deal copy, run `capsulectl
+deal verify --bundle FILE`.
 
 That page is the user's own copy, with nothing withheld. When the user wants
 to send it to someone, make a shared copy instead. Never send the user's own
@@ -1058,10 +1066,10 @@ once: its checkpoint goes to the witness at the next tick of the profile's
 checkpoint cadence (the report's `assurance` says when). In chat, say only
 the report's `say`, which names no witness state until the receipt page can
 show the same one; never say a deal was witnessed when it happened. The receipt
-rides in `bundle.json`, where `capsulectl verify --bundle bundle.json
+rides in `bundle.json`, where `capsulectl deal verify --bundle bundle.json
 --witness-directory DIRECTORY.json` checks it against a witness directory
 the reader chooses. The email copy cannot check itself; the attached page and
-`capsulectl verify --bundle bundle.json` can.
+`capsulectl deal verify --bundle bundle.json` can.
 
 Every receipt, page and email states its own scope on its face: "This
 receipt covers this one exchange. It is not a record of everything the agent

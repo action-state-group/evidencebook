@@ -83,8 +83,8 @@ func v1CopyBundle(t *testing.T, c v1BundleCase) map[string]interface{} {
 		},
 		"records": []interface{}{record},
 		"extensions": map[string]interface{}{
-			"x-deal-v1":             c.Extension,
-			cli.DealReportExtension: map[string]interface{}{"record": pair["record"], "agent_input": input},
+			"x-deal-v1":         c.Extension,
+			DealReportExtension: map[string]interface{}{"record": pair["record"], "agent_input": input},
 		},
 	}
 }
@@ -112,19 +112,19 @@ func TestVerifyBundleRunsTheV1ReportRule(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			value := asFile(t, v1CopyBundle(t, byName[name]))
 
-			// TestMain installs the rule; it is put back whatever happens.
-			t.Cleanup(func() { cli.SetDealV1ReportVerifier(verifyV1Report) })
-			cli.SetDealV1ReportVerifier(nil)
-			entry := cli.DealReportEntry(value, aacbundle.VerificationResult{})
+			// The plugin's rule is the default; it is put back whatever happens.
+			t.Cleanup(func() { dealV1ReportVerifier = verifyV1Report })
+			dealV1ReportVerifier = nil
+			entry := DealReportEntry(value, aacbundle.VerificationResult{})
 			require.Equal(t, "pass", entry["status"], entry)
-			assert.Equal(t, []string{cli.DealV1ReportRuleNotChecked}, entry["findings"])
+			assert.Equal(t, []string{DealV1ReportRuleNotChecked}, entry["findings"])
 
-			cli.SetDealV1ReportVerifier(verifyV1Report)
-			t.Cleanup(func() { cli.SetDealV1ReportVerifier(verifyV1Report) })
-			entry = cli.DealReportEntry(value, aacbundle.VerificationResult{})
+			dealV1ReportVerifier = verifyV1Report
+			t.Cleanup(func() { dealV1ReportVerifier = verifyV1Report })
+			entry = DealReportEntry(value, aacbundle.VerificationResult{})
 			assert.Equal(t, "pass", entry["status"], entry)
 			assert.NotContains(t, entry, "findings")
-			assert.NoError(t, cli.CheckDealStandaloneReport(value))
+			assert.NoError(t, CheckDealStandaloneReport(value))
 		})
 	}
 
@@ -143,24 +143,24 @@ func TestVerifyBundleRunsTheV1ReportRule(t *testing.T) {
 				delete(ext, "book")
 				bundle := v1CopyBundle(t, c)
 				bundle["extensions"].(map[string]interface{})["x-deal-v1"] = ext
-				cli.SetDealV1ReportVerifier(verifyV1Report)
-				t.Cleanup(func() { cli.SetDealV1ReportVerifier(verifyV1Report) })
-				err := cli.CheckDealStandaloneReport(asFile(t, bundle))
+				dealV1ReportVerifier = verifyV1Report
+				t.Cleanup(func() { dealV1ReportVerifier = verifyV1Report })
+				err := CheckDealStandaloneReport(asFile(t, bundle))
 				require.ErrorIs(t, err, cli.ErrBundleInvalid)
-				assert.ErrorContains(t, err, cli.DealV1ReportRuleFailed)
+				assert.ErrorContains(t, err, DealV1ReportRuleFailed)
 				return
 			}
 			value := asFile(t, v1CopyBundle(t, c))
-			cli.SetDealV1ReportVerifier(verifyV1Report)
-			t.Cleanup(func() { cli.SetDealV1ReportVerifier(verifyV1Report) })
-			err := cli.CheckDealStandaloneReport(value)
+			dealV1ReportVerifier = verifyV1Report
+			t.Cleanup(func() { dealV1ReportVerifier = verifyV1Report })
+			err := CheckDealStandaloneReport(value)
 			require.ErrorIs(t, err, cli.ErrBundleInvalid)
 			if name == "wrong sealed_report" {
 				// The core's own pointer check refuses it before the rule runs.
 				assert.ErrorContains(t, err, "sealed_report_unverified")
 				return
 			}
-			assert.ErrorContains(t, err, cli.DealV1ReportRuleFailed)
+			assert.ErrorContains(t, err, DealV1ReportRuleFailed)
 		})
 	}
 }

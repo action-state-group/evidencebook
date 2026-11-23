@@ -482,7 +482,7 @@ func passFailing(t *testing.T, edit func(record map[string]interface{})) map[str
 	value, err := cli.DecodeBundleJSON(raw)
 	require.NoError(t, err)
 	edit(value["records"].([]interface{})[0].(map[string]interface{}))
-	verdict, _ := cli.BundleVerdict(value, nil)
+	verdict, _ := dealBundleVerdict(value)
 	require.Equal(t, "INVALID", verdict, "verify --bundle calls the bundle INVALID")
 	return value
 }
@@ -545,7 +545,7 @@ func TestPresentationPassWrongSigner(t *testing.T) {
 	passIsolate(t)
 	chrome := passChrome(t)
 	value := passFailing(t, func(record map[string]interface{}) { signedByAnotherKey(t, record) })
-	_, report := cli.BundleVerdict(value, nil)
+	_, report := dealBundleVerdict(value)
 	assert.Equal(t, map[string]any{"status": "fail", "findings": []string{"producer_signature_invalid:" + value["root"].(string)}},
 		passJSONValue(t, report["producer_signatures"]), "the signature is what fails")
 	bundle := writeBundle(t, value)

@@ -266,8 +266,8 @@ const v1ListSettledNote = "settled: computed from the agent's records; no act ca
 // deal report's refusal does (#727).
 func v1CheckpointNote(p cli.Profile) string {
 	every := "about every 5m"
-	if cfg, err := p.DealCadence(); err == nil {
-		every = "about every " + cli.ShortDuration(cfg.Interval)
+	if cfg, err := dealCadenceOf(p); err == nil {
+		every = "about every " + ShortDuration(cfg.Interval)
 	}
 	return "not_checkpointed: records since the last checkpoint; the next cadence tick covers it (" + every + "), then list again"
 }

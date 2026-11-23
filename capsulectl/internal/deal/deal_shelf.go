@@ -118,7 +118,7 @@ func (s *dealSession) cadenceOf(ctx context.Context) (*evidencebook.Cadence, cli
 	if s.cadence != nil {
 		return s.cadence, p, nil
 	}
-	cfg, err := p.DealCadence()
+	cfg, err := dealCadenceOf(p)
 	if err != nil {
 		return nil, cli.Profile{}, err
 	}

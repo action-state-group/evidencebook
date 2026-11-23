@@ -296,7 +296,7 @@ func readHistory(t *testing.T, path string) map[string]any {
 }
 
 func historyExt(b map[string]any) map[string]any {
-	return b["extensions"].(map[string]any)[cli.HistorySelectionExtension].(map[string]any)
+	return b["extensions"].(map[string]any)[HistorySelectionExtension].(map[string]any)
 }
 
 // rewrite writes b back to a new file.
@@ -316,7 +316,7 @@ func verifyHistory(t *testing.T, path string) (string, map[string]any, []string,
 	result, err := verifyBundleOutput(t, path)
 	for _, raw := range result["extensions"].([]any) {
 		e := raw.(map[string]any)
-		if e["kind"] == cli.HistorySelectionExtension {
+		if e["kind"] == HistorySelectionExtension {
 			var findings []string
 			for _, f := range e["findings"].([]any) {
 				findings = append(findings, f.(string))
@@ -324,7 +324,7 @@ func verifyHistory(t *testing.T, path string) (string, map[string]any, []string,
 			return result["verdict"].(string), e, findings, err
 		}
 	}
-	t.Fatalf("no %s entry in %v", cli.HistorySelectionExtension, result)
+	t.Fatalf("no %s entry in %v", HistorySelectionExtension, result)
 	return "", nil, nil, err
 }
 
@@ -338,7 +338,7 @@ func TestDealHistoryVerifiesEachPickedDeal(t *testing.T) {
 	d, h := historyStoreWithFiles(t)
 	picked := []string{d.closed, d.private, d.floor}
 	path := h.picked
-	assert.Equal(t, cli.DealAudienceHistory, h.pickedSummary["audience"], "the history copy unless asked otherwise")
+	assert.Equal(t, DealAudienceHistory, h.pickedSummary["audience"], "the history copy unless asked otherwise")
 
 	want := append([]string{}, picked...)
 	sort.Strings(want)
@@ -346,7 +346,7 @@ func TestDealHistoryVerifiesEachPickedDeal(t *testing.T) {
 	require.NoError(t, err, "VALID exits 0: %v", findings)
 	assert.Equal(t, "VALID", verdict, "withheld payloads are not a finding")
 	assert.Empty(t, findings)
-	assert.Equal(t, cli.DealAudienceHistory, entry["audience"])
+	assert.Equal(t, DealAudienceHistory, entry["audience"])
 	assert.Equal(t, []any{"outcome", "action_class"}, entry["not_proven"])
 	assert.Equal(t, "buyer B", entry["recipient"])
 	assert.Equal(t, []any{"recipient", "steps_after_checkpoint"}, entry["holder_stated"])
@@ -359,7 +359,7 @@ func TestDealHistoryVerifiesEachPickedDeal(t *testing.T) {
 		m := raw.(map[string]any)
 		assert.Equal(t, want[i], m["deal_id"])
 		assert.Equal(t, "VALID", m["verdict"], "a history copy verifies VALID on its own")
-		assert.Equal(t, cli.DealAudienceHistory, m["audience"])
+		assert.Equal(t, DealAudienceHistory, m["audience"])
 	}
 
 	b := readHistory(t, path)
@@ -372,8 +372,8 @@ func TestDealHistoryVerifiesEachPickedDeal(t *testing.T) {
 		tb := nested[id].(map[string]any)
 		cert := tb["completeness_certificate"].(map[string]any)
 		assert.Equal(t, cli.DealLogID(id), cert["log_id"], "each nested bundle is its own deal's log")
-		assert.False(t, cli.PayloadDisclosed(tb), "no payload of %s is disclosed", id)
-		assert.Equal(t, map[string]any{"audience": cli.DealAudienceHistory, "deal_id": id}, tb["extensions"].(map[string]any)[dealprofile.Profile], "no report text")
+		assert.False(t, PayloadDisclosed(tb), "no payload of %s is disclosed", id)
+		assert.Equal(t, map[string]any{"audience": DealAudienceHistory, "deal_id": id}, tb["extensions"].(map[string]any)[dealprofile.Profile], "no report text")
 		for _, raw := range tb["records"].([]any) {
 			r := raw.(map[string]any)
 			assert.NotEmpty(t, r["timestamp"], "each record still shows its time")
@@ -387,10 +387,10 @@ func TestDealHistoryVerifiesEachPickedDeal(t *testing.T) {
 	// The sealed selection record is disclosed and is what the file carries.
 	sealed := b["disclosures"].(map[string]any)[ext["selection_record"].(string)].(map[string]any)["agent_input"].(map[string]any)
 	assert.Equal(t, "history_selection", sealed["type"])
-	assert.Equal(t, cli.DealAudienceHistory, sealed["audience"])
+	assert.Equal(t, DealAudienceHistory, sealed["audience"])
 	assert.Equal(t, "buyer B", sealed["recipient"])
 	assert.Equal(t, ext["selection"], sealed["selection"])
-	assert.Equal(t, cli.HistoryLogPrefix+sealed["nonce"].(string), b["completeness_certificate"].(map[string]any)["log_id"], "the History's own log")
+	assert.Equal(t, HistoryLogPrefix+sealed["nonce"].(string), b["completeness_certificate"].(map[string]any)["log_id"], "the History's own log")
 	assert.Len(t, b["records"], 1, "its selection is the only record on it")
 }
 
@@ -402,7 +402,7 @@ func TestDealHistoriesShareNoLog(t *testing.T) {
 	for _, path := range []string{h.picked, h.other, h.closed, h.closedKeep} {
 		b := readHistory(t, path)
 		log := b["completeness_certificate"].(map[string]any)["log_id"].(string)
-		assert.True(t, strings.HasPrefix(log, cli.HistoryLogPrefix), log)
+		assert.True(t, strings.HasPrefix(log, HistoryLogPrefix), log)
 		assert.False(t, logs[log], "log %s carries two Histories", log)
 		logs[log] = true
 		require.Len(t, b["records"], 1, "no other selection, not even withheld")
@@ -773,7 +773,7 @@ func TestDealHistoryRefusesAnUnpickedDeal(t *testing.T) {
 		raceSampleKey(t, t.Name())
 		b := readHistory(t, path)
 		ext := historyExt(b)
-		ext["selection"] = append(ext["selection"].([]any), map[string]any{"deal_id": d.other, "bundle_digest": cli.JCSDigest(unpicked), "steps_after_checkpoint": 0})
+		ext["selection"] = append(ext["selection"].([]any), map[string]any{"deal_id": d.other, "bundle_digest": JCSDigest(unpicked), "steps_after_checkpoint": 0})
 		ext["deals"].(map[string]any)[d.other] = unpicked
 		_, _, findings, err := verifyHistory(t, rewrite(t, b))
 		require.ErrorIs(t, err, cli.ErrBundleInvalid)
@@ -784,7 +784,7 @@ func TestDealHistoryRefusesAnUnpickedDeal(t *testing.T) {
 		b := readHistory(t, path)
 		ext := historyExt(b)
 		sealed := b["disclosures"].(map[string]any)[ext["selection_record"].(string)].(map[string]any)["agent_input"].(map[string]any)
-		sealed["selection"] = append(sealed["selection"].([]any), map[string]any{"deal_id": d.other, "bundle_digest": cli.JCSDigest(unpicked), "steps_after_checkpoint": 0})
+		sealed["selection"] = append(sealed["selection"].([]any), map[string]any{"deal_id": d.other, "bundle_digest": JCSDigest(unpicked), "steps_after_checkpoint": 0})
 		ext["selection"] = sealed["selection"]
 		ext["deals"].(map[string]any)[d.other] = unpicked
 		verdict, _, findings, err := verifyHistory(t, rewrite(t, b))
@@ -895,7 +895,7 @@ func TestDealHistoryRefusesWhatIsNotAPickedDeal(t *testing.T) {
 func TestDealViewForbidsAHistory(t *testing.T) {
 	var m map[string]interface{}
 	require.NoError(t, json.Unmarshal(DealViewManifestJSON, &m))
-	assert.True(t, cli.ManifestSet(cli.ManifestMap(m, "forbids")["extensions"])[cli.HistorySelectionExtension])
+	assert.True(t, cli.ManifestSet(cli.ManifestMap(m, "forbids")["extensions"])[HistorySelectionExtension])
 }
 
 // sealHistory writes a History the holder seals for recipient over any
@@ -913,7 +913,7 @@ func sealHistory(t *testing.T, audience, recipient string, selection []any, deal
 	copy(sel, selection)
 	b, id, err := s.historyBundle(t.Context(), audience, recipient, sel)
 	require.NoError(t, err)
-	b["extensions"] = map[string]interface{}{cli.HistorySelectionExtension: map[string]interface{}{"selection_record": id, "selection": sel, "deals": deals}}
+	b["extensions"] = map[string]interface{}{HistorySelectionExtension: map[string]interface{}{"selection_record": id, "selection": sel, "deals": deals}}
 	return rewrite(t, b)
 }
 
@@ -991,14 +991,14 @@ func TestDealHistoryChecksItsOwnParts(t *testing.T) {
 	t.Run("a selection entry malformed, sealed by the holder", func(t *testing.T) {
 		raceSampleKey(t, t.Name())
 		member := historyExt(readHistory(t, path))["deals"].(map[string]any)[d.closed]
-		digest := cli.JCSDigest(member.(map[string]any))
+		digest := JCSDigest(member.(map[string]any))
 		for name, e := range map[string]map[string]any{
 			"digest":                    {"deal_id": d.closed, "bundle_digest": "not-a-digest", "steps_after_checkpoint": 0},
 			"no steps_after_checkpoint": {"deal_id": d.closed, "bundle_digest": digest},
 			"negative steps":            {"deal_id": d.closed, "bundle_digest": digest, "steps_after_checkpoint": -1},
 			"steps as text":             {"deal_id": d.closed, "bundle_digest": digest, "steps_after_checkpoint": "1"},
 		} {
-			edited := sealHistory(t, cli.DealAudienceHistory, "buyer B", []any{e}, map[string]any{d.closed: member})
+			edited := sealHistory(t, DealAudienceHistory, "buyer B", []any{e}, map[string]any{d.closed: member})
 			_, _, findings, err := verifyHistory(t, edited)
 			require.ErrorIs(t, err, cli.ErrBundleInvalid, name)
 			assert.Equal(t, []string{"selection_entry_malformed:" + d.closed, "deal_not_in_selection:" + d.closed}, findings, name)
@@ -1008,7 +1008,7 @@ func TestDealHistoryChecksItsOwnParts(t *testing.T) {
 		raceSampleKey(t, t.Name())
 		b := readHistory(t, path)
 		ext := historyExt(b)
-		edited := sealHistory(t, cli.DealAudienceHistory, "", ext["selection"].([]any), ext["deals"].(map[string]any))
+		edited := sealHistory(t, DealAudienceHistory, "", ext["selection"].([]any), ext["deals"].(map[string]any))
 		_, entry, findings, err := verifyHistory(t, edited)
 		require.ErrorIs(t, err, cli.ErrBundleInvalid)
 		assert.Equal(t, []string{"selection_recipient_missing"}, findings)
@@ -1024,7 +1024,7 @@ func TestDealHistoryChecksItsOwnParts(t *testing.T) {
 	})
 	t.Run("the keep copy, its digest sealed under history", func(t *testing.T) {
 		raceSampleKey(t, t.Name())
-		edited := sealHistory(t, cli.DealAudienceHistory, "buyer B", []any{map[string]any{"deal_id": d.closed, "bundle_digest": cli.JCSDigest(keep), "steps_after_checkpoint": 0}}, map[string]any{d.closed: keep})
+		edited := sealHistory(t, DealAudienceHistory, "buyer B", []any{map[string]any{"deal_id": d.closed, "bundle_digest": JCSDigest(keep), "steps_after_checkpoint": 0}}, map[string]any{d.closed: keep})
 		_, _, findings, err := verifyHistory(t, edited)
 		require.ErrorIs(t, err, cli.ErrBundleInvalid)
 		assert.Equal(t, []string{"deal_audience_not_selected:" + d.closed, "deal_payload_disclosed:" + d.closed}, findings)
@@ -1039,7 +1039,7 @@ func TestDealHistoryChecksItsOwnParts(t *testing.T) {
 		_, present := member["disclosures"]
 		require.False(t, present)
 		member["disclosures"] = map[string]any{first: keep["disclosures"].(map[string]any)[first]}
-		edited := sealHistory(t, cli.DealAudienceHistory, "buyer B", []any{map[string]any{"deal_id": d.closed, "bundle_digest": cli.JCSDigest(member), "steps_after_checkpoint": 0}}, map[string]any{d.closed: member})
+		edited := sealHistory(t, DealAudienceHistory, "buyer B", []any{map[string]any{"deal_id": d.closed, "bundle_digest": JCSDigest(member), "steps_after_checkpoint": 0}}, map[string]any{d.closed: member})
 		_, entry, findings, err := verifyHistory(t, edited)
 		require.ErrorIs(t, err, cli.ErrBundleInvalid)
 		assert.Equal(t, []string{"deal_payload_disclosed:" + d.closed}, findings)
@@ -1048,7 +1048,7 @@ func TestDealHistoryChecksItsOwnParts(t *testing.T) {
 	t.Run("a selection sealed for the other party", func(t *testing.T) {
 		raceSampleKey(t, t.Name())
 		member := historyExt(readHistory(t, path))["deals"].(map[string]any)[d.closed].(map[string]any)
-		edited := sealHistory(t, cli.DealAudienceCounterparty, "buyer B", []any{map[string]any{"deal_id": d.closed, "bundle_digest": cli.JCSDigest(member), "steps_after_checkpoint": 0}}, map[string]any{d.closed: member})
+		edited := sealHistory(t, cli.DealAudienceCounterparty, "buyer B", []any{map[string]any{"deal_id": d.closed, "bundle_digest": JCSDigest(member), "steps_after_checkpoint": 0}}, map[string]any{d.closed: member})
 		_, entry, findings, err := verifyHistory(t, edited)
 		require.ErrorIs(t, err, cli.ErrBundleInvalid)
 		assert.Equal(t, []string{"selection_audience_not_history", "deal_audience_not_selected:" + d.closed}, findings)
@@ -1058,8 +1058,10 @@ func TestDealHistoryChecksItsOwnParts(t *testing.T) {
 
 // A History is a bundle a presentation module can match: `presentation
 // list` says it verified and names its extension, and `presentation build`
-// writes its page. One whose nested deal fails is neither listed as verified
-// nor given a page.
+// writes its page. One whose nested deal fails is INVALID through the
+// plugin's verify, which reads the History; the core's presentation verbs
+// read no deal format since capsule-cli#609 (they pass no reader), so they
+// judge only its neutral parts (evidencebook#735).
 func TestDealHistoryHasAPage(t *testing.T) {
 	d, h := historyStoreWithFiles(t)
 	path := h.picked
@@ -1071,7 +1073,7 @@ func TestDealHistoryHasAPage(t *testing.T) {
 	descriptor := list["descriptor"].(map[string]any)
 	assert.Equal(t, true, descriptor["verified"])
 	assert.Equal(t, "evidence-bundle/v2", descriptor["bundle_kind"])
-	assert.Equal(t, []any{cli.HistorySelectionExtension}, descriptor["extensions"])
+	assert.Equal(t, []any{HistorySelectionExtension}, descriptor["extensions"])
 	page := filepath.Join(t.TempDir(), "page.html")
 	out, err = invoke(t, "", "presentation", "build", "--bundle", path, "--out", page)
 	require.NoError(t, err, out)
@@ -1082,14 +1084,8 @@ func TestDealHistoryHasAPage(t *testing.T) {
 	delete(r, "signature")
 	delete(r, "key_id")
 	bad := rewrite(t, b)
-	out, _ = invoke(t, "", "presentation", "list", "--bundle", bad)
-	require.NoError(t, json.Unmarshal([]byte(out), &list), out)
-	assert.Equal(t, false, list["descriptor"].(map[string]any)["verified"], "a History verify --bundle fails is not listed as verified")
-	refused := filepath.Join(t.TempDir(), "refused.html")
-	out, err = invoke(t, "", "presentation", "build", "--bundle", bad, "--out", refused)
-	require.Error(t, err)
-	assert.Contains(t, out+err.Error(), "no page written")
-	assert.NoFileExists(t, refused)
+	_, err = invoke(t, "", "verify", "--bundle", bad)
+	require.ErrorIs(t, err, cli.ErrBundleInvalid, "the plugin's verify reads the History and its nested deal")
 }
 
 // A History counts deals, not records: its sealed selection names each

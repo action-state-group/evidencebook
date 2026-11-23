@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
-	"github.com/action-state-group/capsule-cli/cli"
 )
 
 // A check carries, beside what is about to happen, the scalars a rules
@@ -148,8 +147,8 @@ func changedFields(list []string, a, b map[string]interface{}) int {
 }
 
 func jcsEqual(x, y interface{}) bool {
-	a, errA := cli.JCSOf(x)
-	b, errB := cli.JCSOf(y)
+	a, errA := JCSOf(x)
+	b, errB := JCSOf(y)
 	// A value that cannot be canonicalized never equals another.
 	return errA == nil && errB == nil && bytes.Equal(a, b)
 }

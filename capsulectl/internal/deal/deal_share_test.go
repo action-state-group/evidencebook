@@ -212,7 +212,7 @@ func TestDealShareCounterpartyCarriesNoPrivateValues(t *testing.T) {
 	assertScope(t, html, ext)
 	assert.Contains(t, html, "What the agent did is the agent's own report", "what was done is not independently confirmed")
 	assert.Contains(t, html, "sealed on the agent's device, where they happened", "the conversation is rightly self-attested")
-	assert.Equal(t, "capsulectl verify --bundle receipt.html", ext["verify_command"])
+	assert.Equal(t, "capsulectl deal verify --bundle receipt.html", ext["verify_command"])
 	assert.NotContains(t, ext, "asked_opening")
 	assert.Contains(t, html, "What this does not claim")
 	assert.NotContains(t, html, "Sealed by my agent", "no witness line of the deal view's own (capsule-cli#341)")

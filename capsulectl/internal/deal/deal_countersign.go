@@ -177,7 +177,7 @@ func (s *dealSession) dealBundleFrom(raw []byte, dealID string, events []sealedE
 	if err = cli.VerifyProducedBundle(b, true); err != nil {
 		return nil, notThis("it does not verify")
 	}
-	if err = cli.CheckDealStandaloneReport(b); err != nil {
+	if err = CheckDealStandaloneReport(b); err != nil {
 		return nil, notThis("its report does not verify")
 	}
 	cert, _ := b["completeness_certificate"].(map[string]interface{})

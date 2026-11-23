@@ -20,7 +20,7 @@ func main() {
 	deal.InstallDealHooks()
 	// The error line on stderr, and an error object on stdout when the
 	// command printed nothing (capsule-cli#345).
-	code := cli.Run(ctx, cli.NewPluginCommand(deal.DealMetadata, deal.DealCommands()...), "capsulectl-deal")
+	code := cli.Run(ctx, deal.WithDealVerify(cli.NewPluginCommand(deal.DealMetadata, deal.DealCommands()...)), "capsulectl-deal")
 	cancel()
 	os.Exit(code)
 }

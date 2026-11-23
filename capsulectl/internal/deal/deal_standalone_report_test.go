@@ -149,7 +149,7 @@ func TestAStandaloneReportIsCheckedWhole(t *testing.T) {
 			sectionOf(c)["agent_input"].(map[string]any)["report"].(map[string]any)["scope"] = "edited"
 		}),
 		"4: another deal":            resealed(t, b, key, func(in map[string]any) { in["deal_id"] = "deal-0000000000000000" }),
-		"4: not a copy audience":     resealed(t, b, key, func(in map[string]any) { in["audience"] = cli.DealAudienceHistory }),
+		"4: not a copy audience":     resealed(t, b, key, func(in map[string]any) { in["audience"] = DealAudienceHistory }),
 		"5: another checkpoint root": resealed(t, b, key, func(in map[string]any) { in["deal_checkpoint"].(map[string]any)["root"] = strings.Repeat("0", 64) }),
 		"5: another checkpoint size": resealed(t, b, key, func(in map[string]any) { in["deal_checkpoint"].(map[string]any)["mmr_size"] = json.Number("1") }),
 		"5: another log": resealed(t, b, key, func(in map[string]any) {
@@ -255,7 +255,7 @@ func TestTheShareRecordListsTheStandaloneReport(t *testing.T) {
 	b, err := cli.DecodeBundleJSON([]byte(raw))
 	require.NoError(t, err)
 	reportID := standaloneOf(t, b)["record"].(map[string]any)["capsule_id"].(string)
-	record, err := cli.DisclosureRecord(b)
+	record, err := dealDisclosureRecord(b)
 	require.NoError(t, err)
 	assert.Contains(t, record["revealed"], reportID)
 }
@@ -495,9 +495,9 @@ func TestAStandaloneCopyHoldsNoReportRecord(t *testing.T) {
 	dealRun(t, "report", "--deal", id, "--bundle", path)
 	b, err := cli.DecodeBundleJSON(mustRead(t, path))
 	require.NoError(t, err)
-	require.NoError(t, cli.CheckDealStandaloneReport(b), "the copy as written")
+	require.NoError(t, CheckDealStandaloneReport(b), "the copy as written")
 	b["records"] = append(b["records"].([]any), map[string]any{"capsule_id": strings.Repeat("e", 64), "action_id": dealprofile.ReportActionID})
-	assert.ErrorIs(t, cli.CheckDealStandaloneReport(b), cli.ErrBundleInvalid)
+	assert.ErrorIs(t, CheckDealStandaloneReport(b), cli.ErrBundleInvalid)
 }
 
 // verify --bundle's as_of line on real copies under a witnessed cadence:
@@ -541,7 +541,7 @@ func TestTheAsOfLineOnWitnessedCopies(t *testing.T) {
 
 	b, err := cli.DecodeBundleJSON(mustRead(t, all))
 	require.NoError(t, err)
-	receipt := b["extensions"].(map[string]any)[cli.DealCadenceExtension].(map[string]any)["cadence"].(map[string]any)["witnesses"].([]any)[0].(map[string]any)
+	receipt := b["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any)["cadence"].(map[string]any)["witnesses"].([]any)[0].(map[string]any)
 	sig := receipt["receipt_b64"].(string)
 	flip := map[bool]string{true: "A", false: "B"}[sig[len(sig)-3] != 'A']
 	receipt["receipt_b64"] = sig[:len(sig)-3] + flip + sig[len(sig)-2:]

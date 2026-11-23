@@ -368,7 +368,7 @@ func baselineReportOfCopy(t *testing.T, id string, inLog bool, bundlePath string
 	require.NoError(t, err)
 	b, err := cli.DecodeBundleJSON(raw)
 	require.NoError(t, err)
-	report, capsuleID, form := cli.DealSealedReport(b)
+	report, capsuleID, form := DealSealedReport(b)
 	require.NotNil(t, report, "the copy carries its sealed report")
 	want := "standalone"
 	if inLog {

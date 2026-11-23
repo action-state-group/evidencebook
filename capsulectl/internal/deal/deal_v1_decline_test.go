@@ -3,11 +3,12 @@ package deal
 import (
 	"context"
 	"errors"
-	evidencebook "github.com/action-state-group/evidencebook"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	evidencebook "github.com/action-state-group/evidencebook"
 
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"

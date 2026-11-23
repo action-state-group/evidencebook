@@ -153,7 +153,7 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 		}
 		ext = map[string]interface{}{dealprofile.ReportPointer: id}
 	}
-	extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, dealprofile.Profile: ext}
+	extensions := map[string]interface{}{DealCadenceExtension: cadence, dealprofile.Profile: ext}
 	if standalone != nil {
 		extensions[dealprofile.ReportExtension] = standalone
 	}
@@ -231,7 +231,7 @@ func (s *dealSession) dealAssembleAtCheckpoint(ctx context.Context, events []sea
 	}
 	// A witness receipt already held for this checkpoint, re-verified now
 	// under the profile's pinned witness key, rides in checkpoint.witnesses,
-	// where `capsulectl verify --bundle --witness-directory` checks it. The
+	// where `capsulectl deal verify --bundle --witness-directory` checks it. The
 	// report itself never contacts the witness. It carries nothing private,
 	// so a shared copy keeps it too.
 	entry, err := s.heldWitnessReceipt(ctx, statement)
@@ -413,7 +413,7 @@ func witnessCoverage(events []sealedEvent, cadence map[string]interface{}) map[s
 	if cadence["state"] != "witnessed" || cadence["extent"] != "part" {
 		return nil
 	}
-	k, err := cli.JSONUint(cadence["steps_witnessed"])
+	k, err := JSONUint(cadence["steps_witnessed"])
 	if err != nil || k == 0 || int(k) >= len(events) {
 		return nil
 	}
@@ -512,7 +512,7 @@ func journeyPageWords(w cli.Wording) map[string]string {
 }
 
 func dealReportHTML(b map[string]interface{}, countersign dealCountersignView, verifyCommand string, w cli.Wording) (string, error) {
-	if err := cli.PageGate(b); err != nil {
+	if err := dealCopyPageGate(b); err != nil {
 		return "", err
 	}
 	module, err := dealViewModule()
@@ -600,7 +600,7 @@ func dealPageTitle(b map[string]interface{}, openings map[string]interface{}) st
 // input, in the log or standalone, or (a bundle written before reports were
 // sealed) the extension.
 func dealPageReport(b map[string]interface{}) map[string]interface{} {
-	report, _, _ := cli.DealSealedReport(b)
+	report, _, _ := DealSealedReport(b)
 	return report
 }
 

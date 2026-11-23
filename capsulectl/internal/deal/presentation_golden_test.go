@@ -152,7 +152,7 @@ func TestPresentationGoldens(t *testing.T) {
 			require.NoError(t, err)
 			bundle, err := cli.DecodeBundleJSON(raw)
 			require.NoError(t, err)
-			verdict, _ := cli.BundleVerdict(bundle, nil)
+			verdict, _ := dealBundleVerdict(bundle)
 			require.Equal(t, meta.Verify, verdict, "verify --bundle's verdict on the fixture")
 			require.Equal(t, "written", meta.Page, "every fixture has a page")
 
@@ -233,7 +233,7 @@ func rerenderPresentationPage(t *testing.T, dir string, meta presentationMeta, b
 	t.Helper()
 	switch meta.Rerender {
 	case "page":
-		if err := cli.PageGate(bundle); err != nil {
+		if err := dealCopyPageGate(bundle); err != nil {
 			return "", err
 		}
 		return emitter.EmitEvidenceGraphHTML(bundle, pageruntime.IIFE)

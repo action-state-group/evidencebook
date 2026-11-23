@@ -103,7 +103,7 @@ func TestAClosedSaleRefusesToReuseARegistration(t *testing.T) {
 	assert.Equal(t, "VALID", res["verdict"])
 	entries, _ := saleSection(bundle)
 	require.Len(t, entries, 1)
-	assert.Equal(t, cli.SaleThreadNeverOpened, entries[0].(map[string]any)["member"])
+	assert.Equal(t, SaleThreadNeverOpened, entries[0].(map[string]any)["member"])
 }
 
 // checkSaleProfile runs the profile checker on a sale's exported log.

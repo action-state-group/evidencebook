@@ -102,6 +102,14 @@ render receipt-rebuilt.html
 check "deal-receipt-rebuilt: no console.error, uncaught error or unhandled rejection" no_render_errors receipt-rebuilt.html.dom
 check "deal-receipt-rebuilt: the page says the bundle verified" contains receipt-rebuilt.html.dom 'class="cv-pill" data-verify="verified"'
 check "deal-receipt-rebuilt: the page ran every check" no_check_unrun receipt-rebuilt.html.dom
+# The core's page verbs read no deal section on capsule-cli rc50 (#609), so
+# the page must say so on its face: each deal kind is listed as covered by
+# the file's fingerprint and not interpreted by the page's checks (Sherlock2's
+# condition for evidencebook#809). A regression here would show a failing
+# deal as a clean page.
+for kind in x-deal-v0 x-deal-report/v0; do
+  check "deal-receipt-rebuilt: the page lists $kind as not interpreted" contains receipt-rebuilt.html.dom "data-extension-id=\"$kind\" data-integrity=\"covered\" data-semantics=\"uninterpreted\""
+done
 
 # deal-receipt-edited: one line of the signed report edited. The bundle's own
 # records still verify, so the page's runtime runs the deal view, which
@@ -116,10 +124,8 @@ check "deal-receipt-edited: the page says the text could not be checked" contain
 check "deal-receipt-edited: the page shows no edited line" lacks receipt-edited.html.dom '<p class="deal-note">A line nobody sealed.</p>'
 check "deal-receipt-edited: no \"not checked\" label" lacks receipt-edited.html.dom 'data-unchecked="x-deal-v0"'
 # The deal-format verdicts come from the plugin (`capsulectl deal verify
-# --bundle`): capsule-cli main's core no longer checks a deal's report
-# (capsule-cli#609). The plugin's verify is the core verify of the capsule-cli
-# it is pinned to, which still has those checks, until evidencebook#735 makes
-# them the plugin's own; once the pin passes #609 these checks fail until then.
+# --bundle`), whose own reader holds the deal checks (evidencebook#735): the
+# core no longer checks a deal's report (capsule-cli#609).
 capsulectl deal verify --bundle receipt-edited.html >receipt-edited-verify.json 2>/dev/null && verdict=0 || verdict=$?
 check "deal-receipt-edited: deal verify --bundle: INVALID, exit 1" test "$verdict" -eq 1
 check "deal-receipt-edited: deal verify --bundle names the report that does not verify" contains receipt-edited-verify.json 'sealed_report_unverified'

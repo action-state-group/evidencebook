@@ -2,10 +2,16 @@ package book
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
@@ -88,7 +94,64 @@ func readReceipts(path string) (*report.Receipts, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &report.Receipts{Module: module, Deals: deals}, nil
+	return &report.Receipts{Module: module, Deals: deals, Gate: dealVerify}, nil
+}
+
+// receiptVerifyTimeout bounds one receipt's `capsulectl deal verify`.
+const receiptVerifyTimeout = 2 * time.Minute
+
+// dealVerify is each carried receipt's own check: the deal plugin's
+// `capsulectl deal verify --bundle` must call it VALID (evidencebook#735).
+// capsule-cli's page gate reads no deal section since rc50 (#609), and this
+// plugin links no deal code, so it calls the deal plugin through the command
+// line, by the capsulectl that launched it (CAPSULECTL_BIN, else capsulectl
+// on PATH). Only --receipts needs the deal plugin installed.
+func dealVerify(bundle []byte) error {
+	dir, err := os.MkdirTemp("", "capsulectl-book-receipt-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "receipt.json")
+	if err := os.WriteFile(path, bundle, 0o600); err != nil {
+		return err
+	}
+	bin := os.Getenv("CAPSULECTL_BIN")
+	if bin == "" {
+		bin = "capsulectl"
+	}
+	// A verify that hangs must not hang the page build.
+	ctx, cancel := context.WithTimeout(context.Background(), receiptVerifyTimeout)
+	defer cancel()
+	out, runErr := exec.CommandContext(ctx, bin, "deal", "verify", "--bundle", path).Output()
+	var result struct {
+		Verdict      string `json:"verdict"`
+		ReaderClaims []struct {
+			Status   string   `json:"status"`
+			Findings []string `json:"findings"`
+		} `json:"reader_claims"`
+	}
+	if json.Unmarshal(out, &result) != nil || result.Verdict == "" {
+		why := "it printed no verdict"
+		if runErr != nil {
+			why = runErr.Error()
+		}
+		return cli.InputError("capsulectl deal verify --bundle could not check the receipt (" + why + "): --receipts needs the deal plugin installed")
+	}
+	if result.Verdict != "VALID" {
+		var findings []string
+		for _, c := range result.ReaderClaims {
+			if c.Status == "fail" {
+				findings = append(findings, c.Findings...)
+			}
+		}
+		why := ""
+		if len(findings) > 0 {
+			why = " (" + strings.Join(findings, ", ") + ")"
+		}
+		return cli.InputError("capsulectl deal verify --bundle calls it " + strings.ToUpper(result.Verdict) + why + "; check it with that command")
+	}
+	return nil
 }
 
 // entryKeysOnce refuses a JSON object that is not an object, names a key

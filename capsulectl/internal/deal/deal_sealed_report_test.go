@@ -137,7 +137,7 @@ func TestDealReportEntryOfABundleBeforeSealing(t *testing.T) {
 		"records":    []interface{}{map[string]interface{}{"capsule_id": strings.Repeat("ab", 32), "action_id": "deal-0123456789abcdef/1"}},
 		"extensions": map[string]interface{}{dealprofile.Profile: map[string]interface{}{"did_line": "A line from before reports were sealed."}},
 	}
-	entry := cli.DealReportEntry(value, aacbundle.VerificationResult{})
+	entry := DealReportEntry(value, aacbundle.VerificationResult{})
 	assert.Equal(t, "uninterpreted", entry["status"])
 	assert.Equal(t, []string{"extension_unbound"}, entry["findings"])
 }

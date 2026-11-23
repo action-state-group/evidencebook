@@ -221,8 +221,8 @@ func sameEffectiveIntent(a, b dealIntent) bool {
 }
 
 func termsEqual(a, b dealTerms) bool {
-	ja, errA := cli.JCSOf(termsBody(a))
-	jb, errB := cli.JCSOf(termsBody(b))
+	ja, errA := JCSOf(termsBody(a))
+	jb, errB := JCSOf(termsBody(b))
 	return errA == nil && errB == nil && string(ja) == string(jb)
 }
 

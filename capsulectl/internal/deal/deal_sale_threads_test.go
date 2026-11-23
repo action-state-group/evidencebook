@@ -44,7 +44,7 @@ func verifySale(t *testing.T, b map[string]any) (string, []string) {
 	result, _ := verifyBundleOutput(t, writeBundle(t, b))
 	var findings []string
 	for _, x := range result["extensions"].([]any) {
-		if e := x.(map[string]any); e["kind"] == cli.DealSaleExtension {
+		if e := x.(map[string]any); e["kind"] == DealSaleExtension {
 			for _, f := range e["findings"].([]any) {
 				findings = append(findings, f.(string))
 			}
@@ -56,7 +56,7 @@ func verifySale(t *testing.T, b map[string]any) (string, []string) {
 func saleSection(b map[string]any) (entries []any, threads map[string]any) {
 	exts := b["extensions"].(map[string]any)
 	entries = exts[dealprofile.Profile].(map[string]any)["sale_threads"].([]any)
-	threads = exts[cli.DealSaleExtension].(map[string]any)["threads"].(map[string]any)
+	threads = exts[DealSaleExtension].(map[string]any)["threads"].(map[string]any)
 	return entries, threads
 }
 
@@ -174,7 +174,7 @@ func TestATwoThreadSaleBundleVerifiesWithThreadCompleteness(t *testing.T) {
 	for i, id := range []string{a, b} {
 		e := entries[i].(map[string]any)
 		assert.Equal(t, id, e["thread_id"], "in seal order")
-		assert.Equal(t, cli.SaleThreadPresent, e["member"])
+		assert.Equal(t, SaleThreadPresent, e["member"])
 	}
 	// The certificate covers the whole sale log: root, task authority and
 	// both registrations.
@@ -205,7 +205,7 @@ func TestASaleBundleThatDoesNotBindItsThreadsIsNotValid(t *testing.T) {
 		"B withheld (missing)": {func(x map[string]any) {
 			entries, threads := saleSection(x)
 			e := entries[1].(map[string]any)
-			e["member"] = cli.SaleThreadMissing
+			e["member"] = SaleThreadMissing
 			delete(e, "nonce")
 			delete(e, "thread_id")
 			delete(threads, b)
@@ -216,7 +216,7 @@ func TestASaleBundleThatDoesNotBindItsThreadsIsNotValid(t *testing.T) {
 		}, "INVALID", "carried_threads_are_not_the_present_ones"},
 		"B carried but listed never_opened": {func(x map[string]any) {
 			entries, _ := saleSection(x)
-			entries[1].(map[string]any)["member"] = cli.SaleThreadNeverOpened
+			entries[1].(map[string]any)["member"] = SaleThreadNeverOpened
 		}, "INVALID", "carried_threads_are_not_the_present_ones"},
 		"an opening that does not match": {func(x map[string]any) {
 			entries, _ := saleSection(x)
@@ -226,7 +226,7 @@ func TestASaleBundleThatDoesNotBindItsThreadsIsNotValid(t *testing.T) {
 			exts := x["extensions"].(map[string]any)
 			sec := exts[dealprofile.Profile].(map[string]any)
 			sec["sale_threads"] = sec["sale_threads"].([]any)[:1]
-			delete(exts[cli.DealSaleExtension].(map[string]any)["threads"].(map[string]any), b)
+			delete(exts[DealSaleExtension].(map[string]any)["threads"].(map[string]any), b)
 		}, "INVALID", "sale_threads_do_not_match_the_registrations"},
 		"threads carried under each other's ids": {func(x map[string]any) {
 			_, threads := saleSection(x)
@@ -263,7 +263,7 @@ func TestASaleBundleThatDoesNotBindItsThreadsIsNotValid(t *testing.T) {
 	own := filepath.Join(t.TempDir(), "own.json")
 	dealRun(t, "report", "--deal", a, "--bundle", own)
 	thread := decodeExact(t, mustRead(t, own))
-	thread["extensions"].(map[string]any)[cli.DealSaleExtension] = map[string]any{"threads": map[string]any{}}
+	thread["extensions"].(map[string]any)[DealSaleExtension] = map[string]any{"threads": map[string]any{}}
 	verdict, findings := verifySale(t, thread)
 	assert.Equal(t, "INVALID", verdict)
 	assert.Contains(t, findings, "not_a_sale_bundle")
@@ -310,7 +310,7 @@ func TestABuyersCopyCarriesNothingOfTheSalesThreads(t *testing.T) {
 	for id, buyer := range map[string]string{a: "buyer A", b: "buyer B"} {
 		_, shared := sharedCopy(t, id, cli.DealAudienceCounterparty, buyer)
 		copies[id] = shared
-		for _, word := range []string{"sale_threads", cli.DealSaleExtension, "sale_authority_opening", "thread_ref_commitment", saleID} {
+		for _, word := range []string{"sale_threads", DealSaleExtension, "sale_authority_opening", "thread_ref_commitment", saleID} {
 			assert.NotContains(t, shared, word, id)
 		}
 	}
@@ -380,7 +380,7 @@ func TestAnOpenStoppedAfterItsKeyRowIsTakenUpAgain(t *testing.T) {
 	assert.Equal(t, "VALID", res["verdict"])
 	entries, threads := saleSection(bundle)
 	require.Len(t, entries, 1)
-	assert.Equal(t, cli.SaleThreadPresent, entries[0].(map[string]any)["member"])
+	assert.Equal(t, SaleThreadPresent, entries[0].(map[string]any)["member"])
 	assert.Contains(t, threads, a)
 	verdict, findings := verifySale(t, bundle)
 	assert.Equal(t, "VALID", verdict)
@@ -407,8 +407,8 @@ func TestAnOpenStoppedAfterItsBaselineLeavesTheRegistrationNeverOpened(t *testin
 	assert.EqualValues(t, 1, res["never_opened"])
 	entries, threads := saleSection(bundle)
 	require.Len(t, entries, 2)
-	assert.Equal(t, cli.SaleThreadNeverOpened, entries[0].(map[string]any)["member"])
-	assert.Equal(t, cli.SaleThreadPresent, entries[1].(map[string]any)["member"])
+	assert.Equal(t, SaleThreadNeverOpened, entries[0].(map[string]any)["member"])
+	assert.Equal(t, SaleThreadPresent, entries[1].(map[string]any)["member"])
 	assert.Equal(t, []string{a}, keysOf(threads))
 	verdict, _ := verifySale(t, bundle)
 	assert.Equal(t, "VALID", verdict)

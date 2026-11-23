@@ -14,7 +14,7 @@ import (
 // cardOpeningsOf is the card_openings of the report a bundle file seals.
 func cardOpeningsOf(t *testing.T, b map[string]interface{}) []interface{} {
 	t.Helper()
-	r, _, _ := cli.DealSealedReport(b)
+	r, _, _ := DealSealedReport(b)
 	require.NotNil(t, r)
 	cards, _ := r["card_openings"].([]interface{})
 	return cards
@@ -79,7 +79,7 @@ func TestTheOwnCopyOpensTheCardsTheUserAnsweredOn(t *testing.T) {
 			for _, audience := range []string{cli.DealAudienceCounterparty, cli.DealAudienceAdjudicator} {
 				shared := filepath.Join(dir, audience+".html")
 				dealRun(t, "report", "--deal", id, "--share", audience, "--to", "them", "--html", shared)
-				r, _, _ := cli.DealSealedReport(embeddedBundle(t, string(mustRead(t, shared))))
+				r, _, _ := DealSealedReport(embeddedBundle(t, string(mustRead(t, shared))))
 				require.NotNil(t, r)
 				assert.NotContains(t, r, "card_openings", "a card can hold the counterparty's raw values: your copy only")
 			}
@@ -111,7 +111,7 @@ func TestADealPageWhoseCardsDoNotMatchIsNotWritten(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "own.json")
 			dealRun(t, "report", "--deal", id, "--bundle", path)
 			report := func(b map[string]interface{}) map[string]interface{} {
-				r, _, _ := cli.DealSealedReport(b)
+				r, _, _ := DealSealedReport(b)
 				require.NotNil(t, r)
 				return r
 			}

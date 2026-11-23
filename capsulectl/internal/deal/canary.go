@@ -368,7 +368,7 @@ func canaryWatchCommand() *cobra.Command {
 		})
 	}}
 	cmd.Flags().String("log-id", "", "The canary profile's cadence log id (deal-cadence/...)")
-	cmd.Flags().String("witness", cli.DealDefaultWitness, "The public witness to read")
+	cmd.Flags().String("witness", DealDefaultWitness, "The public witness to read")
 	cmd.Flags().Duration("expect-every", 0, "Alarm when the log has not advanced for longer than this: the canary's schedule plus the tick interval and jitter")
 	cmd.Flags().String("state", "", "Where this watcher keeps its last observation (default: under the config directory)")
 	return cmd

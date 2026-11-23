@@ -115,7 +115,11 @@ func TestAPerformRerunSealsOnceAndTheApprovalIsUsed(t *testing.T) {
 // refused before anything is sealed; so are bad flags.
 func TestAPerformIsRefusedWithoutItsAuthorization(t *testing.T) {
 	h, check := sellerChecked(t)
-	bogus := "cd" + check[2:]
+	// The first hex digit changed, so the id is never the real check's
+	// (evidencebook#812: "cd" + check[2:] was, for one id in 256).
+	const hexDigits = "0123456789abcdef"
+	bogus := string(hexDigits[(strings.IndexByte(hexDigits, check[0])+1)%16]) + check[1:]
+	require.NotEqual(t, check, bogus)
 	out := func() string { return filepath.Join(t.TempDir(), "p.json") }
 	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", bogus, "--act", "deliver", "--observed", "self", "--out", out()), "not authorized")
 	assert.Contains(t, v1Err(t, "perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self"), "--out is required")

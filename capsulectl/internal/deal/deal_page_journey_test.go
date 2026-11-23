@@ -218,7 +218,7 @@ func TestTheSealedJourneyHoldsNoWords(t *testing.T) {
 	require.NoError(t, err)
 	var b map[string]interface{}
 	require.NoError(t, json.Unmarshal(raw, &b))
-	report, _, _ := cli.DealSealedReport(b)
+	report, _, _ := DealSealedReport(b)
 	journey := report["journey"].([]interface{})
 	require.Len(t, journey, 13)
 	for _, m := range journey {

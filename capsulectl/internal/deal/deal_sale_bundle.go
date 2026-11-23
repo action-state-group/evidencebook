@@ -67,7 +67,7 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 		if th == nil {
 			continue
 		}
-		entry := map[string]interface{}{"registration": digestRef(se.Digest), "nonce": se.Event.Nonces["thread_ref"], "thread_id": th.ThreadID, "member": cli.SaleThreadNeverOpened}
+		entry := map[string]interface{}{"registration": digestRef(se.Digest), "nonce": se.Event.Nonces["thread_ref"], "thread_id": th.ThreadID, "member": SaleThreadNeverOpened}
 		_, isOpen, err := s.threadSteps(ctx, th.ThreadID)
 		if err != nil {
 			return nil, nil, err
@@ -93,7 +93,7 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 				return nil, nil, err
 			}
 			threads[th.ThreadID] = tb
-			entry["member"] = cli.SaleThreadPresent
+			entry["member"] = SaleThreadPresent
 			authority, err := s.threadAuthority(ctx, th.ThreadID)
 			if err != nil {
 				return nil, nil, err
@@ -110,7 +110,7 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 			if err != nil {
 				return nil, nil, err
 			}
-			head := cli.LastRecordDigest(decoded)
+			head := LastRecordDigest(decoded)
 			opened = append(opened, openedThread{entry: entry, registration: se.Digest, authority: authority, head: head})
 		}
 		counts[entry["member"].(string)]++
@@ -144,7 +144,7 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 	if predate {
 		section["threads_predate_registration"] = true
 	}
-	b["extensions"] = map[string]interface{}{cli.DealCadenceExtension: cadence, dealprofile.Profile: section, cli.DealSaleExtension: map[string]interface{}{"threads": threads}}
+	b["extensions"] = map[string]interface{}{DealCadenceExtension: cadence, dealprofile.Profile: section, DealSaleExtension: map[string]interface{}{"threads": threads}}
 	if err = cli.VerifyProducedBundle(b, true); err != nil {
 		return nil, nil, err
 	}
@@ -156,8 +156,8 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 	if err != nil {
 		return nil, nil, err
 	}
-	verdict, _ := cli.BundleVerdict(value, nil)
-	summary := map[string]interface{}{"verdict": verdict, "threads": len(entries), "present": counts[cli.SaleThreadPresent], "never_opened": counts[cli.SaleThreadNeverOpened]}
+	verdict, _ := dealBundleVerdict(value)
+	summary := map[string]interface{}{"verdict": verdict, "threads": len(entries), "present": counts[SaleThreadPresent], "never_opened": counts[SaleThreadNeverOpened]}
 	if predate {
 		summary["threads_predate_registration"] = true
 	}

@@ -76,7 +76,7 @@ func TestDealBundleIsTheDealsOwnLog(t *testing.T) {
 	// The cadence chain rides as its own extension (it anchors the deal's
 	// checkpoint to the witness); nothing else names the cadence log.
 	ext := bundle["extensions"].(map[string]any)
-	require.Contains(t, ext, cli.DealCadenceExtension)
+	require.Contains(t, ext, DealCadenceExtension)
 	assert.Equal(t, cli.DealAudienceKeep, dealReportOf(bundle)["audience"])
 	rest := map[string]any{}
 	for k, v := range bundle {

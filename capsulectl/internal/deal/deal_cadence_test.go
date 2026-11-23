@@ -224,9 +224,9 @@ func TestDealWitnessStatesAreShownAsTheyAre(t *testing.T) {
 	// Any change to the chain fails.
 	var bundle map[string]any
 	require.NoError(t, json.Unmarshal(mustRead(t, bundlePath), &bundle))
-	chain := bundle["extensions"].(map[string]any)[cli.DealCadenceExtension].(map[string]any)
+	chain := bundle["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any)
 	path := chain["path"].([]any)
-	require.Len(t, path, cli.DealCadenceDepth, "the path is always the same length")
+	require.Len(t, path, DealCadenceDepth, "the path is always the same length")
 	for _, tamper := range []func(map[string]any){
 		func(c map[string]any) { c["salt"] = strings.Repeat("0", 64) },
 		func(c map[string]any) { c["path"].([]any)[3] = strings.Repeat("ab", 32) },
@@ -234,7 +234,7 @@ func TestDealWitnessStatesAreShownAsTheyAre(t *testing.T) {
 	} {
 		var copy map[string]any
 		require.NoError(t, json.Unmarshal(mustRead(t, bundlePath), &copy))
-		tamper(copy["extensions"].(map[string]any)[cli.DealCadenceExtension].(map[string]any))
+		tamper(copy["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any))
 		path := filepath.Join(t.TempDir(), "tampered.json")
 		raw, err := json.Marshal(copy)
 		require.NoError(t, err)
@@ -443,8 +443,8 @@ func TestDealInitTurnsTheWitnessOnByDefault(t *testing.T) {
 	assert.Equal(t, dealWitnessSees, result["witness_sees"])
 	p, err := cli.LoadProfile("w")
 	require.NoError(t, err)
-	assert.Equal(t, cli.DealDefaultWitness, p.Checkpoint.Endpoint)
-	assert.Equal(t, cli.DealDefaultWitnessKey, p.Checkpoint.PublicKey)
+	assert.Equal(t, DealDefaultWitness, p.Checkpoint.Endpoint)
+	assert.Equal(t, DealDefaultWitnessKey, p.Checkpoint.PublicKey)
 	assert.True(t, strings.HasPrefix(p.LogID, "deal-cadence/"))
 
 	out, err = invoke(t, "", "deal", "init", "--profile", "n", "--dir", filepath.Join(t.TempDir(), "n"), "--no-witness")
@@ -526,27 +526,27 @@ func TestDealPermanentDeliveryIsNotSaidToBeRetried(t *testing.T) {
 }
 
 func TestWitnessPendingReasons(t *testing.T) {
-	reason, text := cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: "witness returned HTTP 503: " + cli.WitnessNotReached}, cli.DealDefaultWitness)
+	reason, text := cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: "witness returned HTTP 503: " + cli.WitnessNotReached}, DealDefaultWitness)
 	assert.Equal(t, "network_consent_needed", reason)
 	assert.Contains(t, text, `a standing grant ("Always allow this site") for agentactioncapsule.org`)
 	assert.Contains(t, text, "The witness is witness.agentactioncapsule.org; a grant for agentactioncapsule.org covers it and all its subdomains.")
-	reason, _ = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: "witness returned HTTP 503: checkpoint submission failed; response details suppressed"}, cli.DealDefaultWitness)
+	reason, _ = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: "witness returned HTTP 503: checkpoint submission failed; response details suppressed"}, DealDefaultWitness)
 	assert.Equal(t, "witness_error", reason, "a witness that answered is not a consent problem")
-	reason, _ = cli.WitnessPendingReason(cll.WitnessState{}, cli.DealDefaultWitness)
+	reason, _ = cli.WitnessPendingReason(cll.WitnessState{}, DealDefaultWitness)
 	assert.Equal(t, "not_attempted", reason)
 	// What the witness answered is kept (its status, never its body) and said.
-	reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: "witness returned HTTP 503: " + cli.WitnessFailureBody(429)}, cli.DealDefaultWitness)
+	reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: "witness returned HTTP 503: " + cli.WitnessFailureBody(429)}, DealDefaultWitness)
 	assert.Equal(t, "witness_error", reason)
 	assert.Equal(t, "pending: the witness answered with an error (HTTP 429); it is tried again on a later capsulectl run, after a wait that grows up to an hour.", text)
 	// A conflict is failed for good, and not said to be retried.
-	reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, Permanent: true, LastError: "witness returned HTTP 400: " + cli.WitnessFailureBody(409)}, cli.DealDefaultWitness)
+	reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, Permanent: true, LastError: "witness returned HTTP 400: " + cli.WitnessFailureBody(409)}, DealDefaultWitness)
 	assert.Equal(t, "witness_error", reason)
 	assert.Equal(t, "not delivered: the witness answered with an error (HTTP 409); this delivery is not retried.", text)
 	// A 403 may be a network gate on this host (capsule-cli#335): it is not
 	// said as the witness's answer, and it names the standing grant, whether
 	// stored now or by an earlier build.
 	for _, stored := range []string{"witness returned HTTP 503: " + cli.WitnessFailureBody(403), "witness returned HTTP 400: checkpoint submission failed (the witness answered HTTP 403); response details suppressed"} {
-		reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: stored}, cli.DealDefaultWitness)
+		reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: stored}, DealDefaultWitness)
 		assert.Equal(t, "refused", reason)
 		assert.True(t, strings.HasPrefix(text, "pending: the request was refused (HTTP 403), by the witness or by a network gate on this host;"))
 		assert.NotContains(t, text, "the witness answered")
@@ -627,9 +627,9 @@ func TestDoctorExplainsWitnessConsent(t *testing.T) {
 // why, and never tells the reader what to do.
 func TestWitnessGrantTextIsAStatement(t *testing.T) {
 	for _, text := range []string{
-		cli.WitnessGrantText(cli.DealDefaultWitness),
-		cli.WitnessConsentText(cli.DealDefaultWitness),
-		cli.WitnessConsentReached(cli.DealDefaultWitness),
+		cli.WitnessGrantText(DealDefaultWitness),
+		cli.WitnessConsentText(DealDefaultWitness),
+		cli.WitnessConsentReached(DealDefaultWitness),
 	} {
 		assert.NotContains(t, text, "If your agent")
 		assert.NotContains(t, text, "choose")
@@ -671,7 +671,7 @@ func TestDealIsWitnessPendingUntilATick(t *testing.T) {
 	assert.Equal(t, "witnessed", a["rung"])
 	assert.Equal(t, "2026-09-27T18:07:00Z", a["checkpoint_at"], "the tick's time, coarsened to the minute")
 	assert.Contains(t, a["text"], "signed this receipt's checkpoint, cut at 2026-09-27T18:07:00Z at a cadence tick after its steps")
-	cadence := embeddedBundle(t, string(mustRead(t, page)))["extensions"].(map[string]any)[cli.DealCadenceExtension].(map[string]any)
+	cadence := embeddedBundle(t, string(mustRead(t, page)))["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any)
 	assert.Equal(t, "2026-09-27T18:07:00Z", cadence["checkpoint_at"], "the page reads it from the bundle")
 }
 
@@ -738,8 +738,8 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 		var renamed map[string]any
 		require.NoError(t, json.Unmarshal(mustRead(t, partPath), &renamed))
 		exts := renamed["extensions"].(map[string]any)
-		chain := exts[cli.DealCadenceExtension].(map[string]any)
-		delete(exts, cli.DealCadenceExtension)
+		chain := exts[DealCadenceExtension].(map[string]any)
+		delete(exts, DealCadenceExtension)
 		if name == "x-deal-cadence-v0" {
 			chain["deal_log_id"] = chain["log_id"]
 			delete(chain, "log_id")
@@ -769,7 +769,7 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 	} {
 		var copy map[string]any
 		require.NoError(t, json.Unmarshal(mustRead(t, partPath), &copy))
-		tamper(copy["extensions"].(map[string]any)[cli.DealCadenceExtension].(map[string]any))
+		tamper(copy["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any))
 		path := filepath.Join(t.TempDir(), "tampered.json")
 		raw, err := json.Marshal(copy)
 		require.NoError(t, err)
@@ -850,13 +850,13 @@ func TestAPollThatIsNotDueDoesNotContactTheWitness(t *testing.T) {
 // a day), and a jitter its own validation accepts. A profile that sets its
 // own keeps it.
 func TestTheCheckpointCadenceDefaultsToFiveMinutes(t *testing.T) {
-	cfg, err := cli.Profile{}.DealCadence()
+	cfg, err := dealCadenceOf(cli.Profile{})
 	require.NoError(t, err, "the default passes the cadence's own validation (jitter under half the interval)")
 	assert.Equal(t, 5*time.Minute, cfg.Interval)
 	assert.Equal(t, time.Minute, cfg.Jitter)
 	var p cli.Profile
 	p.Cadence.Interval, p.Cadence.Jitter = "1h", "10m"
-	own, err := p.DealCadence()
+	own, err := dealCadenceOf(p)
 	require.NoError(t, err)
 	assert.Equal(t, time.Hour, own.Interval, "a profile's own cadence is kept")
 }
@@ -934,7 +934,7 @@ func TestTheCadenceVerbTicks(t *testing.T) {
 func TestACadenceJitterTooLargeForItsIntervalSaysWhy(t *testing.T) {
 	var onlyJitter cli.Profile
 	onlyJitter.Cadence.Jitter = "10m"
-	_, err := onlyJitter.DealCadence()
+	_, err := dealCadenceOf(onlyJitter)
 	require.ErrorIs(t, err, cli.ErrInput)
 	for _, part := range []string{"cadence.jitter is 10m", "cadence.interval is not set, so it is the default 5m", "under half the interval", "set cadence.interval", "a cadence.jitter under 2m30s"} {
 		assert.Contains(t, err.Error(), part)
@@ -942,7 +942,7 @@ func TestACadenceJitterTooLargeForItsIntervalSaysWhy(t *testing.T) {
 
 	var both cli.Profile
 	both.Cadence.Interval, both.Cadence.Jitter = "15m", "8m"
-	_, err = both.DealCadence()
+	_, err = dealCadenceOf(both)
 	require.ErrorIs(t, err, cli.ErrInput)
 	for _, part := range []string{"cadence.jitter is 8m", "cadence.interval is 15m", "under 7m30s"} {
 		assert.Contains(t, err.Error(), part)
@@ -950,7 +950,7 @@ func TestACadenceJitterTooLargeForItsIntervalSaysWhy(t *testing.T) {
 
 	var negative cli.Profile
 	negative.Cadence.Jitter = "-1m"
-	_, err = negative.DealCadence()
+	_, err = dealCadenceOf(negative)
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, err.Error(), "cadence.jitter must be at least 0")
 }

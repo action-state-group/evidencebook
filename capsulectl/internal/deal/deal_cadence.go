@@ -475,13 +475,13 @@ func dealTickCommand() *cobra.Command {
 // cadenceWords is this profile's cadence as a receipt says it, for example
 // "every 5m, give or take 2m": the profile's own values, not the default.
 func (s *dealSession) cadenceWords() string {
-	cfg, err := s.p.DealCadence()
+	cfg, err := dealCadenceOf(s.p)
 	if err != nil {
 		return ""
 	}
-	words := "every " + cli.ShortDuration(cfg.Interval)
+	words := "every " + ShortDuration(cfg.Interval)
 	if cfg.Jitter > 0 {
-		words += ", give or take " + cli.ShortDuration(cfg.Jitter)
+		words += ", give or take " + ShortDuration(cfg.Jitter)
 	}
 	return words
 }

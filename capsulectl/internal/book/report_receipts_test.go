@@ -53,6 +53,9 @@ func receiptsFile(t *testing.T, entries any) string {
 func buildSettlement(t *testing.T, bundle string, args ...string) ([]byte, string, error) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	// --receipts runs the deal plugin's verify through the capsulectl that
+	// launched the book plugin.
+	t.Setenv("CAPSULECTL_BIN", filepath.Join(installedCapsulectl(t), "capsulectl"))
 	out := filepath.Join(t.TempDir(), "page.html")
 	full := []string{"report", "build", "--bundle", filepath.Join(settlementDir, bundle), "--card", "settlement", "--out", out}
 	output, err := invoke(t, "", append(full, args...)...)
@@ -98,6 +101,39 @@ func TestACarriedDealReceiptReachesTheSettlementPage(t *testing.T) {
 	again, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "receipt": asString}}))
 	require.NoError(t, err)
 	assert.Equal(t, string(receipts["d1"].(string)), pageOptions(t, again)["receipts"].(map[string]any)["d1"])
+}
+
+// A receipt whose deal section does not verify is refused: capsule-cli's
+// page gate no longer reads deal sections (rc50, #609), so the deal plugin's
+// verify does (evidencebook#735). Here one line of the sealed report is
+// edited; the page gate still passes, and deal verify calls it INVALID.
+func TestAReceiptWhoseDealSectionFailsIsRefused(t *testing.T) {
+	var bundle map[string]any
+	require.NoError(t, json.Unmarshal(mustRead(t, dealReceipt), &bundle))
+	ext, _ := bundle["extensions"].(map[string]any)
+	carrier, _ := ext["x-deal-report/v0"].(map[string]any)
+	input, _ := carrier["agent_input"].(map[string]any)
+	report, _ := input["report"].(map[string]any)
+	require.NotNil(t, report, "the fixture carries a sealed standalone report")
+	report["did_line"] = "A line nobody sealed."
+	_, out, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "receipt": bundle}}))
+	require.Error(t, err)
+	assert.Contains(t, out+err.Error(), "deal verify --bundle calls it INVALID")
+	assert.Contains(t, out+err.Error(), "sealed_report_unverified")
+}
+
+// Without the deal plugin's verify (here a capsulectl that does not exist),
+// a carried receipt is refused and the refusal says --receipts needs the
+// deal plugin.
+func TestAReceiptIsRefusedWhenItsDealVerifyCannotRun(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("CAPSULECTL_BIN", filepath.Join(installedCapsulectl(t), "capsulectl"))
+	err := dealVerify(mustRead(t, dealReceipt))
+	require.NoError(t, err, "the real deal verify, through CAPSULECTL_BIN, calls the receipt VALID")
+	t.Setenv("CAPSULECTL_BIN", filepath.Join(t.TempDir(), "no-capsulectl"))
+	err = dealVerify(mustRead(t, dealReceipt))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--receipts needs the deal plugin installed")
 }
 
 func TestAHeldReceiptAndAnUncitedOneLeaveTheRestAlone(t *testing.T) {
