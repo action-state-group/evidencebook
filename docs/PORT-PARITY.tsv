@@ -38,6 +38,7 @@ package	kind	symbol	feature	rust	python
 .	func	ParseWitnessDirectory	substrates	frozen #650	frozen #649
 .	func	PushA2AExtension	a2a-mcp-carriage	frozen #627	frozen #140
 .	func	ReadClose	close-record	frozen #629	frozen #628
+.	func	ReadShelfWindow	window-books	frozen #798	frozen #799
 .	func	RecomputeDealReconcile	deal-reconcile	frozen #631	frozen #630
 .	func	ReconcileAsked	reconcile-asked	frozen #642	frozen #641
 .	func	ReconcileHalves	reconcile-halves	ported	frozen #643

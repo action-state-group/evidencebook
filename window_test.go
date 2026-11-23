@@ -86,6 +86,10 @@ func TestWindowPolicyIsFixedWhenTheShelfIsCreated(t *testing.T) {
 		return err
 	}
 	assert.NoError(t, reopen(monthly("acme", utc(2026, 10, 1))))
+	read, err := ReadShelfWindow(ctx, f.path)
+	require.NoError(t, err)
+	assert.Equal(t, monthly("acme", utc(2026, 10, 1)), read, "the policy is read back from the file")
+	assert.NoError(t, reopen(read))
 	assert.ErrorIs(t, reopen(&WindowPolicy{Period: WindowYear, Base: "acme", Since: utc(2026, 1, 1)}), ErrInvalid)
 	assert.ErrorIs(t, reopen(monthly("other", utc(2026, 10, 1))), ErrInvalid)
 	assert.ErrorIs(t, reopen(nil), ErrInvalid, "a windowed shelf opens only with its window")
@@ -99,6 +103,11 @@ func TestWindowPolicyIsFixedWhenTheShelfIsCreated(t *testing.T) {
 
 	plain := newShelfFixture(t)
 	require.NoError(t, plain.open(t).Release())
+	none, err := ReadShelfWindow(ctx, plain.path)
+	require.NoError(t, err)
+	assert.Nil(t, none)
+	_, err = ReadShelfWindow(ctx, plain.path+".absent")
+	assert.ErrorIs(t, err, ErrNotFound)
 	plain.cfg.Window = monthly("acme", utc(2026, 10, 1))
 	_, err = OpenSQLiteShelf(ctx, plain.cfg)
 	assert.ErrorIs(t, err, ErrInvalid, "a file created without a window never gains one")

@@ -7,6 +7,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -600,4 +603,46 @@ func (s *Shelf) RegisterDerivation(def DerivationDefinition) (string, error) {
 		}
 	}
 	return id, nil
+}
+
+// ReadShelfWindow reads the window policy a shelf file was created with,
+// without opening the shelf or taking its lock, so a host that keeps no copy
+// of the policy can open the shelf with it (OpenSQLiteShelf requires it
+// unchanged). It returns nil for a file with no window policy, and
+// ErrNotFound for no file.
+func ReadShelfWindow(ctx context.Context, path string) (*WindowPolicy, error) {
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("%w: no shelf file at %s", ErrNotFound, path)
+		}
+		return nil, err
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute, RawQuery: "mode=ro"}).String())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var tables int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'shelf_window'`).Scan(&tables); err != nil {
+		return nil, err
+	}
+	if tables == 0 {
+		return nil, nil
+	}
+	var period, base, since string
+	switch err := db.QueryRowContext(ctx, `SELECT period, base, since FROM shelf_window WHERE id = 1`).Scan(&period, &base, &since); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+	start, err := time.Parse(time.RFC3339, since)
+	if err != nil {
+		return nil, fmt.Errorf("%w: the shelf's window since %q: %v", ErrCorrupt, since, err)
+	}
+	return &WindowPolicy{Period: WindowPeriod(period), Base: base, Since: start}, nil
 }
