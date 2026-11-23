@@ -161,7 +161,8 @@ takes a Close over a period inside it (evidencebook#807). When a window ends
 it takes a boundary checkpoint, then takes only such a Close until the grace
 ends and it closes; `book window list` shows each window's `closes_at` and
 `in_grace`, and `close` over last month seals the Close in last month's book
-while it is in grace. A chain over a window in grace is refused until it
+while it is in grace; its `--bundle-out` there records no disclosure, since that
+window takes only Closes, so the book does not show the bundle was handed over. A chain over a window in grace is refused until it
 closes.
 
 The requester asks each window with `expected_pin` set to that window's final

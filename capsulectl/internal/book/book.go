@@ -1083,7 +1083,7 @@ func closeCommand() *cobra.Command {
 	periodFlags(cmd)
 	cmd.Flags().Bool("since-last", false, "Start the window just after the furthest position an earlier Close with this counterparty reached")
 	cmd.Flags().String("capsule-out", "", "Also write the Close as an artifact.Record for `verify --capsule`; a file already holding exactly those bytes is left alone (a repeat is a no-op), any other file there is refused")
-	cmd.Flags().String("bundle-out", "", "Also write an Evidence Bundle rooted at the Close (commits a disclosure record and a checkpoint)")
+	cmd.Flags().String("bundle-out", "", "Also write an Evidence Bundle rooted at the Close (commits a disclosure record and a checkpoint; in an earlier window in its grace, only a checkpoint: that window takes no disclosure record, so the book does not show the bundle was handed over)")
 	return cmd
 }
 

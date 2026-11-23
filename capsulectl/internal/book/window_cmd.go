@@ -110,7 +110,7 @@ func windowCommands() *cobra.Command {
 		return cli.Output(c, windowInitResult{Profile: p.Name, Period: period, Since: policy.Since.Format(time.RFC3339), Grace: graceText(policy.Grace), Notice: windowNotice(period, policy.Grace)})
 	}}
 	initCmd.Flags().String("period", string(defaultWindow), "day, week (ISO, from Monday), month, quarter or year, in UTC; or none for one book over the store's whole history")
-	initCmd.Flags().String("grace", "", "How long after a window ends it still takes a Close over a period inside it, then closes: whole days (7d) or a duration (36h), shorter than the period; default 7d for month, quarter and year, 1d for week, none for day")
+	initCmd.Flags().String("grace", "", "How long after a window ends it still takes a Close over a period inside it, then closes: whole days (7d) or a duration in whole seconds (36h), shorter than the period; default 7d for month, quarter and year, 1d for week, none for day")
 
 	list := &cobra.Command{Use: "list", Short: "List the store's windows, oldest first: when each closes, which are in their grace, and each closed window's final tree (reads only)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		p, shelf, err := selectedShelfForReading(c)

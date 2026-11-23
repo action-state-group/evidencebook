@@ -386,9 +386,10 @@ func TestWindowInitFixesTheGrace(t *testing.T) {
 	for _, c := range []struct{ period, grace, want string }{
 		{"week", "7d", "shorter than"},
 		{"day", "1d", "shorter than"},
-		{"month", "soon", "whole days (7d) or a duration (36h)"},
-		{"month", "-1h", "whole days (7d) or a duration (36h)"},
-		{"month", "200000d", "whole days (7d) or a duration (36h)"},
+		{"month", "soon", "whole days (7d) or a duration in whole seconds (36h)"},
+		{"month", "-1h", "whole days (7d) or a duration in whole seconds (36h)"},
+		{"month", "200000d", "whole days (7d) or a duration in whole seconds (36h)"},
+		{"month", "1500ms", "whole days (7d) or a duration in whole seconds (36h)"},
 		{"none", "1d", "not --period none"},
 	} {
 		p, _ := bookProfile(t, "bad"+c.period+strings.TrimPrefix(c.grace, "-"))

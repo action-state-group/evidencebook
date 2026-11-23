@@ -67,18 +67,19 @@ func defaultGrace(period evidencebook.WindowPeriod) time.Duration {
 	return 7 * 24 * time.Hour
 }
 
-// parseGrace reads --grace: whole days ("7d") or a Go duration ("36h").
+// parseGrace reads --grace: whole days ("7d") or a Go duration in whole
+// seconds ("36h").
 func parseGrace(raw string) (time.Duration, error) {
 	if days, ok := strings.CutSuffix(raw, "d"); ok {
 		n, err := strconv.Atoi(days)
 		if err != nil || n < 0 || n > int(math.MaxInt64/int64(24*time.Hour)) {
-			return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration (36h)")
+			return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration in whole seconds (36h)")
 		}
 		return time.Duration(n) * 24 * time.Hour, nil
 	}
 	d, err := time.ParseDuration(raw)
-	if err != nil || d < 0 {
-		return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration (36h)")
+	if err != nil || d < 0 || d%time.Second != 0 {
+		return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration in whole seconds (36h)")
 	}
 	return d, nil
 }
