@@ -180,6 +180,27 @@ type View struct {
 	// not in the bundle, so a page built with them gets no permalink, and a
 	// diagnostic page carries none.
 	Receipts *Receipts
+	// Coverage, for a report over a range of a holder's time windows
+	// (evidencebook#689), is the range its caller's coverage check found
+	// every window of answered. The page states it in a banner above the
+	// report, with what the check does not show. A range with any gap is
+	// never given here: its caller builds no page for it. A diagnostic page
+	// carries none.
+	Coverage *Coverage
+}
+
+// Coverage is the range a report over windows covers: its first and last
+// window labels and the number of windows, each answered.
+type Coverage struct {
+	From, To string
+	Windows  int
+}
+
+func (c Coverage) check() error {
+	if c.From == "" || c.To == "" || c.Windows < 1 {
+		return refusal("coverage names its first and last window and at least one window")
+	}
+	return nil
 }
 
 // Wording is an aac.wording-pack/v0 wording pack as distributed: its exact
@@ -288,6 +309,14 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if view.Presentation != nil {
 		if err := view.Presentation.check(); err != nil {
 			return nil, err
+		}
+	}
+	if view.Coverage != nil {
+		if err := view.Coverage.check(); err != nil {
+			return nil, err
+		}
+		if view.Diagnostic {
+			return nil, refusal("a diagnostic page carries no coverage: a report whose bundle fails has no checked range")
 		}
 	}
 	var wording *emitter.Wording
@@ -496,6 +525,10 @@ func Build(bundle []byte, view View) (*Page, error) {
 	}
 	if diagnostic {
 		if html, err = markDiagnostic(html); err != nil {
+			return nil, err
+		}
+	} else if view.Coverage != nil {
+		if html, err = markCoverage(html, *view.Coverage); err != nil {
 			return nil, err
 		}
 	}
