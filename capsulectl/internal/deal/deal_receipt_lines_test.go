@@ -1,6 +1,8 @@
 package deal
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -577,4 +579,30 @@ func TestTheSettlementIsReadFromItsLegs(t *testing.T) {
 		map[string]any{"rail": "x402", "legs": true, "failed": false, "preimage": false, "proof": false, "band": band},
 		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": false, "proof": false, "band": band},
 	}, got["settlement"])
+}
+
+// The page's own runtime (capsule-viewer/go v0.23.1 and later) reads a
+// witnessed deal's parent-log-witness/v1 block: with no witness list of the
+// reader's own it cannot pass the line, so it reads "not checked", where
+// v0.23.0's runtime found no chain and the line read "missing"
+// (capsule-viewer#362, evidencebook#737). No stub: the real runtime.
+func TestTheRealRuntimeReadsAWitnessedParentLogWitnessBundle(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	dealID := retailDeal(t)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), key)
+	page := filepath.Join(t.TempDir(), "page.html")
+	dealRun(t, "report", "--deal", dealID, "--html", page)
+	require.Contains(t, string(mustRead(t, page)), "parent-log-witness/v1", "the page's bundle carries the chain as v1")
+
+	got := renderPageUnderNode(t, node, page)
+	require.Empty(t, got["refusal"])
+	assert.Equal(t, "An outside witness saw your book · not checked · this page can't check the witness's signature", stampLine(t, got, "An outside witness saw your book"))
 }
