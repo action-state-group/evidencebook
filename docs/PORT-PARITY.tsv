@@ -436,6 +436,8 @@ dealprofile/xdealv1	func	Check	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckActs	x-deal-v1	frozen #710	frozen #710
 dealprofile/xdealv1	func	CheckAgreement	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckAuthorizations	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CheckCase	x-deal-v1	frozen #774	frozen #775
+dealprofile/xdealv1	func	CheckCaseRecord	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	func	CheckDispute	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckRuling	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckSealed	x-deal-v1	ported	ported
@@ -460,6 +462,7 @@ dealprofile/xdealv1	func	ReportPayload	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	ResolveRow	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	RowInputs	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	RowsDigest	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	SealRuling	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	func	Some	x-deal-v1	ported	frozen #653
 dealprofile/xdealv1	func	StampTime	x-deal-v1	ported	frozen #653
 dealprofile/xdealv1	func	Start	x-deal-v1	ported	ported
@@ -485,6 +488,8 @@ dealprofile/xdealv1	type	Body	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	BookRead	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	BookRecord	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	CanActInput	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	Case	x-deal-v1	frozen #774	frozen #775
+dealprofile/xdealv1	type	CaseCopy	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	type	CheckBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Counterparty	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Date	x-deal-v1	ported	ported
@@ -529,6 +534,7 @@ dealprofile/xdealv1	type	RulingKeys	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	RulingRead	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	RulingRemedy	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	SealContext	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	SealedRuling	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	type	Sent	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	SettleBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	StageError	x-deal-v1	ported	ported
@@ -561,6 +567,7 @@ dealprofile/xdealv1	type	TimedRecord	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	ValueBand	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	VerdictBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Witness	x-deal-v1	ported	ported
+dealprofile/xdealv1	var	ErrRulingConflict	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	var	NoTime	x-deal-v1	ported	frozen #653
 rowstatus	func	Compute	row-status	ported	ported
 rowstatus	func	ComputeLate	row-status	ported	ported
