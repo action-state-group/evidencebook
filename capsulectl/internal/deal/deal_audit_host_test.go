@@ -361,7 +361,9 @@ func TestAuditHostReadsAV1Deal(t *testing.T) {
 	other := run(pay("c1", `,"amount_minor":999,"deal_id":"`+h.dealID+`"`))
 	assert.Equal(t, []string{"c1"}, unrecorded(other), "a pay the deal does not hold stays unrecorded")
 
-	// A v0 deal beside it, its payment noted as an act.
+	// A v0 deal beside it, its payment noted as an act: the profile set to
+	// the legacy version, as for a counterparty that runs only x-deal-v0.
+	legacyV0(t)
 	v0 := openJetSki(t)
 	dealRun(t, "note", "--deal", v0, "--kind", "act", "--input", writeJSON(t, `{"action":"pay","amount_minor":20000,"payee":"M. Torres","rail":"zelle","reference":"z1"}`))
 	mixed := run(
