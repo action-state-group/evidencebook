@@ -228,7 +228,7 @@ type settlementWire struct {
 // side, leg or role disagree, or that AAC refuses, takes no part (Excluded)
 // rather than stopping the check. A leg superseded (supersedes) by a later
 // leg of its side is not read (a payment leg only by a later payment leg of
-// this terms leg); a refund or remedy leg (reverses,
+// this terms leg that AAC's verifier reads beside the offer); a refund or remedy leg (reverses,
 // remedy_for) that cites the offer's terms leg is not read either, and is
 // listed in NotChecked when it is not superseded: the check runs on the
 // payment's own legs (evidencebook#722).
@@ -295,7 +295,7 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 	// Every settle record's supersedes counts against a refund, whichever
 	// terms leg it answers: a refund replaced by one under its own terms leg
 	// is replaced. A payment leg is replaced only by a later payment leg of
-	// this terms leg (payment), so neither a refund nor a record of another
+	// this terms leg that AAC's verifier reads beside the offer (payment), so neither a refund nor a record of another
 	// terms leg can take a failing payment out of the check
 	// (evidencebook#722).
 	type supersession struct {
