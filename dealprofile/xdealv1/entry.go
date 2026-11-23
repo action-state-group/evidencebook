@@ -4,7 +4,10 @@ package xdealv1
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
+	"strings"
+	"time"
 
 	aacwitness "github.com/action-state-group/agent-action-capsule/go/witness"
 	"github.com/action-state-group/evidencebook"
@@ -28,19 +31,26 @@ const (
 	// EntryUnwitnessed: the statement is in the book under the copy's
 	// checkpoint, and no receipt from a named witness verified.
 	EntryUnwitnessed = "entered_unwitnessed"
-	// EntryNotEntered: the copy's checkpoint is after the ruling and its
-	// book holds no statement naming it.
+	// EntryNotEntered: the copy's checkpoint, by its signed time, is after
+	// the ruling's witnessed stamp, and the book under it holds no statement
+	// naming the ruling.
 	EntryNotEntered = "not_entered"
-	// EntryNotShown: the copy's report predates the ruling, so it shows
+	// EntryNotShown: the copy's checkpoint is not after the ruling's
+	// witnessed stamp, or the ruling has no witnessed stamp, so the copy shows
 	// nothing about it.
 	EntryNotShown = "not_shown"
 )
 
 // EntryInput is what the entry check reads: one party's copy (a bundle
-// `deal report --share ... --bundle` writes), the ruling's record digest and
+// `deal report --share ... --bundle` writes, for the adjudicator or the
+// other side), the ruling's record digest, the ruling's witnessed stamp
 // time, the adjudicator's key id, and, for the witness, the party's stamp
 // proof of the copy's checkpoint with the receipts it sent and the witness
-// directory to verify them under.
+// directory to verify them under. RulingAt is the time a witness the
+// agreement names gave the adjudicator's stamp that covers the ruling (for
+// the adjudicator, Shelf.StampTimeByKey), RFC 3339 in UTC; never the
+// ruling's own at, which is the adjudicator's word. "" means no such stamp,
+// and then a copy without the statement shows nothing (EntryNotShown).
 type EntryInput struct {
 	Bundle         []byte
 	Ruling         string
@@ -103,6 +113,26 @@ func EntryOf(in EntryInput) (Entry, error) {
 		return Entry{}, caseErr("the copy's checkpoint is not signed by the checkpoint key its agreement names")
 	case vb.Anchor.Root != read.Report.DealCheckpoint.Root || vb.Anchor.MMRSize != read.Report.DealCheckpoint.MMRSize:
 		return Entry{}, caseErr("the copy's report does not rest on the bundle's checkpoint")
+	case vb.LogID != read.Report.RestsOn.Own.LogID:
+		return Entry{}, caseErr("the bundle is not of the deal book the copy's report rests on")
+	case vb.IntervalFirst != 1 || vb.IntervalLast != read.Report.RestsOn.Own.Size:
+		return Entry{}, caseErr("the bundle does not carry the whole deal book, from its agreement to the report's checkpoint")
+	}
+	if !slices.ContainsFunc(vb.Records, func(r evidencebook.PeerRecord) bool { return r.Seq == 1 && r.RecordID == first.RecordID }) {
+		return Entry{}, caseErr("the bundle's first record is not the copy's agreement")
+	}
+	// Every place from 1 to the checkpoint is carried with its header, so a
+	// copy that leaves a record out cannot read as "not entered".
+	carried := map[uint64]bool{}
+	for _, r := range vb.Records {
+		if r.Header != nil {
+			carried[r.Seq] = true
+		}
+	}
+	for seq := uint64(1); seq <= read.Report.RestsOn.Own.Size; seq++ {
+		if !carried[seq] {
+			return Entry{}, caseErr("the bundle withholds the record at %d: the copy must carry every record and payload", seq)
+		}
 	}
 	signed, err := aacwitness.ParseSignedCheckpoint(vb.AnchorStatement)
 	if err != nil {
@@ -111,15 +141,15 @@ func EntryOf(in EntryInput) (Entry, error) {
 	e := Entry{Role: ag.Role, Key: first.KeyID, Checkpoint: read.Report.DealCheckpoint, CheckpointAt: signed.Timestamp}
 	for _, r := range vb.Records {
 		if r.Header == nil || len(r.Header.PayloadCommitments) != 1 {
-			continue
+			return Entry{}, caseErr("the record at %d carries no single payload", r.Seq)
 		}
 		payload, held := vb.Payloads[r.Header.PayloadCommitments[0]]
 		if !held {
-			continue
+			return Entry{}, caseErr("the bundle withholds the record at %d: the copy must carry every payload", r.Seq)
 		}
 		rec, err := Decode(payload)
 		if err != nil {
-			continue
+			return Entry{}, caseErr("the record at %d is not an x-deal-v1 record: %v", r.Seq, err)
 		}
 		st, ok := bodyOf[StatementBody](rec.Body)
 		if ok && rec.Block.DealID == first.Record.Block.DealID && st.Names != nil && st.Names.Ruling != nil && st.Names.Ruling.Digest == in.Ruling {
@@ -133,12 +163,35 @@ func EntryOf(in EntryInput) (Entry, error) {
 		if witnessedAt(in, vb, ag) {
 			e.State = EntryEntered
 		}
-	case read.Report.AsOf >= in.RulingAt:
-		e.State = EntryNotEntered
-	default:
+	case in.RulingAt == "":
 		e.State = EntryNotShown
+	default:
+		ruled, err := utcTime(in.RulingAt)
+		if err != nil {
+			return Entry{}, caseErr("the ruling's stamp time: %v", err)
+		}
+		checkpointed, err := time.Parse(time.RFC3339, signed.Timestamp)
+		if err != nil {
+			return Entry{}, caseErr("the copy's checkpoint time %q: %v", signed.Timestamp, err)
+		}
+		e.State = EntryNotShown
+		if checkpointed.After(ruled) {
+			e.State = EntryNotEntered
+		}
 	}
 	return e, nil
+}
+
+// utcTime parses an RFC 3339 time written in UTC with a Z.
+func utcTime(v string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !strings.HasSuffix(v, "Z") {
+		return time.Time{}, fmt.Errorf("%q is not in UTC (Z)", v)
+	}
+	return t, nil
 }
 
 // witnessedAt reports whether a receipt from a witness the agreement names
