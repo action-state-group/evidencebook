@@ -136,6 +136,26 @@ book opens with its agreement, and an agreement is only ever at `seq` 1. A journ
 no `seq`, `prev`, `agreement_ref` or `seen`, so a record sent whole shows no place in the journal.
 A decline or cancellation also carries no `refs`, `marks` or `counterparty`.
 
+**The case book.** The adjudicator seals its rulings of a deal in one case book per deal and
+adjudicator, whose log id both parties compute (`xdealv1.CaseLogID`): `case/` followed by the
+first 16 bytes, lowercase hex, of SHA-256 over three UTF-8 strings, each followed by one zero byte:
+`x-deal-v1/case-log`, the record digest of the offer the deal's agreements cite (64 lowercase hex
+characters, as the records write it) and the adjudicator's key id (as the agreement writes it).
+For the offer digest of 64 `a` and the key id of 64 `1` it is `case/fe02461334fc17ef81a8494d07d28608`.
+The id holds no deal id, and an offer is of one deal only. A holder MUST refuse a ruling on any
+other log, so a ruling counts only from that log, and a second, different ruling at the same place
+is a fork of it, which the status reads (`conflicting_final_rulings`, design note 461's row table).
+The agreement names the adjudicator by one key, so the adjudicator checkpoints its case books with
+that key: a stamp proof of a case book binds to it (`xdealv1.ReceiveProfile.ProofSender`), and a
+forked case book makes no checkpoint claim. A case book stays bound to the key its agreements name;
+a new key is a new adjudicator for new agreements, and this revision defines no key rotation within
+a case. A stamp proof shows that a ruling exists in the adjudicator's log at the stamp time. It does
+not show that the adjudicator issued no other ruling: only that no ruling on another log counts, and
+that two different rulings at one place show as a fork. A party's entry of a ruling is shown by that
+party's statement naming it and that statement's checkpoint (§5), not by the adjudicator. An
+adjudicator that holds a deal's case book admits the parties' deal-book records, so it MAY check
+that entry itself.
+
 ## 5. The bodies
 
 The schema gives every member. The rules the schema cannot express are these.
@@ -199,7 +219,12 @@ arrives (`xdealv1.StatusProvider.BeforeStamp` runs `xdealv1.NameAllRulings` befo
 stamp); a later `Receive` of a record of that deal, the ruling sent again included, names it
 too. A deal book holding a record that is not x-deal-v1 (a lifecycle record) cannot take a
 statement at its seq and is never named. Until a ruling is named, the holder's status value
-counts it in `rulings_unnamed` (a count, no ids). Each record is sealed through
+counts it in `rulings_unnamed` (a count, no ids). A holder that sends the statement naming a
+ruling to the other side SHOULD send the ruling with it: a ruling is admitted from the deal's
+adjudicator whoever carries it, so if the two sides were given different rulings at one place of
+the case book and each side does so, each then holds both and sees the fork. `xdealv1.HeldRuling`
+finds a held ruling by the record digest a statement names. A reader shows a named ruling it does
+not hold as unavailable, never as no ruling. Each record is sealed through
 `xdealv1.BookEntry` and appended with `Book.AppendAt` at the seq it was built for, read again
 and rebuilt on `ErrBusy`; a host writing its own deal-book records does the same, so a naming
 and a host write never seal two records for one place.

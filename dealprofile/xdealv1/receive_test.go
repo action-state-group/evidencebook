@@ -51,6 +51,18 @@ func (noStatus) Values(context.Context, string, string) (string, evidencebook.Li
 
 func newParty(t *testing.T, name string) *party {
 	t.Helper()
+	return newPartyKeyed(t, name, seed(name+" checkpoint key"))
+}
+
+// newAdjudicator is a party that checkpoints with its record key, as an
+// adjudicator does (PROFILE.md §4, "The case book").
+func newAdjudicator(t *testing.T, name string) *party {
+	t.Helper()
+	return newPartyKeyed(t, name, seed(name+" record key"))
+}
+
+func newPartyKeyed(t *testing.T, name string, checkpointKey ed25519.PrivateKey) *party {
+	t.Helper()
 	dir := t.TempDir()
 	signer, err := evidencebook.NewEd25519Signer(seed(name + " record key"))
 	require.NoError(t, err)
@@ -59,7 +71,7 @@ func newParty(t *testing.T, name string) *party {
 	p := &party{t: t, name: name, dir: dir, profile: &ReceiveProfile{}, now: time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)}
 	recordStep(txOp{Op: "party", Party: name})
 	p.cfg = evidencebook.ShelfConfig{Path: filepath.Join(dir, "shelf.db"), Operator: name, Signer: signer,
-		CheckpointKey: seed(name + " checkpoint key"), Originals: originals, Now: func() time.Time { return p.now },
+		CheckpointKey: checkpointKey, Originals: originals, Now: func() time.Time { return p.now },
 		// A fixed random stream: the transcripts (holder_vectors_test.go)
 		// are the same on every run, and Python replays them.
 		Random:  detrand.New("xdealv1 receive tests\x00" + name + " random"),
@@ -580,7 +592,7 @@ func TestRulingFromTheAdjudicator(t *testing.T) {
 		Against: Some(RoleSeller), Value: ValueNotMet, Read: RulingRead{Buyer: NullOf[string](), Seller: Some(h.agreementID)},
 		Forum: fxForum, RulesDigest: fxAdjudicator.RulesDigest, Final: false}}
 	require.NoError(t, Check(ruling))
-	caseLog := "case/" + hex.EncodeToString(seed("case log")[:16])
+	caseLog := caseLogOf(t, h, adjudicator)
 	_, pair := adjudicator.seal(caseLog, ruling)
 	res := h.seller.receive(pair, nil)
 	assert.True(t, res.Record.Stored)
@@ -746,4 +758,12 @@ func TestCanActWithoutALayerIsFalse(t *testing.T) {
 	ok, err := h.seller.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: ""})
 	require.NoError(t, err)
 	assert.False(t, ok)
+}
+
+// caseLogOf is the case log id of h's deal for adjudicator (CaseLogID).
+func caseLogOf(t *testing.T, h *handshake, adjudicator *party) string {
+	t.Helper()
+	od, err := Digest(h.offer)
+	require.NoError(t, err)
+	return CaseLogID(od, adjudicator.key())
 }

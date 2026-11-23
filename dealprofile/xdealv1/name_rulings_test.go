@@ -4,7 +4,6 @@ package xdealv1
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"testing"
 
@@ -32,7 +31,7 @@ func TestNameRulings(t *testing.T) {
 		Against: Some(RoleSeller), Value: ValueNotMet, Read: RulingRead{Buyer: NullOf[string](), Seller: Some(h.agreementID)},
 		Forum: fxForum, RulesDigest: fxAdjudicator.RulesDigest, Final: true}}
 	require.NoError(t, Check(ruling))
-	caseLog := "case/" + hex.EncodeToString(seed("case log")[:16])
+	caseLog := caseLogOf(t, h, adjudicator)
 	_, pair := adjudicator.seal(caseLog, ruling)
 	res := h.seller.receive(pair, nil)
 	require.True(t, res.Record.Stored)
@@ -117,7 +116,7 @@ func rulingCase(t *testing.T) (*handshake, *party, Record, string) {
 		Against: Some(RoleSeller), Value: ValueNotMet, Read: RulingRead{Buyer: NullOf[string](), Seller: Some(h.agreementID)},
 		Forum: fxForum, RulesDigest: fxAdjudicator.RulesDigest, Final: true}}
 	require.NoError(t, Check(ruling))
-	return h, adjudicator, ruling, "case/" + hex.EncodeToString(seed("case log")[:16])
+	return h, adjudicator, ruling, caseLogOf(t, h, adjudicator)
 }
 
 // readBack is the book's record at seq, verified as a book pair.
