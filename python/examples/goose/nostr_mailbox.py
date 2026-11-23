@@ -32,7 +32,6 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
-from evidencebook import MAX_REPLY_BYTES
 
 __all__ = [
     "REQUEST_KIND", "REPLY_KIND", "MailboxError", "Event", "public_key", "new_secret", "sign_event",
@@ -41,6 +40,8 @@ __all__ = [
 ]
 
 REQUEST_KIND, REPLY_KIND = 4700, 4701
+#: The most a reply's octets may hold: the library's ``MaxReplyBytes`` (request_limits.go; a test reads it there).
+MAX_REPLY_BYTES = 8 << 20
 #: The longest websocket message a relay is read for: the base64url of a reply of ``MAX_REPLY_BYTES``
 #: (the most a book accepts) plus the room the event's id, key, signature, tags and the relay's own
 #: framing take. websockets' default of 1 MiB closes the connection with 1009 on a long history's

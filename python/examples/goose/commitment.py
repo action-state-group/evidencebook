@@ -9,15 +9,11 @@ by adding the two files :func:`write` lays out under the loop repository's
 ``nodes/commitments/`` by pull request; nothing here publishes anything.
 
 Both the commitment and its ``disclosure-policy/0`` are signed with the node's
-own key (its ``key_id``, the producer key) over their RFC 8785 (JCS) form
-without ``sig``. One ``history_card/1`` is stapled, the node book's: one card
-per deal book would publish each deal id. The node book's card shows the
-book's size, which grows with every record it holds, deal openings included.
-
-The card is built as ``Book.Staple`` builds it: the book's own request over ``checkpoints`` (the subject
-``history_card/1`` is the form of), pinned to its newest checkpoint, with a fresh nonce. Only the reply octets are
-stapled, because ``evidence-commitment/1`` has no member for the request: a verifier of the commitment sees
-``request_binding`` as NOT_PRESENT. Carrying the request and nonce would take a new member in the loop's schema.
+own key (its ``key_id``, the profile's signing key) over their RFC 8785 (JCS) form
+without ``sig``. One ``history_card/2`` is stapled, the profile's own: a sampled chain
+of its cadence checkpoints with no deal counts (``deal standard-history staple``).
+Only the reply is stapled, because ``evidence-commitment/1`` has no member for the
+request: a verifier of the commitment sees ``request_binding`` as NOT_PRESENT.
 """
 from __future__ import annotations
 
@@ -33,9 +29,12 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from agent_action_capsule.canonical import jcs
-
 import goose_node as gn
+
+def jcs(value: Any) -> bytes:
+    """RFC 8785 for the documents signed here: strings, integers, booleans, null, lists and objects (no floats)."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
 
 PROFILE = "evidence-commitment/1"
 POLICY_PROFILE = "disclosure-policy/0"
@@ -51,7 +50,7 @@ DURATION = re.compile(r"^P(?=\d|T\d)(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S
 TOKEN = re.compile(r"^[a-z0-9][a-z0-9_./:+-]*$")
 #: What the node discloses, and to whom: its node book's card to anyone, a
 #: deal's half to that deal's counterparty only (``loop_deal_push``).
-POLICY = {"stranger_safe": ["history_card/1"], "share_deal_half": "counterparty"}
+POLICY = {"stranger_safe": ["history_card/2"], "share_deal_file": "counterparty"}
 
 
 @dataclass(frozen=True)
@@ -63,8 +62,8 @@ class Settings:
     endpoint: str = f"book:{gn.NODE_BOOK}"
     bindings: tuple[str, ...] = ("evidencebook/respond",)
     subjects: tuple[str, ...] = ("checkpoints", "full_history")
-    derivations: tuple[str, ...] = ("history_card/1",)
-    predicate_classes: tuple[str, ...] = ("performed:counterparty_half",)
+    derivations: tuple[str, ...] = ("history_card/2",)
+    predicate_classes: tuple[str, ...] = ("performed:counterparty_agreement",)
     human_gated: bool = True
     answers_within: str = "PT24H"
     policy: dict = field(default_factory=lambda: dict(POLICY))
@@ -104,7 +103,7 @@ def _b64url(raw: bytes) -> str:
 def _signed(node: gn.Node, doc: dict) -> dict:
     """``doc`` with ``sig``: Ed25519 by the node key over its JCS form without ``sig``."""
     doc = {k: v for k, v in doc.items() if k != "sig"}
-    doc["sig"] = {"alg": "Ed25519", "canon": "jcs", "value": _b64url(node.signer.sign(jcs(doc)))}
+    doc["sig"] = {"alg": "Ed25519", "canon": "jcs", "value": _b64url(node.sign(jcs(doc)))}
     return doc
 
 
@@ -172,7 +171,13 @@ def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
     ask = {"endpoint": s.endpoint, "bindings": list(s.bindings)}
     if s.relays:
         ask["nostr"] = {"mailbox_key": node.mailbox_key, "relays": list(s.relays)}
-    card, statement = node.stapled_card(gn.NODE_BOOK)
+    # The card is the profile's history_card/2 reply (a staple's reply, the answer to the holder's own request over
+    # its cadence checkpoints); the checkpoint is the node book's newest, cut now.
+    staple = node.ctl.run("standard-history", "staple")["staple"]
+    card = json.dumps(staple["reply"], sort_keys=True, separators=(",", ":")).encode()
+    stream = json.loads(base64.urlsafe_b64decode(
+        staple["reply"]["artifact"] + "=" * (-len(staple["reply"]["artifact"]) % 4)))["evidence_stream"]
+    statement = node.checkpoint_statement(gn.NODE_BOOK)
     at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     doc = {
         "profile": PROFILE,
@@ -189,10 +194,10 @@ def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
         "human_gated": s.human_gated,
         "answers_within": s.answers_within,
         "history_cards": [{
-            "stream": gn.NODE_BOOK,
+            "stream": stream,
             "community": COMMUNITY,
             "checkpoint_key": _b64url(ED25519_SPKI + bytes.fromhex(node.checkpoint_key_id)),
-            "derivation": "history_card/1",
+            "derivation": "history_card/2",
             "sha256": hashlib.sha256(card).hexdigest(),
             "bytes": _b64(card),
         }],

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""The Goose loop reference: a Goose extension (an MCP server over stdio)
-whose node keeps everything on one evidencebook shelf (:mod:`goose_node`).
+"""The Goose loop reference: a Goose extension (an MCP server over stdio) whose node is a
+capsulectl-deal profile (:mod:`goose_node`). Every tool is one or two capsulectl verbs; this
+server holds no store and no key of its own.
 
-Each deal is its own book of x-deal-v0 steps; the cadence commits every
-book at each tick; the node answers ``history_card/1`` for any book and
-``standard_history/1`` as of a tick. An existing capsule-emit flat ledger
-is imported once as a host log, nothing re-signed.
+Each deal is an x-deal-v1 deal of the profile: the tools write the next file of the exchange (the
+offer, the agreement, a payment leg, an act, a statement) for you to carry to the other side, and
+keep the file the other side sends back (``loop_deal_reconcile`` is ``deal receive``). The cadence
+commits every log at each tick; the node answers a History card as of its newest checkpoint.
 
     step  tool(s)
     ----  ---------------------------------------------------------------
@@ -14,13 +15,14 @@ is imported once as a host log, nothing re-signed.
     02    loop_book, loop_tick, loop_book_bundle
     03    loop_advertise (the node's signed evidence-commitment/1, for the loop's nodes/commitments/)
     04    loop_admit, loop_deal_bundle
-    05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
-    06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close, loop_settlement_disclosure, loop_pay_opening
+    05    loop_deal_open, loop_deal_respond, loop_deal_agree, loop_deal_reconcile
+    06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_approve, loop_deal_received,
+          loop_deal_deliver, loop_deal_close, loop_deal_report
     07    loop_ask, loop_ask_reply (the asker's side, over a file you carry); loop_mailbox_poll (answer the requests
           addressed to the node's mailbox), loop_ask_mailbox, loop_ask_mailbox_poll (ask a node through the mailbox
           its commitment advertises)
-    09    loop_dispute_ask, loop_dispute_poll (a referee's Result fetched over the Nostr mailbox and sealed as received; the check is capsule-engine's)
-    12    loop_join, loop_probe, loop_import
+    09    not built on x-deal-v1 yet (evidencebook#830)
+    12    loop_join, loop_probe
     cards loop_history_card, loop_standard_history, loop_register_card (opt-in)
 
 Add to ``~/.config/goose/config.yaml``::
@@ -30,7 +32,7 @@ Add to ``~/.config/goose/config.yaml``::
         enabled: true
         type: stdio
         name: goose_loop
-        description: "Goose loop steps on an evidencebook shelf"
+        description: "Goose loop steps on a capsulectl deal profile"
         cmd: python3
         args: ["/path/to/python/examples/goose/loop_server.py"]
         timeout: 60
@@ -38,11 +40,10 @@ Add to ``~/.config/goose/config.yaml``::
           GOOSE_HOME: "~/.goose-evidence"
           GOOSE_OPERATOR: "acme-co"
 
-Every tool returns one JSON object. A refusal is ``{"ok": false, "error": ...}``
-and seals nothing. Nothing here moves money, and nothing opens a connection unless the
-caller sets GOOSE_CARD_SERVICE and calls loop_register_card (card_service.py): a payment
-reference is a value the caller observed, and halves and requests move as
-files over the caller's own channel.
+Every tool returns one JSON object. A refusal is ``{"ok": false, "error": ...}`` and seals nothing.
+Nothing here moves money, and nothing opens a connection unless the caller sets GOOSE_CARD_SERVICE
+and calls loop_register_card: a payment reference is a value the caller observed, and the deal's
+files and requests move over the caller's own channel.
 """
 from __future__ import annotations
 
@@ -50,8 +51,8 @@ import base64
 import functools
 import json
 import os
+import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -62,16 +63,10 @@ try:  # mcp >= 2 renamed FastMCP to MCPServer
 except ImportError:  # mcp < 2
     from mcp.server.fastmcp import FastMCP
 
-from capsule_emit.store_backed_ledger import LedgerError
-
-from evidencebook import BookError, Coverage, EvidenceRequest, Message, ResponderKeys, Subject
-
-import card_service as cs
 import commitment as cm
-import deal_records as dr
 import goose_node as gn
 import mailbox_exchange as mx
-import settlement as st
+from ctl import Refused
 
 HOME = os.environ.get("GOOSE_HOME", "~/.goose-evidence")
 #: The endpoint a commitment gives when the node is asked through its Nostr mailbox.
@@ -82,10 +77,11 @@ DEVELOPER = os.environ.get("GOOSE_DEVELOPER", "goose-loop@v1")
 server = FastMCP(
     "goose-loop",
     instructions=(
-        "Run the loop's steps on this node's evidencebook shelf: loop_join opens it, loop_admit seals a GO/NO "
-        "on a peer, loop_deal_* seal and exchange each party's half of a deal (one book per deal), loop_settle "
-        "seals the buyer's payment, loop_tick commits every book at a cadence tick, and loop_standard_history "
-        "and loop_history_card answer the node's History cards."
+        "Run the loop's steps on this node's capsulectl deal profile: loop_join opens it, loop_admit seals a GO/NO "
+        "on a peer, loop_deal_* write and keep the files of an x-deal-v1 deal (an offer, an agreement, a payment "
+        "leg, a delivery, a statement), loop_settle pays (a pause waits for the user's answer, loop_deal_approve), "
+        "loop_tick commits every log at a cadence tick, and loop_standard_history and loop_history_card answer "
+        "the node's History cards."
     ),
 )
 
@@ -93,13 +89,10 @@ _node: gn.Node | None = None
 
 
 def node() -> gn.Node:
-    """The node, opened on first use and held for the server's lifetime
-    (the shelf's writer lock)."""
+    """The node, opened on first use and held for the server's lifetime."""
     global _node
     if _node is None:
-        witnesses = os.environ.get("GOOSE_WITNESSES")
-        _node = gn.Node.open(HOME, operator=OPERATOR, developer=DEVELOPER,
-                             witnesses=json.loads(Path(witnesses).read_text()) if witnesses else None)
+        _node = gn.Node.open(HOME, operator=OPERATOR, developer=DEVELOPER)
     return _node
 
 
@@ -111,17 +104,13 @@ def _refuse(error: str) -> str:
     return _out(ok=False, error=error)
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def _tool(fn):
     """Run a tool, turning a refusal or bad input into ``{"ok": false}``."""
     @functools.wraps(fn)
     def run(*args, **kwargs) -> str:
         try:
             return fn(*args, **kwargs)
-        except (gn.Refused, BookError, LedgerError, ValueError, OSError, KeyError) as exc:
+        except (Refused, ValueError, OSError, KeyError, subprocess.SubprocessError) as exc:
             return _refuse(str(exc))
     return server.tool()(run)
 
@@ -134,71 +123,47 @@ def _read_json(path: str) -> Any:
     return json.loads(Path(path).expanduser().read_text())
 
 
+def _path(path: str) -> str:
+    return str(Path(path).expanduser())
+
+
 # -- 01 Seal ------------------------------------------------------------------------------
 
 
 @_tool
 def loop_seal(provider: str, model_id: str, prompt: str, completion: str, out_path: str) -> str:
-    """Seal one model call Goose made: an effect-boundary record in this
-    node's book, signed with its producer key in this process
-    (``effect_attestation`` ``runtime_claimed``), whose ``model_attestation``
-    names ``provider`` and ``model_id``. The prompt stays on this node
-    (committed by digest); the completion is committed by digest only. The Capsule is written to
-    ``out_path`` as a verifier reads it."""
-    sealed, capsule = node().seal_model_call(provider, model_id, prompt, completion, _now())
+    """Seal one model call Goose made: an effect-boundary record in this node's book, signed with its
+    key by capsulectl (``effect_attestation`` ``runtime_claimed``), whose ``model_attestation`` names
+    ``provider`` and ``model_id``. The prompt stays on this node; the completion is committed by digest
+    only. The Capsule is written to ``out_path`` as a verifier reads it."""
+    record, capsule = node().seal_model_call(provider, model_id, prompt, completion)
     _write(out_path, json.dumps(capsule, sort_keys=True, indent=2).encode())
-    return _out(ok=True, step="01", record_id=sealed.record_id, capsule_id=capsule["capsule_id"], file=out_path)
+    return _out(ok=True, step="01", record_id=record["record_id"], capsule_id=capsule["capsule_id"], file=out_path)
 
 
-# -- 12 Join, probe and import ----------------------------------------------------------
+# -- 12 Join and probe ------------------------------------------------------------------
 
 
 @_tool
 def loop_join(node_id: str = "", commitment_dir: str = "") -> str:
-    """Open this node's shelf and seal its join record. Returns the node's
-    signing key (its identity to peers), its checkpoint key, the shelf, and
-    its signed commitment (step 03, with the defaults ``loop_advertise``
-    takes) and policy. With ``commitment_dir``, both are also written there
-    as ``loop_advertise`` writes them."""
+    """Open this node's profile and seal its join record. Returns the node's signing key (its identity to
+    peers), its checkpoint key, and its signed commitment (step 03, with the defaults ``loop_advertise``
+    takes) and policy. With ``commitment_dir``, both are also written there as ``loop_advertise`` writes them."""
     n = node()
     cm.check(node_id or n.key_id, cm.Settings())  # a refusal seals no join record
-    sealed = n.note(gn.JOINED, {"operator": n.operator, "key_id": n.key_id})
+    sealed = n.note(gn.JOINED, {"operator": n.operator, "key_id": n.key_id}, once="key_id")
     doc, policy_bytes = cm.build(n, node_id)
     files = [str(p) for p in cm.write(commitment_dir, doc, policy_bytes)] if commitment_dir else []
     return _out(ok=True, step="12", key_id=n.key_id, checkpoint_key_id=n.checkpoint_key_id,
-                shelf=str(n.home / "shelf.db"), record_id=sealed.record_id, commitment=doc,
+                home=str(n.dir), record_id=sealed["record_id"], commitment=doc,
                 policy=json.loads(policy_bytes), commitment_files=files)
 
 
 @_tool
-def loop_import(ledger: str) -> str:
-    """Import an existing capsule-emit flat ledger (a ledger.jsonl or a
-    ledger store directory) into this shelf as a host log, once. Nothing is
-    re-signed; the flat files move to the node's archive only after the
-    shelf holds every record in order."""
-    report = node().import_ledger(ledger)
-    if report.get("reopen"):
-        global _node
-        _node.close()
-        _node = None
-        report = node().import_ledger(ledger)
-    return _out(ok=True, step="12", **report)
-
-
-@_tool
 def loop_probe() -> str:
-    """Reopen and check every log on the shelf: each book's records verify
-    as their Capsules on open, and each deal's half verifies as a
-    counterparty would check it."""
+    """The deals this profile holds with their state, and the node book's newest checkpoint."""
     n = node()
-    books, failures = n.shelf.books(), []
-    for book_id in books:
-        if book_id.startswith("deal/") and book_id.count("/") == 1:
-            try:
-                gn.verify_half(n.half(book_id[len("deal/"):]), n.checkpoint_key_id)
-            except gn.Refused as exc:
-                failures.append({"book": book_id, "error": str(exc)})
-    return _out(ok=not failures, step="12", books=books, imported=len(n.ledger_capsules()), failures=failures)
+    return _out(ok=True, step="12", deals=n.ctl.run("list", "--json"), node_book=n.checkpoint(gn.NODE_BOOK))
 
 
 # -- 02 Book and the cadence ------------------------------------------------------------
@@ -206,59 +171,36 @@ def loop_probe() -> str:
 
 @_tool
 def loop_book(book_id: str) -> str:
-    """A book's size and its newest checkpoint (cut now if the book grew)."""
-    book = node().shelf.open(book_id)
-    cp = book.checkpoint()
-    return _out(ok=True, step="02", book_id=book_id, size=book.size(),
-                checkpoint={"entries": cp.entries, "root": cp.root, "anchor_digest": cp.anchor_digest,
-                            "key_id": cp.key_id})
+    """A node book's newest checkpoint (cut now if the book grew)."""
+    cp = node().checkpoint(book_id)
+    return _out(ok=True, step="02", book_id=book_id, size=cp["size"],
+                checkpoint={"entries": cp["entries"], "root": cp["root"], "key_id": cp["key_id"], "id": cp["id"]})
 
 
 @_tool
 def loop_tick() -> str:
-    """Run the cadence's tick if one is due: every live log's checkpoint is
-    committed in the cadence checkpoint, the one a witness sees."""
-    result = node().tick()
-    tick = result.tick
-    return _out(ok=True, step="02", ticked=result.ticked, due_next=result.due_next,
-                tick=None if tick is None else {"n": tick.n, "checkpoint_size": tick.checkpoint_size})
+    """Run the cadence's tick if one is due: every live log's checkpoint is committed in the cadence
+    checkpoint, the one a witness sees."""
+    done = node().tick()
+    return _out(ok=True, step="02", state=done.get("state"), due=done.get("due"),
+                published=done.get("published_this_run"), witness=done.get("witness"))
 
 
 @_tool
-def loop_book_bundle(book_id: str, record_id: str, out_path: str, disclose: bool = False) -> str:
-    """Write an Evidence Bundle (``evidence-bundle/v2``) for one record of a
-    book to ``out_path``: the record, its position and inclusion proof, and
-    the book's checkpoint covering it. ``capsulectl verify --bundle`` reads
-    it. Beside it (``<out_path minus .json>.<name>``) go the book's checkpoint
-    (``checkpoint.cose``) and, with GOOSE_WITNESSES set, the witness's receipt
-    for that very checkpoint (``witness-receipt.json``, also in the bundle's
-    ``checkpoint.witnesses``) and the directory (``witnesses.json``). When a
-    witnessed cadence tick also carries the checkpoint, the cadence's
-    checkpoint and receipt go as ``cadence-checkpoint.cose`` and
-    ``cadence-witness-receipt.json`` and the chain travels in the bundle's
-    ``x-cadence-witness/v0`` extension.
-
-    With ``disclose`` it also reveals the headers of the record and of the records it cites, with
-    their payloads (an outcome of an evidence request, with the request it answers)."""
+def loop_book_bundle(book_id: str, record_id: str, out_path: str, disclose: bool = False,
+                     witness_receipt: str = "", witness_directory: str = "") -> str:
+    """Write an Evidence Bundle (``evidence-bundle/v2``) for one record of a node book to ``out_path``: the
+    record, its position and inclusion proof, and the book's checkpoint covering it. ``capsulectl verify
+    --bundle`` reads it. With ``disclose`` it also reveals the headers of the record and of the records it
+    cites, with their payloads. A witness's receipt for the checkpoint is the host's to fetch (submit the
+    checkpoint statement, ``loop_book`` writes it); give the receipt file and the witness directory and the
+    bundle carries it, checked under the directory."""
     n = node()
-    built = n.book_bundle(book_id, record_id, disclose)
-    stem = str(Path(out_path).expanduser().with_suffix(""))
-    _write(out_path, json.dumps(built, sort_keys=True).encode())
-    cose = built["checkpoint"]["cose"]  # the bundle's own, not a newer cut
-    files = {"checkpoint.cose": base64.urlsafe_b64decode(cose + "=" * (-len(cose) % 4))}
-    receipts = built["checkpoint"].get("witnesses") or []
-    if receipts:
-        files["witness-receipt.json"] = json.dumps(receipts[0], sort_keys=True).encode()
-        files["witnesses.json"] = json.dumps(n.witness_directory, sort_keys=True).encode()  # the one the receipt was checked under
-    chain = built.get("extensions", {}).get(gn.CADENCE_EXTENSION)
-    if chain:
-        cose = chain["cadence"]["checkpoint"]["cose"]
-        files["cadence-checkpoint.cose"] = base64.urlsafe_b64decode(cose + "=" * (-len(cose) % 4))
-        files["cadence-witness-receipt.json"] = json.dumps(chain["cadence"]["witnesses"][0], sort_keys=True).encode()
-    for name, data in files.items():
-        _write(f"{stem}.{name}", data)
-    return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path,
-                witnessed=bool(receipts), cadence_extent=chain["extent"] if chain else None, beside=sorted(f"{stem}.{name}" for name in files))
+    done = n.bundle(book_id, record_id, _path(out_path), disclose=disclose,
+                    witness_receipt=_path(witness_receipt) if witness_receipt else "",
+                    witness_directory=_path(witness_directory) if witness_directory else "")
+    return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path, **{
+        k: v for k, v in done.items() if k in ("checkpoint", "witnessed")})
 
 
 # -- 03 Advertise ---------------------------------------------------------------------------
@@ -268,19 +210,17 @@ def loop_book_bundle(book_id: str, record_id: str, out_path: str, disclose: bool
 def loop_advertise(out_dir: str, node_id: str = "", endpoint: str = "", bindings: str = "",
                    answers_within: str = "", human_gated: bool = True, relays: str = "",
                    poll_interval: int = 30) -> str:
-    """Write this node's signed ``evidence-commitment/1`` and its signed
-    disclosure policy to ``out_dir`` as ``<node_id>.json`` and
-    ``policies/<node_id>.json``: add both under the loop repository's
-    ``nodes/commitments/`` by pull request. ``node_id`` is the node's id in
-    the loop's list (its key id when empty). ``endpoint`` and ``bindings``
-    (comma-separated) say how it is asked; ``answers_within`` (ISO 8601,
-    default PT24H) is how long an asker waits before recording absence. It
-    staples the node book's ``history_card/1`` and carries no counts.
+    """Write this node's signed ``evidence-commitment/1`` and its signed disclosure policy to ``out_dir`` as
+    ``<node_id>.json`` and ``policies/<node_id>.json``: add both under the loop repository's
+    ``nodes/commitments/`` by pull request. ``node_id`` is the node's id in the loop's list (its key id when
+    empty). ``endpoint`` and ``bindings`` (comma-separated) say how it is asked; ``answers_within`` (ISO 8601,
+    default PT24H) is how long an asker waits before recording absence. It staples the profile's
+    ``history_card/2`` and carries no counts.
 
-    ``relays`` (comma-separated ``wss://`` URLs) are the relays the node reads its Nostr mailbox
-    on: the commitment then names ``ask.nostr`` and the node is askable with no listener, by
-    calling ``loop_mailbox_poll`` at least every ``poll_interval`` seconds. ``answers_within``
-    may not be shorter than ``poll_interval``."""
+    ``relays`` (comma-separated ``wss://`` URLs) are the relays the node reads its Nostr mailbox on: the
+    commitment then names ``ask.nostr`` and the node is askable with no listener, by calling
+    ``loop_mailbox_poll`` at least every ``poll_interval`` seconds. ``answers_within`` may not be shorter
+    than ``poll_interval``."""
     defaults = cm.Settings()
     mailbox = tuple(r.strip() for r in relays.split(",") if r.strip())
     settings = cm.Settings(
@@ -288,10 +228,11 @@ def loop_advertise(out_dir: str, node_id: str = "", endpoint: str = "", bindings
         endpoint=endpoint or (MAILBOX_ENDPOINT if mailbox else defaults.endpoint),
         bindings=tuple(b.strip() for b in bindings.split(",") if b.strip()) or defaults.bindings,
         answers_within=answers_within or defaults.answers_within, human_gated=human_gated)
-    doc, policy_bytes = cm.build(node(), node_id, settings)
+    n = node()
+    doc, policy_bytes = cm.build(n, node_id, settings)
     files = cm.write(out_dir, doc, policy_bytes)
     if mailbox:
-        _write(str(Path(HOME).expanduser() / "mailbox.json"), json.dumps({"relays": list(mailbox), "poll_interval": settings.poll_interval}).encode())
+        _write(str(n.home / "mailbox.json"), json.dumps({"relays": list(mailbox), "poll_interval": settings.poll_interval}).encode())
     return _out(ok=True, step="03", node_id=doc["node_id"], key_id=doc["key_id"], profile=doc["profile"],
                 streams=[c["stream"] for c in doc["history_cards"]], files=[str(p) for p in files])
 
@@ -300,28 +241,28 @@ def loop_advertise(out_dir: str, node_id: str = "", endpoint: str = "", bindings
 
 
 @_tool
-def loop_admit(peer_key_id: str, checkpoint_key_id: str, decision: str, reason: str = "") -> str:
-    """Seal this node's GO or NO on a peer before any deal with it. The peer
-    is named by its signing key, and its checkpoint key is pinned with it
-    (both from its loop_join): its halves must be signed by the one and
-    checkpointed under the other."""
+def loop_admit(peer_key_id: str, decision: str, reason: str = "") -> str:
+    """Seal this node's GO or NO on a peer before any deal with it. The peer is named by its signing key
+    (from its loop_join). A NO stops every deal with it; a GO lets this node run capsule-engine's admission
+    on a deal with the peer, whose decision is what the deal's agreement cites."""
     decision = decision.strip().upper()
     if decision not in ("GO", "NO"):
         raise ValueError("decision must be GO or NO")
-    for key in (peer_key_id, checkpoint_key_id):
-        if len(key) != 64 or key.strip("0123456789abcdef"):
-            raise ValueError("peer_key_id and checkpoint_key_id are the peer's 64-hex keys")
-    sealed = node().note(gn.ADMITTED, {"peer": peer_key_id, "checkpoint_key_id": checkpoint_key_id,
-                                       "decision": decision, "reason": reason})
-    return _out(ok=True, step="04", record_id=sealed.record_id, peer=peer_key_id, decision=decision)
+    if len(peer_key_id) != 64 or peer_key_id.strip("0123456789abcdef"):
+        raise ValueError("peer_key_id is the peer's 64-hex signing key")
+    sealed = node().note(gn.ADMITTED, {"peer": peer_key_id, "decision": decision, "reason": reason})
+    return _out(ok=True, step="04", record_id=sealed["record_id"], peer=peer_key_id, decision=decision)
 
 
-def _admitted(peer: str) -> None:
-    admission = node().admission(peer)
-    if admission is None:
-        raise gn.Refused(f"no admission sealed for {peer}: call loop_admit first")
-    if admission["decision"] != "GO":
-        raise gn.Refused(f"the sealed admission for {peer} is {admission['decision']}: no deal")
+@_tool
+def loop_deal_bundle(deal_id: str, out_path: str) -> str:
+    """Write an Evidence Bundle of this node's record of a deal's context to ``out_path``: that record, the
+    admission it cites (this node's GO, sealed before the deal) and the rest of the node book up to the
+    checkpoint, so a verifier reads that no deal record cites a NO. The deal's own records stay in the
+    deal's book."""
+    n = node()
+    n.bundle(gn.NODE_BOOK, n.context(deal_id)["record_id"], _path(out_path))
+    return _out(ok=True, step="04", deal_id=deal_id, file=out_path)
 
 
 # -- 05 Deal --------------------------------------------------------------------------------
@@ -329,168 +270,92 @@ def _admitted(peer: str) -> None:
 
 @_tool
 def loop_deal_open(peer_key_id: str, item: str, price_minor: int, currency: str, rail: str, asked: str,
-                   refundable: bool = False, deal_id: str = "") -> str:
-    """Open a deal as the buyer with an admitted peer: its book's first step
-    (the baseline: what was asked, of whom, on which terms). ``asked`` is the
-    user's own words; it stays on this node."""
-    _admitted(peer_key_id)
-    n = node()
-    deal_id = deal_id or f"deal-{os.urandom(8).hex()}"
-    chain = n.new_deal(deal_id, dr.ROLE_BUYER, peer_key_id, dr.Terms(item, price_minor, currency, rail, refundable))
-    sealed = n.open_deal(chain, chain.open(_now(), asked))
-    return _out(ok=True, step="05", deal_id=deal_id, records=[s.record_id for s in sealed])
+                   out_path: str, refundable: bool = False) -> str:
+    """Open a deal as the buyer with an admitted peer: the offer at these terms (one payment row, due in a day),
+    written to ``out_path`` for the seller. ``asked`` is the user's own words; they stay on this node. The
+    price is in minor units of ``currency`` (a 3-letter code), and the admission pack decides which prices
+    this node deals in."""
+    done = node().open_deal(peer_key_id, item, price_minor, currency, rail, asked, refundable, _path(out_path))
+    return _out(ok=True, step="05", file=out_path, **done)
 
 
 @_tool
-def loop_deal_push(deal_id: str, out_path: str, standard_card: bool = False) -> str:
-    """Write this node's half of a deal (every step's Capsule and record, the
-    book's checkpoint and the deal book's ``history_card/1``) to a file for the
-    counterparty. ``standard_card=true`` also staples this node's signed
-    ``standard_history/1`` card (it needs a finished tick, ``loop_tick``). Set it only when
-    the counterparty asks and the user approves; this sends your standard card."""
-    half = node().half(deal_id, standard_card)
-    _write(out_path, json.dumps(half, sort_keys=True).encode())
-    return _out(ok=True, step="05", deal_id=deal_id, steps=len(half["steps"]), file=out_path)
+def loop_deal_respond(request_file: str, asked: str, out_path: str) -> str:
+    """Answer a buyer's offer as the seller: keep it, run the admission on the buyer (it must be admitted with
+    GO), seal what the user asked and agree. The agreement is written to ``out_path`` for the buyer."""
+    done = node().respond(_path(request_file), asked, _path(out_path))
+    return _out(ok=True, step="05", file=out_path, **done)
 
 
 @_tool
-def loop_deal_respond(request_file: str, asked: str) -> str:
-    """Answer a buyer's pushed half as the seller: the half must verify and
-    come from a peer admitted with GO. Seals this node's side of the same
-    deal: its baseline at the buyer's terms, the task authority, the offer,
-    the buyer's acceptance (its half, by digest) and the commit. An answer
-    cut short part-way is finished by calling it again."""
-    n = node()
-    verified = n.verify_peer_half(_read_json(request_file))
-    baseline = verified["records"][0]["payload"]
-    if baseline["x-deal-v0"]["record_type"] != "baseline" or baseline["body"]["intent"].get("party_role"):
-        raise gn.Refused("the half does not open a deal as a buyer")
-    body = baseline["body"]
-    terms = dr.Terms(body["terms"]["item"], body["terms"]["price_minor"], body["terms"]["currency"],
-                     body["recourse"]["rail"], body["recourse"]["refundable"])
-    deal_id = verified["deal_id"]
-    resumed = n.has_deal(deal_id)
-    if resumed:
-        # An answer cut short part-way: the steps it sealed stay, the rest follow.
-        chain = n.deal(deal_id)
-        if chain.role != dr.ROLE_SELLER or chain.peer != verified["key_id"] or chain.terms != terms:
-            raise gn.Refused(f"deal {deal_id} is already open on this node with another party or other terms")
-    else:
-        chain = n.new_deal(deal_id, dr.ROLE_SELLER, verified["key_id"], terms)
-    steps = chain.respond(_now(), asked, verified["records"][-1]["digest"])
-    if resumed:
-        n.ensure_opening(deal_id)  # a crash after the last step but before its opening was recorded
-    if not steps:
-        raise gn.Refused(f"deal {deal_id} is already answered")
-    sealed = n.seal(chain, steps) if resumed else n.open_deal(chain, steps)
-    if resumed:
-        n.ensure_opening(deal_id)  # an answer cut short part-way through its steps
-    return _out(ok=True, step="05", deal_id=deal_id, records=[s.record_id for s in sealed])
+def loop_deal_agree(deal_id: str, out_path: str) -> str:
+    """As the buyer, once the seller's agreement is kept (``loop_deal_reconcile``): run the admission on the
+    seller, seal what the user asked and agree. The agreement is written to ``out_path`` for the seller."""
+    done = node().agree(deal_id, _path(out_path))
+    return _out(ok=True, step="05", file=out_path, **done)
 
 
 @_tool
 def loop_deal_reconcile(peer_file: str) -> str:
-    """Check the counterparty's pushed half of a deal this node holds: it
-    must verify, be signed by the peer the deal names and state the same
-    terms. A matching half is held and recorded as received: its bytes, its
-    final record id and the digest of the checkpoint it came under; this
-    node's close cites that digest. A half that ends in a close is also the
-    card's ``stamped_by_both``."""
-    n = node()
-    half = _read_json(peer_file)
-    verified = n.verify_peer_half(half)
-    deal_id = verified["deal_id"]
-    chain = n.deal(deal_id)
-    if verified["key_id"] != chain.peer:
-        raise gn.Refused(f"the half is signed by {verified['key_id']}, not the peer deal {deal_id} names")
-    theirs = verified["records"][0]["payload"]["body"]
-    mine = chain.terms
-    same = (theirs["terms"] == {"item": mine.item, "price_minor": mine.price_minor, "currency": mine.currency}
-            and theirs["recourse"] == {"rail": mine.rail, "refundable": mine.refundable})
-    state = "matched" if same else "contradicted"
-    recorded = n.hold_half(verified, half).record_id if same else None
-    return _out(ok=True, step="05", deal_id=deal_id, state=state, steps=len(verified["records"]),
-                closed=verified["close_half_digest"] is not None, recorded=recorded,
-                checkpoint_digest=verified["checkpoint_digest"], close_cites=verified["counterparty_checkpoint_cites"])
-
-
-@_tool
-def loop_deal_bundle(deal_id: str, out_path: str) -> str:
-    """Write an Evidence Bundle of this node's record of a deal's opening to
-    ``out_path``: that record, the admission it cites (this node's GO,
-    sealed before the deal) and the rest of the node book up to the
-    checkpoint, so a verifier reads that no opening record cites a NO. The
-    deal's own steps stay in the deal's book (``loop_deal_push``); the first
-    cites the same admission."""
-    n = node()
-    built = n.book_bundle(gn.NODE_BOOK, n.ensure_opening(deal_id))
-    _write(out_path, json.dumps(built, sort_keys=True).encode())
-    return _out(ok=True, step="04", deal_id=deal_id, file=out_path)
+    """Keep a file the other side sent (an offer, an agreement, a payment leg, a delivery, a statement) and say
+    whether it counts yet. What you have not kept does not count for you."""
+    done = node().receive(_path(peer_file))
+    return _out(ok=True, step="05", **{k: v for k, v in done.items() if k not in ("spec_version", "voice")})
 
 
 # -- 06 Settle and close ----------------------------------------------------------------------
 
 
 @_tool
-def loop_settle(deal_id: str, payment_ref: str) -> str:
-    """Seal the buyer's payment: the check, its verdict, the standing
-    intent's approval and the ``pay`` act. ``payment_ref`` is the reference
-    the caller observed on the rail (committed, never sealed in the clear);
-    this tool drives no rail and moves no money."""
-    n = node()
-    chain = n.deal(deal_id)
-    sealed = n.seal(chain, chain.check_and_pay(_now(), payment_ref))
-    return _out(ok=True, step="06", deal_id=deal_id, records=[s.record_id for s in sealed])
+def loop_settle(deal_id: str, payment_ref: str, out_path: str, check_id: str = "") -> str:
+    """The buyer's payment: the final review (``deal check``) and, when it proceeds, the payer leg written to
+    ``out_path`` for the seller. ``payment_ref`` is the reference the caller observed on the rail (a Lightning
+    payment hash); this tool drives no rail and moves no money. A check that pauses returns the card the user
+    must see (``say``) and ``paused: true``: show it as it is, then seal their answer with ``loop_deal_approve``
+    and call again with the ``check_id``."""
+    done = node().pay(deal_id, payment_ref, _path(out_path), check_id)
+    return _out(ok=True, step="06", file=out_path, **done)
 
 
 @_tool
-def loop_settlement_disclosure(rail: str, through_sequence: int, out_path: str) -> str:
-    """Write this node's signed ``settlement-disclosure/v1`` to ``out_path``: how many final settlements on ``rail``
-    its own deal books hold (a buyer's: its ``pay`` acts on the rail; a seller's: deals closed ``received``),
-    labelled with ``through_sequence``, the rail's latest ledger sequence the caller observed. Step 06 compares it with the
-    rail's own count. This tool reads no rail and moves no money."""
-    n = node()
-    doc = st.disclosure(n, rail, through_sequence)
-    _write(out_path, json.dumps(doc, sort_keys=True, indent=2).encode())
-    return _out(ok=True, step="06", rail=rail, settlements=doc["settlements"], file=out_path)
+def loop_deal_approve(deal_id: str, check_id: str, choice: str, said: str) -> str:
+    """Seal the user's answer to a check that paused (``loop_settle`` or ``loop_deal_deliver``): ``choice`` is
+    ``proceed`` or ``hold``, ``said`` their words. Only their answer goes on: never seal one they did not give."""
+    done = node().approve(deal_id, check_id, choice, said)
+    return _out(ok=True, step="06", deal_id=deal_id, proceed=done.get("proceed"), say=done.get("say"))
 
 
 @_tool
-def loop_pay_opening(deal_id: str, out_path: str) -> str:
-    """Write the opening of this buyer's ``pay`` record's committed local event to ``out_path``: with the deal's
-    half (``loop_deal_push``) a checker recomputes the record's payment-reference commitment and finds the
-    reference the caller observed on the rail (a settlement id or payment hash, never a preimage). Calling it
-    discloses that reference."""
-    doc = st.pay_opening(node(), deal_id)
-    _write(out_path, json.dumps(doc, sort_keys=True, indent=2).encode())
-    return _out(ok=True, step="06", deal_id=deal_id, record_id=doc["record_id"], file=out_path)
+def loop_deal_received(deal_id: str, amount_minor: int, payment_ref: str, out_path: str) -> str:
+    """The seller's payee leg: what it received (an amount in minor units and the payment reference it observed),
+    written to ``out_path`` for the buyer. Keep the buyer's payer leg first (``loop_deal_reconcile``)."""
+    done = node().received(deal_id, amount_minor, payment_ref, _path(out_path))
+    return _out(ok=True, step="06", file=out_path, **done)
 
 
 @_tool
-def loop_deal_end_exchange(deal_id: str, out_path: str, share: bool = True, standard_card: bool = False) -> str:
-    """End the exchange of a deal, before its outcome and close: seal this
-    node's request for the counterparty's half and, by default, write this
-    node's own half to ``out_path`` for the counterparty (``share=false``
-    withholds it). ``standard_card`` is as for ``loop_deal_push``, and is ignored when ``share=false``.
-    Set it only when the counterparty asks and the user approves; this sends your standard card. Reconcile the half the counterparty sends back
-    (``loop_deal_reconcile``); the close then cites its checkpoint."""
-    n = node()
-    asked = n.ask_half(deal_id)
-    if share:
-        _write(out_path, json.dumps(n.half(deal_id, standard_card), sort_keys=True).encode())
-    return _out(ok=True, step="05", deal_id=deal_id, asked=asked.record_id, shared=out_path if share else None)
+def loop_deal_deliver(deal_id: str, out_path: str, observed: str = "delivered", check_id: str = "") -> str:
+    """The seller's delivery: a commit review, then the act, written to ``out_path`` for the buyer. A review that
+    pauses is answered as for ``loop_settle``."""
+    done = node().deliver(deal_id, _path(out_path), observed, check_id)
+    return _out(ok=True, step="06", file=out_path, **done)
 
 
 @_tool
-def loop_deal_close(deal_id: str, status: str, uncited: bool = False) -> str:
-    """End a deal: the outcome observed (``received`` or ``not_received``)
-    and the close. A received close commits the agreed price and currency.
-    The close cites the checkpoint of the counterparty's half this node
-    holds; with none held it is refused unless ``uncited`` is true (the
-    counterparty never answered the request ``loop_deal_end_exchange`` sealed)."""
-    n = node()
-    sealed = n.close_deal(deal_id, status, uncited)
-    return _out(ok=True, step="06", deal_id=deal_id, records=[s.record_id for s in sealed])
+def loop_deal_close(deal_id: str, status: str, out_path: str) -> str:
+    """Say how the deal's payment row went on this side: ``received`` (met) or ``not_received`` (not met). The
+    statement is written to ``out_path`` for the other side."""
+    done = node().statement(deal_id, status, _path(out_path))
+    return _out(ok=True, step="06", file=out_path, **done)
+
+
+@_tool
+def loop_deal_report(deal_id: str, out_path: str, wait_seconds: int = 0) -> str:
+    """Write this node's report of the deal as an Evidence Bundle (``deal report --bundle``) to ``out_path``.
+    A report rests on a checkpoint: with ``wait_seconds`` the tool waits for the cadence tick that covers the
+    deal (a tick is due about every 5 minutes)."""
+    done = node().report(deal_id, _path(out_path), float(wait_seconds))
+    return _out(ok=True, step="06", **done)
 
 
 # -- 07 Ask ---------------------------------------------------------------------------------
@@ -499,48 +364,49 @@ def loop_deal_close(deal_id: str, status: str, uncited: bool = False) -> str:
 @_tool
 def loop_ask(responder: str, subject_form: str, out_path: str, subject_value: str = "", expected_pin: str = "",
              min_freshness: str = "", derivation: str = "") -> str:
-    """Seal an evidence request (draft-mih-agent-evidence-request) in this
-    node's book before it is sent, then write its octets to ``out_path``.
-    Exactly one of ``expected_pin`` or ``min_freshness`` sets the coverage."""
-    content = json.loads(subject_value) if subject_value else None
-    floor: int | str | None = None
-    if min_freshness:
-        floor = int(min_freshness) if min_freshness.isdigit() else min_freshness
-    request = EvidenceRequest(Subject(subject_form, content), Coverage(expected_pin=expected_pin or None,
-                                                                       min_freshness=floor),
-                              derivation=derivation or None)
-    sent = node().ask(request, responder)
-    _write(out_path, sent.octets)
-    return _out(ok=True, step="07", record_id=sent.record_id, file=out_path)
+    """Seal an evidence request (draft-mih-agent-evidence-request) in this node's book before it is sent, then
+    write its octets to ``out_path``. Exactly one of ``expected_pin`` or ``min_freshness`` sets the coverage."""
+    request: dict[str, Any] = {
+        "profile": "evidence-interop/0",
+        "subject": {subject_form: json.loads(subject_value) if subject_value else None},
+        "coverage": {"expected_pin": expected_pin} if expected_pin else
+        {"min_freshness": int(min_freshness) if min_freshness.isdigit() else min_freshness},
+        "nonce": os.urandom(16).hex()}
+    if derivation:
+        request["derivation"] = derivation
+    n = node()
+    sealed = n.ctl.run("node", "request", "--book", gn.NODE_BOOK, "--request", n._file("request.json", request),
+                       "--responder", responder, "--output", _path(out_path))
+    return _out(ok=True, step="07", record_id=sealed["record_id"], file=out_path)
 
 
 @_tool
 def loop_ask_reply(request_record_id: str, reply_file: str, responder_key: str, checkpoint_key: str) -> str:
-    """Record the answer to a request this node sent: the reply is verified
-    under the responder's signing and checkpoint keys you trust, and sealed
-    as received (an artifact or a signed refusal). A reply that does not
+    """Record the answer to a request this node sent: the reply is verified under the responder's signing and
+    checkpoint keys you trust, and sealed as received (an artifact or a signed refusal). A reply that does not
     verify is recorded as failing, never as an answer."""
-    octets = Path(reply_file).expanduser().read_bytes()
-    record = node().record_reply(request_record_id, Message(octets),
-                                 ResponderKeys(signer=responder_key, checkpoint=checkpoint_key))
-    statement = record.header.statement
-    return _out(ok=True, step="07", record_id=record.record_id, outcome=statement.get("outcome"))
+    done = node().ctl.run("node", "request", "--book", gn.NODE_BOOK, "--for", request_record_id,
+                          "--response", _path(reply_file), "--responder-key", responder_key,
+                          "--responder-checkpoint-key", checkpoint_key)
+    record = done.get("record", done)
+    return _out(ok=True, step="07", record_id=record.get("record_id"),
+                outcome=(record.get("statement") or {}).get("outcome", done.get("outcome")))
 
 
 @_tool
 def loop_mailbox_poll(relays: str = "") -> str:
     """Answer the evidence requests addressed to this node's mailbox, once.
 
-    Reads the requests addressed to the mailbox key on ``relays`` (comma-separated; by default
-    the ones ``loop_advertise`` named), answers each from this node's book under the node key
-    and posts the answer back, or a signed refusal for a request outside the disclosure policy.
-    Call it at least as often as the ``poll_interval`` you advertised."""
+    Reads the requests addressed to the mailbox key on ``relays`` (comma-separated; by default the ones
+    ``loop_advertise`` named), answers each from this node's book under the node key and posts the answer back,
+    or a signed refusal for a request outside the disclosure policy. Call it at least as often as the
+    ``poll_interval`` you advertised."""
     names = [r.strip() for r in relays.split(",") if r.strip()]
     if not names:
         try:
-            names = _read_json(str(Path(HOME).expanduser() / "mailbox.json"))["relays"]
+            names = _read_json(str(node().home / "mailbox.json"))["relays"]
         except (OSError, KeyError, ValueError):
-            raise gn.Refused("no relays: pass relays, or advertise with relays first") from None
+            raise Refused("no relays: pass relays, or advertise with relays first") from None
     answered = mx.answer_round(node(), names)
     return _out(ok=True, step="07", answered=answered)
 
@@ -550,9 +416,9 @@ def loop_ask_mailbox(commitment_file: str, subject_form: str, subject_value: str
                      min_freshness: str = "", derivation: str = "") -> str:
     """Ask a node through the mailbox its signed commitment advertises (``ask.nostr``).
 
-    The request is sealed in this node's book before it is published, with a deadline of the
-    commitment's ``answers_within``. Exactly one of ``expected_pin`` or ``min_freshness`` sets the
-    coverage. Poll with ``loop_ask_mailbox_poll``."""
+    The request is sealed in this node's book before it is published, with a deadline of the commitment's
+    ``answers_within``. Exactly one of ``expected_pin`` or ``min_freshness`` sets the coverage. Poll with
+    ``loop_ask_mailbox_poll``."""
     content = json.loads(subject_value) if subject_value else None
     floor: int | str | None = None
     if min_freshness:
@@ -565,121 +431,69 @@ def loop_ask_mailbox(commitment_file: str, subject_form: str, subject_value: str
 def loop_ask_mailbox_poll(request_event_id: str) -> str:
     """Poll once for the reply to a request sent with ``loop_ask_mailbox``.
 
-    ``status`` is ``answered`` (verified under the node's listed keys and recorded: an artifact or
-    a signed refusal), ``pending`` (before the deadline) or ``absent`` (the deadline passed with no
-    recorded answer; the absence is recorded against the node) or ``transport_error`` (no relay could
-    be read and no outcome is recorded yet: nothing is written, poll again). ``late`` marks a reply that came
-    after the absence: it is kept beside it and the absence stays as written."""
+    ``status`` is ``answered`` (verified under the node's listed keys and recorded: an artifact or a signed
+    refusal), ``pending`` (before the deadline) or ``absent`` (the deadline passed with no recorded answer; the
+    absence is recorded against the node) or ``transport_error`` (no relay could be read and no outcome is
+    recorded yet: nothing is written, poll again). ``late`` marks a reply that came after the absence: it is kept
+    beside it and the absence stays as written."""
     return _out(ok=True, step="07", **mx.poll(node(), request_event_id))
-
-
-# -- 09 Dispute -----------------------------------------------------------------------------
-
-
-@_tool
-def loop_dispute_ask(deal_file: str, poll_interval: int = 30) -> str:
-    """Ask the referee the deal terms name for the Result, over the Nostr mailbox.
-
-    ``deal_file`` holds ``{"buyer": {"half", "action", "terms"}, "seller": {...}}``:
-    each party's signed half and the opening of its commitment. The terms'
-    ``referee`` names the ``mailbox_key``, the ``relays`` and ``answers_within``
-    (seconds); ``poll_interval`` (whole seconds) is how often you will call ``loop_dispute_poll``
-    and must not exceed ``answers_within``. Returns the request's event id."""
-    asked = node().ask_dispute_result(_read_json(deal_file), int(poll_interval))
-    return _out(ok=True, step="09", **asked)
-
-
-@_tool
-def loop_dispute_poll(request_event_id: str, deal_file: str) -> str:
-    """Poll the mailbox once for the Result asked for with ``loop_dispute_ask``.
-
-    ``status`` is ``received`` (the Result verified and is sealed in your book,
-    citing both halves), ``pending`` (before the request's deadline) or ``absent``
-    (the deadline passed with no reply; the absence is sealed) or ``transport_error`` (no relay
-    could be read: nothing is sealed, poll again). A reply that fails
-    verification is refused and the refusal sealed with its code. Both parties'
-    books then hold the same ``result_digest``."""
-    got = node().poll_dispute_result(request_event_id, _read_json(deal_file))
-    return _out(ok=True, step="09", **got)
 
 
 # -- History cards ----------------------------------------------------------------------------
 
 
 @_tool
-def loop_history_card(book_id: str, out_path: str) -> str:
-    """Write ``history_card/1`` for one book (a deal's, or the node book) to
-    ``out_path``: the reply a stranger's request for it gets."""
-    octets = node().history_card(book_id)
-    _write(out_path, octets)
-    return _out(ok=True, book_id=book_id, file=out_path, bytes=len(octets))
+def loop_history_card(out_path: str) -> str:
+    """Write this profile's ``history_card/2`` to ``out_path``: the staple (the holder's own request and its signed
+    reply), a sampled chain of its cadence checkpoints with no deal counts, as of the newest finished tick."""
+    staple = node().ctl.run("standard-history", "staple")
+    _write(out_path, json.dumps(staple["staple"], sort_keys=True, indent=2).encode())
+    return _out(ok=True, derivation=staple["derivation"], file=out_path)
 
 
 @_tool
-def loop_standard_history(out_path: str, tick: int = 0) -> str:
-    """Write this node's ``standard_history/1`` card as of a cadence tick
-    (the newest when 0), with the inputs a verifier recomputes it from."""
-    result = node().standard_history(tick)
-    _write(out_path, json.dumps(result, sort_keys=True, indent=2).encode())
-    return _out(ok=True, tick=result["tick"], deals=len(result["deals"]), anchor=result["as_of"]["anchor"],
-                file=out_path)
+def loop_standard_history(out_path: str, shared: bool = False) -> str:
+    """Write this node's ``standard_history/3`` card (a count of its x-deal-v1 deals as of its newest checkpoint, with
+    no deal's content) as a bundle ``capsulectl verify --bundle`` checks. ``shared`` writes the copy to send: the
+    card, its policy and its anchor, without the deal entries your own copy has. It needs a finished tick."""
+    args = ["standard-history", "card", "--out", _path(out_path)]
+    if shared:
+        args.append("--shared")
+    done = node().ctl.run(*args)
+    return _out(ok=True, file=out_path, **{k: v for k, v in done.items() if k not in ("spec_version", "voice", "file")})
 
 
 @_tool
-def loop_register_card(out_path: str, tick: int = 0) -> str:
-    """Register this node's ``standard_history/1`` card (as of a cadence tick, the newest when 0) on
-    the transparency service named in ``GOOSE_CARD_SERVICE``, and write the card statement with its
-    Receipt to ``out_path``. Opt-in: with ``GOOSE_CARD_SERVICE`` unset nothing is sent and the tool
-    refuses; the card is complete without it, and a failed registration changes nothing. ``out_path``
-    must be a new file in an existing directory, checked before anything is sent.
+def loop_register_card(out_path: str) -> str:
+    """Register this node's ``history_card/2`` on the transparency service named in ``GOOSE_CARD_SERVICE`` (a
+    service file: name, operator, url and the keys its Receipts verify under) and write the card statement with
+    its Receipt to ``out_path``. Opt-in: with ``GOOSE_CARD_SERVICE`` unset nothing is sent and the tool refuses;
+    the card is complete without it, and a failed registration changes nothing.
 
-    Call it only when the user has asked to register this card, and tell them first that it is
-    permanent and that the service learns which of their keys registered a card for which anchor,
-    and when. Say who runs the service as the result names it (``service`` and ``operator``).
-
-    What a passing Receipt shows: this node registered this card with the named service, at the time
-    in the Receipt (or with no time, when the Receipt states none). It does not show that the service checked the counts, the deals or the anchor,
-    that the service authenticated this node, or that this is the node's only card, and
-    ``anchor_inclusion`` stays NOT_CHECKED. A registration is permanent: the service's log is
-    append-only, and the service and anyone who reads its log learn which key registered a card for
-    which anchor, and when. The statement carries the card's digest, not the card, but a small card's
-    counts can be guessed from it."""
-    path = os.environ.get("GOOSE_CARD_SERVICE")
-    if not path:
-        raise gn.Refused("no transparency service is configured: set GOOSE_CARD_SERVICE to a service "
-                         "file (card_service.py); registration is opt-in and has no default")
-    service = cs.load_service(path)
-    out, handle = cs.reserve_out_file(out_path)  # before the post: a registration cannot be taken back
-    try:
+    Call it only when the user has asked to register this card, and tell them first that it is permanent and
+    that the service learns which of their keys registered a card for which anchor, and when. Say who runs the
+    service as the result names it. What a passing Receipt shows is what ``capsulectl book card register --help``
+    says: that this card existed by the Receipt's time, not that its counts are right, and ``anchor_inclusion``
+    stays NOT_CHECKED."""
+    service = os.environ.get("GOOSE_CARD_SERVICE")
+    if not service:
+        raise Refused("no transparency service is configured: set GOOSE_CARD_SERVICE to a service file; "
+                      "registration is opt-in and has no default")
+    n = node()
+    staple = n.ctl.run("standard-history", "staple")["staple"]["reply"]
+    card = n._file("card.json", json.dumps(staple, sort_keys=True, separators=(",", ":")))
+    book = os.environ.get("GOOSE_CAPSULECTL_BOOK", "capsulectl-book")
+    done = subprocess.run([book, "--profile", n.operator, "card", "register", "--card", card,
+                           "--anchor", staple["anchor"]["digest"], "--holder", n.key_id,
+                           "--service", _path(service), "--out", _path(out_path)],
+                          env={**os.environ, "HOME": str(n.home)}, capture_output=True, timeout=300, check=False)
+    if done.returncode != 0:
         try:
-            result = node().register_card(cs.AnchorRegistrar(service), service.policy, tick)
-        except BaseException:
-            handle.close()
-            out.unlink(missing_ok=True)  # nothing was registered, so nothing to keep: free the path
-            raise
-        result["service"] = {"name": service.name, "operator": service.operator, "url": service.url,
-                             "keys": list(service.keys)}
-        try:
-            handle.write(json.dumps(result, sort_keys=True, indent=2).encode())
-            handle.flush()
-            handle.close()
-        except OSError as exc:
-            # The service already has the statement: never drop its only copy. Closing can fail too (a
-            # full disk fails the buffered flush again), so every way the write ends is this refusal.
-            try:
-                handle.close()
-            except OSError:
-                pass
-            raise gn.Refused(f"the card was registered but {out} could not be written ({exc}); "
-                             f"keep this statement: {result['statement']}") from None
-    finally:
-        if not handle.closed:
-            try:
-                handle.close()
-            except OSError:
-                pass
-    return _out(ok=True, tick=result["tick"], anchor=result["anchor"], service=service.name,
-                operator=service.operator, file=out_path)
+            why = json.loads(done.stdout).get("error")
+        except ValueError:
+            why = None
+        raise Refused(why or done.stderr.decode("utf-8", "replace").strip() or "card register failed")
+    return _out(ok=True, anchor=staple["anchor"]["digest"], file=out_path)
 
 
 if __name__ == "__main__":

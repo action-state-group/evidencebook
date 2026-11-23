@@ -5,7 +5,7 @@ A Goose node hosts no server. The commitment it signs names a Nostr mailbox
 (``ask.nostr {mailbox_key, relays}``, binding nostr-mailbox-v0 §3 and §4.3):
 
 * the **answering** side polls: :func:`answer_round` reads the evidence requests addressed to its
-  mailbox key on those relays and answers each from its own node book with ``Book.respond``,
+  mailbox key on those relays and answers each from its own node book with ``deal node respond``,
   under the node key. A request outside the node's disclosure policy gets a signed refusal, never
   silence. An answered request is sealed in the node book, so a restart does not answer it again;
 * the **asking** side seals the request before sending (:func:`ask`), publishes it to the asked
@@ -22,20 +22,12 @@ interval at which a node polls (:mod:`commitment`).
 The events are not encrypted (binding §8, N-3): use a relay that authenticates its readers."""
 from __future__ import annotations
 
-import base64
 import hashlib
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from agent_action_capsule.canonical import jcs
-from agent_action_capsule.evidence_request import verify_refusal_offline
-from evidencebook._time import from_nanos, parse_ns
-from evidencebook import (
-    CITES, DERIVATION_HISTORY_CARD_2, MINIMUM_ABSENCE_WINDOW, RECORD_TYPE_ABSENCE, RECORD_TYPE_RESPONSE, Coverage, EvidenceRequest, InvalidError,
-    Message, ResponderKeys, Subject, parse_reply,
-)
+from ctl import Refused
 
 import commitment as cm
 import goose_node as gn
@@ -46,12 +38,25 @@ MEDIA = "application/json"
 #: Request events this node answered (node book), a request this node sent over a mailbox, and a
 #: reply that arrived after its absence was recorded.
 ANSWERED, ASKED, LATE = "goose_mailbox_answered", "goose_mailbox_asked", "goose_mailbox_late"
+#: The records of an answer and of an absence (the library's record types, which a statement's
+#: ``request_digest`` ties to the request).
+RESPONSE, ABSENCE = "evidence_response", "recorded_absence"
+#: The shortest waiting window an absence may record (the library's ``MinimumAbsenceWindow``).
+MINIMUM_ABSENCE_WINDOW = timedelta(minutes=1)
+#: What ``answers_within`` must exceed that by: the request is sealed a moment after its deadline is counted
+#: from, and the book refuses a window that ends less than the minimum after the request was recorded.
+SEAL_MARGIN = timedelta(seconds=30)
+HISTORY_CARD_2 = "history_card/2"
 
 __all__ = ["MEDIA", "ANSWERED", "ASKED", "LATE", "answer_round", "route", "ask", "poll"]
 
 
 def _factory(relay_factory: Any) -> Callable[[str], mb.Relay]:
     return relay_factory or mb.Relay
+
+
+def _time(text: str) -> datetime:
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
 
 
 def answer_round(node: gn.Node, relays: list[str], relay_factory: Any = None,
@@ -61,23 +66,28 @@ def answer_round(node: gn.Node, relays: list[str], relay_factory: Any = None,
     is skipped; a request that is not an evidence request in a supported encoding gets no reply
     (binding §5.2), and the next round reads it again."""
     factory = _factory(relay_factory)
-    with node._lock:
-        answered = {st["request_event_id"] for _, st in node.notes(ANSWERED)}
-    book = node.shelf.open(gn.NODE_BOOK)
+    answered = {r["statement"]["request_event_id"] for r in node.notes(ANSWERED)}
 
     def answer(octets: bytes, media: str) -> bytes | None:
+        out = node._out("reply.bin")
         try:
-            with node._lock:
-                reply, _ = book.respond(Message(octets, media))
-        except InvalidError:
-            return None
-        return reply.message.octets
+            node.ctl.run("node", "respond", "--book", gn.NODE_BOOK, "--request", node._file("request.bin", octets),
+                         "--output", out)
+        except Refused:
+            return None  # not a well-formed request: no reply (binding §5.2)
+        reply = open(out, "rb").read()
+        os.unlink(out)
+        return reply
 
     done = mb.serve_round([factory(u) for u in relays], node.mailbox_secret, answer, answered,
-                          now or (lambda: node._clock().timestamp()), with_media=True)
+                          now or time_now, with_media=True)
     for event_id in done:
-        node.note(ANSWERED, {"request_event_id": event_id}, subject_ref=event_id)
+        node.note(ANSWERED, {"request_event_id": event_id}, once="request_event_id", subject_ref=event_id)
     return done
+
+
+def time_now() -> float:
+    return datetime.now(timezone.utc).timestamp()
 
 
 def route(commitment: Any) -> dict:
@@ -86,10 +96,11 @@ def route(commitment: Any) -> dict:
     cm.verify(commitment)
     nostr = commitment["ask"].get("nostr")
     if nostr is None:
-        raise gn.Refused("the commitment names no mailbox (ask.nostr): this node cannot be asked this way")
+        raise Refused("the commitment names no mailbox (ask.nostr): this node cannot be asked this way")
     cards = commitment.get("history_cards") or []
     if not cards or "checkpoint_key" not in cards[0]:
-        raise gn.Refused("the commitment names no checkpoint key to verify an answer under")
+        raise Refused("the commitment names no checkpoint key to verify an answer under")
+    import base64
     checkpoint = base64.urlsafe_b64decode(cards[0]["checkpoint_key"] + "=" * (-len(cards[0]["checkpoint_key"]) % 4))
     return {"responder": commitment["key_id"], "checkpoint": checkpoint[-32:].hex(),
             "mailbox_key": nostr["mailbox_key"], "relays": list(nostr["relays"]),
@@ -102,62 +113,56 @@ def ask(node: gn.Node, commitment: Any, subject_form: str, subject_value: Any = 
     """Seal an evidence request in the node book, then publish it to the mailbox the asked node's
     ``commitment`` advertises. Its deadline is ``answers_within`` from now. Poll with :func:`poll`."""
     where = route(commitment)
-    if not derivation and subject_form == "checkpoints" and DERIVATION_HISTORY_CARD_2 in (
+    if not derivation and subject_form == "checkpoints" and HISTORY_CARD_2 in (
             commitment.get("answers", {}).get("derivations") or ()):
-        derivation = DERIVATION_HISTORY_CARD_2  # the newer card, where the responder offers it
-    if where["answers_within"] < MINIMUM_ABSENCE_WINDOW.total_seconds():
-        raise gn.Refused("answers_within is shorter than the shortest waiting window an absence can record "
-                         f"({int(MINIMUM_ABSENCE_WINDOW.total_seconds())}s)")
-    started = (now or node._clock)().astimezone(timezone.utc).replace(microsecond=0)
+        derivation = HISTORY_CARD_2
+    least = (MINIMUM_ABSENCE_WINDOW + SEAL_MARGIN).total_seconds()
+    if where["answers_within"] < least:
+        raise Refused("answers_within is shorter than the shortest waiting window an absence can record, with "
+                      f"the time to seal the request ({int(least)}s)")
+    started = (now or (lambda: datetime.now(timezone.utc)))().astimezone(timezone.utc).replace(microsecond=0)
     deadline = started + timedelta(seconds=where["answers_within"])
-    request = EvidenceRequest(Subject(subject_form, subject_value),
-                              Coverage(expected_pin=expected_pin or None, min_freshness=min_freshness),
-                              derivation=derivation or None, deadline=deadline.strftime("%Y-%m-%dT%H:%M:%SZ"))
-    sent = node.ask(request, where["responder"])
+    coverage = {"expected_pin": expected_pin} if expected_pin else {"min_freshness": min_freshness}
+    request = {"profile": "evidence-interop/0", "subject": {subject_form: subject_value}, "coverage": coverage,
+               "nonce": os.urandom(16).hex(), "deadline": deadline.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    if derivation:
+        request["derivation"] = derivation
+    out = node._out("request.bin")
+    sealed = node.ctl.run("node", "request", "--book", gn.NODE_BOOK, "--request", node._file("request.json", request),
+                          "--responder", where["responder"], "--output", out)
+    octets = open(out, "rb").read()
+    os.unlink(out)
     event = mb.sign_event(mb.new_secret(), mb.REQUEST_KIND,
                           [("p", where["mailbox_key"]), ("m", MEDIA), ("expiration", str(int(deadline.timestamp())))],
-                          mb.encode(sent.octets), int(started.timestamp()))
-    note = node.note(ASKED, {"request_record_id": sent.record_id, "request_event_id": event.id,
-                             "request_digest": sent.digest, "responder": where["responder"],
+                          mb.encode(octets), int(started.timestamp()))
+    note = node.note(ASKED, {"request_record_id": sealed["record_id"], "request_event_id": event.id,
+                             "request_digest": sealed["request_digest"], "responder": where["responder"],
                              "checkpoint_key": where["checkpoint"], "mailbox_key": where["mailbox_key"],
                              "relays": where["relays"], "deadline": int(deadline.timestamp())},
-                     subject_ref=event.id, cites=(sent.record_id,))
-    factory = _factory(relay_factory)
+                     once="request_event_id", subject_ref=event.id, cites=(sealed["record_id"],))
     try:
-        mb.publish_all([factory(u) for u in where["relays"]], event)
+        mb.publish_all([_factory(relay_factory)(u) for u in where["relays"]], event)
     except mb.MailboxError as exc:
         # The request is sealed: the next poll records its absence if it never reaches the mailbox.
-        raise gn.Refused(f"{exc}; the request is sealed as {sent.record_id} and polls to an absence") from exc
-    return {"request_record_id": sent.record_id, "request_event_id": event.id, "asked_record_id": note.record_id,
+        raise Refused(f"{exc}; the request is sealed as {sealed['record_id']} and polls to an absence") from exc
+    return {"request_record_id": sealed["record_id"], "request_event_id": event.id, "asked_record_id": note["record_id"],
             "deadline": int(deadline.timestamp())}
 
 
-def _outcome(node: gn.Node, request_record_id: str) -> Any:
-    for record in node.shelf.open(gn.NODE_BOOK).records():
-        if (record.header.record_type in (RECORD_TYPE_RESPONSE, RECORD_TYPE_ABSENCE)
-                and request_record_id in record.header.links_to(CITES)):
-            return record
+def _outcome(node: gn.Node, request_digest: str) -> dict | None:
+    for kind in (RESPONSE, ABSENCE):
+        for record in node.notes(kind):
+            if record["statement"].get("request_digest") == request_digest:
+                return record
     return None
 
 
-def _signed_answer(octets: bytes, digest: str, signer: str) -> bool:
+def _signed_answer(node: gn.Node, octets: bytes, digest: str, signer: str) -> bool:
     """Whether ``octets`` are an envelope or refusal ``signer`` signed for the request with ``digest``
     (the signature check a late reply gets; it is not recorded as an outcome)."""
-    try:
-        reply = parse_reply(Message(octets, MEDIA))
-    except InvalidError:
-        return False
-    if reply.refusal is not None:
-        r = reply.refusal
-        return r.request_digest == digest and r.key_id == signer and verify_refusal_offline(r)
-    e = reply.envelope
-    if e is None or e.request_digest != digest or e.responder != signer:
-        return False
-    try:
-        Ed25519PublicKey.from_public_bytes(bytes.fromhex(e.responder)).verify(bytes.fromhex(e.sig), e.signing_body())
-    except (ValueError, InvalidSignature):
-        return False
-    return True
+    checked = node.ctl.run("node", "reply-check", "--reply", node._file("late.bin", octets),
+                           "--request-digest", digest, "--signer", signer)
+    return bool(checked.get("signed"))
 
 
 def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
@@ -171,23 +176,20 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
     ``error`` says why, poll again). A recorded answer or absence is returned without reading the relays.
     ``late`` is true when a reply arrived after the deadline: it is signature-checked and kept beside
     the absence as a ``goose_mailbox_late`` record, and the absence is not rewritten."""
-    asked = next((st for _, st in node.notes(ASKED) if st["request_event_id"] == request_event_id), None)
-    if asked is None:
-        raise gn.Refused("this node's book holds no such request")
-    clock = now or node._clock
-    arrived = clock().astimezone(timezone.utc)
-    request_record = asked["request_record_id"]
+    asked_note = next((r for r in node.notes(ASKED) if r["statement"]["request_event_id"] == request_event_id), None)
+    if asked_note is None:
+        raise Refused("this node's book holds no such request")
+    asked = asked_note["statement"]
+    arrived = (now or (lambda: datetime.now(timezone.utc)))().astimezone(timezone.utc)
     # The window closes at the request's deadline, but a book records no window shorter than
     # MINIMUM_ABSENCE_WINDOW after the request it opened with; the request was sealed a moment before
-    # its deadline was counted from, so the later of the two closes it.
-    sealed = from_nanos(parse_ns(node.shelf.open(gn.NODE_BOOK).get(request_record).header.committed_at))
-    deadline = max(datetime.fromtimestamp(asked["deadline"], timezone.utc), sealed + MINIMUM_ABSENCE_WINDOW)
+    # this note, so the later of the two closes it.
+    deadline = max(datetime.fromtimestamp(asked["deadline"], timezone.utc),
+                   _time(asked_note["committed_at"]) + MINIMUM_ABSENCE_WINDOW)
     factory = _factory(relay_factory)
-    book = node.shelf.open(gn.NODE_BOOK)
-    keys = ResponderKeys(signer=asked["responder"], checkpoint=asked["checkpoint_key"])
-    outcome = _outcome(node, request_record)
-    if outcome is not None and outcome.header.record_type == RECORD_TYPE_RESPONSE:
-        return {"status": "answered", "record_id": outcome.record_id, "outcome": outcome.header.statement["outcome"]}
+    outcome = _outcome(node, asked["request_digest"])
+    if outcome is not None and outcome["record_type"] == RESPONSE:
+        return {"status": "answered", "record_id": outcome["record_id"], "outcome": outcome["statement"]["outcome"]}
     try:
         replies = mb.poll_replies([factory(u) for u in asked["relays"]], request_event_id, MEDIA, asked["mailbox_key"])
     except mb.MailboxError as exc:
@@ -199,29 +201,35 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
     if outcome is None and arrived < deadline:
         for reply in replies:
             try:
-                with node._lock:
-                    record = book.record_response(request_record, Message(mb.decode(reply.content) or b"", MEDIA), keys)
-            except InvalidError:
+                node.ctl.run("node", "request", "--book", gn.NODE_BOOK, "--for", asked["request_record_id"],
+                             "--response", node._file("reply.bin", mb.decode(reply.content) or b""),
+                             "--responder-key", asked["responder"], "--responder-checkpoint-key", asked["checkpoint_key"])
+            except Refused:
                 continue  # not a reply this responder signed for this request: a transport condition
-            return {"status": "answered", "record_id": record.record_id, "outcome": record.header.statement["outcome"]}
+            outcome = _outcome(node, asked["request_digest"])
+            return {"status": "answered", "record_id": outcome["record_id"], "outcome": outcome["statement"]["outcome"]}
         return {"status": "pending", "deadline": int(deadline.timestamp())}
     if outcome is None:
-        with node._lock:
-            outcome = book.record_absence(request_record, deadline, mb.nprofile(asked["mailbox_key"], asked["relays"]))
-    seen = {st["reply_event_id"] for _, st in node.notes(LATE) if st["request_event_id"] == request_event_id}
+        node.ctl.run("node", "request", "--book", gn.NODE_BOOK, "--for", asked["request_record_id"],
+                     "--absent-until", deadline.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                     "--route", mb.nprofile(asked["mailbox_key"], asked["relays"]))
+        outcome = _outcome(node, asked["request_digest"])
+    seen = {r["statement"]["reply_event_id"] for r in node.notes(LATE)
+            if r["statement"]["request_event_id"] == request_event_id}
     late = None
     for reply in replies:
         octets = mb.decode(reply.content) or b""
-        if reply.id in seen or not _signed_answer(octets, asked["request_digest"], asked["responder"]):
+        if reply.id in seen or not _signed_answer(node, octets, asked["request_digest"], asked["responder"]):
             continue
         late = node.note(LATE, {"request_event_id": request_event_id, "reply_event_id": reply.id,
                                 "request_digest": asked["request_digest"],
                                 "reply_digest": hashlib.sha256(octets).hexdigest(), "deadline": int(deadline.timestamp()),
                                 "seen_at": int(arrived.timestamp())},
-                         subject_ref=reply.id, cites=(outcome.record_id,), payloads=(octets,))
+                         once="reply_event_id", subject_ref=reply.id, cites=(outcome["record_id"],),
+                         payloads=(octets,))
         break
-    result = {"status": "absent", "record_id": outcome.record_id, "deadline": int(deadline.timestamp()),
+    result = {"status": "absent", "record_id": outcome["record_id"], "deadline": int(deadline.timestamp()),
               "late": late is not None or bool(seen)}
     if late is not None:
-        result["late_record_id"] = late.record_id
+        result["late_record_id"] = late["record_id"]
     return result

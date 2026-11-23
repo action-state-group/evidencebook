@@ -65,12 +65,14 @@ go build -o /tmp/dv1-go ./test/interop/deal-v1 && (cd rust && cargo build --lock
 # The Go types Python reads x-deal-v1 records into; regenerate only for an intended change
 EB_WRITE_TYPES_TABLE=1 go test -run TestTypesTable ./dealprofile/xdealv1
 
-# The Goose loop reference (python/examples/goose; CI: the goose job in ci.yml): its tests, the
-# scripted two-node run over MCP stdio, Go's check of each node's card, and each node's deal half
-# through a capsules-plugin v0.1.8 Mesh node's checks (each check skips when its variable is unset)
-(cd python && .venv/bin/pip install "mcp==2.3.0")
-cargo build --locked --manifest-path test/interop/goose-mesh-check/Cargo.toml
-GOOSE_GO_CHECK=1 GOOSE_MESH_CHECK=test/interop/goose-mesh-check/target/debug/goose-mesh-check \
+# The Goose loop reference (python/examples/goose; CI: the goose job in ci.yml): its node is a
+# capsulectl-deal profile. Needs the plugin built from this checkout and capsule-engine's `capsule-engine`
+# command (capsule-engine go/v0.6.0), the scripted two-node run over MCP stdio (about six minutes:
+# reports rest on cadence ticks), Go's check of every bundle and of the model-call Capsule, and the
+# loop's commitment checker (each check skips when its variable is unset)
+(cd python && python -m venv .venv && .venv/bin/pip install pytest cryptography "mcp==2.3.0" "websockets==17.4")
+go -C capsulectl build -o /tmp/goose-bin/capsulectl-deal ./cmd/capsulectl-deal
+GOOSE_CAPSULECTL_DEAL=/tmp/goose-bin/capsulectl-deal GOOSE_CAPSULE_ENGINE=/path/to/capsule-engine GOOSE_GO_CHECK=1 \
   python/.venv/bin/python -m pytest -q python/examples/goose/tests
 
 # Release helper

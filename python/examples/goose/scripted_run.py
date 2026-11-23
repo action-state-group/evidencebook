@@ -2,23 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 """A scripted Goose run: two Goose nodes, a buyer and a seller, each its own
 ``loop_server.py`` process spoken to over MCP stdio as Goose speaks to it,
-run one deal end to end and write their History cards.
+run one x-deal-v1 deal end to end and write their cards.
 
     python scripted_run.py OUT
 
-OUT receives, for each node (``buyer``, ``seller``): ``<node>/`` (its home:
-shelf, keys), ``<node>-card.json`` (its ``standard_history/1`` card and the
-inputs it was derived from), ``<node>-history-card.json`` (``history_card/1``
-for its deal's book) and ``<node>.key`` (its signing key), ``commitments/<key_id>.json`` with
-``commitments/policies/<key_id>.json`` (its signed commitment and policy,
-loop_advertise), ``buyer-model-call.json`` (a model call the buyer
-sealed, loop_seal) and ``buyer-model-call-bundle.json`` (that record proven in the node book,
-loop_book_bundle); ``buyer-pay-opening.json`` and ``<node>-settlement-disclosure.json`` (loop_pay_opening, loop_settlement_disclosure; step 06);
-``buyer-opening-bundle.json`` is the buyer's admission and its record
-of the deal, one bundle (loop_deal_bundle). Go's check of a
-card is ``go run ./test/interop/goose-card OUT/<node>/shelf.db
-OUT/<node>-card.json $(cat OUT/<node>.key)``. With GOOSE_CARD_SERVICE set to a service file
-(card-service.example.json), each node also registers its card on that service
+Each node is a capsulectl-deal profile (``capsulectl-deal`` and ``capsule-engine`` must be
+installed; ``GOOSE_CAPSULECTL_DEAL`` and ``GOOSE_CAPSULE_ENGINE`` name them). OUT receives, for each
+node (``buyer``, ``seller``): ``<node>/`` (its home: profile, store, keys), ``<node>-card.json`` (its
+``standard_history/3`` card as a bundle), ``<node>-history-card.json`` (its ``history_card/2`` staple)
+and ``<node>.key`` (its signing key id), ``commitments/<key_id>.json`` with
+``commitments/policies/<key_id>.json`` (its signed commitment and policy, loop_advertise),
+``buyer-model-call.json`` (a model call the buyer sealed, loop_seal) and
+``buyer-model-call-bundle.json`` (that record proven in the node book, loop_book_bundle);
+``buyer-opening-bundle.json`` is the buyer's admission and its record of the deal, one bundle
+(loop_deal_bundle); and the deal's files in the order they are exchanged: ``offer.json``,
+``seller-agreement.json``, ``buyer-agreement.json``, ``buyer-leg.json``, ``seller-leg.json``,
+``seller-delivery.json``, ``<node>-statement.json``, ``<node>-report.json``. The scripted run answers
+the user's check for them (loop_deal_approve), as a person would. With GOOSE_CARD_SERVICE set to a
+service file (card-service.example.json), each node also registers its card on that service
 (loop_register_card) and writes ``<node>-card-statement.json``.
 """
 from __future__ import annotations
@@ -69,7 +70,8 @@ async def run(out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     def params(name: str) -> StdioServerParameters:
-        env = {**os.environ, "GOOSE_HOME": str(out / name), "GOOSE_OPERATOR": f"goose-{name}"}
+        env = {**os.environ, "GOOSE_HOME": str(out / name), "GOOSE_OPERATOR": f"goose-{name}",
+               "GOOSE_NO_WITNESS": os.environ.get("GOOSE_NO_WITNESS", "1")}
         return StdioServerParameters(command=sys.executable, args=[str(SERVER)], env=env)
 
     async with stdio_client(params("buyer")) as (br, bw), stdio_client(params("seller")) as (sr, sw):
@@ -78,61 +80,59 @@ async def run(out: Path) -> None:
             await ss.initialize()
             buyer, seller = Goose(bs, "buyer"), Goose(ss, "seller")
             b, s = await buyer.call("loop_join"), await seller.call("loop_join")
-            await buyer.call("loop_admit", peer_key_id=s["key_id"], checkpoint_key_id=s["checkpoint_key_id"],
-                             decision="GO", reason="known inference seller")
-            await seller.call("loop_admit", peer_key_id=b["key_id"], checkpoint_key_id=b["checkpoint_key_id"],
-                              decision="GO", reason="paying customer")
+            await buyer.call("loop_admit", peer_key_id=s["key_id"], decision="GO", reason="known inference seller")
+            await seller.call("loop_admit", peer_key_id=b["key_id"], decision="GO", reason="paying customer")
 
-            # 01: the buyer seals a model call it made; the Capsule is the file a
-            # verifier reads.
+            # 01: the buyer seals a model call it made; the Capsule is the file a verifier reads.
             sealed = await buyer.call("loop_seal", provider="rehearsal", model_id="rehearsal-model",
-                             prompt="buy 1k tokens of inference", completion="the seller's offer, summarised",
-                             out_path=str(out / "buyer-model-call.json"))
+                                      prompt="buy 1k tokens of inference", completion="the seller's offer, summarised",
+                                      out_path=str(out / "buyer-model-call.json"))
 
-            # 05: the buyer opens the deal and pushes its half; the seller
-            # answers it (offer, acceptance, commit) and pushes its own.
+            # 05: the buyer offers; the seller answers with its agreement; the buyer agrees back.
             opened = await buyer.call("loop_deal_open", peer_key_id=s["key_id"], item="inference: 1k tokens",
-                                      price_minor=500, currency="USD", rail="lightning",
-                                      asked="buy 1k tokens of inference from the seller")
+                                      price_minor=50, currency="USD", rail="lightning",
+                                      asked="buy 1k tokens of inference from the seller", out_path=str(out / "offer.json"))
             deal_id = opened["deal_id"]
-            await buyer.call("loop_deal_push", deal_id=deal_id, out_path=str(out / "buyer-half.json"))
             # 04: the buyer's admission and its record of the deal that cites it, as one bundle.
             await buyer.call("loop_deal_bundle", deal_id=deal_id, out_path=str(out / "buyer-opening-bundle.json"))
-            await seller.call("loop_deal_respond", request_file=str(out / "buyer-half.json"),
-                              asked="sell 1k tokens of inference at the listed price")
-            await seller.call("loop_deal_push", deal_id=deal_id, out_path=str(out / "seller-half.json"))
-            await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-half.json"))
+            await seller.call("loop_deal_respond", request_file=str(out / "offer.json"),
+                              asked="sell 1k tokens of inference at the listed price",
+                              out_path=str(out / "seller-agreement.json"))
+            await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-agreement.json"))
+            await buyer.call("loop_deal_agree", deal_id=deal_id, out_path=str(out / "buyer-agreement.json"))
+            await seller.call("loop_deal_reconcile", peer_file=str(out / "buyer-agreement.json"))
 
-            # 06: the buyer pays (the reference is the caller's; no rail is
-            # driven), and both close as received.
-            await buyer.call("loop_settle", deal_id=deal_id, payment_ref="ln:payment-hash-of-the-invoice")
-            # The exchange ends: each side asks for the other's half and shares its own;
-            # the close cites the checkpoint of the half each holds.
+            # 06: the buyer pays (the reference is the caller's; no rail is driven). The final review pauses, as
+            # it does for a price the agent picked and a rail with no card protection; the user answers it.
+            paused = await buyer.call("loop_settle", deal_id=deal_id, payment_ref="payment-hash-of-the-invoice",
+                                      out_path=str(out / "buyer-leg.json"))
+            assert paused.get("paused"), paused
+            await buyer.call("loop_deal_approve", deal_id=deal_id, check_id=paused["check_id"], choice="proceed", said="yes")
+            await buyer.call("loop_settle", deal_id=deal_id, payment_ref="payment-hash-of-the-invoice",
+                             out_path=str(out / "buyer-leg.json"), check_id=paused["check_id"])
+            await seller.call("loop_deal_reconcile", peer_file=str(out / "buyer-leg.json"))
+            await seller.call("loop_deal_received", deal_id=deal_id, amount_minor=50,
+                              payment_ref="payment-hash-of-the-invoice", out_path=str(out / "seller-leg.json"))
+            await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-leg.json"))
+            # The seller delivers (its commit review pauses too) and the buyer keeps the act.
+            delivery = await seller.call("loop_deal_deliver", deal_id=deal_id, out_path=str(out / "seller-delivery.json"))
+            assert delivery.get("paused"), delivery
+            await seller.call("loop_deal_approve", deal_id=deal_id, check_id=delivery["check_id"], choice="proceed", said="yes")
+            await seller.call("loop_deal_deliver", deal_id=deal_id, out_path=str(out / "seller-delivery.json"),
+                              check_id=delivery["check_id"])
+            await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-delivery.json"))
+            # Each side says how the payment row went, and keeps the other's statement.
             for me in (buyer, seller):
-                await me.call("loop_deal_end_exchange", deal_id=deal_id,
-                              out_path=str(out / f"{me.name}-exchange-half.json"))
+                await me.call("loop_deal_close", deal_id=deal_id, status="received",
+                              out_path=str(out / f"{me.name}-statement.json"))
             for me, peer in ((buyer, seller), (seller, buyer)):
-                await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-exchange-half.json"))
-            await buyer.call("loop_deal_close", deal_id=deal_id, status="received")
-            await seller.call("loop_deal_close", deal_id=deal_id, status="received")
+                await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-statement.json"))
 
-            # 06: each node's signed count of its settlements on the rail (the rail's ledger sequence is the
-            # caller's), and the buyer's opening of its pay record's reference commitment.
-            await buyer.call("loop_pay_opening", deal_id=deal_id, out_path=str(out / "buyer-pay-opening.json"))
-            for me in (buyer, seller):
-                await me.call("loop_settlement_disclosure", rail="lightning", through_sequence=1,
-                              out_path=str(out / f"{me.name}-settlement-disclosure.json"))
-
-            # Each final half to the other side: a verified close is the
-            # card's stamped_by_both.
-            for me, peer in ((buyer, seller), (seller, buyer)):
-                path = str(out / f"{me.name}-final-half.json")
-                await me.call("loop_deal_push", deal_id=deal_id, out_path=path)
-                await peer.call("loop_deal_reconcile", peer_file=path)
-
-            # 02, then the cards.
+            # 02, then the cards. A report rests on a checkpoint: each waits for the cadence tick that covers it.
+            await asyncio.gather(*(node.call("loop_deal_report", deal_id=deal_id,
+                                             out_path=str(out / f"{node.name}-report.json"), wait_seconds=600)
+                                   for node in (buyer, seller)))
             for node, key in ((buyer, b), (seller, s)):
-                await node.call("loop_tick")
                 if node is buyer:  # 02: the model call, proven in the node book
                     await node.call("loop_book_bundle", book_id="goose/node", record_id=sealed["record_id"],
                                     out_path=str(out / "buyer-model-call-bundle.json"))
@@ -142,8 +142,7 @@ async def run(out: Path) -> None:
                     # Opt-in: only a host that named a service registers its card. A registration that
                     # fails is reported and never stops the run: the card is complete without it.
                     await node.try_call("loop_register_card", out_path=str(out / f"{node.name}-card-statement.json"))
-                await node.call("loop_history_card", book_id=f"deal/{deal_id}",
-                                out_path=str(out / f"{node.name}-history-card.json"))
+                await node.call("loop_history_card", out_path=str(out / f"{node.name}-history-card.json"))
                 (out / f"{node.name}.key").write_text(key["key_id"])
                 # 03: the node's signed commitment, laid out for the loop's nodes/commitments/.
                 await node.call("loop_advertise", out_dir=str(out / "commitments"))

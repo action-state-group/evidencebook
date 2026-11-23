@@ -1,505 +1,96 @@
 # SPDX-License-Identifier: Apache-2.0
-"""A Goose node on one evidencebook shelf: its deals, its cadence and its
-History cards. :mod:`loop_server` exposes it to Goose as MCP tools; this
-module has no MCP in it, so a test or another host drives it directly.
+"""A Goose node on its own capsulectl-deal profile: its deals, its node book and its History cards.
+:mod:`loop_server` exposes it to Goose as MCP tools; this module has no MCP in it, so a test or another
+host drives it directly.
 
-One shelf (``<home>/shelf.db``) holds everything the node's key answers for
-(design note evidencebook#254 §3.2):
+The store is the profile's (``<home>/deal``, ``capsulectl deal init``); this module never opens it. Every
+operation is one verb of the ``capsulectl-deal`` plugin (:mod:`ctl`):
 
-- **one book per deal**, ``deal/<deal_id>``: the deal's x-deal-v0 steps
-  (:mod:`deal_records`), each a Capsule the node seals itself and the book
-  commits as its record (``Book.append_capsule``), carrying the deal id as
-  its ``deal_id`` member so a relying party joins the two parties' halves
-  on it (EB -02 ``composed/v1``, ``pre_agreed_identifier``);
-- **the node book**, ``goose/node``: what the node did outside any deal
-  (joining, admitting a peer, a counterparty's half it verified, the
-  evidence requests it sent and their answers);
-- **the imported ledger**, ``goose/ledger``: an existing capsule-emit flat
-  ledger, copied once as a host log (:meth:`Node.import_ledger`), its
-  records put as they were sealed and never re-signed;
-- **the cadence**, ``goose/cadence``: every live log's checkpoint committed
-  at each tick, the one checkpoint a witness sees, and the anchor of the
-  node's ``standard_history/1`` card.
+- **a deal** is an x-deal-v1 deal of the profile: the offer, the admission, the user's intent, the agreement,
+  the payment legs, the act and the statements are the profile's records, and what the other side needs from
+  them is the file each verb writes (the offer, the agreement, ...), which this node hands over and the
+  other side keeps with ``deal receive``;
+- **the node book**, ``goose/node``: what the node did outside any deal (joining, its decision on a peer,
+  a deal's context, a model call it sealed, the evidence requests it sent and their answers), sealed with
+  ``deal node ...`` and kept on the same shelf and cadence as the deals;
+- **the cadence**: ``deal tick`` commits every live log's checkpoint, the one checkpoint a witness sees.
 
-The node's keys and the deal store secret live beside the shelf, created on
-first use with mode 0600. Nothing here moves money or opens a connection.
+The node's keys live in the profile's directory, created by ``deal init`` with mode 0600. Nothing here
+moves money or opens a connection.
 """
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import os
-import shutil
-import sqlite3
-import threading
+import tempfile
 import time
-from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from agent_action_capsule import standard_history as sh
-from agent_action_capsule.canonical import jcs
-from capsule_emit import produce
-from capsule_emit.artifact import PAYLOAD_DIGEST, PRESENT, Artifact
-from capsule_emit.artifact.sqlite import SqliteArtifactStore
-from capsule_emit.signing import AuthorshipVerdict, verify_capsule_signature_tristate
-from capsule_emit.verification import verify_capsule
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import (
-    Encoding, NoEncryption, PrivateFormat, load_pem_private_key,
-)
 
-from evidencebook import (
-    CITES, DERIVATION_HISTORY_CARD, PRODUCER_CLAIM, RECORD_HEADER_MEMBER, Ed25519Signer, Entry,
-    Link, NotFoundError, deal, staple,
-)
-from evidencebook.request import (
-    MEDIA_TYPE_JSON, PROFILE as ER_PROFILE, Coverage, EvidenceRequest, Message, Reply, Subject, encode_envelope,
-    encode_request,
-)
-from evidencebook.signer import EvidenceSigner
-from evidencebook.staple import DERIVATION_STANDARD_HISTORY, Staple, check_staple
-from evidencebook._time import profile_time
-from agent_action_capsule.evidence_request import sign_envelope
-from evidencebook.cadence import CADENCE_EXTENSION, CadenceConfig
-from evidencebook.shelf import Shelf
+from ctl import Ctl, Refused, engine
 
-import card_registration as cr
-import deal_records as dr
-
-__all__ = ["Node", "verify_half", "verify_history_staple", "HISTORY_STAPLE_MEMBER", "HISTORY_CARD_MEMBER", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "DISPUTE_HALF", "DISPUTE_ASKED",
-           "DISPUTE_ABSENT", "NODE_BOOK", "LEDGER_LOG", "CADENCE_LOG", "NAMESPACE", "POLICY", "Refused"]
+__all__ = ["Node", "Refused", "NODE_BOOK", "JOINED", "ADMITTED", "DEAL_CONTEXT", "MODEL_CALL", "ASKED_TYPE"]
 
 NODE_BOOK = "goose/node"
-LEDGER_LOG = "goose/ledger"
-CADENCE_LOG = "goose/cadence"
-#: The shelf's one artifact store namespace (§2.5).
-NAMESPACE = "goose"
-#: The disclosure policy the node's card is under (SH §5.1): every deal, all
-#: time. Its digest is the SHA-256 of its JCS.
-POLICY = {"window": {"all": True}}
-#: The kind of holder the node's key answers for: a person's agent.
-HOLDER_KIND = "person"
-#: The record types of the node book.
-JOINED, ADMITTED, HALF_RECEIVED, ASKED_TYPE = "goose_joined", "goose_admitted", "goose_half_received", "goose_asked"
-#: This node's request, at an exchange's end, for the counterparty's half of a deal.
-HALF_ASKED = "goose_half_asked"
-#: A referee's Result delivered into this book, and one refused on delivery
-#: (step 09, evidencebook#310).
-DISPUTE_RECEIVED, DISPUTE_REFUSED = "goose_dispute_received", "goose_dispute_refused"
-#: A judged half held in the node book (the received record cites it), the request for the
-#: Result sent over the mailbox, and the absence recorded when no Result came by its deadline.
-DISPUTE_HALF, DISPUTE_ASKED, DISPUTE_ABSENT = "goose_dispute_half", "goose_dispute_asked", "goose_dispute_absent"
-#: The media type of the mailbox events that carry a Result request and its delivery.
-MAILBOX_MEDIA = "application/json"
-#: The node-book record that stands for a deal this node opened: it cites the admission the deal rests on.
-DEAL_OPENED = "goose_deal_opened"
-#: The bundle extension that carries the payloads of the records a bundle discloses (Go's ``ExtensionPayloads``).
-PAYLOADS_EXTENSION = "evidencebook/payloads"
-#: A model call the node sealed (``Node.seal_model_call``).
-MODEL_CALL = "goose_model_call"
+#: The record types of the node book. They are this node's own names (capsulectl refuses a library name).
+JOINED, ADMITTED, DEAL_CONTEXT, MODEL_CALL = "goose_joined", "goose_admitted", "goose_deal_context", "goose_model_call"
+ASKED_TYPE = "goose_asked"
+#: The admission pack the node's deal admissions run (capsule-engine's ladder pack, its conformance vector).
+PACK = Path(__file__).resolve().parent / "admission-pack.json"
+#: The one payment row of a Goose deal, and how long after the offer the buyer has to pay and the deal to settle.
+ROW = "paid_as_agreed"
+PAY_WITHIN, SETTLE_WITHIN, AGREE_WITHIN = timedelta(days=1), timedelta(days=7), timedelta(days=2)
 
 
-#: The members of a ``goose-deal-half/1`` that carry a stapled card (evidencebook#329):
-#: ``{"request": <JSON text>, "reply": <JSON text>}``, the two messages of a
-#: :class:`~evidencebook.staple.Staple`. They sit outside the signed steps, so a half without them verifies as before.
-#: ``history_card`` is the deal book's own ``history_card/1`` (D0): every half carries it.
-#: ``history_staple`` is the node's shelf-level ``standard_history/1`` (D1): a half carries it only when
-#: the counterparty asked for it and the user approved sending the node's standard card.
-HISTORY_CARD_MEMBER = "history_card"
-HISTORY_STAPLE_MEMBER = "history_staple"
+def _iso(at: datetime) -> str:
+    return at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def verify_history_staple(doc: Any, key_id: str, derivation: str = DERIVATION_STANDARD_HISTORY) -> dict:
-    """Check a stapled card of a half (:data:`HISTORY_STAPLE_MEMBER`, a ``standard_history/1``, or with
-    ``derivation`` :data:`~evidencebook.staple.DERIVATION_HISTORY_CARD` :data:`HISTORY_CARD_MEMBER`)
-    under ``key_id``, the Goose key the half's steps are signed by: the staple is presented by that
-    key (:func:`~evidencebook.staple.check_staple`, which also holds it to the standard card and
-    checks the card's form), and the card is as of the anchor the envelope is. Returns the anchor,
-    the holder's nonce (for the reader's replay check), the time the card was issued and the card. Raises
-    :class:`Refused` for anything else."""
-    try:
-        if not isinstance(doc, dict) or set(doc) != {"request", "reply"} \
-                or not all(isinstance(doc[k], str) for k in doc):
-            raise Refused("a history staple is a request and a reply, both JSON text")
-        staple_ = Staple(Message(doc["request"].encode(), MEDIA_TYPE_JSON),
-                         Reply(Message(doc["reply"].encode(), MEDIA_TYPE_JSON)))
-        checked = check_staple(staple_, key_id)
-        if checked.derivation != derivation:
-            raise Refused(f"the staple carries another derivation than {derivation}")
-        card = json.loads(checked.artifact)
-        if card.get("anchor") != checked.anchor:
-            raise Refused("the stapled card is as of another anchor than the envelope")
-    except Refused:
-        raise
-    except Exception as exc:  # InvalidError from the staple checker, or a malformed member
-        raise Refused(f"the history staple does not verify: {exc}") from None
-    return {"anchor": checked.anchor, "nonce": checked.nonce, "issued_at": checked.issued_at, "card": card}
-
-
-def verify_half(half: Any, checkpoint_key_id: str) -> dict:
-    """Check a counterparty's half (:meth:`Node.half`) on its own bytes:
-    each step's Capsule passes Class 1 and its producer envelope verifies
-    under the half's one key; it is that deal's step ``n`` (its ``action_id``
-    and ``deal_id``), carries its record header, chains to the step before
-    it, and commits its payload, which passes the profile's record checks
-    (x-deal-v0 §8); and the half's checkpoint is signed by
-    ``checkpoint_key_id``, the counterparty's checkpoint key the caller
-    pinned (x-deal-v0 §10, "Admission"), and commits exactly these steps (the
-    MMR over their ids has its peaks). Returns the deal id,
-    the signing key, the steps' records and the digest of the final close
-    half (x-deal-v0 §10), plus the half's final record id, the digest of its
-    checkpoint statement and the checkpoint digests its close cites. Each
-    step's ``cites`` links are checked (:func:`_step_cites`). The ``history_card`` member every half carries is checked under
-    the half's key (:func:`verify_history_staple`) and returned as ``book_card`` (a half without it is refused),
-    a ``history_staple`` member as ``history`` (``None`` without one). Raises
-    :class:`Refused` when anything does not check out."""
-    from cll.checkpoint import core
-
-    from evidencebook._cll import read_checkpoint
-
-    try:
-        deal_id, steps = half["deal_id"], half["steps"]
-        if half.get("half") != "goose-deal-half/1" or not isinstance(steps, list) or not steps:
-            raise Refused("not a goose-deal-half/1 with steps")
-        key_id = steps[0]["capsule"].get("key_id")
-        records, nodes, parent, counterparty_cites = [], _Nodes(), None, []
-        for n, step in enumerate(steps, start=1):
-            capsule, payload = dict(step["capsule"]), step["payload"]
-            signature, signer = capsule.pop("signature", None), capsule.pop("key_id", None)
-            produce.verify_capsule(jcs(capsule))
-            verified = produce.verify_envelope(capsule["capsule_id"], bytes.fromhex(signature))
-            if signer != key_id or bytes(verified.public_key).hex() != key_id:
-                raise Refused(f"step {n} is not signed by the half's key")
-            if capsule.get("action_id") != f"{deal_id}/{n}" or capsule.get("deal_id") != deal_id:
-                raise Refused(f"step {n} is not step {n} of deal {deal_id}")
-            header = capsule.get(RECORD_HEADER_MEMBER)
-            if not isinstance(header, dict) or header.get("record_type") != deal.STEP_RECORD_TYPE \
-                    or header.get("seq") != n or header.get("subject_ref") != f"{deal_id}/{n}":
-                raise Refused(f"step {n} does not carry its deal step's record header")
-            chained = (capsule.get("chain") or {}).get("parent_capsule_id")
-            if chained != parent:
-                raise Refused(f"step {n} does not chain to the step before it")
-            is_close = payload.get("x-deal-v0", {}).get("record_type") == deal.TYPE_CLOSE
-            cited = _step_cites(n, header, parent, is_close)
-            if is_close:
-                counterparty_cites = cited
-            digest = deal.digest(payload)
-            if capsule["model_attestation"]["compute_attestation"].get("agent_input_digest") != digest \
-                    or header.get("payload_commitments") != [digest]:
-                raise Refused(f"step {n}'s Capsule does not commit its payload")
-            deal.check(payload)
-            core.add_leaf(nodes, core.leaf_hash(bytes.fromhex(capsule["capsule_id"])))
-            records.append({"capsule": step["capsule"], "payload": payload, "digest": digest})
-            parent = capsule["capsule_id"]
-        # The profile's chain stage (§6), which the record checks leave out:
-        # the reference checker's own, as the step-09 referee runs it.
-        try:
-            _profile_checker().check_chain([r["payload"] for r in records])
-        except Exception as exc:  # its StageError, or a chain it cannot read
-            raise Refused(f"the half's steps are not a deal the profile allows: {exc}") from None
-        checkpoint = read_checkpoint(bytes.fromhex(half["checkpoint"]["statement"]))
-        if checkpoint.key_id != checkpoint_key_id:
-            raise Refused("the half's checkpoint is not signed by the counterparty's pinned checkpoint key")
-        if checkpoint.entries != len(steps):
-            raise Refused("the half's checkpoint does not cover exactly its steps")
-        if [nodes.hashes[p] for p in core.peaks(nodes.size())] != list(checkpoint.peaks):
-            raise Refused("the half's checkpoint does not commit these steps")
-    except Refused:
-        raise
-    except Exception as exc:  # a malformed half: any step or member that does not check out
-        raise Refused(f"the half does not verify: {exc}") from None
-    history = verify_history_staple(half[HISTORY_STAPLE_MEMBER], key_id) if HISTORY_STAPLE_MEMBER in half else None
-    if HISTORY_CARD_MEMBER not in half:
-        raise Refused("the half carries no history_card: every half carries its deal book's card")
-    book_card = verify_history_staple(half[HISTORY_CARD_MEMBER], key_id, DERIVATION_HISTORY_CARD)
-    # check_staple leaves the anchor and the checkpoint key to the reader: the card is this half's book,
-    # as of the half's checkpoint, under the counterparty's pinned checkpoint key
-    if book_card["anchor"] != hashlib.sha256(bytes.fromhex(half["checkpoint"]["statement"])).hexdigest() \
-            or read_checkpoint(bytes.fromhex(book_card["card"]["history"][0]["checkpoint"])).key_id != checkpoint_key_id:
-        raise Refused("the half's book card is not as of the half's checkpoint under the counterparty's checkpoint key")
-    closes = [r for r in records if r["payload"].get("x-deal-v0", {}).get("record_type") == deal.TYPE_CLOSE]
-    final = closes[-1]["capsule"] if closes else None
-    return {"deal_id": deal_id, "key_id": key_id, "records": records, "history": history, "book_card": book_card,
-            "close_half_digest": hashlib.sha256(jcs(final)).hexdigest() if final else None,
-            "final_record_id": parent, "checkpoint_digest": hashlib.sha256(
-                bytes.fromhex(half["checkpoint"]["statement"])).hexdigest(),
-            "counterparty_checkpoint_cites": counterparty_cites}
-
-
-def _step_cites(n: int, header: dict, parent: str | None, is_close: bool) -> list[str]:
-    """The ``cites`` links of step ``n``'s record header (x-deal-v0 §1): the
-    chain parent exactly once on every step after the baseline; the baseline
-    may cite one admission, which is never read as a checkpoint; only a close
-    may cite checkpoints. Nothing else is a link. Returns the checkpoint
-    digests a close cites."""
-    links = header.get("links") or []
-    if any(not isinstance(link, dict) or link.get("type") != CITES for link in links):
-        raise Refused(f"step {n}'s record header carries a link that is not a cites link")
-    targets = [link.get("target") for link in links]
-    if parent is not None:
-        if targets.count(parent) != 1:
-            raise Refused(f"step {n} does not cite its chain parent exactly once")
-        targets.remove(parent)
-    if n == 1:
-        if len(targets) > 1:
-            raise Refused("the baseline cites at most its admission")
-        return []
-    if targets and not is_close:
-        raise Refused(f"step {n} is not a close and cites more than its chain parent")
-    for target in targets:
-        if not isinstance(target, str) or len(target) != 64 or target.lower() != target \
-                or any(c not in "0123456789abcdef" for c in target):
-            raise Refused(f"step {n} cites {target!r}, which is no checkpoint digest")
-    return targets
-
-
-def _profile_checker():
-    """The x-deal-v0 reference checker (``check_profile.py``), loaded once
-    from this repository, or from ``$GOOSE_CHECK_PROFILE`` in a copy of the
-    example outside it."""
-    global _CHECKER
-    if _CHECKER is None:
-        import importlib.util
-
-        path = os.environ.get("GOOSE_CHECK_PROFILE") or str(
-            Path(__file__).resolve().parents[3] / "dealprofile" / "x-deal-v0" / "check_profile.py")
-        spec = importlib.util.spec_from_file_location("check_profile", path)
-        if spec is None or not os.path.exists(path):
-            raise Refused(f"the profile's reference checker is not at {path}: set GOOSE_CHECK_PROFILE")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        _CHECKER = module
-    return _CHECKER
-
-
-_CHECKER = None
-
-
-class _Nodes:
-    """An MMR's nodes, for :func:`cll.checkpoint.core.add_leaf`."""
-
-    def __init__(self) -> None:
-        self.hashes: list[bytes] = []
-
-    def size(self) -> int:
-        return len(self.hashes)
-
-    def node(self, pos: int) -> bytes:
-        return self.hashes[pos]
-
-    def append_nodes(self, hashes: list[bytes]) -> None:
-        self.hashes.extend(hashes)
-
-
-def _authentic(capsule: Any) -> bool:
-    """The capsule recomputes and its signature verifies under the key_id it carries."""
-    return (isinstance(capsule, dict) and verify_capsule(capsule).ok
-            and verify_capsule_signature_tristate(capsule)[0] is AuthorshipVerdict.AUTHORED)
-
-
-def _referee() -> Any:
-    """capsule-engine's referee, which holds the Result's receive check. It is
-    this example's one extra dependency, imported on first use."""
-    try:
-        from capsule_engine import referee
-    except ImportError:
-        raise Refused("receiving a referee's Result needs a capsule-engine that has capsule_engine.referee "
-                      "installed beside this node") from None
-    return referee
-
-
-def _party_half(parties: Any, role: str) -> Any:
-    try:
-        return parties[role]["half"]["capsule_id"]
-    except (KeyError, TypeError):
-        return None
-
-
-def _referee_route(terms: dict) -> dict:
-    """Where the deal terms say the referee is reached: ``referee.mailbox_key`` (64 lowercase
-    hex), ``referee.relays`` (websocket URLs), ``referee.private_relays`` (true: only the parties and the
-    referee can read them) and ``referee.answers_within`` (seconds). Both
-    parties' terms must name the same route."""
-    routes = {role: (t.get("referee") if isinstance(t, dict) else None) for role, t in terms.items()}
-    route = routes["buyer"]
-    if not isinstance(route, dict) or jcs(route) != jcs(routes["seller"]):
-        raise Refused("both parties' terms must name one referee route")
-    key, relays, within = route.get("mailbox_key"), route.get("relays"), route.get("answers_within")
-    if route.get("private_relays") is not True:
-        # The binding's events are not encrypted (nostr-mailbox-v0 §8, N-3) and a Result names both halves
-        # and the referee, so the terms must say the relays are readable only by the parties and the referee.
-        raise Refused("the terms' referee must declare private_relays: true, relays that only the two parties "
-                      "and the referee can read (the mailbox events are not encrypted)")
-    if not (isinstance(key, str) and len(key) == 64 and key == key.lower() and all(c in "0123456789abcdef" for c in key)):
-        raise Refused("the terms' referee names no mailbox_key (64 lowercase hex)")
-    if not (isinstance(relays, list) and relays and all(isinstance(u, str) and u.startswith(("ws://", "wss://"))
-                                                      for u in relays)):
-        raise Refused("the terms' referee names no relays")
-    if not (isinstance(within, int) and not isinstance(within, bool) and within > 0):
-        raise Refused("the terms' referee names no positive answers_within (seconds)")
-    return {"mailbox_key": key, "relays": relays, "answers_within": within}
-
-
-class _BookRecords:
-    """A book's records as agent-action-capsule's bundle producer reads a
-    record store: ``get(capsule_id)`` is the Capsule's JCS and its Producer
-    Envelope, ``not_found`` for any other id."""
-
-    def __init__(self, book) -> None:
-        self._book = book
-
-    def get(self, capsule_id: str):
-        from agent_action_capsule.bundle import StoredRecord
-        from capsule_emit.artifact import NotFoundError as NoRecord
-
-        held = self._book._stored.get(capsule_id)
-        if held is None:
-            raise NoRecord(capsule_id)
-        return StoredRecord(jcs(held.capsule), held.envelope)
-
-
-@dataclass(frozen=True)
-class _Holder:
-    """The two members of an envelope a card statement binds: its responder and its anchor."""
-
-    responder: str
-    anchor_digest: str
-
-
-class Refused(ValueError):
-    """A tool call the node refuses: nothing was sealed."""
-
-
-@dataclass(frozen=True)
-class SealedStep:
-    record_id: str
-    seq: int
-    record_type: str
-
-
-def _key(path: Path) -> Ed25519PrivateKey:
-    """The Ed25519 key in ``path`` (PKCS#8 PEM, capsule-emit's
-    ``LocalKeypairSigner`` format), created with mode 0600 if absent."""
-    if path.exists():
-        key = load_pem_private_key(path.read_bytes(), password=None)
-        if not isinstance(key, Ed25519PrivateKey):
-            raise Refused(f"{path} does not hold an Ed25519 key")
-        return key
-    key = Ed25519PrivateKey.generate()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "wb") as fh:
-        fh.write(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
-    return key
-
-
-def _secret(path: Path) -> bytes:
-    if not path.exists():
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(os.urandom(32))
-    return path.read_bytes()
-
-
-def _raw(key: Ed25519PrivateKey) -> bytes:
-    return key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
-
-
-@contextmanager
-def _flat_ledger_lock(source: Path):
-    """capsule-emit's writer lock on a flat ledger: an exclusive ``flock`` on
-    ``<ledger>.lock`` beside it, the file every capsule-emit writer of that
-    ledger takes. ``import_flat`` requires it held, so no line is appended
-    between the copy, its check and the move. A held lock refuses: stop the
-    ledger's writer (an older Goose server) first. A ledger store directory
-    is locked at its real path, as capsule-emit resolves it
-    (``ledger_store.store_root``), so a symlink to it locks the same file."""
-    import fcntl
-
-    from capsule_emit.ledger_store import store_root
-
-    locked = store_root(source) if source.is_dir() else source
-    with open(locked.with_name(locked.name + ".lock"), "a+", encoding="utf-8") as fh:
-        try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise Refused(f"another writer holds {source}'s lock: stop it, then import") from None
-        try:
-            yield
-        finally:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-
-
-def _parse_time(text: str) -> datetime:
-    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+def _seed_key(path: Path) -> Ed25519PrivateKey:
+    return Ed25519PrivateKey.from_private_bytes(bytes.fromhex(path.read_text().strip()))
 
 
 class Node:
-    """One Goose node's shelf. Open it with :meth:`open`; one process holds
-    a home at a time (the shelf's writer lock)."""
+    """One Goose node: a directory (``home``) that is its capsulectl-deal profile's ``HOME``."""
 
-    #: Extra :class:`~evidencebook.cadence.CadenceConfig` members (``interval``, ``no_jitter``): none by default.
-    CADENCE_OPTIONS: dict = {}
-
-    def __init__(self, home: Path, operator: str, developer: str, now, witnesses: Any, witness_client: Any = None):
-        self.home, self.operator, self.developer = home, operator, developer
-        self._witnesses, self._witness_client = witnesses, witness_client
-        self._now = now or (lambda: datetime.now(timezone.utc))
-        self._inflight: datetime | None = None
-        self._lock = threading.RLock()
-        self._producer = _key(home / "producer.key")
-        self._identity = produce.new_ed25519_signing_identity(_raw(self._producer))
-        self.signer = Ed25519Signer(self._producer)
-        self._checkpoint_key = Ed25519Signer(_key(home / "checkpoint.key"))
-        self._store_secret = _secret(home / "store.secret")
-        self._db = sqlite3.connect(home / "shelf.db", timeout=5.0, isolation_level=None, check_same_thread=False)
-        try:
-            for statement in ("PRAGMA busy_timeout=5000", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL"):
-                self._db.execute(statement)
-            # The witness receipt a book checkpoint got, by the checkpoint's digest: asked once.
-            self._db.execute("CREATE TABLE IF NOT EXISTS goose_book_receipts (book_id TEXT NOT NULL, "
-                             "checkpoint_sha256 TEXT NOT NULL, receipt TEXT NOT NULL, PRIMARY KEY (book_id, checkpoint_sha256))")
-            self.originals = SqliteArtifactStore(self._db, NAMESPACE, [self.signer.public_key(), *self._trusted()])
-            self.originals.init()
-            self.shelf = Shelf.open_sqlite(home / "shelf.db", operator=operator, developer=developer,
-                                           signer=self.signer, checkpoint_key=self._checkpoint_key,
-                                           originals=self.originals, now=self._clock, lock_timeout=10,
-                                           # A deal's log holds its steps only, so no book keeps
-                                           # authenticated indexes, whose roots would be records too.
-                                           authenticated_indexes=lambda _: [])
-        except BaseException:
-            self._db.close()
-            raise
-        try:
-            self.cadence = self.shelf.cadence(CadenceConfig(CADENCE_LOG, ended=lambda _: False, witnesses=witnesses,
-                                                            **self.CADENCE_OPTIONS))
-        except BaseException:
-            self.close()
-            raise
+    def __init__(self, home: Path, operator: str, developer: str, ctl: Ctl) -> None:
+        self.home, self.operator, self.developer, self.ctl = home, operator, developer, ctl
+        self.dir = home / "deal"
+        self._tmp = Path(tempfile.mkdtemp(prefix="goose-", dir=home))
 
     @classmethod
-    def open(cls, home: str | os.PathLike, *, operator: str, developer: str = "goose-loop@v1", now=None,
-             witnesses: Any = None, witness_client: Any = None) -> Node:
-        """The node at ``home``, created on first use. ``witnesses`` is the
-        witness directory receipts are checked under (a ``witnesses.json``
-        mapping), or ``None``. With one witness in it, a book bundle carries
-        that witness's receipt for the book's own checkpoint, asked of
-        ``witness_client(endpoint)`` (a ``cll.checkpoint.witness`` submitter;
-        ``HttpWitnessClient`` when not given)."""
+    def open(cls, home: str | os.PathLike, *, operator: str, developer: str = "goose-loop@v1") -> Node:
+        """The node at ``home``, created (``deal init``) on first use. ``operator`` is the profile's name and
+        the AAC operator of what the node seals. ``GOOSE_NO_WITNESS=1`` makes a profile with no public
+        witness; ``GOOSE_SIGNING_KEY_FILE`` and ``GOOSE_CHECKPOINT_KEY_FILE`` keep an existing node's keys
+        (PKCS#8 PEM or a hex seed), so its key ids stay."""
         path = Path(home).expanduser()
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
         if not operator:
             raise Refused("an operator name is required")
-        return cls(path, operator, developer, now, witnesses, witness_client)
+        node = cls(path, operator, developer, Ctl(path, operator))
+        if not (node.dir / "signing.seed").exists():
+            args = ["init", "--dir", str(node.dir)]
+            if os.environ.get("GOOSE_NO_WITNESS"):
+                args.append("--no-witness")
+            for flag, env in (("--signing-key-file", "GOOSE_SIGNING_KEY_FILE"),
+                              ("--checkpoint-key-file", "GOOSE_CHECKPOINT_KEY_FILE")):
+                if os.environ.get(env):
+                    args += [flag, os.environ[env]]
+            node.ctl.run(*args)
+            # a Goose node is a person's agent; this is declared once, and `deal respond` then answers no card request
+            node.ctl.run("standard-history", "declare", "--holder-kind", "person")
+        return node
 
     def close(self) -> None:
-        try:
-            self.shelf.release()
-        finally:
-            self._db.close()
+        for f in self._tmp.glob("*"):
+            f.unlink()
+        self._tmp.rmdir()
 
     def __enter__(self) -> Node:
         return self
@@ -507,29 +98,29 @@ class Node:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
-    def _clock(self) -> datetime:
-        return self._inflight or self._now()
-
-    def _trusted(self) -> list[bytes]:
-        """Keys whose records the artifact store holds besides the node's
-        own: the signers of an imported ledger."""
-        path = self.home / "trusted-keys.json"
-        return [bytes.fromhex(k) for k in json.loads(path.read_text())] if path.exists() else []
+    # -- keys -------------------------------------------------------------------------
 
     @property
-    def witness_directory(self) -> Any:
-        """The witness directory receipts are checked under, or ``None``."""
-        return self._witnesses
+    def _signing(self) -> Ed25519PrivateKey:
+        return _seed_key(self.dir / "signing.seed")
 
     @property
     def key_id(self) -> str:
-        return self.signer.public_key().hex()
+        return self._signing.public_key().public_bytes_raw().hex()
+
+    @property
+    def checkpoint_key_id(self) -> str:
+        return _seed_key(self.dir / "checkpoint.seed").public_key().public_bytes_raw().hex()
+
+    def sign(self, data: bytes) -> bytes:
+        """The node key's signature (the commitment and its policy are signed in this process, as the loop's
+        checker reads them; the key is the profile's own, so the id is the one the deals carry)."""
+        return self._signing.sign(data)
 
     @property
     def mailbox_secret(self) -> bytes:
-        """The secp256k1 key the node's Nostr mailbox is addressed to and replies are signed
-        with (binding nostr-mailbox-v0 §3), created with mode 0600 on first use. A route, not
-        an identity: what makes a reply evidence is the node key's signature inside it."""
+        """The secp256k1 key the node's Nostr mailbox is addressed to and replies are signed with
+        (binding nostr-mailbox-v0 §3), created with mode 0600 on first use. A route, not an identity."""
         import nostr_mailbox as mb  # this example's transport, imported on first use
         path = self.home / "mailbox.key"
         if not path.exists():
@@ -543,760 +134,287 @@ class Node:
         import nostr_mailbox as mb
         return mb.public_key(self.mailbox_secret)
 
-    @property
-    def checkpoint_key_id(self) -> str:
-        return self._checkpoint_key.public_key().hex()
+    # -- files ------------------------------------------------------------------------
 
-    # -- the node book ---------------------------------------------------------------
+    def _file(self, name: str, content: bytes | str | Any) -> str:
+        """A scratch file the verb reads (its path is the node's own)."""
+        path = self._tmp / name
+        if isinstance(content, (dict, list)):
+            content = json.dumps(content, sort_keys=True)
+        path.write_bytes(content.encode() if isinstance(content, str) else content)
+        return str(path)
 
-    def note(self, record_type: str, statement: dict, subject_ref: str = "", cites: tuple[str, ...] = (),
-             payloads: tuple[bytes, ...] = ()) -> SealedStep:
-        """Seal one record of the node book, citing the records ``cites``."""
-        with self._lock:
-            record = self.shelf.open(NODE_BOOK).append(
-                Entry(record_type, PRODUCER_CLAIM, subject_ref=subject_ref, statement=statement,
-                      links=tuple(Link(CITES, c) for c in cites), payloads=payloads))
-            return SealedStep(record.record_id, record.seq, record_type)
+    def _out(self, name: str) -> str:
+        return str(self._tmp / name)
 
-    def notes(self, record_type: str) -> list[tuple[Any, dict]]:
-        """The node book's records of ``record_type``, oldest first, with their statements."""
-        with self._lock:
-            return [(r, r.header.statement) for r in self.shelf.open(NODE_BOOK).records()
-                    if r.header.record_type == record_type]
+    # -- the node book -----------------------------------------------------------------
 
-    def seal_model_call(self, provider: str, model_id: str, prompt: Any, completion: Any,
-                        at: datetime | None = None) -> tuple[SealedStep, dict]:
-        """Seal one model call Goose made as an effect-boundary record of the
-        node book: a Capsule the node signs in its own process, so its effect
-        claims ``runtime_claimed`` and no more, its ``model_attestation``
-        names ``provider`` and ``model_id``. ``prompt`` and ``completion`` (JSON
-        values) are committed by digest; the node keeps the prompt as the
-        record's payload and the completion by its digest only. Returns the record and the
-        Capsule as a verifier reads it (with its ``signature`` and ``key_id``)."""
-        if not provider or not model_id:
-            raise Refused("a model call names its provider and model_id")
-        at = (at or self._now()).replace(microsecond=0)
-        action_id = f"model-call-{os.urandom(8).hex()}"
-        payload = json.dumps(prompt, sort_keys=True).encode()
-        with self._lock:
-            entry = Entry(MODEL_CALL, PRODUCER_CLAIM, subject_ref=action_id)
+    def note(self, record_type: str, statement: dict, *, once: str = "", cites: tuple[str, ...] = (),
+             subject_ref: str = "", payloads: tuple[bytes, ...] = ()) -> dict:
+        """Seal one record of the node book. ``once`` names a member of ``statement`` that identifies it:
+        a second call with the same value finds the record instead of sealing another."""
+        args = ["node", "append", "--book", NODE_BOOK, "--type", record_type,
+                "--statement", self._file("statement.json", statement)]
+        if once:
+            args += ["--once", once]
+        if subject_ref:
+            args += ["--subject-ref", subject_ref]
+        for cite in cites:
+            args += ["--cite", cite]
+        for i, payload in enumerate(payloads):
+            args += ["--payload", self._file(f"payload-{i}.bin", payload)]
+        return self.ctl.run(*args)["record"]
 
-            def seal(_header, header_json: bytes):
-                return produce.seal(produce.SealInput(
-                    capsule=produce.Input(
-                        action_id=action_id, action_type=produce.ActionType.FYI, operator=self.operator,
-                        developer=self.developer, timestamp=at,
-                        effect=produce.Effect("inference_completion", produce.EffectStatus.CONFIRMED,
-                                              produce.IrreversibilityClass.TWO_WAY,
-                                              produce.EffectAttestation.RUNTIME_CLAIMED,
-                                              request_digest=produce.digest_json(prompt),
-                                              response_digest=produce.digest_json(completion)),
-                        extensions=(produce.Extension(RECORD_HEADER_MEMBER, header_json),)),
-                    identity=self._identity, payload=json.loads(payload), agent_output=completion,
-                    model=produce.Model(provider, model_id)))
+    def notes(self, record_type: str = "") -> list[dict]:
+        """The node book's records of ``record_type`` (all when empty), oldest first, with their statements."""
+        args = ["node", "records", "--book", NODE_BOOK]
+        if record_type:
+            args += ["--type", record_type]
+        return self.ctl.run(*args)["records"]
 
-            self._inflight = at
-            try:
-                record = self.shelf.open(NODE_BOOK).append_capsule(
-                    entry, [Artifact("payload", PRESENT, PAYLOAD_DIGEST, payload)], seal)
-            finally:
-                self._inflight = None
-            return SealedStep(record.record_id, record.seq, MODEL_CALL), self.capsule(record.record_id)
+    def seal_model_call(self, provider: str, model_id: str, prompt: Any, completion: Any) -> tuple[dict, dict]:
+        """Seal one model call Goose made as a record of the node book (its prompt kept, its completion by
+        digest). Returns the record and the Capsule as a verifier reads it."""
+        out = self._out("model-call.json")
+        done = self.ctl.run("node", "seal-model-call", "--book", NODE_BOOK, "--type", MODEL_CALL,
+                            "--provider", provider, "--model-id", model_id, "--developer", self.developer,
+                            "--prompt", self._file("prompt.json", json.dumps(prompt)),
+                            "--completion", self._file("completion.json", json.dumps(completion)), "--out", out)
+        return done["record"], json.loads(Path(out).read_text())
 
-    def capsule(self, record_id: str) -> dict:
-        """The Capsule a caller-sealed record is, with its producer
-        ``signature`` and ``key_id`` (the form a verifier reads)."""
-        with self._lock:
-            held = self.originals.get(record_id)
-            capsule = json.loads(held.capsule)
-            capsule["signature"], capsule["key_id"] = bytes(held.producer_envelope).hex(), self.key_id
-            return capsule
+    def checkpoint(self, book_id: str, out: str = "") -> dict:
+        """A book's newest checkpoint, cut now if it grew; with ``out`` its COSE statement is written there."""
+        args = ["node", "checkpoint", "--book", book_id]
+        if out:
+            args += ["--out", out]
+        return self.ctl.run(*args)
 
-    def book_checkpoint(self, book_id: str) -> bytes:
-        """The COSE statement of the checkpoint :meth:`book_bundle` builds
-        on: the book's newest."""
-        with self._lock:
-            return self.shelf.open(book_id).checkpoint().statement
+    def checkpoint_statement(self, book_id: str) -> bytes:
+        """The COSE statement of a book's newest checkpoint."""
+        out = self._out("checkpoint.cose")
+        Path(out).unlink(missing_ok=True)
+        self.checkpoint(book_id, out)
+        return Path(out).read_bytes()
 
-    def _book_receipt(self, book_id: str, checkpoint) -> dict:
-        """The directory's witness's receipt for ``checkpoint``, in a bundle's
-        ``checkpoint.witnesses`` form; asked of the witness once per
-        checkpoint (kept by :meth:`book_bundle` once it verifies)."""
-        rows = self._witnesses.get("witnesses") if isinstance(self._witnesses, dict) else self._witnesses
-        if not isinstance(rows, list) or len(rows) != 1 or not rows[0].get("endpoint"):
-            raise Refused("a book receipt needs a witness directory with exactly one witness and its endpoint")
-        endpoint = rows[0]["endpoint"]
-        digest = hashlib.sha256(checkpoint.statement).hexdigest()
-        with self._lock:
-            held = self._db.execute("SELECT receipt FROM goose_book_receipts WHERE book_id = ? AND checkpoint_sha256 = ?",
-                                    (book_id, digest)).fetchone()
-            if held:
-                return json.loads(held[0])
-            from cll.checkpoint.witness import HttpWitnessClient
-            from cll.log import CllError, ContentionError, RejectedError
-
-            try:
-                client = (self._witness_client or HttpWitnessClient)(endpoint)
-                got = client.submit(checkpoint.statement)
-            except (CllError, ContentionError, RejectedError) as exc:
-                raise Refused(f"the witness at {endpoint} gave no receipt for {book_id}: {exc}") from None
-            receipt = {"ts_url": endpoint, "entry_hash": got.entry_hash,
-                       "receipt_b64": base64.b64encode(bytes(got.bytes)).decode(), "leaf_index": got.leaf_index,
-                       "tree_size": got.tree_size}
-            return receipt
-
-    def book_bundle(self, book_id: str, record_id: str, disclose: bool = False) -> dict:
-        """An Evidence Bundle (``evidence-bundle/v2``) proving ``record_id``
-        is in ``book_id`` at its position under the book's newest checkpoint
-        (cut now if the book grew): the record, its inclusion proof and the
-        interval from the book's first record to that checkpoint, built by
-        agent-action-capsule's producer and checked by its strict verifier.
-        With a witness directory the witness's receipt for that checkpoint
-        is on the bundle's ``checkpoint.witnesses`` and must verify under the
-        directory. When a witnessed cadence tick also carries it, the cadence
-        chain travels as the ``x-cadence-witness/v0`` extension.
-
-        With ``disclose`` the bundle also reveals the header of ``record_id`` and of each record it
-        cites (``disclosures[id].agent_input``, which the record's capsule commits; a record its caller sealed
-        carries its header inline and is not disclosed twice; a citation into another book is skipped) and carries their
-        payloads under ``evidencebook/payloads`` (SHA-256 to unpadded base64url, as Go's
-        ``capsulectl disclose`` writes them): an outcome of a request, say, with the request it answers."""
-        from agent_action_capsule import bundle as aac
-
-        with self._lock:
-            if book_id not in self.shelf.books():
-                raise Refused(f"this node holds no book {book_id}")
-            book = self.shelf.open(book_id)
-            if record_id not in {r.record_id for r in book.records()}:
-                raise Refused(f"book {book_id} holds no record {record_id}")
-            checkpoint = book.checkpoint()
-            extensions = {}
-            disclosures: dict = {}
-            if disclose:
-                payloads = {}
-                held = {r.record_id for r in book.records()}  # a citation may name a record of another book
-                for rid in (record_id, *book.get(record_id).header.links_to(CITES)):
-                    if rid not in held:
-                        continue
-                    # A record its caller sealed carries its header inline (RECORD_HEADER_MEMBER) and
-                    # commits no agent_input: the bundle's record already shows it.
-                    if RECORD_HEADER_MEMBER not in book._stored[rid].capsule:
-                        disclosures[rid] = {"agent_input": book.get(rid).header.value()}
-                    for payload in book._payloads(rid):
-                        payloads[hashlib.sha256(payload).hexdigest()] = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
-                extensions[PAYLOADS_EXTENSION] = payloads
-            try:
-                extensions[CADENCE_EXTENSION] = self.cadence.chain(checkpoint.statement)
-            except NotFoundError:
-                pass  # no witnessed tick carries this checkpoint yet
-            try:
-                built = aac.build_evidence_bundle(
-                    aac.proof_source_from_cll(book._substrate.backend, _BookRecords(book)),
-                    root=record_id, interval_from=1, disclosures=disclosures or None,
-                    extensions=extensions or None)
-            except aac.BundleBuildError as exc:
-                raise Refused(f"no bundle: {exc}") from None
-            if self._witnesses is not None:
-                built["checkpoint"]["witnesses"] = [self._book_receipt(book_id, checkpoint)]
-            result = aac.verify_bundle(built, strict=True, witness_directory=self._witnesses)
-            if self._witnesses is not None:
-                if [r.status for r in result.witness_receipts] != ["pass"]:
-                    raise Refused(f"the witness receipt does not verify under the directory: {result.witness_receipts}")
-                self._db.execute("INSERT OR REPLACE INTO goose_book_receipts VALUES (?, ?, ?)",
-                                 (book_id, hashlib.sha256(checkpoint.statement).hexdigest(),
-                                  json.dumps(built["checkpoint"]["witnesses"][0])))
-            if result.verdict != "VALID":
-                raise Refused(f"the bundle does not verify: {result.verdict}")
-            return built
+    def bundle(self, book_id: str, record_id: str, out: str, *, at: str = "", disclose: bool = False,
+               witness_receipt: str = "", witness_directory: str = "") -> dict:
+        """An Evidence Bundle of one record of a node book under a checkpoint, verified before it is written."""
+        args = ["node", "bundle", "--book", book_id, "--record", record_id, "--out", out]
+        if at:
+            args += ["--at", at]
+        if disclose:
+            args.append("--disclose")
+        if witness_receipt:
+            args += ["--witness-receipt", witness_receipt, "--witness-directory", witness_directory]
+        return self.ctl.run(*args)
 
     def admission(self, peer: str) -> dict | None:
-        """The newest admission sealed for ``peer``."""
+        """The newest decision this node sealed for ``peer``."""
         found = None
-        for record, statement in self.notes(ADMITTED):
-            if statement.get("peer") == peer:
-                found = {"record_id": record.record_id, **statement}
+        for record in self.notes(ADMITTED):
+            if record["statement"].get("peer") == peer:
+                found = {"record_id": record["record_id"], **record["statement"]}
         return found
 
-    def ask(self, request: Any, responder: str) -> Any:
-        """Seal an evidence request in the node book before it is sent
-        (``Book.request``); returns what to send."""
-        with self._lock:
-            return self.shelf.open(NODE_BOOK).request(request, responder)
+    def tick(self) -> dict:
+        return self.ctl.run("tick")
 
-    def record_reply(self, request_record_id: str, reply: Any, keys: Any) -> Any:
-        """Verify and seal the reply to a request the node book sent
-        (``Book.record_response``)."""
-        with self._lock:
-            return self.shelf.open(NODE_BOOK).record_response(request_record_id, reply, keys)
+    # -- deals --------------------------------------------------------------------------
 
-    def verify_peer_half(self, half: Any) -> dict:
-        """:func:`verify_half` under the checkpoint key this node's admission
-        of the half's signer pinned; a signer admitted with anything but GO,
-        or not at all, is refused."""
-        try:
-            signer = half["steps"][0]["capsule"]["key_id"]
-        except (KeyError, IndexError, TypeError):
-            raise Refused("not a goose-deal-half/1 with steps") from None
-        admission = self.admission(signer)
-        if admission is None:
-            raise Refused(f"no admission sealed for {signer}: call loop_admit first")
-        if admission["decision"] != "GO":
-            raise Refused(f"the sealed admission for {signer} is {admission['decision']}: no deal")
-        return verify_half(half, admission["checkpoint_key_id"])
+    def context(self, deal_id: str) -> dict:
+        """The node's own account of a deal it holds: its role, peer, terms and the words it was asked in."""
+        for record in self.notes(DEAL_CONTEXT):
+            if record["statement"].get("deal_id") == deal_id:
+                return {"record_id": record["record_id"], **record["statement"]}
+        raise Refused(f"this node holds no deal {deal_id}")
 
-    # -- deals -----------------------------------------------------------------------
+    def _remember(self, deal_id: str, role: str, peer: str, terms: dict, asked: str, rail: str, admission: str,
+                  offer: str) -> dict:
+        return self.note(DEAL_CONTEXT, {"deal_id": deal_id, "role": role, "peer": peer, **terms, "rail": rail,
+                                        "asked": asked, "offer": offer}, once="deal_id", cites=(admission,), subject_ref=deal_id)
 
-    def _deal_key(self, deal_id: str) -> bytes:
-        return deal.deal_key(self._store_secret, deal_id)
+    def _decision(self, peer: str, terms: dict) -> dict:
+        """The engine's decision on ``peer`` for these terms, and the pack's digest. Seals nothing."""
+        gate = self.admission(peer)
+        if gate is None:
+            raise Refused(f"no decision sealed for {peer}: call loop_admit first")
+        if gate["decision"] != "GO":
+            raise Refused(f"the sealed decision for {peer} is {gate['decision']}: no deal")
+        now = _iso(datetime.now(timezone.utc))
+        inputs = {"now": now, "amount": str((Decimal(terms["price_minor"]) / 100).normalize()), "currency": terms["currency"],
+                  "platform": {"release_attestation": "valid"}, "card": {},
+                  "own": {"exchanges": 0, "settled": 0, "held_halves": 0, "conflicting": 0, "verdicts": []},
+                  "operator": {"deny_listed": False}, "vouches": [], "subject": "", "judged": {}, "asks": {},
+                  "asks_made": 0}
+        # the amount is in major units: this node's deals are in currencies with two minor digits
+        card = hashlib.sha256(b"{}").hexdigest()  # no card was read: the digest of the empty document
+        refs = {"asks": [], "answers": [], "card_digest": card}
+        decided = engine("admission", "evaluate", "--pack", str(PACK), "--input", self._file("engine-in.json", inputs),
+                         "--admit", self._file("engine-refs.json", refs))
+        return decided
 
-    def _payloads(self, book) -> list[bytes]:
-        out = []
-        for record in book.records():
-            held = self.originals.get(record.record_id)
-            out.append(next(bytes(a.content) for a in held.artifacts if a.name == "payload"))
-        return out
+    def _admit(self, deal_id: str, peer: str, terms: dict) -> str:
+        decided = self._decision(peer, terms)
+        if not decided.get("admits_deal"):
+            raise Refused(f"the engine's decision on this deal is {decided['verdict']}"
+                          f"{' with asks to answer in capsule-engine' if decided.get('asks') else ''}: no deal")
+        return self.ctl.run("admit", "--deal", deal_id,
+                            "--input", self._file("admission.json", decided))["admit"]
 
-    def deal(self, deal_id: str) -> dr.DealChain:
-        """The chain of a deal this node holds, rebuilt from its book."""
-        book_id = f"deal/{deal_id}"
-        with self._lock:
-            if book_id not in self.shelf.books():
-                raise Refused(f"this node holds no deal {deal_id}")
-            book = self.shelf.open(book_id)
-            payloads = self._payloads(book)
-            baseline = json.loads(payloads[0])
-            body = baseline["body"]
-            role = body["intent"].get("party_role", dr.ROLE_BUYER)
-            terms = dr.Terms(body["terms"]["item"], body["terms"]["price_minor"], body["terms"]["currency"],
-                             body["recourse"]["rail"], body["recourse"]["refundable"])
-            first = book.records()[0].record_id
-            peer = json.loads(book.opening(first, deal.LOCAL_FIELD).text)["open"]["peer"]
-            return dr.DealChain.resume(deal_id, role, self._deal_key(deal_id), peer, terms, payloads)
+    def open_deal(self, peer: str, item: str, price_minor: int, currency: str, rail: str, asked: str,
+                  refundable: bool, out: str) -> dict:
+        """Open a deal as the buyer: the offer to ``peer`` at these terms, written to ``out`` for the peer to
+        keep with ``deal receive``. The user's words stay on this node."""
+        now = datetime.now(timezone.utc)
+        terms = {"item": item, "price_minor": price_minor, "currency": currency, "refundable": refundable}
+        decided = self._decision(peer, terms)
+        if not decided.get("admits_deal"):
+            raise Refused(f"the engine's decision on this deal is {decided['verdict']}: no deal")
+        offer = {"role": "buyer", "to": peer, "terms": {"item": item, "currency": currency},
+                 "pack_digest": decided["pack"]["digest"], "agree_by": _iso(now + AGREE_WITHIN),
+                 "terms_rows": {"rows": [{"id": ROW, "owed_by": "buyer",
+                                          "owed": {"amount_minor": price_minor, "currency": currency},
+                                          "due": {"at": _iso(now + PAY_WITHIN)},
+                                          "window_end": {"at": _iso(now + SETTLE_WITHIN)}}], "named": {}},
+                 "adjudicator": None, "forums": [], "witnesses": []}
+        done = self.ctl.run("offer", "--input", self._file("offer.json", offer), "--out", out)
+        gate = self.admission(peer)
+        self._remember(done["deal_id"], "buyer", peer, terms, asked, rail, gate["record_id"], done["offer"])
+        return {"deal_id": done["deal_id"], "offer": done["offer"]}
 
-    def has_deal(self, deal_id: str) -> bool:
-        with self._lock:
-            return f"deal/{deal_id}" in self.shelf.books()
+    def _intent(self, deal_id: str, asked: str, rail: str, who: str, kind: str, allowed: list[str],
+                limit: int | None) -> str:
+        said = {"verbatim": asked, "allowed": allowed}
+        if limit is not None:
+            said["max_total_minor"] = limit
+        opening = {"type": kind, "who": {"name": who, "domain": f"{who[:12]}.invalid"},
+                   "recourse": {"rail": rail, "refundable": False}}
+        return self.ctl.run("note", "--deal", deal_id, "--kind", "intent", "--input", self._file("intent.json", said),
+                            "--opening", self._file("opening.json", opening))["intent"]
 
-    def new_deal(self, deal_id: str, role: str, peer: str, terms: dr.Terms) -> dr.DealChain:
-        if f"deal/{deal_id}" in self.shelf.books():
-            raise Refused(f"deal {deal_id} is already open on this node")
-        return dr.DealChain(deal_id, role, self._deal_key(deal_id), peer, terms)
+    def respond(self, offer_file: str, asked: str, out: str) -> dict:
+        """As the seller: keep the buyer's offer, decide on it, seal what the user asked and agree. The
+        agreement is written to ``out`` for the buyer."""
+        kept = self.ctl.run("receive", offer_file)
+        deal_id = kept["deal_id"]
+        offer = json.loads(Path(offer_file).read_text())
+        terms, peer = self._offer_terms(offer), offer["record"]["key_id"]
+        self._admit(deal_id, peer, terms)
+        gate = self.admission(peer)
+        self._remember(deal_id, "seller", peer, terms, asked, "lightning", gate["record_id"], self._digest(offer))
+        self._intent(deal_id, asked, "lightning", "the buyer", "service", ["commit"], None)
+        done = self.ctl.run("agree", self._digest(offer), "--out", out)
+        return {"deal_id": deal_id, "agreement": done["agreement"]}
 
-    def seal(self, chain: dr.DealChain, steps: list[dr.Step], admission: str = "") -> list[SealedStep]:
-        """Seal ``steps`` of ``chain``, in order, on the deal's book. The
-        deal's first step cites ``admission``, the node-book record of the
-        GO the deal rests on, as well as the step before it."""
-        sealed = []
-        with self._lock:
-            book = self.shelf.open(f"deal/{chain.deal_id}")
-            for step in steps:
-                records = book.records()
-                parent = None
-                if records:
-                    relation = deal.RELATION_FOLLOWS
-                    parent = deal.Chain(records[-1].record_id, relation)
-                capsule, header = deal.step_capsule(deal.StepInput(
-                    chain.deal_id, len(records) + 1, self.operator, self.developer, step.at, parent, None,
-                    step.decide, step.local, step.amount, step.currency))
-                cites = header.cites + ((admission,) if admission and not records else ()) + step.cites
-                entry = Entry(header.record_type, header.epistemic_type, subject_ref=header.subject_ref,
-                              links=tuple(Link(CITES, c) for c in cites), fields=dict(header.fields))
+    def agree(self, deal_id: str, out: str) -> dict:
+        """As the buyer, once the seller's agreement is kept: decide, seal what the user asked, agree."""
+        ctx = self.context(deal_id)
+        terms = {k: ctx[k] for k in ("item", "price_minor", "currency", "refundable")}
+        self._admit(deal_id, ctx["peer"], terms)
+        intent = self._intent(deal_id, ctx["asked"], ctx["rail"], "the seller", "purchase", ["pay"], ctx["price_minor"])
+        done = self.ctl.run("agree", ctx["offer"], "--intent", intent, "--out", out)
+        return {"deal_id": deal_id, "agreement": done["agreement"]}
 
-                def seal(_header, header_json: bytes, capsule=capsule, step=step):
-                    return produce.seal(produce.SealInput(
-                        capsule=deal.emit_input(capsule, deal.Extension(RECORD_HEADER_MEMBER, header_json)),
-                        identity=self._identity, payload=json.loads(step.payload)))
+    @staticmethod
+    def _digest(offer: dict) -> str:
+        """An offer's digest, the one ``deal offer`` prints: the SHA-256 of the JCS of the Capsule's
+        ``agent_input`` (RFC 8785; the members here are strings, integers and null)."""
+        raw = json.dumps(offer["agent_input"], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(raw.encode()).hexdigest()
 
-                self._inflight = step.at.replace(microsecond=0)
-                try:
-                    record = book.append_capsule(entry, [Artifact("payload", PRESENT, PAYLOAD_DIGEST, step.payload)],
-                                                 seal)
-                finally:
-                    self._inflight = None
-                sealed.append(SealedStep(record.record_id, record.seq, step.record_type))
-        return sealed
+    @staticmethod
+    def _offer_terms(offer: dict) -> dict:
+        body = offer["agent_input"]["body"]
+        row = body["terms_rows"]["rows"][0]
+        return {"item": body["terms"]["item"], "price_minor": row["owed"]["amount_minor"],
+                "currency": body["terms"]["currency"], "refundable": False}
 
-    def open_deal(self, chain: dr.DealChain, steps: list[dr.Step]) -> list[SealedStep]:
-        """Seal a deal's opening ``steps`` under this node's GO for the
-        chain's peer: the first step cites the admission record, and the node
-        book then seals :data:`DEAL_OPENED`, this node's record of the deal,
-        citing the same admission, so the admission and the deal are two
-        records of one book. A peer without a GO admission is refused and
-        nothing is sealed."""
-        with self._lock:
-            admission = self.admission(chain.peer)
-            if admission is None:
-                raise Refused(f"no admission sealed for {chain.peer}: call loop_admit first")
-            if admission["decision"] != "GO":
-                raise Refused(f"the sealed admission for {chain.peer} is {admission['decision']}: no deal")
-            if not steps:
-                raise Refused("a deal opens with at least one step")
-            sealed = self.seal(chain, steps, admission=admission["record_id"])
-            self.ensure_opening(chain.deal_id)
-            return sealed
+    def receive(self, file: str) -> dict:
+        """Keep a file the other side sent (an offer, an agreement, a leg, an act, a statement) and say
+        whether it counts yet."""
+        return self.ctl.run("receive", file)
 
-    def ensure_opening(self, deal_id: str) -> str:
-        """The node-book record of the deal's opening, sealed now if the
-        deal's first step is sealed but its opening is not (an open cut short
-        between the two). It cites what the first step cites: the admission."""
-        with self._lock:
-            for record, statement in self.notes(DEAL_OPENED):
-                if statement.get("deal_id") == deal_id:
-                    return record.record_id
-            if f"deal/{deal_id}" not in self.shelf.books():
-                raise Refused(f"this node holds no deal {deal_id}")
-            first = self.shelf.open(f"deal/{deal_id}").records()[0]
-            cited = first.header.links_to(CITES)
-            if len(cited) != 1:
-                raise Refused(f"deal {deal_id}'s first step cites no single admission")
-            admission = next((s for r, s in self.notes(ADMITTED) if r.record_id == cited[0]), None)
-            if admission is None or admission.get("decision") != "GO":
-                raise Refused(f"deal {deal_id}'s first step cites {cited[0]}, which is no GO admission of this node")
-            return self.note(DEAL_OPENED, {"deal_id": deal_id, "deal_book": f"deal/{deal_id}",
-                                           "first_step": first.record_id, "peer": admission["peer"],
-                                           "admission": cited[0]},
-                             subject_ref=deal_id, cites=(cited[0],)).record_id
+    def approve(self, deal_id: str, check_id: str, choice: str, said: str) -> dict:
+        """The user's answer to a check that paused, sealed with the card they were shown."""
+        card = self.home / "cards" / f"{check_id}.txt"
+        if not card.exists():
+            raise Refused(f"no card was shown for check {check_id}")
+        return self.ctl.run("note", "--deal", deal_id, "--kind", "approval", "--check", check_id,
+                            "--choice", choice, "--said", said, "--shown-card", str(card))
 
-    def deal_opened(self, deal_id: str) -> str:
-        """The node-book record of the deal's opening."""
-        for record, statement in self.notes(DEAL_OPENED):
-            if statement.get("deal_id") == deal_id:
-                return record.record_id
-        raise Refused(f"this node sealed no opening of deal {deal_id}")
+    def _gate(self, deal_id: str, action: str, check: dict, check_id: str) -> tuple[dict | None, str]:
+        """The final review of an act. With no ``check_id`` the check runs: a pause or a deny comes back as
+        ``({"paused": ...}, "")`` for the user (the card they must see is kept for :meth:`approve`), and the
+        act waits. A check that proceeds, or one the user answered (``check_id``), gives ``(None, check_id)``."""
+        if check_id:
+            return None, check_id
+        done = self.ctl.run("check", "--deal", deal_id,
+                            "--input", self._file("check.json", {"action": action, **check}))
+        if done.get("proceed"):
+            return None, done["check_id"]
+        cards = self.home / "cards"
+        cards.mkdir(exist_ok=True, mode=0o700)
+        (cards / f"{done['check_id']}.txt").write_text(done["card"])
+        return {"paused": True, "verdict": done["verdict"], "check_id": done["check_id"], "say": done["approval_text"],
+                "options": [o["id"] for o in done.get("options", [])]}, ""
 
-    def half(self, deal_id: str, standard_card: bool = False) -> dict:
-        """This node's half of a deal, as a counterparty receives it: every
-        step's Capsule (with its producer ``signature`` and ``key_id``) and
-        payload, in order, and the book's checkpoint covering them. It always carries the deal book's
-        ``history_card/1`` (:data:`HISTORY_CARD_MEMBER`); with ``standard_card`` true, which the caller sets only
-        when the counterparty asked and the user approved sending the node's standard card, it also carries
-        :meth:`history_staple` (:data:`HISTORY_STAPLE_MEMBER`)."""
-        with self._lock:
-            book = self.shelf.open(f"deal/{deal_id}")
-            checkpoint = book.checkpoint()
-            steps = []
-            for record in book.records():
-                held = self.originals.get(record.record_id)
-                capsule = self.capsule(record.record_id)
-                payload = next(bytes(a.content) for a in held.artifacts if a.name == "payload")
-                steps.append({"capsule": capsule, "payload": json.loads(payload)})
-            out = {"half": "goose-deal-half/1", "deal_id": deal_id, "book_id": book.book_id, "steps": steps,
-                   "checkpoint": {"key_id": self.checkpoint_key_id, "statement": checkpoint.statement.hex()}}
-            card = staple(book, DERIVATION_HISTORY_CARD)
-            out[HISTORY_CARD_MEMBER] = {"request": card.request.octets.decode(),
-                                        "reply": card.reply.message.octets.decode()}
-            if standard_card:
-                out[HISTORY_STAPLE_MEMBER] = self.history_staple()
-            return out
+    def pay(self, deal_id: str, payment_ref: str, out: str, check_id: str = "") -> dict:
+        """The buyer's payment: the final review, then the payer leg written to ``out`` for the seller. This
+        drives no rail: ``payment_ref`` is the reference the caller observed. A check that pauses returns
+        the card for the user; answer it (:meth:`approve`) and call again with its ``check_id``."""
+        ctx = self.context(deal_id)
+        paused, check_id = self._gate(deal_id, "pay", {
+            "amount_minor": ctx["price_minor"],
+            "terms": {"item": ctx["item"], "price_minor": ctx["price_minor"], "currency": ctx["currency"]},
+            "who": {"name": "the seller", "domain": "the-seller.invalid"},
+            "recourse": {"rail": ctx["rail"], "refundable": ctx["refundable"]}, "payment_ref": payment_ref}, check_id)
+        if paused:
+            return paused
+        kind = "ln.payment_hash" if ctx["rail"] == "lightning" else None
+        if kind is None:
+            raise Refused(f"this node pays on lightning only; the deal's rail is {ctx['rail']}")
+        self.ctl.run("settle", "--deal", deal_id, "--sent", "--check", check_id, "--payment-ref-type", kind)
+        leg = self.ctl.run("settle", "--deal", deal_id, "--check", check_id, "--status", "settled", "--out", out)
+        return {"deal_id": deal_id, "leg": leg["leg"], "digest": leg["digest"]}
 
-    def ask_half(self, deal_id: str) -> SealedStep:
-        """End the exchange of a deal: seal this node's request for the
-        counterparty's half, before the outcome and the close, so the half it
-        sends back is held when the close cites its checkpoint. Asking again
-        seals another request; a received half cites the newest."""
-        chain = self.deal(deal_id)
-        if chain._has(deal.TYPE_CLOSE):
-            raise Refused(f"deal {deal_id} is closed: ask for the counterparty's half before the close")
-        shared = hashlib.sha256(self.book_checkpoint(f"deal/{deal_id}")).hexdigest()
-        return self.note(HALF_ASKED, {"deal_id": deal_id, "peer": chain.peer, "shared_checkpoint_digest": shared},
-                         subject_ref=deal_id)
+    def received(self, deal_id: str, amount_minor: int, payment_ref: str, out: str) -> dict:
+        """The seller's payee leg: what it received, written to ``out`` for the buyer."""
+        leg = self.ctl.run("settle", "--deal", deal_id, "--received", str(amount_minor), "--receive-fee", "0",
+                           "--status", "settled", "--payment-ref-type", "ln.payment_hash",
+                           "--payment-ref", payment_ref, "--out", out)
+        return {"deal_id": deal_id, "leg": leg["leg"], "digest": leg["digest"]}
 
-    def hold_half(self, verified: dict, half: dict) -> SealedStep:
-        """Seal a counterparty's verified half into the node book (its bytes
-        are the note's payload, held by digest), naming the half's final
-        record id and the digest of the checkpoint it came under, citing the
-        request it answers when this node sent one."""
-        deal_id = verified["deal_id"]
-        asked_notes = [(r.record_id, s) for r, s in self.notes(HALF_ASKED) if s["deal_id"] == deal_id]
-        asked = [record_id for record_id, _ in asked_notes]
-        mine = {s["shared_checkpoint_digest"] for _, s in asked_notes}
-        cited = verified["counterparty_checkpoint_cites"]
-        statement = {"deal_id": deal_id, "key_id": verified["key_id"], "close_half_digest": verified["close_half_digest"],
-                     "final_record_id": verified["final_record_id"], "checkpoint_digest": verified["checkpoint_digest"],
-                     "half_digest": hashlib.sha256(jcs(half)).hexdigest(), "steps": len(verified["records"]),
-                     # What the half's close cites, and whether it is a checkpoint this node shared: an
-                     # uncited close is legitimate, so this records the fact and refuses nothing.
-                     "close_cites": cited, "cites_my_checkpoint": bool(mine & set(cited))}
-        return self.note(HALF_RECEIVED, statement, subject_ref=deal_id, cites=tuple(asked[-1:]), payloads=(jcs(half),))
+    def deliver(self, deal_id: str, out: str, observed: str = "delivered", check_id: str = "") -> dict:
+        """The seller's act (delivery): a commit review, then the act, written to ``out`` for the buyer."""
+        ctx = self.context(deal_id)
+        paused, check_id = self._gate(deal_id, "commit", {
+            "terms": {"item": ctx["item"], "price_minor": ctx["price_minor"], "currency": ctx["currency"]},
+            "who": {"name": "the buyer", "domain": "the-buyer.invalid"},
+            "recourse": {"rail": ctx["rail"], "refundable": ctx["refundable"]}}, check_id)
+        if paused:
+            return paused
+        done = self.ctl.run("perform", "--deal", deal_id, "--act", "delivered", "--check", check_id,
+                            "--observed", observed, "--out", out)
+        return {"deal_id": deal_id, "digest": done.get("digest")}
 
-    def counterparty_checkpoint(self, deal_id: str) -> str | None:
-        """The digest of the checkpoint statement of the newest counterparty
-        half this node holds of the deal, or ``None``."""
-        held = [s["checkpoint_digest"] for _, s in self.notes(HALF_RECEIVED)
-                if s["deal_id"] == deal_id and "checkpoint_digest" in s]
-        return held[-1] if held else None
+    def statement(self, deal_id: str, status: str, out: str) -> dict:
+        """How the deal's one row went on this side: ``received`` is met, ``not_received`` is not met."""
+        value = {"received": "met", "not_received": "not_met"}.get(status)
+        if value is None:
+            raise Refused("status is received or not_received")
+        done = self.ctl.run("statement", "--deal", deal_id, "--statement", f"{ROW}={value}", "--out", out)
+        return {"deal_id": deal_id, "digest": done["digest"], "row": value}
 
-    def close_deal(self, deal_id: str, status: str, uncited: bool = False) -> list[SealedStep]:
-        """End a deal: the outcome and the close, which cites the checkpoint of
-        the counterparty's half this node holds (x-deal-v0 §1). A node that
-        holds none refuses unless ``uncited`` says the counterparty never
-        answered its request."""
-        with self._lock:
-            chain = self.deal(deal_id)
-            held = self.counterparty_checkpoint(deal_id)
-            if held is None and not uncited:
-                raise Refused(f"this node holds no counterparty half of deal {deal_id}: end the exchange "
-                              "(loop_deal_end_exchange) and reconcile the counterparty's half first, or close "
-                              "with uncited=true when it never answered")
-            return self.seal(chain, chain.close(self._now(), status, held or ""))
-
-    # -- 09 Dispute ------------------------------------------------------------------
-
-    def receive_dispute_result(self, capsule: Any, octets: bytes, parties: Any) -> SealedStep:
-        """Seal a referee's Result into this book as received.
-
-        *octets* are the Result document exactly as the referee wrote them (its
-        JCS); *capsule* is the referee's sealed ``referee.result``; *parties*
-        is ``{"buyer": {"half", "action", "terms"}, "seller": {...}}``, each
-        half with the opening of its commitment, as the referee's
-        ``Party`` takes them. The Result must verify, be signed by the referee
-        both halves' terms name, name these two halves, and be about a deal this
-        node's key sealed one half of. Anything else is refused, and the refusal
-        is sealed with its code (never silence). The record's ``result_digest``
-        is the SHA-256 of *octets*, so every party's book holds the same one."""
-        referee = _referee()
-        digest = hashlib.sha256(octets).hexdigest()
-        with self._lock:  # check and seal as one step, or two deliveries of one Result both seal
+    def report(self, deal_id: str, out: str, wait: float = 0) -> dict:
+        """The deal's report as an Evidence Bundle written to ``out``. A report rests on a checkpoint:
+        with ``wait`` seconds it waits for the cadence tick that covers the deal."""
+        deadline = time.monotonic() + wait
+        while True:
+            ticked = self.tick()
             try:
-                try:
-                    self._check_dispute_result(referee, capsule, octets, parties)
-                except (ValueError, TypeError, AttributeError, KeyError) as exc:
-                    if isinstance(exc, referee.RefereeError):
-                        raise
-                    # A float in the octets, terms that are not an object: a delivery that is no Result.
-                    raise referee.RefereeError("not_a_result", f"the delivery cannot be read: {exc}") from exc
-            except referee.RefereeError as exc:
-                if not self._noted(DISPUTE_REFUSED, digest, code=exc.code):
-                    self.note(DISPUTE_REFUSED, {"result_digest": digest, "code": exc.code}, subject_ref=digest)
-                raise Refused(str(exc)) from exc
-            if self._noted(DISPUTE_RECEIVED, digest):
-                raise Refused("this Result is already received in this book")
-            held = [self._hold_half(role, parties[role]["half"]) for role in ("buyer", "seller")]
-            return self.note(DISPUTE_RECEIVED, {
-                "result_digest": digest, "result_capsule_id": capsule["capsule_id"], "referee": capsule["key_id"],
-                "buyer_half": held[0][0], "seller_half": held[1][0],
-            }, subject_ref=digest, cites=tuple(record_id for _, record_id in held))
-
-    def _hold_half(self, role: str, half: dict) -> tuple[str, str]:
-        """Seal a judged half into this book once (its Capsule is the payload) and return
-        its capsule id and record id, so the received Result can cite it."""
-        capsule_id = half["capsule_id"]
-        for record, statement in self.notes(DISPUTE_HALF):
-            if statement.get("capsule_id") == capsule_id:
-                return capsule_id, record.record_id
-        sealed = self.note(DISPUTE_HALF, {"role": role, "capsule_id": capsule_id, "key_id": half.get("key_id")},
-                           subject_ref=capsule_id, payloads=(jcs(half),))
-        return capsule_id, sealed.record_id
-
-    def _noted(self, record_type: str, digest: str, **members: Any) -> bool:
-        return any(st.get("result_digest") == digest and all(st.get(k) == v for k, v in members.items())
-                   for _, st in self.notes(record_type))
-
-    def _open_parties(self, referee: Any, parties: Any) -> tuple[dict, dict, dict]:
-        """The halves, terms and actions of ``parties``, each opening bound to its signed
-        half and the pair checked to be this node's deal; ``RefereeError`` otherwise."""
-        err = referee.RefereeError
-        try:
-            roles = {role: parties[role] for role in ("buyer", "seller")}
-            halves = {r: p["half"] for r, p in roles.items()}
-            terms = {r: p["terms"] for r, p in roles.items()}
-            actions = {r: p["action"] for r, p in roles.items()}
-        except (KeyError, TypeError, ValueError):
-            raise err("not_a_result", "the delivery is not a Result document with both parties' openings") from None
-        for role in roles:
-            # verify_referee_result takes the openings as given: bind each to
-            # its signed half here, or a forged terms file could name its own referee.
-            half = halves[role]
-            if not _authentic(half):
-                raise err("half_unverified", f"the {role}'s half does not verify under the key it carries")
-            committed = ((half.get("model_attestation") or {}).get("compute_attestation") or {}).get("action_digest")
-            if committed != referee.action_digest(actions[role], terms[role]):
-                raise err("opening_mismatch", f"the {role}'s opening does not recompute its half's action_digest")
-        if self.key_id not in {halves["buyer"].get("key_id"), halves["seller"].get("key_id")}:
-            raise err("not_a_party", "this node's key sealed neither half the Result judges")
-        if halves["buyer"].get("key_id") == halves["seller"].get("key_id"):
-            raise err("halves_unpaired", "both halves are signed by one key")
-        return halves, terms, actions
-
-    def _check_dispute_result(self, referee: Any, capsule: Any, octets: bytes, parties: Any) -> None:
-        err = referee.RefereeError
-        halves, terms, _ = self._open_parties(referee, parties)
-        try:
-            doc = json.loads(octets)
-        except ValueError:
-            raise err("not_a_result", "the delivery is not a Result document") from None
-        if jcs(doc) != octets:
-            raise err("result_mismatch", "the Result octets are not the referee's JCS bytes")
-        referee.verify_referee_result(capsule, doc, buyer_half=halves["buyer"], seller_half=halves["seller"],
-                                      buyer_terms=terms["buyer"], seller_terms=terms["seller"])
-
-    # -- 09 Dispute, over the mailbox ---------------------------------------------------
-
-    def ask_dispute_result(self, parties: Any, poll_interval: int, relay_factory: Any = None,
-                           now: Any = None) -> dict:
-        """Ask the referee the deal terms name for the Result, over the Nostr mailbox
-        (``nostr_mailbox``, binding nostr-mailbox-v0): publish a request event addressed to the
-        terms' ``referee.mailbox_key`` on its ``relays``, and seal the request in the node
-        book. The terms' ``referee.answers_within`` (seconds) sets the deadline, and must
-        be at least ``poll_interval``, the interval at which this node polls: a referee
-        cannot be expected to answer faster than its asker looks. Poll with
-        :meth:`poll_dispute_result`."""
-        import nostr_mailbox as mb  # this example's transport, imported on first use
-        referee = _referee()
-        try:
-            halves, terms, _ = self._open_parties(referee, parties)
-        except referee.RefereeError as exc:
-            raise Refused(str(exc)) from exc
-        route = _referee_route(terms)
-        if (not isinstance(poll_interval, int) or isinstance(poll_interval, bool) or poll_interval <= 0
-                or poll_interval > route["answers_within"]):
-            raise Refused(f"the poll interval ({poll_interval}s) must be a positive whole number of seconds and at most the terms' "
-                          f"answers_within ({route['answers_within']}s)")
-        clock = now or time.time
-        started = int(clock())
-        deadline = started + route["answers_within"]
-        octets = jcs({"ask": "referee_result", "buyer_half": halves["buyer"]["capsule_id"],
-                      "seller_half": halves["seller"]["capsule_id"], "nonce": os.urandom(16).hex(),
-                      "deadline": deadline})
-        event = mb.sign_event(mb.new_secret(), mb.REQUEST_KIND,
-                              [("p", route["mailbox_key"]), ("m", MAILBOX_MEDIA), ("expiration", str(deadline))],
-                              mb.encode(octets), started)
-        factory = relay_factory or mb.Relay
-        try:
-            published = mb.publish_all([factory(u) for u in route["relays"]], event)
-        except mb.MailboxError as exc:
-            raise Refused(str(exc)) from exc
-        sealed = self.note(DISPUTE_ASKED, {
-            "request_event_id": event.id, "request_digest": hashlib.sha256(octets).hexdigest(),
-            "mailbox_key": route["mailbox_key"], "relays": published, "deadline": deadline,
-            "poll_interval": poll_interval, "buyer_half": halves["buyer"]["capsule_id"],
-            "seller_half": halves["seller"]["capsule_id"]}, subject_ref=event.id)
-        return {"request_event_id": event.id, "deadline": deadline, "record_id": sealed.record_id}
-
-    def poll_dispute_result(self, request_event_id: str, parties: Any, relay_factory: Any = None,
-                            now: Any = None) -> dict:
-        """One poll for the Result asked for with :meth:`ask_dispute_result`. Returns
-        ``{"status": "received", "record_id"}`` once a reply that passes the mailbox checks
-        holds a Result the node accepts (sealed as received, cited halves and all);
-        ``{"status": "pending"}`` before the request's deadline; ``{"status": "absent"}``
-        once the deadline has passed with no reply, after sealing the absence once; ``{"status":
-        "transport_error", "error"}`` when no relay could be read, which seals nothing. A
-        reply that arrives and fails verification is refused, and the refusal sealed
-        (:meth:`receive_dispute_result`). A reply that arrives after the absence was
-        sealed is still taken, and the absence record stays as written (binding §5.3)."""
-        import nostr_mailbox as mb
-        asked = next((st for _, st in self.notes(DISPUTE_ASKED) if st["request_event_id"] == request_event_id), None)
-        if asked is None:
-            raise Refused("this node's book holds no such request")
-        for role in ("buyer", "seller"):
-            if _party_half(parties, role) != asked[f"{role}_half"]:
-                raise Refused(f"the deal file's {role} half is not the one this request was sent for")
-        factory = relay_factory or mb.Relay
-        relays = [factory(u) for u in asked["relays"]]
-        last: Refused | None = None
-        try:
-            replies = mb.poll_replies(relays, request_event_id, MAILBOX_MEDIA, asked["mailbox_key"])
-        except mb.MailboxError as exc:  # no relay could be read: it says nothing about the referee, so no absence
-            if any(st.get("request_event_id") == request_event_id for _, st in self.notes(DISPUTE_ABSENT)):
-                return {"status": "absent", "deadline": asked["deadline"]}  # sealed earlier; it stands
-            return {"status": "transport_error", "error": str(exc), "deadline": asked["deadline"]}
-        for reply in replies:
-            raw = mb.decode(reply.content) or b""
-            try:
-                delivered = json.loads(raw)
-                capsule, octets = delivered["capsule"], jcs(delivered["result"])
-            except (ValueError, TypeError, KeyError):
-                capsule, octets = None, raw
-            try:
-                sealed = self.receive_dispute_result(capsule, octets, parties)
+                self.ctl.run("report", "--deal", deal_id, "--bundle", out)
+                return {"deal_id": deal_id, "file": out, "tick": ticked.get("state")}
             except Refused as exc:
-                last = exc
-                continue
-            return {"status": "received", "record_id": sealed.record_id}
-        if last is not None:
-            raise last
-        deadline = asked["deadline"]
-        if int((now or time.time)()) < deadline:
-            return {"status": "pending", "deadline": deadline}
-        with self._lock:
-            if not any(st.get("request_event_id") == request_event_id for _, st in self.notes(DISPUTE_ABSENT)):
-                self.note(DISPUTE_ABSENT, {"request_event_id": request_event_id, "window_closed": deadline,
-                                           "request_digest": asked["request_digest"],
-                                           "route": mb.nprofile(asked["mailbox_key"], asked["relays"])},
-                          subject_ref=request_event_id)
-        return {"status": "absent", "deadline": deadline}
-
-    # -- the imported ledger ---------------------------------------------------------
-
-    def import_ledger(self, source: str | os.PathLike) -> dict:
-        """Copy an existing capsule-emit flat ledger into the host log
-        ``goose/ledger`` (design note §8): each line put as it was sealed and
-        appended in order, nothing re-signed or dropped, re-runnable, under
-        the flat ledger's writer lock. Only after the log holds exactly the
-        flat ledger's records in order are its files moved to ``<home>/archive/pre-shelf/``; on any mismatch they
-        stay where they are and nothing is moved."""
-        source = Path(source).expanduser()
-        if not source.exists():
-            raise Refused(f"no flat ledger at {source}")
-        with _flat_ledger_lock(source):
-            return self._import_locked(source)
-
-    def _import_locked(self, source: Path) -> dict:
-        from capsule_emit import ledger as flat
-        from capsule_emit.store_backed_ledger import import_flat
-
-        keys = {e["key_id"] for e in flat.read_ledger_entries(str(source))
-                if isinstance(e, dict) and isinstance(e.get("key_id"), str)}
-        missing = sorted(keys - {self.key_id} - {k.hex() for k in self._trusted()})
-        if missing:
-            # The artifact store verifies every record against its trusted
-            # keys, so the ledger's own signers are trusted first; a restart
-            # opens the store with them (the caller reopens the node).
-            (self.home / "trusted-keys.json").write_text(json.dumps(sorted({*missing,
-                                                                           *(k.hex() for k in self._trusted())})))
-            return {"reopen": True, "trusted": missing}
-        with self._lock:
-            host = self.shelf.host_log(LEDGER_LOG, in_cadence=True)
-            ledger, report = host.write(lambda stores: import_flat(source, stores.log, stores.originals))
-            capsules = [e for e in flat.read_ledger_entries(str(source))
-                        if isinstance(e, dict) and e.get("capsule_id") and e.get("kind") is None]
-            unique = list(dict.fromkeys(e["capsule_id"] for e in capsules))
-            if ledger.capsule_ids_in_order() != unique:
-                raise Refused("the host log does not hold the flat ledger's records in order; the flat files are kept")
-        archive = self.home / "archive" / "pre-shelf"
-        archive.mkdir(parents=True, exist_ok=True)
-        moved = archive / f"{source.name}.{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-        shutil.move(str(source), moved)
-        return {"records": report.records, "resumed": report.resumed, "skipped": report.skipped,
-                "chain_head": report.chain_head, "archived_to": str(moved)}
-
-    def ledger_capsules(self) -> list[dict]:
-        """The imported ledger's records, in order."""
-        from capsule_emit.store_backed_ledger import Ledger
-
-        with self._lock:
-            if LEDGER_LOG not in self._host_logs():
-                return []
-            host = self.shelf.host_log(LEDGER_LOG, in_cadence=True)
-            return host.write(lambda stores: [
-                ledger.read_line(i) for ledger in [Ledger.open_stores(stores.log, stores.originals, linear=False,
-                                                                       require_statements=False)[0]]
-                for i in range(1, ledger.entries + 1)])
-
-    def _host_logs(self) -> set[str]:
-        with self.shelf._read() as db:
-            return {r[0] for r in db.execute("SELECT log_id FROM shelf_logs WHERE kind = 'host'")}
-
-    # -- the cadence and the cards ---------------------------------------------------
-
-    def tick(self, now: datetime | None = None):
-        """Run the cadence's tick if one is due."""
-        with self._lock:
-            return self.cadence.tick(now or self._now())
-
-    def history_card(self, book_id: str) -> bytes:
-        """``history_card/1`` for one book, as of its newest checkpoint: the
-        reply octets a stranger's request gets (ER -02 §8.1)."""
-        return self.stapled_card(book_id)[0]
-
-    def stapled_card(self, book_id: str) -> tuple[bytes, bytes]:
-        """``history_card/1`` for one book and the signed statement of the
-        checkpoint it is anchored on (the card's anchor is its SHA-256).
-        Built as Go's ``Book.Staple`` builds it: the book's own request over
-        ``checkpoints``, pinned to its newest checkpoint, with a fresh nonce.
-        The returned octets are the reply only; the request and nonce stay
-        with the :class:`Staple`, since ``evidence-commitment/1`` has no
-        member to carry them."""
-        with self._lock:
-            book = self.shelf.open(book_id)
-            stapled = staple(book, DERIVATION_HISTORY_CARD)
-            checkpoint = book.checkpoint()
-            if stapled.reply.envelope.anchor_digest != checkpoint.anchor_digest:
-                raise Refused("the book's newest checkpoint moved while its card was built")
-            return stapled.reply.message.octets, checkpoint.statement
-
-    def standard_history(self, tick: int = 0) -> dict:
-        """``standard_history/1`` as of a cadence tick (the newest when 0):
-        one x-deal-v0 deal entry per deal book (x-deal-v0 §11), each from the
-        records the tick commits. Returns the card's JCS text and the inputs
-        a verifier recomputes it from."""
-        with self._lock:
-            anchor = self.cadence.standard_history_anchor(tick)
-            received = self._halves_received(anchor.extents.get(NODE_BOOK, 0))
-            deals = []
-            for book_id, extent in sorted(anchor.extents.items()):
-                if not book_id.startswith("deal/") or book_id.count("/") != 1:
-                    continue
-                book = self.shelf.open(book_id)
-                records = book.records()[:extent]
-                payloads = self._payloads(book)[:extent]
-                inputs = deal.HistoryInput(
-                    tuple(deal.HistoryRecord(p, _parse_time(r.header.committed_at)) for p, r in zip(payloads, records)),
-                    (), book_id[len("deal/"):] in received)
-                entry = deal.standard_history_deal(inputs)
-                if entry is not None:
-                    deals.append(entry)
-            as_of = {"anchor": anchor.anchor, "anchor_time": anchor.anchor_time,
-                     "first_checkpoint_time": anchor.first_checkpoint_time}
-            policy = {"digest": hashlib.sha256(jcs(POLICY)).hexdigest(), "window": POLICY["window"]}
-            card = sh.derive_card(holder_kind=HOLDER_KIND, controller_class=sh.CONTROLLER_CLASSES[HOLDER_KIND],
-                                  policy=policy, deals=deals, **as_of)
-            properties = sh.check_card(card, policy=policy, as_of=as_of, deals=deals)
-            if not all(v == "PASS" for v in properties.values()):
-                raise Refused(f"the card fails its own inputs: {properties}")
-            return {"card": jcs(card).decode(), "tick": anchor.tick.n, "as_of": as_of, "policy": policy,
-                    "deals": deals, "properties": properties}
-
-    def history_staple(self, tick: int = 0) -> dict:
-        """The shelf-level ``standard_history/1`` card as of a cadence tick (the newest when 0),
-        signed by this node as a staple (evidencebook#329): the node's own request over
-        ``full_history`` pinned to the tick's anchor, with a fresh nonce, and the envelope its
-        producer key (:attr:`key_id`, the key its steps are signed by) signs over the card's JCS.
-        Returns :data:`HISTORY_STAPLE_MEMBER`'s value; :func:`verify_history_staple` checks it.
-        :class:`Refused` when the cadence has no finished tick to be as of."""
-        with self._lock:
-            try:
-                anchor = self.cadence.standard_history_anchor(tick)
-            except NotFoundError as exc:
-                raise Refused(f"no history staple: {exc} (run loop_tick)") from None
-            card = self.standard_history(anchor.tick.n)["card"].encode()
-            subject = Subject("full_history")
-            request = Message(encode_request(EvidenceRequest(
-                subject, Coverage(expected_pin=anchor.anchor), derivation=DERIVATION_STANDARD_HISTORY,
-                nonce=os.urandom(16).hex(), profile=ER_PROFILE)), MEDIA_TYPE_JSON)
-            envelope = sign_envelope(request.octets, subject, anchor.anchor, card, signer=EvidenceSigner(self.signer),
-                                     issued_at=profile_time(self._now()), derivation=DERIVATION_STANDARD_HISTORY,
-                                     profile=ER_PROFILE)
-            return {"request": request.octets.decode(),
-                    "reply": encode_envelope(envelope, MEDIA_TYPE_JSON).message.octets.decode()}
-
-    def register_card(self, registrar: Any, policy: Any, tick: int = 0) -> dict:
-        """Register the node's ``standard_history/1`` card as of a cadence tick (the newest when 0)
-        on the transparency service ``registrar`` posts to, and return what the host keeps beside
-        the card: the card statement, its octets as hex, with the Receipt attached after it passed
-        under ``policy`` (agent-action-capsule ``standard-history-v0`` §13, Go ``RegisterCard``).
-
-        Opt-in: the node names no service, and the host's registrar is the only way one is reached
-        (:mod:`card_service`). The card is built first and is complete without this; a service that
-        is down or a Receipt that does not pass raises, and the card is as it was. The node's lock
-        is not held during the post. What registration shows is that the card existed at a time,
-        nothing else: ``anchor_inclusion`` stays NOT_CHECKED."""
-        with self._lock:
-            try:
-                anchor = self.cadence.standard_history_anchor(tick)
-            except NotFoundError as exc:
-                raise Refused(f"no card to register: {exc} (run loop_tick)") from None
-            built = self.standard_history(anchor.tick.n)
-        card = built["card"].encode()
-        envelope = _Holder(self.key_id, anchor.anchor)
-        try:
-            statement = cr.register_card(self.signer, card, envelope, registrar, policy)
-        except cr.InvalidError as exc:
-            raise Refused(f"the card was not registered: {exc}") from None
-        return {"card": built["card"], "tick": anchor.tick.n, "anchor": anchor.anchor, "responder": self.key_id,
-                "statement": statement.hex()}
-
-    def _halves_received(self, extent: int) -> set[str]:
-        """The deals whose counterparty half this node verified, among the
-        node book's first ``extent`` records."""
-        return {s["deal_id"] for r, s in self.notes(HALF_RECEIVED) if r.seq <= extent and s["close_half_digest"]}
+                if "after its last checkpoint" not in str(exc) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(min(15.0, max(1.0, deadline - time.monotonic())))
