@@ -43,14 +43,13 @@ const (
 
 // Why a payment check was not run, or failed (PaymentResult.Reason).
 const (
-	ReasonSeveralPayments  = "several_payments"   // the terms have more than one payment row
-	ReasonRefundCitesOffer = "refund_cites_offer" // a refund or remedy leg cites the offer's terms leg
-	ReasonNotAgreed        = "not_agreed"         // one side's legs, or none: AAC's terms_only, payer_stated, payee_stated
-	ReasonUnjoined         = "unjoined"           // both sides' legs, which AAC cannot join (payment_ref types, fees)
-	ReasonPending          = "pending"            // agreed, with status pending
-	ReasonMismatch         = "mismatch"           // the two sides' legs differ
-	ReasonStatus           = "status"             // agreed, with status failed or reversed
-	ReasonAmount           = "amount"             // agreed, with an amount other than the terms
+	ReasonSeveralPayments = "several_payments" // the terms have more than one payment row
+	ReasonNotAgreed       = "not_agreed"       // one side's legs, or none: AAC's terms_only, payer_stated, payee_stated
+	ReasonUnjoined        = "unjoined"         // both sides' legs, which AAC cannot join (payment_ref types, fees)
+	ReasonPending         = "pending"          // agreed, with status pending
+	ReasonMismatch        = "mismatch"         // the two sides' legs differ
+	ReasonStatus          = "status"           // agreed, with status failed or reversed
+	ReasonAmount          = "amount"           // agreed, with an amount other than the terms
 )
 
 // PaymentRows are the ids of the payment rows of an offer's terms, in
@@ -189,13 +188,17 @@ type PaymentInput struct {
 // then the legs AAC's verifier read, in the order given. Excluded are the
 // settle records that took no part: no readable settlement member, a leg of
 // another side or role than its signer's, or one AAC's verifier refuses.
-// Settlement is AAC's derived state of the legs that answer the offer's
-// terms leg, when it ran.
+// NotChecked are the refund and remedy legs (reverses, remedy_for) that
+// answer the offer's terms leg and are not superseded: the check runs on
+// the payment's own legs and reads none of them, since a refund's terms are
+// not defined yet (Steven, evidencebook#722). Settlement is AAC's derived
+// state of the payment's legs, when it ran.
 type PaymentResult struct {
 	Check       string                 `json:"check"`
 	Reason      string                 `json:"reason,omitempty"`
 	CheckedOver []string               `json:"checked_over"`
 	Excluded    []string               `json:"excluded,omitempty"`
+	NotChecked  []string               `json:"not_checked,omitempty"`
 	Settlement  *settlement.Settlement `json:"settlement,omitempty"`
 }
 
@@ -224,9 +227,11 @@ type settlementWire struct {
 // A leg's own content is the counterparty's to get wrong, so a leg whose
 // side, leg or role disagree, or that AAC refuses, takes no part (Excluded)
 // rather than stopping the check. A leg superseded (supersedes) by a later
-// leg of its side is not read; a refund or remedy leg (reverses,
-// remedy_for) that cites the offer's terms leg, and is not superseded,
-// leaves the check not run.
+// leg of its side is not read (a payment leg only by a later payment leg of
+// this terms leg that AAC's verifier reads beside the offer); a refund or remedy leg (reverses,
+// remedy_for) that cites the offer's terms leg is not read either, and is
+// listed in NotChecked when it is not superseded: the check runs on the
+// payment's own legs (evidencebook#722).
 func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 	bad := func(format string, args ...any) (PaymentResult, error) {
 		return PaymentResult{}, stageErr(StagePayment, format, args...)
@@ -287,12 +292,18 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		refund  bool
 	}
 	var legs []legRead
-	// Every settle record's supersedes counts, whichever terms leg it
-	// answers: a refund replaced by one under its own terms leg is replaced.
+	// Every settle record's supersedes counts against a refund, whichever
+	// terms leg it answers: a refund replaced by one under its own terms leg
+	// is replaced. A payment leg is replaced only by a later payment leg of
+	// this terms leg that AAC's verifier reads beside the offer (payment), so neither a refund nor a record of another
+	// terms leg can take a failing payment out of the check
+	// (evidencebook#722).
 	type supersession struct {
-		key    string
-		target Ref
-		seq    uint64
+		key     string
+		target  Ref
+		seq     uint64
+		payment bool
+		capsule map[string]json.RawMessage
 	}
 	var supersedes []supersession
 	for i, raw := range in.Legs {
@@ -311,7 +322,9 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		if !known {
 			return bad("leg %d is signed by neither party's key", i)
 		}
+		sp := -1
 		if body.Supersedes != nil {
+			sp = len(supersedes)
 			supersedes = append(supersedes, supersession{key: read.KeyID, target: *body.Supersedes, seq: read.Seq})
 		}
 		var pair struct {
@@ -344,37 +357,59 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 			out.Excluded = append(out.Excluded, read.Digest)
 			continue
 		}
+		if sp >= 0 && !refund {
+			supersedes[sp].payment, supersedes[sp].capsule = true, pair.Record
+		}
 		legs = append(legs, legRead{read: read, capsule: pair.Record, refund: refund})
 	}
 
+	offerCapsule, err := decodeRecord(offerPair.Record)
+	if err != nil {
+		return bad("the offer's Capsule: %v", err)
+	}
+	policy := map[string][]string{}
+	for key, role := range roleOf {
+		policy[role] = append(policy[role], key)
+	}
+	// A payment leg supersedes only when AAC's verifier reads it beside the
+	// offer: a leg it refuses (a malformed member, say) takes no part, and
+	// so replaces nothing (evidencebook#757 review).
+	for i, sp := range supersedes {
+		if !sp.payment {
+			continue
+		}
+		c, err := decodeRecord(sp.capsule)
+		if err != nil {
+			return bad("a leg's Capsule: %v", err)
+		}
+		if len(settlement.Verify(settlement.Input{Capsules: []any{offerCapsule, c}, KeyPolicy: policy}).Failures) > 0 {
+			supersedes[i].payment = false
+		}
+	}
 	// A leg superseded by a later leg of its side is not read: the book
 	// keeps the replaced one, and the deal reads the outcome (§4.2, §8).
 	superseded := map[string]bool{}
 	for _, l := range legs {
 		for _, sp := range supersedes {
-			if sp.key == l.read.KeyID && sp.target == RefTo(l.read.Digest) && l.read.Seq < sp.seq {
+			if sp.key == l.read.KeyID && sp.target == RefTo(l.read.Digest) && l.read.Seq < sp.seq && (l.refund || sp.payment) {
 				superseded[l.read.Digest] = true
 			}
 		}
 	}
-	// A refund or remedy that is a payment needs its own terms leg; one
-	// that cites the offer's leaves the check not run.
+	// A refund or remedy that is a payment needs its own terms leg, which
+	// this profile does not define: it is not checked, and the payment's
+	// own legs are, so a refund never hides a mismatch in the payment it
+	// follows (evidencebook#722).
 	for _, l := range legs {
 		if l.refund && !superseded[l.read.Digest] {
-			out.Reason = ReasonRefundCitesOffer
-			return out, nil
+			out.NotChecked = append(out.NotChecked, l.read.Digest)
 		}
 	}
-	capsules := []any{}
-	offerCapsule, err := decodeRecord(offerPair.Record)
-	if err != nil {
-		return bad("the offer's Capsule: %v", err)
-	}
-	capsules = append(capsules, offerCapsule)
+	capsules := []any{offerCapsule}
 	digestOf := map[string]string{} // capsule id -> record digest
 	var read []string
 	for _, l := range legs {
-		if superseded[l.read.Digest] {
+		if superseded[l.read.Digest] || l.refund {
 			continue
 		}
 		c, err := decodeRecord(l.capsule)
@@ -384,10 +419,6 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		capsules = append(capsules, c)
 		digestOf[l.read.RecordID] = l.read.Digest
 		read = append(read, l.read.Digest)
-	}
-	policy := map[string][]string{}
-	for key, role := range roleOf {
-		policy[role] = append(policy[role], key)
 	}
 	res := settlement.Verify(settlement.Input{Capsules: capsules, KeyPolicy: policy})
 	// A leg AAC's verifier refuses takes no part in its state.

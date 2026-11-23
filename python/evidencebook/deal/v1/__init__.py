@@ -40,7 +40,7 @@ from .status import (
 from .authorization import STAGE_AUTHORIZATION, ActAuthorization, check_authorizations
 from .payment import (
     PAYMENT_FAIL, PAYMENT_PASS, REASON_AMOUNT, REASON_MISMATCH, REASON_NOT_AGREED, REASON_PENDING,
-    REASON_REFUND_CITES_OFFER, REASON_SEVERAL_PAYMENTS, REASON_STATUS, REASON_UNJOINED, STAGE_PAYMENT, PaymentInput,
+    REASON_SEVERAL_PAYMENTS, REASON_STATUS, REASON_UNJOINED, STAGE_PAYMENT, PaymentInput,
     PaymentResult, payment_check,
 )
 from .sent import (

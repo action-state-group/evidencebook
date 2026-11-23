@@ -155,6 +155,17 @@ func TestBuildStatusCarriesThePaymentCheck(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), label("a"))
 
+	// A passing payment beside a refund it did not check says how many
+	// (evidencebook#722), never which.
+	b.Payments = map[string]PaymentResult{"paid_as_agreed": {Check: PaymentPass, NotChecked: []string{label("r")}}}
+	v, err = BuildStatus(b)
+	require.NoError(t, err)
+	assert.Equal(t, 1, v.Rows[0].CheckNotChecked)
+	raw, err = json.Marshal(v)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"check_not_checked":1`)
+	assert.NotContains(t, string(raw), label("r"))
+
 	b.Payments = map[string]PaymentResult{"paid_as_agreed": {Check: PaymentPass}}
 	v, err = BuildStatus(b)
 	require.NoError(t, err)

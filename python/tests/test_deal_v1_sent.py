@@ -234,3 +234,15 @@ def test_a_pair_past_go_s_scanner_depth_is_a_text_refusal():
     with pytest.raises(StageError) as exc:
         v1sent.verify_sent(('{"record":{},"agent_input":' + deep + "}").encode())
     assert exc.value.stage == "canonicalization"
+
+
+def test_payment_result_positional_construction_keeps_settlement():
+    """not_checked is the last field, so a PaymentResult built by position
+    keeps its settlement (evidencebook#757 review)."""
+    from evidencebook.deal.v1.payment import PaymentResult
+
+    s = {"terms": "t"}
+    r = PaymentResult("pass", "", ["offer"], [], s)
+    assert r.settlement == s and r.not_checked == []
+    assert r.value() == {"check": "pass", "checked_over": ["offer"], "settlement": s}
+    assert PaymentResult(not_checked=["d"]).value()["not_checked"] == ["d"]

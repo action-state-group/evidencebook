@@ -553,6 +553,8 @@ def build_status(books: Any) -> dict:
                 row["check_reason"] = p["reason"]
             if p.get("excluded"):
                 row["check_excluded"] = len(p["excluded"])
+            if p.get("not_checked"):
+                row["check_not_checked"] = len(p["not_checked"])
         v["rows"].append(row)
         v["disputes"] += _disputes_of(sbooks, book_of_role, row_id, effective)
     return v

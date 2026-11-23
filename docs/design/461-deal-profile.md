@@ -1014,8 +1014,10 @@ already is, and the x-deal agreement stays the acceptance.
   terms have exactly one payment row. The check runs on that row's own payment only. A refund or
   another remedy that is a payment, and a second paid row (a deposit and a balance), need their own
   terms leg, which the profile does not define yet. Until then:
-  - a refund or remedy leg (`reverses`, `remedy_for`) citing the offer's terms leg leaves the
-    check not run;
+  - a refund or remedy leg (`reverses`, `remedy_for`) citing the offer's terms leg is not checked
+    (`not_checked`), and the check runs on the payment's own legs; a payment leg is superseded only
+    by a later payment leg of the same terms leg, so a refund never takes a failing payment out of
+    the check (Steven, evidencebook#722);
   - terms with more than one payment row leave it not run, and a payment remedy is not counted
     (6.1).
 - **The join is scoped to the started deal's offer.** `xdealv1.PaymentCheck` takes the sent offer
@@ -1384,7 +1386,9 @@ the witness receipts it is handed (A, above).
   `check_reason` says why the check failed or did not run. `check_excluded` is how many settle
   records it left out, never which: their digests are record digests, which the status value
   never holds (no shared identifier). The digests the check ran over go in the link value's
-  `checked_over` (8.2).
+  `checked_over` (8.2). `check_not_checked` is how many refund or remedy legs citing the offer's
+  terms leg the check did not read: it runs on the payment's own legs, and a refund's terms are not
+  defined yet (Steven, evidencebook#722).
 - **`counterparty_kind`** is `null` until the counterparty's profile record feeds it. No v1 record
   carries SH §7's class yet.
 - **The u611 marking.** A deal whose counterparty runs no layer has `counterparty_layer` false and
@@ -1558,8 +1562,8 @@ records by reading that leg, not a new report member.
 - **The legs in `relied_on`.** A payment row's `relied_on` lists, after the records it lists
   otherwise and once each, every settle leg `PaymentCheck` read for the row: its result's
   `checked_over` after the first entry (the offer's digest, a journal record). A leg the check
-  excluded, and a check not run over legs (several payment rows, a refund citing the offer's terms
-  leg), add none. `BuildReport` refuses a payment result whose first entry is not the offer's
+  excluded, a refund leg not checked, and a check not run over legs (several payment rows), add
+  none. `BuildReport` refuses a payment result whose first entry is not the offer's
   digest, or that names a record the books given do not hold. The leg stays as sealed: a
   payee-issued `payment_hash` is not one of the payment ids the counterparty copy withholds
   (u499), since both parties hold it (Steven's ruling above, ops u532).

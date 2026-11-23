@@ -507,7 +507,7 @@ func TestReportVectors(t *testing.T) {
 	// relied_on (Steven's ruling on #588): with both legs stating the row
 	// they are there already, and the check passes; with a payee leg that
 	// states nothing, the leg is there through the check alone; with a
-	// check not run over legs (a refund citing the offer's terms leg), no
+	// check not run over legs (several payment rows), no
 	// leg is added.
 	paid := heldAt(b, "2026-11-09T12:00:00Z")
 	paid.Payments = paymentsOver(t, paid, PaymentPass, "", paid.Own[1], paid.Counterpart[1])
@@ -519,7 +519,7 @@ func TestReportVectors(t *testing.T) {
 	ucp.Audience = dealprofile.AudienceCounterparty
 	add("appendix-a-payee-leg-unstated-counterparty-copy", reportBooks(t, unstated), ucp)
 	notRun := payeeLegUnstated(t, heldAt(b, "2026-11-09T12:00:00Z"))
-	notRun.Payments = paymentsOver(t, notRun, "", ReasonRefundCitesOffer)
+	notRun.Payments = paymentsOver(t, notRun, "", ReasonSeveralPayments)
 	add("appendix-a-payment-not-run", reportBooks(t, notRun), keepCopy("2026-11-09T12:00:00Z"))
 
 	writeOrCompare(t, filepath.Join(reportDir, "vectors.json"), map[string]any{
@@ -708,7 +708,7 @@ func TestBuildReportPaymentLegs(t *testing.T) {
 		}(), unstated.Counterpart[1].RecordID, "only the payment row relies on its legs")
 	}
 
-	unstated.Payments = paymentsOver(t, unstated, "", ReasonRefundCitesOffer)
+	unstated.Payments = paymentsOver(t, unstated, "", ReasonSeveralPayments)
 	r, err = BuildReport(reportBooks(t, unstated), keepCopy(at))
 	require.NoError(t, err)
 	assert.Equal(t, before, ids(r), "a check not run over legs adds none")

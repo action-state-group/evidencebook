@@ -35,8 +35,6 @@ pub const PAYMENT_FAIL: &str = "fail";
 
 /// The terms have more than one payment row.
 pub const REASON_SEVERAL_PAYMENTS: &str = "several_payments";
-/// A refund or remedy leg cites the offer's terms leg.
-pub const REASON_REFUND_CITES_OFFER: &str = "refund_cites_offer";
 /// One side's legs, or none: AAC's terms_only, payer_stated, payee_stated.
 pub const REASON_NOT_AGREED: &str = "not_agreed";
 /// Both sides' legs, which AAC cannot join (payment_ref types, fees).
@@ -106,8 +104,9 @@ fn record_of(pair: &[u8]) -> Result<Map<String, Value>, Error> {
 /// neither party's key or carries a chain. A leg whose side, leg or role
 /// disagree, or that AAC refuses, takes no part (`excluded`) rather than
 /// stopping the check. A leg superseded by a later leg of its side is not
-/// read; a refund or remedy leg that cites the offer's terms leg, and is not
-/// superseded, leaves the check not run.
+/// read; a refund or remedy leg that cites the offer's terms leg is not read
+/// either, and is listed in `not_checked` when it is not superseded: the
+/// check runs on the payment's own legs (evidencebook#722).
 pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
     let sent = verify_sent(&input.offer, None)?;
     if sent.digest != input.offer_digest {
@@ -167,9 +166,14 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         refund: bool,
     }
     let mut legs: Vec<LegRead> = Vec::new();
-    // Every settle record's supersedes counts, whichever terms leg it
-    // answers: a refund replaced by one under its own terms leg is replaced.
-    let mut supersedes: Vec<(String, Ref, u64)> = Vec::new();
+    // Every settle record's supersedes counts against a refund, whichever
+    // terms leg it answers: a refund replaced by one under its own terms leg
+    // is replaced. A payment leg is replaced only by a later payment leg of
+    // this terms leg (the flag), so neither a refund nor a record of another
+    // terms leg can take a failing payment out of the check
+    // (evidencebook#722).
+    // The flag holds the superseding payment leg's index in `legs`.
+    let mut supersedes: Vec<(String, Ref, u64, Option<usize>)> = Vec::new();
     for (i, raw) in input.legs.iter().enumerate() {
         let read = verify_book(raw)?;
         if read.record.block.deal_id != sent.record.block.deal_id {
@@ -185,9 +189,10 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         let Some(&role) = role_of.get(&read.key_id) else {
             return Err(bad(format!("leg {i} is signed by neither party's key")));
         };
-        if let Some(target) = &body.supersedes {
-            supersedes.push((read.key_id.clone(), target.clone(), read.seq));
-        }
+        let sp = body.supersedes.as_ref().map(|target| {
+            supersedes.push((read.key_id.clone(), target.clone(), read.seq, None));
+            supersedes.len() - 1
+        });
         let capsule = record_of(raw)?;
         // A deal-book record's Capsule has no chain. AAC's verifier reads a
         // chain's supersedes to drop a leg, which would replace the deal's
@@ -215,6 +220,9 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
             out.excluded.push(read.digest.clone());
             continue;
         }
+        if let (Some(sp), false) = (sp, refund) {
+            supersedes[sp].3 = Some(legs.len());
+        }
         legs.push(LegRead {
             read,
             capsule,
@@ -222,36 +230,6 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         });
     }
 
-    // A leg superseded by a later leg of its side is not read.
-    let superseded: HashSet<String> = legs
-        .iter()
-        .filter(|l| {
-            supersedes.iter().any(|(key, target, seq)| {
-                *key == l.read.key_id && *target == ref_to(&l.read.digest) && l.read.seq < *seq
-            })
-        })
-        .map(|l| l.read.digest.clone())
-        .collect();
-    // A refund or remedy that is a payment needs its own terms leg; one
-    // that cites the offer's leaves the check not run.
-    if legs
-        .iter()
-        .any(|l| l.refund && !superseded.contains(&l.read.digest))
-    {
-        out.reason = REASON_REFUND_CITES_OFFER.into();
-        return Ok(out);
-    }
-    let mut capsules = vec![Value::Object(offer_record)];
-    let mut digest_of: HashMap<String, String> = HashMap::new(); // capsule id -> record digest
-    let mut read = Vec::new();
-    for l in &legs {
-        if superseded.contains(&l.read.digest) {
-            continue;
-        }
-        capsules.push(Value::Object(l.capsule.clone()));
-        digest_of.insert(l.read.record_id.clone(), l.read.digest.clone());
-        read.push(l.read.digest.clone());
-    }
     let mut policy: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (key, role) in &role_of {
         policy
@@ -262,13 +240,59 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
     for keys in policy.values_mut() {
         keys.sort();
     }
-    let res = verify_settlements(
-        &capsules,
-        &SettlementOptions {
-            key_policy: Some(policy),
-            ..Default::default()
-        },
-    );
+    let options = SettlementOptions {
+        key_policy: Some(policy),
+        ..Default::default()
+    };
+    // A payment leg supersedes only when AAC's verifier reads it beside the
+    // offer: a leg it refuses (a malformed member, say) takes no part, and
+    // so replaces nothing (evidencebook#757 review).
+    for sp in &mut supersedes {
+        if let Some(i) = sp.3 {
+            let pair = [
+                Value::Object(offer_record.clone()),
+                Value::Object(legs[i].capsule.clone()),
+            ];
+            if !verify_settlements(&pair, &options).failures.is_empty() {
+                sp.3 = None;
+            }
+        }
+    }
+    // A leg superseded by a later leg of its side is not read (a payment
+    // leg only by a later payment leg of this terms leg that AAC reads).
+    let superseded: HashSet<String> = legs
+        .iter()
+        .filter(|l| {
+            supersedes.iter().any(|(key, target, seq, payment)| {
+                *key == l.read.key_id
+                    && *target == ref_to(&l.read.digest)
+                    && l.read.seq < *seq
+                    && (l.refund || payment.is_some())
+            })
+        })
+        .map(|l| l.read.digest.clone())
+        .collect();
+    // A refund or remedy that is a payment needs its own terms leg, which
+    // this profile does not define: it is not checked, and the payment's
+    // own legs are, so a refund never hides a mismatch in the payment it
+    // follows (evidencebook#722).
+    out.not_checked = legs
+        .iter()
+        .filter(|l| l.refund && !superseded.contains(&l.read.digest))
+        .map(|l| l.read.digest.clone())
+        .collect();
+    let mut capsules = vec![Value::Object(offer_record)];
+    let mut digest_of: HashMap<String, String> = HashMap::new(); // capsule id -> record digest
+    let mut read = Vec::new();
+    for l in &legs {
+        if l.refund || superseded.contains(&l.read.digest) {
+            continue;
+        }
+        capsules.push(Value::Object(l.capsule.clone()));
+        digest_of.insert(l.read.record_id.clone(), l.read.digest.clone());
+        read.push(l.read.digest.clone());
+    }
+    let res = verify_settlements(&capsules, &options);
     // A leg AAC's verifier refuses takes no part in its state.
     let mut refused = HashSet::new();
     for f in &res.failures {
