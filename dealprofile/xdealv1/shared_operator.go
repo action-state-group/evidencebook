@@ -28,7 +28,8 @@ const NotIndependentSharedOperator = "not independent (shared operator)"
 // book's stamp. It is never the ruling's own block.at, which is the
 // adjudicator's word (PROFILE §2): an adjudicator sharing an operator could
 // set it outside the binding's window to escape the label. A zero stampedAt,
-// a ruling not yet covered by a stamp, gives "".
+// a ruling not yet covered by a stamp, gives "" for a binding; an
+// adjudicator key equal to a party key is labeled whatever the time.
 //
 // revocations are the revocation statements delivered with the bindings;
 // judged at stampedAt, one revoked after it does not remove the label. A bad
@@ -52,11 +53,15 @@ func SharedOperator(ruling Record, agreement AgreeBody, stampedAt time.Time, bin
 		return ""
 	}
 	adjudicator := agreement.Adjudicator.V.KeyID
-	if adjudicator == "" || stampedAt.IsZero() {
+	if adjudicator == "" {
 		return ""
 	}
+	// One key is one operator at every time: no stamped time is needed.
 	if adjudicator == body.Keys.Buyer || adjudicator == body.Keys.Seller {
 		return NotIndependentSharedOperator
+	}
+	if stampedAt.IsZero() {
+		return ""
 	}
 	opts := controllerbinding.Options{Revocations: revocations}
 	for _, binding := range bindings {
