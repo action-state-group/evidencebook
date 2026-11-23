@@ -319,7 +319,9 @@ and returns per act the record digests the person signs. A settle's leg travels 
 holding the Capsules uses it. Where both the leg and the check carry them, the leg's asset code
 equals the check's `currency`, and its settled amount equals the check's `amount_minor`; on a
 `cancel` check that states no `amount_minor` and no `fee_minor`, a refund leg's settled amount equals
-its `cancelled_amount_minor` (a seller's outgoing cancel records the amount there). A payer leg
+its `cancelled_amount_minor` (a seller's outgoing cancel records the amount there); with a
+`fee_minor` other than 0, who bears the fee is not recorded, so no amount is held, and `CheckActs`
+says so (`AmountNotHeld`). A payer leg
 settles its `amount`, and a payee leg settles `received` plus `receive_fee`; a payee leg that states no `receive_fee` is refused (0
 when none was taken). Amounts compare as
 integers at the larger scale, with `amount_minor` read at the currency's minor units. A checked

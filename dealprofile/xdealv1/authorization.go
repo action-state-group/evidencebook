@@ -26,6 +26,12 @@ const StageAuthorization = "authorization"
 // ActAuthorization is what authorizes one act.
 type ActAuthorization struct {
 	Act, Check, Verdict, Approval Record
+	// AmountNotHeld says why the act's settled amount was not held to its
+	// check, "" when it was or there was none to hold: on a cancel check
+	// that states a fee_minor and no amount_minor, who bears the fee is not
+	// recorded, so the refund owed is not known (evidencebook#719,
+	// Sherlock2). A caller shows it, never as a match.
+	AmountNotHeld string
 	// ApprovalDigest is the approval's record digest, SHA-256 over its JCS
 	// bytes. It covers the approval's approves ref (the verdict's digest,
 	// which covers its checks ref, the check's digest) and its
@@ -127,6 +133,7 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 		if err := settledAmountMatches(ins[i].Settlement, settleLeg(act), cb); err != nil {
 			return nil, bad("%v", err)
 		}
+		notHeld := amountNotHeld(ins[i].Settlement, cb)
 		vi, ok := w.verdictOf[ci]
 		if !ok {
 			return nil, bad("its check has no verdict")
@@ -157,7 +164,7 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 				return nil, bad("journal record %d (%s) changed the details after its check: a new check is needed", k+1, journal[k].Block.RecordType)
 			}
 		}
-		a := ActAuthorization{Act: act, Check: journal[ci], Verdict: journal[vi], Approval: journal[ai],
+		a := ActAuthorization{Act: act, Check: journal[ci], Verdict: journal[vi], Approval: journal[ai], AmountNotHeld: notHeld,
 			ApprovalDigest: w.digests[ai], NeedsPersonSignature: personApprover(ab.Approver)}
 		if ab.Approver == "standing_intent" {
 			for _, j := range w.limitsAt[ai] {
@@ -714,10 +721,33 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 // (x-deal-v0 keeps a cancellation fee apart from the cancelled amount), so
 // no amount is held then.
 func checkedAmount(cb *CheckBody) *int64 {
-	if cb.AmountMinor == nil && cb.Action == "cancel" && cb.FeeMinor == nil {
+	if cb.AmountMinor == nil && cb.Action == "cancel" && !hasFee(cb) {
 		return cb.CancelledAmountMinor
 	}
 	return cb.AmountMinor
+}
+
+// hasFee says a check states a fee other than zero (fee_minor 0 is no fee).
+func hasFee(cb *CheckBody) bool { return cb.FeeMinor != nil && *cb.FeeMinor != 0 }
+
+// notHeldFee is ActAuthorization.AmountNotHeld's reason on a cancel check
+// that states a fee and no amount_minor.
+const notHeldFee = "fee present: who bears it is not recorded, so the refund owed is not known and its amount is not checked"
+
+// amountNotHeld is ActAuthorization.AmountNotHeld for a settlement member
+// that states an amount, on cb.
+func amountNotHeld(member json.RawMessage, cb *CheckBody) string {
+	if len(member) == 0 || cb == nil || cb.Action != "cancel" || cb.AmountMinor != nil || !hasFee(cb) || cb.CancelledAmountMinor == nil {
+		return ""
+	}
+	var m struct {
+		Amount   *legAmount `json:"amount"`
+		Received *legAmount `json:"received"`
+	}
+	if json.Unmarshal(member, &m) != nil || (m.Amount == nil && m.Received == nil) {
+		return ""
+	}
+	return notHeldFee
 }
 
 // legAmount is a settlement leg's amount (draft-mih-agent-settlement-records-01).

@@ -169,6 +169,29 @@ func TestCheckActsReadsTheCancelledAmountOnlyOnACancelCheck(t *testing.T) {
 	fee := int64(500)
 	cb.FeeMinor = &fee
 	assert.Nil(t, checkedAmount(cb), "with a fee beside it, whether the refund is net of it is not settled: no amount is held")
+	zero := int64(0)
+	cb.FeeMinor = &zero
+	assert.Equal(t, &refund, checkedAmount(cb), "fee_minor 0 is no fee")
+}
+
+// With a fee, the refund's amount is not held, and the authorization says
+// so: never a silent match (Sherlock2, #742).
+func TestCheckActsSaysARefundWithAFeeIsNotHeld(t *testing.T) {
+	refund, fee := int64(6000), int64(500)
+	f, act := amountFlowOf(t, dealprofile.CheckBody{Action: "cancel", CancelledAmountMinor: &refund, FeeMinor: &fee, Currency: "USD"}, LegPayer)
+	for _, v := range []string{"6000", "5500", "9999"} {
+		auths, err := CheckActs(f.journal, []ActIn{{Record: act, Settlement: json.RawMessage(`{"amount":{"value":"` + v + `","assetCode":"USD","assetScale":2}}`)}})
+		require.NoError(t, err, v)
+		require.Len(t, auths, 1)
+		assert.Equal(t, notHeldFee, auths[0].AmountNotHeld, v)
+	}
+	auths, err := CheckActs(f.journal, []ActIn{{Record: act, Settlement: json.RawMessage(`{"amount":{"value":"6000","assetCode":"EUR","assetScale":2}}`)}})
+	require.Error(t, err, "the currency is still held: %v", auths)
+
+	f, act = amountFlowOf(t, dealprofile.CheckBody{Action: "cancel", CancelledAmountMinor: &refund, Currency: "USD"}, LegPayer)
+	auths, err = CheckActs(f.journal, []ActIn{{Record: act, Settlement: json.RawMessage(`{"amount":{"value":"6000","assetCode":"USD","assetScale":2}}`)}})
+	require.NoError(t, err)
+	assert.Empty(t, auths[0].AmountNotHeld, "with no fee the amount is held")
 }
 
 // A pay act on a cancel check is told it rests on the wrong check, not held

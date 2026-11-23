@@ -2,6 +2,6 @@
 
 - A seller's outgoing cancel check records the amount as `cancelled_amount_minor` when it states no `amount_minor`, as x-deal-v0's builder does. A refund leg answering such a check is now held to that amount, by the same rule as any other checked amount: a payee leg settles `received` plus `receive_fee`, and must state the fee.
 - `amount_minor`, when stated, is still the amount held to. Only a cancel check is read this way.
-- With a `fee_minor` beside it, no amount is held, since whether a refund is net of the fee is not settled.
+- With a `fee_minor` (other than 0) beside it, who bears the fee is not recorded, so the refund owed is not known. No amount is held, and the new `ActAuthorization.AmountNotHeld` says so, never as a match (evidencebook#743 tracks recording who bears the fee).
 - An act that cites a check of the wrong kind is now told so before any amount is compared.
 - PROFILE.md §8 says the same.
