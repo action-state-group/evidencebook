@@ -49,6 +49,9 @@ checkpoint_public_key=$(jq -r .public_key "$work/checkpoint-keygen.json")
   --namespace demo --log-id skill-demo --log book --operator demo-operator \
   --trusted-key "$public_key" --signing-key-file "$seed" \
   --checkpoint-signing-key-file "$checkpoint_seed" --checkpoint-trusted-key "$checkpoint_public_key" >/dev/null
+# A new store is split by month windows; the demo seeds yesterday's records
+# into one JSONL book, so it creates that store explicitly.
+"$bin" book window init --profile "$profile" --period none >/dev/null
 "$bin" store init --profile "$profile" >/dev/null
 # This profile's one log is its evidence book. Yesterday's exchanges go in
 # first, before anything today: `close` refuses a period that has not ended,

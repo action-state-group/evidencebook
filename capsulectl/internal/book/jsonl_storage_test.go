@@ -28,8 +28,11 @@ func TestJSONLSDKOnlyStorage(t *testing.T) {
 	p.Connection.Database = dir
 	require.NoError(t, cli.SaveProfile(p, false))
 
-	// store init provisions the directory and both files.
-	_, err := invoke(t, "", "store", "init", "--profile", p.Name)
+	// store init provisions the directory and both files (a JSONL book, as
+	// `book window init --period none` asks).
+	_, err := invoke(t, "", "book", "window", "init", "--profile", p.Name, "--period", "none")
+	require.NoError(t, err)
+	_, err = invoke(t, "", "store", "init", "--profile", p.Name)
 	require.NoError(t, err)
 	assert.FileExists(t, filepath.Join(dir, "artifacts.jsonl"))
 	assert.FileExists(t, filepath.Join(dir, "book", "log.jsonl"))

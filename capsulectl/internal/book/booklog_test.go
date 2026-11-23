@@ -36,6 +36,18 @@ func storedProfile(t *testing.T, name string) (cli.Profile, bookKeys) {
 	return p, keys
 }
 
+// storedJSONLProfile is a bookProfile whose store is one JSONL book, for a
+// test of that format's files (a new store is split by month windows).
+func storedJSONLProfile(t *testing.T, name string) (cli.Profile, bookKeys) {
+	t.Helper()
+	p, keys := bookProfile(t, name)
+	_, err := invoke(t, "", "book", "window", "init", "--profile", name, "--period", "none")
+	require.NoError(t, err)
+	_, err = invoke(t, "", "store", "init", "--profile", name)
+	require.NoError(t, err)
+	return p, keys
+}
+
 func sealRequestFile(t *testing.T, action string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), action+".json")
@@ -82,7 +94,7 @@ func listLog(t *testing.T, profile string) listedOut {
 func TestPublishedCapsuleIsClosedAndBundled(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	set := bookClock(t, day0)
-	p, _ := storedProfile(t, "a")
+	p, _ := storedJSONLProfile(t, "a")
 	before := bookSize(t, p)
 	published := publishFile(t, "a", sealRequestFile(t, "published-1"))
 	assert.Equal(t, "appended", published.State)
@@ -828,7 +840,7 @@ func TestMigrateMarksWhichEntriesTheRetiredCheckpointAnchors(t *testing.T) {
 func TestReadOnlyJSONLProfileReadsWithoutSecretsOrTheWriterLock(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	bookClock(t, day0)
-	p, _ := storedProfile(t, "a")
+	p, _ := storedJSONLProfile(t, "a")
 	witnessKey, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	p.Checkpoint.Endpoint = "https://witness.example.invalid"
@@ -909,7 +921,7 @@ func TestCllListKeepsTheCapsuleContract(t *testing.T) {
 func TestBookFileListingAgreesWithTheBook(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	set := bookClock(t, day0)
-	p, _ := storedProfile(t, "a")
+	p, _ := storedJSONLProfile(t, "a")
 	publishFile(t, "a", sealRequestFile(t, "published-1"))
 	appendHalves(t, p, half{"x1", "r1", "p1"})
 	set(day1)
@@ -938,7 +950,7 @@ func TestBookFileListingAgreesWithTheBook(t *testing.T) {
 func TestBookFileListingRefusesAJournalThatDisagreesWithTheLog(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	bookClock(t, day0)
-	p, _ := storedProfile(t, "a")
+	p, _ := storedJSONLProfile(t, "a")
 	publishFile(t, "a", sealRequestFile(t, "published-1"))
 	journal := filepath.Join(p.Connection.Database, "book", "records", "records.jsonl")
 	raw, err := os.ReadFile(journal)
@@ -1053,7 +1065,7 @@ func TestStoreInitOnJSONLNeedsNoKey(t *testing.T) {
 	require.NoError(t, cli.SaveProfile(p, false))
 	_, err = invoke(t, "", "store", "init", "--profile", "verifier")
 	require.NoError(t, err)
-	assert.FileExists(t, filepath.Join(p.Connection.Database, "book", "log.jsonl"))
+	assert.FileExists(t, filepath.Join(p.Connection.Database, "book", "shelf.db"), "a new store is split by month windows")
 	listLog(t, "verifier")
 	_, err = invoke(t, "", "publish", "--profile", "verifier", "--request", sealRequestFile(t, "needs-keys"))
 	assert.ErrorIs(t, err, cli.ErrInput, "writing is what needs the keys")
@@ -1120,7 +1132,9 @@ func TestOneLogRefusalsReachStderr(t *testing.T) {
 // a checkpoint over it all. It returns the wrapped capsules.
 func legacyBook(t *testing.T, p cli.Profile, n int) []artifact.Record {
 	t.Helper()
-	_, err := invoke(t, "", "store", "init", "--profile", p.Name)
+	_, err := invoke(t, "", "book", "window", "init", "--profile", p.Name, "--period", "none")
+	require.NoError(t, err)
+	_, err = invoke(t, "", "store", "init", "--profile", p.Name)
 	require.NoError(t, err)
 	keys, err := cli.ParseKeys(p.TrustedKeys)
 	require.NoError(t, err)

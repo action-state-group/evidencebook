@@ -202,16 +202,17 @@ What it shows and what it does not:
 
 ## 6. capsulectl-book
 
-**The store.** `capsulectl book window init --period <p>` (default `month`) creates a new book
-profile's store as `book/shelf.db`, a windowed `OpenSQLiteShelf` with `Base` = the profile's
-`log_id` and `Since` the current period's start, and prints `window: month (calendar months,
-UTC), fixed for this store`; the help says windows are calendar periods in UTC and cannot change
-later. `store init` still creates one JSONL book, and leaves a windowed store as it is. The month
-default for `store init` itself waits for capsule-cli#622: the core's `cll checkpoint
-status|publish` and `cll proof verify` require a checkpoint's log id to equal the profile's
-`log_id`, and a window book's is `<log_id>/<label>`; evidencebook#805 flips the default once the
-core accepts the backend's declared window logs. An existing JSONL book is not converted by this
-item (evidencebook#808).
+**The store.** `store init` on a new book profile creates `book/shelf.db`, a windowed
+`OpenSQLiteShelf` with month windows (`Base` = the profile's `log_id`, `Since` the current
+month's start), and prints `window: month (calendar months, UTC), fixed for this store`
+(evidencebook#805). `capsulectl book window init --period <p>` creates the store with another
+window instead, or `--period none` with one JSONL book for the whole history; the help says
+windows are calendar periods in UTC and cannot change later. A reproduced scratch book and a
+profile whose pre-book cll.jsonl still holds entries or a checkpoint stay JSONL, and `store init`
+prints why. The backend declares its window
+logs to the core (`OwnsLogID`, capsule-cli#622), so `cll checkpoint status|publish` work on the
+current window's checkpoints and `cll proof verify` on any window log's; closed windows' final
+checkpoints go to the witness with `book window publish`. An existing JSONL book is not converted (#808).
 
 **What changes inside.** `openedBook` carries the shelf and the current window; its record
 store is an interface (a window book's records are read as sealed); the clock floors at the

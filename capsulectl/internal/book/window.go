@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -42,6 +43,10 @@ func isWindowedStore(p cli.Profile) (bool, error) {
 	return false, err
 }
 
+// noticeOut is where store init prints the window it fixed: the core's
+// store init owns the command's output, so the notice goes to stderr.
+var noticeOut io.Writer = os.Stderr
+
 // defaultWindow is the window `book window init` fixes when the holder
 // names none (Sherlock2, #689: month).
 const defaultWindow = evidencebook.WindowMonth
@@ -66,8 +71,15 @@ func (s sealedStore) GetRecord(ctx context.Context, recordID string) (evidencebo
 
 // windowedConfig is the shelf configuration of a profile's windowed store.
 func windowedConfig(p cli.Profile, signer evidencebook.Signer, checkpointKey ed25519.PrivateKey, artifacts cli.ArtifactStore, now func() time.Time, policy *evidencebook.WindowPolicy) evidencebook.ShelfConfig {
+	operator := p.Operator
+	if operator == "" {
+		// Creating or reading the file writes no record, so it needs no
+		// operator; every writing verb refuses a profile without one before
+		// it opens the store (openBookKeyed).
+		operator = "unset"
+	}
 	return evidencebook.ShelfConfig{
-		Path: shelfFile(p), Operator: p.Operator, Signer: signer, CheckpointKey: checkpointKey,
+		Path: shelfFile(p), Operator: operator, Signer: signer, CheckpointKey: checkpointKey,
 		Originals: artifacts, Now: now, Window: policy,
 	}
 }
@@ -398,7 +410,11 @@ func answeredRecords(ctx context.Context, opened openedBook) ([]evidencebook.Rec
 // pre-book cll.jsonl still holds entries: they move into a JSONL book with
 // `book migrate`, which a windowed store does not take.
 func refuseRetiredLog(p cli.Profile) error {
-	if retired, err := scanRetiredLog(p); err == nil && (len(retired.entries) > 0 || retired.checkpoint != nil) {
+	retired, err := scanRetiredLog(p)
+	if err != nil {
+		return err
+	}
+	if len(retired.entries) > 0 || retired.checkpoint != nil {
 		return cli.Hint(cli.ErrInput, "this profile's cll.jsonl holds entries not yet in a book: run `store init` and `book migrate --log-id <new-log-id>` (a JSONL book); a windowed store does not take them")
 	}
 	return nil

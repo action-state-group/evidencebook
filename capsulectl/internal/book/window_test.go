@@ -371,3 +371,74 @@ func TestWindowInitRefusesAProfileWithAnUnmigratedLog(t *testing.T) {
 	_, statErr := os.Stat(shelfFile(p))
 	assert.ErrorIs(t, statErr, os.ErrNotExist, "nothing was created")
 }
+
+// A new store is split by month windows (evidencebook#805), and store init
+// prints the window it fixed; --period none keeps one JSONL book.
+func TestStoreInitSplitsANewStoreByMonth(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC))
+	b, _ := bookProfile(t, "b")
+	var notice strings.Builder
+	noticeOut = &notice
+	t.Cleanup(func() { noticeOut = os.Stderr })
+	_, err := invoke(t, "", "store", "init", "--profile", "b")
+	require.NoError(t, err)
+	assert.Equal(t, "capsulectl: window: month (calendar months, UTC), fixed for this store\n", notice.String())
+	policy, err := evidencebook.ReadShelfWindow(t.Context(), shelfFile(b))
+	require.NoError(t, err)
+	assert.Equal(t, evidencebook.WindowMonth, policy.Period)
+	assert.Equal(t, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), policy.Since)
+
+	a, _ := bookProfile(t, "a")
+	out, err := invoke(t, "", "book", "window", "init", "--profile", "a", "--period", "none")
+	require.NoError(t, err)
+	assert.Contains(t, out, `"period":"none"`)
+	_, err = invoke(t, "", "store", "init", "--profile", "a")
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(a.Connection.Database, "book", "log.jsonl"))
+	_, statErr := os.Stat(shelfFile(a))
+	assert.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+// The core's checkpoint status reads a window log's checkpoint now that the
+// backend declares its window logs (capsule-cli#622).
+func TestTheCoreChecksAWindowLogsCheckpoint(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC))
+	b, _ := bookProfile(t, "b")
+	witnessKey, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	b.Checkpoint.Endpoint = "https://witness.example.invalid"
+	b.Checkpoint.PublicKey = hex.EncodeToString(witnessKey)
+	require.NoError(t, cli.SaveProfile(b, true))
+	_, err = invoke(t, "", "store", "init", "--profile", "b")
+	require.NoError(t, err)
+	publishFile(t, "b", sealRequestFile(t, "published-1"))
+	out, err := invoke(t, "", "cll", "checkpoint", "create", "--profile", "b")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, `"log_id":"b/2026-11"`)
+
+	assert.True(t, BookBackend{}.OwnsLogID(b, "b/2026-11"))
+	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-13"), "not a label of the store's period")
+	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-10"), "before the store's first window")
+	assert.False(t, BookBackend{}.OwnsLogID(b, "c/2026-11"))
+	renamed := b
+	renamed.LogID = "b2"
+	assert.False(t, BookBackend{}.OwnsLogID(renamed, "b2/2026-11"), "the store's windows are under its own base")
+	jsonl, _ := storedJSONLProfile(t, "j")
+	assert.False(t, BookBackend{}.OwnsLogID(jsonl, "j/2026-11"), "a JSONL book has no window logs")
+}
+
+// An unreadable pre-book cll.jsonl stops store init: a windowed store would
+// leave its entries no way into a book.
+func TestStoreInitRefusesAnUnreadableRetiredLog(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC))
+	b, _ := bookProfile(t, "b")
+	require.NoError(t, os.MkdirAll(filepath.Dir(retiredLogPath(b)), 0o700))
+	require.NoError(t, os.WriteFile(retiredLogPath(b), []byte("{not json}\n"), 0o600))
+	_, err := invoke(t, "", "store", "init", "--profile", "b")
+	require.Error(t, err)
+	_, statErr := os.Stat(shelfFile(b))
+	assert.ErrorIs(t, statErr, os.ErrNotExist, "no windowed store was created")
+}

@@ -230,8 +230,17 @@ func TestReportCheckNeedsNoSigningSecret(t *testing.T) {
 	require.NoError(t, err)
 	missing := cli.Secret{File: filepath.Join(t.TempDir(), "node.seed")}
 	untrusted := cli.Secret{Value: hex.EncodeToString(throwaway.Seed())}
-	journal := filepath.Join(p.Connection.Database, "book", "log.jsonl")
-	before := mustRead(t, journal)
+	size := func() int {
+		shelf, err := windowedShelfForReading(t.Context(), p)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, shelf.Release()) }()
+		windows, err := shelf.Windows(t.Context())
+		require.NoError(t, err)
+		held, err := shelf.Records(t.Context(), windows[len(windows)-1].LogID)
+		require.NoError(t, err)
+		return len(held.Records)
+	}
+	before := size()
 	for name, secret := range map[string]cli.Secret{"none": {}, "missing file": missing, "untrusted": untrusted} {
 		t.Run(name, func(t *testing.T) {
 			reader := p
@@ -246,7 +255,7 @@ func TestReportCheckNeedsNoSigningSecret(t *testing.T) {
 			result, err = checkPageFile(t, reader, tampered)
 			require.ErrorIs(t, err, cli.ErrConflict)
 			assert.Equal(t, report.PageMismatch, result.Page)
-			assert.Equal(t, before, mustRead(t, journal), "checking appended or checkpointed nothing")
+			assert.Equal(t, before, size(), "checking appended nothing")
 		})
 	}
 }

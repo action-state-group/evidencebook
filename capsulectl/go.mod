@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/action-state-group/agent-action-capsule/go v0.24.0
-	github.com/action-state-group/capsule-cli v0.1.0-rc50
+	github.com/action-state-group/capsule-cli v0.1.0-rc51
 	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
 	github.com/action-state-group/capsule-engine/go v0.6.0
 	github.com/action-state-group/capsule-viewer/go v0.23.0
