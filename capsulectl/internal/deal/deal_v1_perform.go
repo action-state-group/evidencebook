@@ -260,6 +260,27 @@ func (s *dealSession) authorizeV1ActWith(ctx context.Context, dealID string, ear
 	return nil, nil
 }
 
+// refuseStaleApproval refuses an act whose authorizing approval deal note
+// marked not applied: answered after a later check or a changed detail, or a
+// second answer (evidencebook#790). The library reads the sealed approval,
+// which says what the user chose; the reason lives on the local event, as
+// x-deal-v0's action rule reads it (Approval.Reason == "").
+func refuseStaleApproval(events []sealedEvent, auth *xdealv1.ActAuthorization) error {
+	if auth == nil {
+		return nil
+	}
+	ad, err := xdealv1.Digest(auth.Approval)
+	if err != nil {
+		return err
+	}
+	for _, se := range events {
+		if se.Digest == ad && se.Event.Approval != nil && se.Event.Approval.Reason != "" {
+			return cli.InputError("the act is not authorized: the user's answer to this check was not applied (" + se.Event.Approval.Reason + "). Run deal check again, show its card, and seal the user's answer to the new check")
+		}
+	}
+	return nil
+}
+
 // notAuthorizedError is the library's refusal of an act's authorization, told
 // apart from a failure to read the journal.
 type notAuthorizedError struct{ err error }
@@ -517,7 +538,7 @@ func dealPerformCommand() *cobra.Command {
 					if auth, err = s.authorizeV1Act(ctx, dealID, earlier, rec); err != nil {
 						return err
 					}
-					return nil
+					return refuseStaleApproval(events, auth)
 				}
 				sealed, err := s.sealBookV1(ctx, dealID, bookRecordIn{Body: body, Marks: mk, Validate: validate})
 				if err != nil {
