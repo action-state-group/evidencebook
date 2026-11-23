@@ -50,8 +50,10 @@ type Receipts struct {
 type Receipt struct {
 	// Exchange is the id of an exchange capsule of the deal: the capsule a
 	// node serves a deal's receipt by. The deal is the one whose claims cite
-	// it as evidence; a capsule no claim cites, or that claims of two deals
-	// cite, is refused. That the bundle is the receipt of this capsule's deal
+	// it as evidence. A receipt whose capsule no deal of the report cites is
+	// ignored (a node hands over every exchange it holds, and the report's
+	// window decides which became deals), and one the claims of two deals cite
+	// is refused. That the bundle is the receipt of this capsule's deal
 	// is the caller's word: nothing in a plain receipt names the exchange
 	// capsule a Result cites (capsule-viewer#353 and agent-action-capsule#674
 	// are to give the Result a digest to check it against).
@@ -83,10 +85,10 @@ func dealOf(claimID string) (string, bool) {
 }
 
 // checkReceipts judges receipts against the Result's claims before anything
-// is rendered: the module is a receipt module, every receipt names an
-// exchange capsule exactly one deal's claims cite, a deal has at most one
-// receipt, and each carried bundle passes the page gate and is one the module
-// takes.
+// is rendered: the module is a receipt module, a receipt's exchange capsule is
+// cited by the claims of at most one deal (one no deal cites is ignored), a
+// deal has at most one receipt, and each carried bundle of a deal on the page
+// passes the page gate and is one the module takes.
 func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipts, error) {
 	var manifest moduleManifest
 	if err := json.Unmarshal(receipts.Module.Manifest, &manifest); err != nil || manifest.ID != ReceiptModuleID {
@@ -117,7 +119,10 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 		dealsOf := citedBy[r.Exchange]
 		switch len(dealsOf) {
 		case 0:
-			return checkedReceipts{}, refusef("receipts: no claim of the Result cites %q, so it is the exchange capsule of no deal", r.Exchange)
+			// A node hands over a receipt for every exchange it holds, before
+			// the report decides which became deals of its window: one no deal
+			// cites is not on this page, carried or held.
+			continue
 		case 1:
 		default:
 			return checkedReceipts{}, refusef("receipts: the claims of more than one deal cite %q, so its deal is ambiguous", r.Exchange)

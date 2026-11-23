@@ -85,6 +85,16 @@ func TestACarriedReceiptReachesThePageAndAHeldOneDoesNot(t *testing.T) {
 	assert.Nil(t, held, "a deal held by policy is a null entry, never a missing one")
 }
 
+func TestAReceiptNoDealCitesIsIgnored(t *testing.T) {
+	// Neither a held entry nor a bundle (not even a bad one) for an exchange
+	// the report's deals do not cite reaches the page or refuses the build.
+	view := settlementView(t, Receipt{Exchange: "an-exchange-out-of-the-window", Held: true}, Receipt{Exchange: "another", Bundle: "not json"})
+	page, err := Build(mustRead(t, settlementBundle), view)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{}, optionsOf(t, string(page.HTML))["receipts"])
+	assert.NotContains(t, string(page.HTML), "an-exchange-out-of-the-window")
+}
+
 func TestADealNoReceiptNamesIsNotCarried(t *testing.T) {
 	page, err := Build(mustRead(t, settlementBundle), settlementView(t))
 	require.NoError(t, err)
@@ -115,7 +125,6 @@ func TestReceiptsAreRefusedBeforeAnythingIsRendered(t *testing.T) {
 	good := string(mustRead(t, settlementReceipt))
 	held := Receipt{Exchange: exchange(t), Held: true}
 
-	refused(settlementView(t, Receipt{Exchange: "somebody-else's-capsule", Held: true}), "is the exchange capsule of no deal")
 	refused(settlementView(t, carried(t), carried(t)), `deal "d1" has more than one receipt`)
 	refused(settlementView(t, carried(t), held), `deal "d1" has more than one receipt`)
 	refused(settlementView(t, held, carried(t)), `deal "d1" has more than one receipt`)
@@ -162,8 +171,9 @@ func TestAMultiDealResultMapsEachReceiptToItsOwnDeal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"d1": good}, got.texts)
 	assert.Equal(t, []string{"d2"}, got.withheld, "d3 has no receipt and is neither")
-	_, err = checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex4", Held: true}}}, claims)
-	assert.ErrorContains(t, err, "exchange capsule of no deal", "a claim with no deal cites no exchange capsule")
+	got, err = checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex4", Held: true}}}, claims)
+	require.NoError(t, err, "a claim with no deal cites no exchange capsule, so the receipt is ignored")
+	assert.Empty(t, got.withheld)
 	_, err = checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex1", Held: true}, {Exchange: "leg1", Held: true}}}, claims)
 	assert.ErrorContains(t, err, `deal "d1" has more than one receipt`, "two capsules of one deal name one deal twice")
 }
