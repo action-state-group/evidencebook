@@ -216,12 +216,8 @@ func TestARefundOnBothSides(t *testing.T) {
 	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
 	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"cancel","amount_minor":4500,"terms":{"item":"lamp","price_minor":4500,"currency":"USD"}}`))
 	require.Equal(t, "pass", out["verdict"], "%v", out)
-	var cancel string
-	withSession(t, func(s *dealSession) {
-		journal, err := s.v1DealJournal(t.Context(), h.dealID)
-		require.NoError(t, err)
-		cancel = checkDigest(t, journal)
-	})
+	// The refund rests on the cancel check by the check_id deal check printed.
+	cancel := out["check_id"].(string)
 	refundRef := strings.Repeat("71", 32)
 	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", cancel, "--sent", "--payment-ref-type", "ln.payment_hash", "--payment-ref", refundRef), "you do not owe",
 		"without --reverses the seller does not owe the row")
@@ -655,4 +651,71 @@ func TestARefundOnACancelWithAFeeIsNotBuilt(t *testing.T) {
 	assert.Contains(t, stderr, "is not checked (evidencebook#743)")
 	_, err := os.Stat(refundFile)
 	require.NoError(t, err, "the in-flight refund completed")
+}
+
+// A person copies the check_id `deal check` printed: deal settle takes it,
+// as it takes the check's record digest, and both name the same check.
+func TestSettleTakesTheCheckIDDealCheckPrinted(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+v1LnHash+`"`)))
+	require.Equal(t, "pass", out["verdict"], "%v", out)
+	checkID := out["check_id"].(string)
+	var digest string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		digest = checkDigest(t, journal)
+		resolved, err := s.resolveV1Check(t.Context(), h.dealID, checkID)
+		require.NoError(t, err)
+		assert.Equal(t, digest, resolved, "the check id resolves to the check's record digest")
+	})
+	require.NotEqual(t, digest, checkID, "the printed id is not the digest, which is why it must be resolved")
+	sent := dealRun(t, "settle", "--deal", h.dealID, "--check", checkID, "--sent", "--payment-ref-type", "ln.payment_hash")
+	assert.Equal(t, digest, sent["check"], "the printed id was resolved to the check's digest")
+	settled := dealRun(t, "settle", "--deal", h.dealID, "--check", digest, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+	assert.Equal(t, "settled", settled["status"], "the digest and the id name the same send")
+}
+
+// Each check id names its own check: with two checks on a deal, each resolves
+// to its own record; another deal's check id, or any other value, passes
+// through and is refused as no check of this deal, with nothing sent.
+func TestACheckIDNamesItsOwnCheckOnly(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	first := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+v1LnHash+`"`)))["check_id"].(string)
+	second := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("cd", 32)+`"`)))["check_id"].(string)
+	withSession(t, func(s *dealSession) {
+		a, err := s.resolveV1Check(t.Context(), h.dealID, first)
+		require.NoError(t, err)
+		b, err := s.resolveV1Check(t.Context(), h.dealID, second)
+		require.NoError(t, err)
+		assert.NotEqual(t, a, b)
+		for _, d := range []string{a, b} {
+			_, err := s.checkRecord(t.Context(), h.dealID, d)
+			require.NoError(t, err, "each resolves to a check record of the deal")
+		}
+	})
+
+	other := agreedBoth(t, offerTo)
+	other.buyer.act(t)
+	dealRun(t, "note", "--deal", other.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	foreign := dealRun(t, "check", "--deal", other.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+v1LnHash+`"`)))["check_id"].(string)
+	h.buyer.act(t)
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", foreign, "--sent", "--payment-ref-type", "ln.payment_hash"), "is not a check of deal "+h.dealID)
+	var n int
+	require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_v1_sends WHERE deal_id=?`, h.dealID).Scan(&n))
+	assert.Zero(t, n, "nothing sent")
+}
+
+// On a store that holds no x-deal-v1 deal, --check names a v0 deal's check:
+// the refusal is the input error it was, not a missing table.
+func TestACheckIDOnAV0DealIsRefusedAsBefore(t *testing.T) {
+	dealFixture(t)
+	id := retailDeal(t)
+	msg := v1Err(t, "settle", "--deal", id, "--check", strings.Repeat("ab", 32), "--sent", "--payment-ref-type", "ln.payment_hash")
+	assert.NotContains(t, msg, "no such table")
+	assert.Contains(t, msg, "x-deal-v1")
 }

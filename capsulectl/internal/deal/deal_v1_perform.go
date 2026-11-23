@@ -433,7 +433,7 @@ func dealPerformCommand() *cobra.Command {
 				return cli.InputError("--deal must be a deal id as printed by `deal offer`: deal- followed by 16 hex characters")
 			}
 			if !cli.Hex64.MatchString(check) {
-				return cli.InputError("--check is required: the digest of your passing commit check, as `deal check` printed it")
+				return cli.InputError("--check is required: your passing commit check, by the check_id `deal check` printed (or its record digest)")
 			}
 			if strings.TrimSpace(act) == "" || strings.TrimSpace(observed) == "" {
 				return cli.InputError("--act and --observed are required: what you did (deliver, ship, ...) and how it was observed (carrier_scan, ...)")
@@ -448,6 +448,11 @@ func dealPerformCommand() *cobra.Command {
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
 				a, err := s.loadV1ActDeal(ctx, dealID)
 				if err != nil {
+					return err
+				}
+				// After the deal is known to be v1: --check may be the
+				// check_id deal check printed.
+				if check, err = s.resolveV1Check(ctx, dealID, check); err != nil {
 					return err
 				}
 				stmts, err := a.parseStatements(statements)
@@ -532,7 +537,7 @@ func dealPerformCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("deal", "", "The x-deal-v1 deal (required)")
-	cmd.Flags().String("check", "", "Your passing commit check's digest, from deal check (required)")
+	cmd.Flags().String("check", "", "Your passing commit check: the check_id deal check printed (or the check record's digest); required")
 	cmd.Flags().String("act", "", "What you did, a token such as deliver (required)")
 	cmd.Flags().String("observed", "", "How it was observed, a token such as carrier_scan (required)")
 	cmd.Flags().StringArray("statement", nil, "row=value[:remedy], how a row went (repeatable)")
