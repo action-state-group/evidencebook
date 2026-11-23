@@ -140,7 +140,9 @@ A retail checkout is almost always the second shape.
    Each side checkpoints right after its agreement, and the file carries
    that checkpoint's proof. Neither side's first act is sealed until it holds
    the other's: an act run too early is refused and says to run it again
-   once the file arrives. Running `deal agree` again rewrites the same file.
+   once the file arrives. Running `deal agree` again writes the same
+   agreement again, with the newest checkpoint proof that covers it; it
+   never seals a second agreement.
 
    **No layer on the other side:** run `deal agree OFFER --out
    agreement.json` on your own offer right after steps 4 and 5. It seals at
