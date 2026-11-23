@@ -85,6 +85,28 @@ func TestACarriedReceiptReachesThePageAndAHeldOneDoesNot(t *testing.T) {
 	assert.Nil(t, held, "a deal held by policy is a null entry, never a missing one")
 }
 
+func TestANotClosedDealIsAnEntryApartFromHeldAndMissing(t *testing.T) {
+	bundle := mustRead(t, settlementBundle)
+	page, err := Build(bundle, settlementView(t, Receipt{Exchange: exchange(t), NotClosed: true}))
+	require.NoError(t, err)
+	assert.Empty(t, page.IgnoredReceipts)
+	receipts, ok := optionsOf(t, string(page.HTML))["receipts"].(map[string]any)
+	require.True(t, ok, "the page carries the receipts setting")
+	got, present := receipts["d1"]
+	assert.True(t, present, "a deal not closed is an entry, never a missing one (missing reads as built wrong)")
+	assert.Equal(t, map[string]any{"state": "not-closed"}, got, "capsule-viewer go v0.23.0's value for a deal that had not closed: neither held's null nor a bundle")
+
+	// Exactly one state per entry.
+	for name, r := range map[string]Receipt{
+		"with a bundle": {Exchange: exchange(t), Bundle: string(mustRead(t, settlementReceipt)), NotClosed: true},
+		"with held":     {Exchange: exchange(t), Held: true, NotClosed: true},
+	} {
+		_, err := Build(bundle, settlementView(t, r))
+		assert.ErrorIs(t, err, ErrRefused, name)
+		assert.ErrorContains(t, err, "exactly one of them", name)
+	}
+}
+
 func TestAReceiptNoDealCitesIsIgnored(t *testing.T) {
 	// Neither a held entry nor a bundle (not even a bad one) for an exchange
 	// the report's deals do not cite reaches the page or refuses the build.
@@ -135,8 +157,8 @@ func TestReceiptsAreRefusedBeforeAnythingIsRendered(t *testing.T) {
 	refused(settlementView(t, carried(t), carried(t)), `deal "d1" has more than one receipt`)
 	refused(settlementView(t, carried(t), held), `deal "d1" has more than one receipt`)
 	refused(settlementView(t, held, carried(t)), `deal "d1" has more than one receipt`)
-	refused(settlementView(t, Receipt{Exchange: exchange(t)}), "either carry its bundle or be held")
-	refused(settlementView(t, Receipt{Exchange: exchange(t), Bundle: good, Held: true}), "either carry its bundle or be held")
+	refused(settlementView(t, Receipt{Exchange: exchange(t)}), "exactly one of them")
+	refused(settlementView(t, Receipt{Exchange: exchange(t), Bundle: good, Held: true}), "exactly one of them")
 	refused(settlementView(t, Receipt{Exchange: exchange(t), Bundle: "not json"}), "does not decode")
 	tampered := strings.Replace(good, `"root":"`, `"root":"0`, 1)
 	refused(settlementView(t, Receipt{Exchange: exchange(t), Bundle: tampered}), "does not pass the page gate")
@@ -178,6 +200,10 @@ func TestAMultiDealResultMapsEachReceiptToItsOwnDeal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"d1": good}, got.texts)
 	assert.Equal(t, []string{"d2"}, got.withheld, "d3 has no receipt and is neither")
+	got, err = checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex3", NotClosed: true}, {Exchange: "ex2", NotClosed: true}}}, claims)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"d2", "d3"}, got.notClosed)
+	assert.Empty(t, got.withheld)
 	got, err = checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex4", Held: true}}}, claims)
 	require.NoError(t, err, "a claim with no deal cites no exchange capsule, so the receipt is ignored")
 	assert.Empty(t, got.withheld)

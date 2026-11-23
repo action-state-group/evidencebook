@@ -1,0 +1,3 @@
+### Added: `report.Receipt.NotClosed` marks a deal that had not closed when the page was built ([#778](https://github.com/action-state-group/evidencebook/issues/778))
+
+- A `Receipt` sets exactly one of `Bundle`, `Held` and the new `NotClosed`: the deal had not closed when the page was built (an invoiced exchange with no settlement or delivery recorded yet), so it has no receipt, and the page says so apart from a held receipt and from a deal with no entry (a page built wrong). `report.Build` hands the deal ids to capsule-viewer's `OfflineOptions.ReceiptsNotClosed` (capsule-viewer#358), so `report` requires capsule-viewer go v0.23.0. A `Receipt` with none or more than one of the three is refused.

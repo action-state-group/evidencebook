@@ -255,7 +255,7 @@ type Page struct {
 	HTML                        []byte
 	// IgnoredReceipts are the exchange capsule ids of View.Receipts entries
 	// no deal of the report cites, in the order given. Such a receipt is
-	// neither carried nor held (a node hands over every exchange it holds,
+	// neither carried, held nor not closed (a node hands over every exchange it holds,
 	// and the report's window decides which became deals), so a caller that
 	// meant to carry one reads it here: an id that is not a deal's is
 	// otherwise indistinguishable from a deal the caller handed nothing for.
@@ -482,7 +482,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	options.Charts = charts
 	if view.Receipts != nil {
 		options.Modules = []emitter.Module{view.Receipts.Module}
-		options.Receipts, options.ReceiptsWithheld = receipts.texts, receipts.withheld
+		options.Receipts, options.ReceiptsWithheld, options.ReceiptsNotClosed = receipts.texts, receipts.withheld, receipts.notClosed
 		if options.ReceiptsWithheld == nil {
 			options.ReceiptsWithheld = []string{}
 		}
