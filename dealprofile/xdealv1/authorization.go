@@ -119,11 +119,13 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 			return nil, bad("its check serves another deal")
 		}
 		cb := w.check[ci]
-		if err := settledAmountMatches(ins[i].Settlement, settleLeg(act), cb); err != nil {
-			return nil, bad("%v", err)
-		}
+		// The kind first, so an act on the wrong check is told so rather than
+		// held to that check's amount.
 		if want := kind.checkAction(); cb.Action != want {
 			return nil, bad("the act differs from the one checked: a %s rests on a %q check, not %q", kind, want, cb.Action)
+		}
+		if err := settledAmountMatches(ins[i].Settlement, settleLeg(act), cb); err != nil {
+			return nil, bad("%v", err)
 		}
 		vi, ok := w.verdictOf[ci]
 		if !ok {
@@ -703,13 +705,16 @@ func settledAmountMatches(member json.RawMessage, leg string, cb *CheckBody) err
 }
 
 // checkedAmount is the amount a settled leg is held to: the check's
-// amount_minor, or, on a cancel check that states none, its
-// cancelled_amount_minor (evidencebook#719). A seller's cancel check records
-// the refund there when the cancel returns no payment of the holder's own
-// (x-deal-v0's sealCancelAmount), so a refund leg answering it is held to
-// that amount.
+// amount_minor, or, on a cancel check that states none and no fee_minor,
+// its cancelled_amount_minor (evidencebook#719). A seller's outgoing cancel
+// records the amount there (x-deal-v0's sealCancelAmount moves it there when
+// the cancel returns no payment of the holder's own), and the refund leg
+// answering it settles that amount, as capsulectl-deal builds it. With a
+// fee_minor beside it, whether the refund is net of the fee is not settled
+// (x-deal-v0 keeps a cancellation fee apart from the cancelled amount), so
+// no amount is held then.
 func checkedAmount(cb *CheckBody) *int64 {
-	if cb.AmountMinor == nil && cb.Action == "cancel" {
+	if cb.AmountMinor == nil && cb.Action == "cancel" && cb.FeeMinor == nil {
 		return cb.CancelledAmountMinor
 	}
 	return cb.AmountMinor

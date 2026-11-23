@@ -166,4 +166,21 @@ func TestCheckActsReadsTheCancelledAmountOnlyOnACancelCheck(t *testing.T) {
 	assert.Nil(t, checkedAmount(cb))
 	cb.Action = "cancel"
 	assert.Equal(t, &refund, checkedAmount(cb))
+	fee := int64(500)
+	cb.FeeMinor = &fee
+	assert.Nil(t, checkedAmount(cb), "with a fee beside it, whether the refund is net of it is not settled: no amount is held")
+}
+
+// A pay act on a cancel check is told it rests on the wrong check, not held
+// to the cancel check's amount.
+func TestCheckActsNamesTheWrongCheckBeforeItsAmount(t *testing.T) {
+	refund := int64(6000)
+	f, refundAct := amountFlowOf(t, dealprofile.CheckBody{Action: "cancel", CancelledAmountMinor: &refund, Currency: "USD"}, LegPayer)
+	pay := refundAct
+	body := *pay.Body.(*SettleBody)
+	body.Reverses = nil
+	pay.Body = &body
+	err := checkLeg(t, f, pay, `{"amount":{"value":"9900","assetCode":"USD","assetScale":2}}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `rests on a "pay" check, not "cancel"`)
 }
