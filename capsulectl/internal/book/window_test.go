@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,6 +181,36 @@ func TestAReportOverMonthWindowsThroughTheCommands(t *testing.T) {
 		assert.Equal(t, rolled.Windows[i].Final, w.Final, w.Label)
 	}
 
+	// The page sealed in December's window still checks once the store has
+	// rolled into January: its seal is in December's book.
+	_, sealed, err := runReportBuild(t, bundle, "--card", "outcome", "--holder-checkpoint-key", holderKey, "--profile", "b", "--seal")
+	require.NoError(t, err)
+	x.set(time.Date(2027, 1, 5, 10, 0, 0, 0, time.UTC))
+	_, err = invoke(t, "", "book", "window", "roll", "--profile", "b")
+	require.NoError(t, err)
+	checked, err := checkPageFile(t, x.b, sealed)
+	require.NoError(t, err)
+	assert.Equal(t, "match", checked.Page)
+
+	// A report over windows gets no permalink, a diagnostic page or coverage
+	// flags it does not use.
+	for name, extra := range map[string][]string{
+		"permalink":  {"--holder-checkpoint-key", holderKey, "--permalink"},
+		"diagnostic": {"--holder-checkpoint-key", holderKey, "--diagnostic"},
+	} {
+		_, _, err := runReportBuild(t, bundle, append([]string{"--card", "outcome"}, extra...)...)
+		require.Error(t, err, name)
+	}
+	_, _, err = runReportBuild(t, bundle, "--card", "outcome", "--holder-checkpoint-key", holderKey, "--witness-directory", filepath.Join(x.dir, "absent.json"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--witness-directory")
+
+	// A windowed requester store derives only over answers in its current
+	// window.
+	_, err = invoke(t, "", "report", "derive", "--profile", "b", "--chain", chainPath, "--pack", x.digest, "--result", x.windowsResult(responses), "--out", filepath.Join(x.dir, "b.json"), "--response", responses[0])
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not in this store's current window")
+
 	// Two answers for three windows: the gap is named and nothing is written.
 	missing := filepath.Join(x.dir, "missing.json")
 	args = []string{"report", "derive", "--profile", "a", "--chain", chainPath, "--pack", x.digest, "--result", x.windowsResult([]string{responses[0], responses[2]}), "--out", missing, "--response", responses[0], "--response", responses[2]}
@@ -188,6 +219,13 @@ func TestAReportOverMonthWindowsThroughTheCommands(t *testing.T) {
 	assert.Contains(t, err.Error(), "window 2026-10 has no answer")
 	_, statErr := os.Stat(missing)
 	assert.ErrorIs(t, statErr, os.ErrNotExist)
+	// A rerun over the same chain reuses its record: the requester's book
+	// holds one window_chain record however many runs there were.
+	withBook(t, x.a(), func(book *evidencebook.Book) {
+		chains, err := book.Query(t.Context(), evidencebook.Filter{RecordType: evidencebook.RecordTypeWindowChain})
+		require.NoError(t, err)
+		assert.Len(t, chains, 1)
+	})
 }
 
 func TestAWindowedStoreIsCreatedOnceAndKeepsItsWindow(t *testing.T) {
@@ -280,11 +318,33 @@ func TestAReadingVerbNeverRollsAWindowedStore(t *testing.T) {
 	require.NoError(t, err)
 	appendHalves(t, b, half{"x1", "r1", "p1"})
 	set(time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC))
-	_, _ = invoke(t, "", "policy", "show", "--profile", "b")
+	_ = listLog(t, "b") // cll list reads the newest window (published capsules only)
+	_, err = invoke(t, "", "report", "check", "--profile", "b", "--page", writeJSON(t, "<html></html>"))
+	require.Error(t, err, "not a report page; refused before the store is opened")
 	out, err := invoke(t, "", "book", "window", "list", "--profile", "b")
 	require.NoError(t, err, out)
-	var listed windowListResult
-	require.NoError(t, json.Unmarshal([]byte(out), &listed), out)
-	require.Len(t, listed.Windows, 1, "still September alone")
-	assert.False(t, listed.Windows[0].Closed)
+	var windows windowListResult
+	require.NoError(t, json.Unmarshal([]byte(out), &windows), out)
+	require.Len(t, windows.Windows, 1, "still September alone")
+	assert.False(t, windows.Windows[0].Closed)
+
+	// A live windowed store refuses a caller time.
+	t.Setenv(SourceDateEpochEnv, "1790000000")
+	_, err = invoke(t, "", "book", "window", "roll", "--profile", "b")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "live windowed store")
+}
+
+func (x *windowExchange) a() cli.Profile {
+	p, err := cli.LoadProfile("a")
+	require.NoError(x.t, err)
+	return p
+}
+
+// A bundle that is not a report over windows takes no coverage flags.
+func TestReportBuildRefusesCoverageFlagsOnAnotherReport(t *testing.T) {
+	bundle, _ := bookFormBundle(t)
+	_, _, err := runReportBuild(t, bundle, "--card", "outcome", "--holder-checkpoint-key", strings.Repeat("ab", 32))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cites no window chain")
 }

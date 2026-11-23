@@ -1,15 +1,21 @@
 package book
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/report"
 )
@@ -43,7 +49,11 @@ const defaultWindow = evidencebook.WindowMonth
 // windowNotice is what store creation prints: the window cannot change once
 // the store exists.
 func windowNotice(period evidencebook.WindowPeriod) string {
-	return fmt.Sprintf("window: %s (calendar %ss, UTC), fixed for this store", period, period)
+	unit := "calendar " + string(period) + "s"
+	if period == evidencebook.WindowWeek {
+		unit = "ISO weeks from Monday"
+	}
+	return fmt.Sprintf("window: %s (%s, UTC), fixed for this store", period, unit)
 }
 
 // sealedStore reads a window book's records as sealed, the recordStore a
@@ -272,4 +282,93 @@ func windowCoverage(bundle []byte, holderKey, witnessDirectory string, diagnosti
 		}
 	}
 	return coverage, nil
+}
+
+// checkPageInEarlierWindows looks for a page's seal in the windows before
+// the newest, newest first, and returns the first check that finds one, or
+// the newest window's own when none does.
+func checkPageInEarlierWindows(ctx context.Context, opened openedBook, page []byte, newest report.Check) (report.Check, error) {
+	windows, err := opened.shelf.Windows(ctx)
+	if err != nil {
+		return report.Check{}, err
+	}
+	for i := len(windows) - 2; i >= 0; i-- {
+		book, _, err := opened.shelf.WindowBook(ctx, windows[i].Label)
+		if err != nil {
+			return report.Check{}, err
+		}
+		check, err := report.CheckPage(ctx, book, page)
+		if err != nil {
+			return report.Check{}, err
+		}
+		if check.Outcome != report.PageNoSeal {
+			return check, nil
+		}
+	}
+	return newest, nil
+}
+
+// recordedChain is the window_chain record this book already holds for the
+// chain whose digest is digest, so a rerun of `report derive --chain` over
+// the same chain reuses it rather than sealing another.
+func recordedChain(ctx context.Context, book *evidencebook.Book, digest string) (evidencebook.Record, bool, error) {
+	records, err := book.Query(ctx, evidencebook.Filter{RecordType: evidencebook.RecordTypeWindowChain})
+	if err != nil {
+		return evidencebook.Record{}, false, err
+	}
+	for _, r := range records {
+		var st evidencebook.WindowChainStatement
+		if json.Unmarshal(r.Header.Statement, &st) == nil && st.ChainDigest == digest {
+			return r, true, nil
+		}
+	}
+	return evidencebook.Record{}, false, nil
+}
+
+// requireInCurrentWindow refuses, on a windowed requester store, a record
+// that is not in the current window's book: a Result is sealed in the
+// current window and cites only records of that book.
+func requireInCurrentWindow(ctx context.Context, opened openedBook, recordID string) error {
+	if _, err := opened.book.Get(ctx, recordID); err == nil || opened.shelf == nil {
+		return err
+	}
+	return cli.Hint(cli.ErrInput, fmt.Sprintf("record %s is not in this store's current window %s: on a windowed store, record the answers and derive the report in one window", recordID, opened.window.Label))
+}
+
+// chainDigest is the digest a window_chain record names its chain by: SHA-256
+// over the chain's JCS, as Book.RecordWindowChain computes it.
+func chainDigest(chain evidencebook.WindowChain) (string, error) {
+	encoded, err := json.Marshal(chain)
+	if err != nil {
+		return "", err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return "", err
+	}
+	jcs, err := canonical.JCS(value)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(jcs)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// failingWitnessStore is the witness store of a store whose windowed state
+// could not be read: every call reports why.
+type failingWitnessStore struct{ err error }
+
+func (f failingWitnessStore) PendingWitnesses(context.Context, time.Time, int) ([]cll.WitnessState, error) {
+	return nil, f.err
+}
+func (f failingWitnessStore) PendingWitnessesFor(context.Context, string, time.Time, int) ([]cll.WitnessState, error) {
+	return nil, f.err
+}
+func (f failingWitnessStore) GetWitness(context.Context, string, uint64) (cll.WitnessState, error) {
+	return cll.WitnessState{}, f.err
+}
+func (f failingWitnessStore) CommitWitness(context.Context, uint32, cll.WitnessState) error {
+	return f.err
 }

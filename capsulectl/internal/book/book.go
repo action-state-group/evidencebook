@@ -60,8 +60,6 @@ type openedBook struct {
 	book *evidencebook.Book
 	// store reads a record as sealed, for exportRecord and the Result walk.
 	store recordStore
-	// files is the JSONL book's record store; nil on a windowed store.
-	files *evidencebook.FileStore
 	// shelf is the windowed store the book is the current window of
 	// (evidencebook#689); nil for a JSONL book.
 	shelf *evidencebook.Shelf
@@ -250,7 +248,7 @@ func openBookKeyed(ctx context.Context, p cli.Profile, create bool, artifacts cl
 	if err != nil {
 		return openedBook{}, errors.Join(err, book.Release())
 	}
-	return openedBook{book: book, store: store, files: store, originals: artifacts, lastCommit: clock.floor}, nil
+	return openedBook{book: book, store: store, originals: artifacts, lastCommit: clock.floor}, nil
 }
 
 // bookOriginals opens the artifact store a book profile keeps its originals

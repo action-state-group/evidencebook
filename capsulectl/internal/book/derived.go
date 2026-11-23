@@ -243,6 +243,11 @@ func deriveOverWindows(c *cobra.Command, chainPath string, responses []string, p
 	defer func() { err = errors.Join(err, opened.release()) }()
 	// The holder's checkpoint key is the one this book pinned when it
 	// recorded the answers.
+	for _, r := range responses {
+		if err = requireInCurrentWindow(c.Context(), opened, r); err != nil {
+			return bookError(err)
+		}
+	}
 	first, err := opened.book.Get(c.Context(), responses[0])
 	if err != nil {
 		return bookError(err)
@@ -252,9 +257,18 @@ func deriveOverWindows(c *cobra.Command, chainPath string, responses []string, p
 		return err
 	}
 	chainOpts := evidencebook.VerifyChainOptions{CheckpointKey: statement.CheckpointKey}
-	chainRecord, err := opened.book.RecordWindowChain(c.Context(), chain, chainOpts)
+	digest, err := chainDigest(chain)
 	if err != nil {
-		return bookError(err)
+		return err
+	}
+	chainRecord, reused, err := recordedChain(c.Context(), opened.book, digest)
+	if err != nil {
+		return err
+	}
+	if !reused {
+		if chainRecord, err = opened.book.RecordWindowChain(c.Context(), chain, chainOpts); err != nil {
+			return bookError(err)
+		}
 	}
 	printed := reportWindowsResult{Chain: chainRecord.RecordID, Responses: responses, From: chain.From, To: chain.To}
 	report, err := opened.book.ReportFromWindows(c.Context(), chainRecord.RecordID, responses,
@@ -296,6 +310,8 @@ type reportCoverageResult struct {
 	Derivation string                        `json:"derivation,omitempty"`
 	Windows    []evidencebook.VerifiedWindow `json:"windows"`
 	Findings   []string                      `json:"findings"`
+	// Limits is what a covered range does not show.
+	Limits []string `json:"limits,omitempty"`
 }
 
 func reportCoverageCommand() *cobra.Command {
@@ -303,7 +319,7 @@ func reportCoverageCommand() *cobra.Command {
 		Use:   "coverage",
 		Short: "Check that a report over a holder's windows covers its range: the chain links, the windows tile the range, and every window has its answer (reads only; needs no profile)",
 		Long: "Checks the bundle `report derive --chain` wrote, under the holder's checkpoint key you obtained yourself (never one read from the bundle). Each gap is named (\"window 2026-03 has no answer\", \"chain breaks at 2026-04\"); a range with any finding is not covered, and the command exits non-zero. " +
-			"Without witness receipts a chain shows continuity only as the holder signed it, and no check shows that an answer holds every row of its window.",
+			"Without --witness-directory, the windows' continuity is as the holder signed it. No check shows that an answer holds every row of its window.",
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			bundlePath, _ := c.Flags().GetString("bundle")
@@ -337,6 +353,10 @@ func reportCoverageCommand() *cobra.Command {
 			if !printed.Covered {
 				return errors.Join(cli.InputError("the report does not cover its range: "+findingsText(coverage.Findings)), cli.Output(c, printed))
 			}
+			if directory == "" {
+				printed.Limits = append(printed.Limits, "Without --witness-directory, the windows' continuity is as the holder signed it.")
+			}
+			printed.Limits = append(printed.Limits, "No check shows that an answer holds every row of its window.")
 			return cli.Output(c, printed)
 		},
 	}

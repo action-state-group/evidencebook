@@ -110,7 +110,7 @@ func windowCommands() *cobra.Command {
 		return cli.Output(c, windowListResult{Profile: p.Name, Period: opened.shelf.WindowPolicy().Period, Windows: windows})
 	}}
 
-	chain := &cobra.Command{Use: "chain", Short: "Write the window chain (window_chain/v1) of closed windows --from through --to: what a requester or auditor is handed for a period", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	chain := &cobra.Command{Use: "chain", Short: "Write the window chain (window_chain/v1) of closed windows --from through --to: what a requester or auditor is handed for a period; without witness receipts it shows continuity only as the holder signed it", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		from, _ := c.Flags().GetString("from")
 		to, _ := c.Flags().GetString("to")
 		out, _ := c.Flags().GetString("out")

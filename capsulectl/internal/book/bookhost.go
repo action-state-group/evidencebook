@@ -36,12 +36,19 @@ func (BookBackend) List(ctx context.Context, p cli.Profile, after, through uint6
 // WitnessStore keeps a book's checkpoint deliveries in book/witness.json,
 // or on a windowed store the current window's in book/witness/<label>.json.
 func (BookBackend) WitnessStore(p cli.Profile) cll.WitnessStateStore {
-	if windowed, err := isWindowedStore(p); err == nil && windowed {
-		if store, err := currentWitnessStore(p); err == nil {
+	windowed, err := isWindowedStore(p)
+	if err == nil && !windowed {
+		return newBookWitnessStore(p)
+	}
+	if err == nil {
+		var store bookWitnessStore
+		if store, err = currentWitnessStore(p); err == nil {
 			return store
 		}
 	}
-	return newBookWitnessStore(p)
+	// Never the JSONL store's file for a store that may be windowed: every
+	// call reports why the window's could not be read.
+	return failingWitnessStore{err: err}
 }
 
 // bookLog is one open book, as the core's commands use it.

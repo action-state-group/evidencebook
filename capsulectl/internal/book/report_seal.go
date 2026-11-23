@@ -52,6 +52,13 @@ func reportCheckCommand() *cobra.Command {
 		if e != nil {
 			return refused(e)
 		}
+		if opened.shelf != nil && check.Outcome == report.PageNoSeal {
+			// A page sealed in an earlier window: its seal is in that
+			// window's book (evidencebook#689).
+			if check, e = checkPageInEarlierWindows(c.Context(), opened, page, check); e != nil {
+				return refused(e)
+			}
+		}
 		if e = cli.Output(c, reportCheckResult{Page: check.Outcome, PageDigest: check.PageDigest, BundleDigest: check.BundleDigest, RecordID: check.RecordID, Verification: check.Verdict}); e != nil {
 			return e
 		}
