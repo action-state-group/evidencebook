@@ -165,7 +165,7 @@ func TestAWindowInGraceTakesOnlyACloseForItsPeriod(t *testing.T) {
 	stripped := chain
 	stripped.Windows = append([]ChainWindow{}, chain.Windows...)
 	stripped.Windows[0].Boundary = nil
-	assert.Contains(t, texts(stripped), "chain breaks at 2026-11: its open record names a previous tree other than window 2026-10's final tree")
+	assert.Contains(t, texts(stripped), "window 2026-10's close record names a boundary the chain does not carry")
 }
 
 func TestAChainNamesAnOrdinaryRecordSlippedIntoAGrace(t *testing.T) {
@@ -218,4 +218,162 @@ func TestAClockJumpPastAGraceClosesWindowsAtOnce(t *testing.T) {
 	assert.Equal(t, 1, chain.V, "no window took a boundary")
 	_, findings := VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: shelfCheckpointKey(f)})
 	assert.Empty(t, findings)
+}
+
+// graceChain is a shelf whose October took a boundary, received a late
+// Close and closed, rolled into December; and October's chain alone.
+func graceChain(t *testing.T, opts WindowChainOptions) (*shelfFixture, *Shelf, WindowChain) {
+	t.Helper()
+	ctx := context.Background()
+	f := newGraceFixture(t)
+	shelf := f.open(t)
+	oct, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	mustAppend(t, oct, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Correlation: Correlation{ExchangeID: "x1", RequestDigest: "r1"}, Payloads: [][]byte{[]byte("p1")}})
+	setClock(f.clock, utc(2026, 11, 3))
+	_, _, err = shelf.Current(ctx)
+	require.NoError(t, err)
+	_, err = octoberClose(t, oct, ClosePeriod{Start: utc(2026, 10, 1), End: utc(2026, 11, 1)})
+	require.NoError(t, err)
+	setClock(f.clock, utc(2026, 12, 9))
+	_, err = shelf.Roll(ctx)
+	require.NoError(t, err)
+	chain, err := shelf.WindowChain(ctx, "2026-10", "2026-10", opts)
+	require.NoError(t, err)
+	return f, shelf, chain
+}
+
+func findingTexts(chain WindowChain, opts VerifyChainOptions) []string {
+	_, findings := VerifyWindowChain(chain, opts)
+	var out []string
+	for _, f := range findings {
+		out = append(out, f.Text)
+	}
+	return out
+}
+
+// The last window of a chain has no next window to pin its boundary: its
+// close record does.
+func TestTheCloseRecordPinsALastWindowsBoundary(t *testing.T) {
+	f, shelf, chain := graceChain(t, WindowChainOptions{})
+	key := VerifyChainOptions{CheckpointKey: shelfCheckpointKey(f)}
+	require.Empty(t, findingTexts(chain, key))
+
+	stripped := chain
+	stripped.V = 1
+	stripped.Windows = append([]ChainWindow{}, chain.Windows...)
+	stripped.Windows[0].Boundary = nil
+	assert.Contains(t, findingTexts(stripped, key), "window 2026-10's close record names a boundary the chain does not carry")
+
+	// A swapped boundary: another checkpoint October signed, after the
+	// real boundary.
+	oct, _, err := shelf.WindowBook(context.Background(), "2026-10")
+	require.NoError(t, err)
+	checkpoints, err := oct.Checkpoints(context.Background())
+	require.NoError(t, err)
+	var later []byte
+	real, err := checkpointFromStatement(chain.Windows[0].Boundary.Checkpoint)
+	require.NoError(t, err)
+	for _, cp := range checkpoints {
+		if cp.Entries > real.Entries && cp.Entries < oct.Size() {
+			later = cp.Statement
+		}
+	}
+	require.NotNil(t, later)
+	swapped := chain
+	swapped.Windows = append([]ChainWindow{}, chain.Windows...)
+	b := *chain.Windows[0].Boundary
+	b.Checkpoint = later
+	swapped.Windows[0].Boundary = &b
+	assert.NotEmpty(t, findingTexts(swapped, key))
+
+	extra := chain
+	extra.Windows = append([]ChainWindow{}, chain.Windows...)
+	b2 := *chain.Windows[0].Boundary
+	b2.Tail = append(append([]ChainTail{}, b2.Tail...), b2.Tail[0])
+	extra.Windows[0].Boundary = &b2
+	assert.NotEmpty(t, findingTexts(extra, key), "an extra tail leaf")
+}
+
+func TestAWitnessedGraceChainNeedsTheBoundarysReceipt(t *testing.T) {
+	witnessKey, directory := testWitness()
+	opts := WindowChainOptions{Receipts: func(_ context.Context, cp Checkpoint) ([]json.RawMessage, error) {
+		return []json.RawMessage{rawReceipt(t, mintReceipt(t, cp.Statement, witnessKey))}, nil
+	}}
+	f, _, chain := graceChain(t, opts)
+	key := VerifyChainOptions{CheckpointKey: shelfCheckpointKey(f), Witnesses: directory}
+	assert.Empty(t, findingTexts(chain, key))
+	unreceipted := chain
+	unreceipted.Windows = append([]ChainWindow{}, chain.Windows...)
+	b := *chain.Windows[0].Boundary
+	b.Receipts = nil
+	unreceipted.Windows[0].Boundary = &b
+	assert.Contains(t, findingTexts(unreceipted, key), "window 2026-10 not witnessed: its boundary checkpoint carries no receipt")
+}
+
+func TestAWindowThatTookItsBoundaryRefusesOrdinaryRecords(t *testing.T) {
+	ctx := context.Background()
+	f := newGraceFixture(t)
+	shelf := f.open(t)
+	oct, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	setClock(f.clock, utc(2026, 11, 3))
+	_, _, err = shelf.Current(ctx)
+	require.NoError(t, err)
+	windows, err := shelf.Windows(ctx)
+	require.NoError(t, err)
+	assert.True(t, windows[0].InGrace)
+	assert.Equal(t, utc(2026, 11, 8), windows[0].ClosesAt)
+	// A clock set back into October still cannot add to it.
+	setClock(f.clock, utc(2026, 10, 30))
+	_, err = oct.Append(ctx, observation("deal", "backdated"))
+	assert.ErrorIs(t, err, ErrWindowClosed)
+	// A legacy Close body is refused in grace.
+	setClock(f.clock, utc(2026, 11, 4))
+	_, err = oct.Append(ctx, Entry{RecordType: RecordTypeClose, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"counterparty":"b","profile":"p","reconciliation":{"pairs":[]}}`)})
+	assert.ErrorIs(t, err, ErrWindowClosed)
+}
+
+func TestARollFinishesAfterACrashBetweenTheBoundaryAndTheNextWindow(t *testing.T) {
+	ctx := context.Background()
+	f := newGraceFixture(t)
+	shelf := f.open(t)
+	_, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	setClock(f.clock, utc(2026, 11, 3))
+	shelf.mu.Lock()
+	rows, err := shelf.windowRowsLocked(ctx)
+	require.NoError(t, err)
+	_, err = shelf.boundaryLocked(ctx, rows[0])
+	shelf.mu.Unlock()
+	require.NoError(t, err)
+	require.NoError(t, shelf.Release())
+
+	shelf = f.open(t)
+	nov, w, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "2026-11", w.Label)
+	var open WindowOpenStatement
+	require.NoError(t, json.Unmarshal(nov.logLocked()[0].Header.Statement, &open))
+	windows, err := shelf.Windows(ctx)
+	require.NoError(t, err)
+	require.True(t, windows[0].InGrace)
+	assert.Equal(t, rows[0].logID, open.Previous.LogID)
+	shelf.mu.Lock()
+	rows, err = shelf.windowRowsLocked(ctx)
+	shelf.mu.Unlock()
+	require.NoError(t, err)
+	assert.Equal(t, rows[0].boundaryEntries, open.Previous.Entries, "the next window names the stored boundary")
+}
+
+func TestAShelfVersionThatDisagreesWithItsGraceIsRefused(t *testing.T) {
+	f := newGraceFixture(t)
+	require.NoError(t, f.open(t).Release())
+	db, err := sql.Open("sqlite", "file:"+f.path)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE shelf_meta SET version = 3`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	_, err = OpenSQLiteShelf(context.Background(), f.cfg)
+	assert.ErrorIs(t, err, ErrCorrupt)
 }

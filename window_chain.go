@@ -20,9 +20,12 @@ import (
 const WindowChainVersion = 2
 
 // WindowChain is a run of consecutive closed windows of one windowed shelf,
-// handed over with nothing else (evidencebook#689 §5, window_chain/v1): each
-// window's open and close records with their inclusion proofs under its
-// final checkpoint, and that checkpoint. VerifyWindowChain checks it.
+// handed over with nothing else (evidencebook#689 §5; v 1, or 2 when a
+// window carries its boundary, evidencebook#807): each window's open and
+// close records with their inclusion proofs under its final checkpoint, that
+// checkpoint, and for a window that had a grace its boundary checkpoint, a
+// consistency proof to the final one and every record after the boundary.
+// VerifyWindowChain checks it.
 type WindowChain struct {
 	V      int          `json:"v"`
 	Base   string       `json:"base"`
@@ -259,12 +262,16 @@ func (f ChainFinding) String() string { return f.Text }
 // VerifyWindowChain checks a window chain with nothing but itself and the
 // options: each final checkpoint's signature, key and log; the open record
 // at the first leaf and the close record at the last; the labels consecutive
-// from the policy's first window; each open record's bounds its label's; and
-// each previous the prior window's final tree. It returns the windows proved
+// from the policy's first window; each open record's bounds its label's; each
+// previous the prior window's boundary tree when it had one, else its final
+// tree; and for a window with a boundary, the one its close record names,
+// that the final tree extends it, and that every record after it is a
+// close/v1 for a period inside the window or an index root. It returns the windows proved
 // and a finding for each failure; a chain with any finding proves nothing
 // about its range. What a chain never shows: that an answer holds every row
 // of its window, or, without witnesses, that a window was not re-cut and the
-// later ones re-signed by the holder's one key.
+// later ones re-signed by the holder's one key, or that a holder did not
+// delay a window's boundary past its end to place ordinary records before it.
 func VerifyWindowChain(chain WindowChain, opts VerifyChainOptions) ([]VerifiedWindow, []ChainFinding) {
 	var findings []ChainFinding
 	fail := func(window, format string, args ...any) {
@@ -402,9 +409,27 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 		return VerifiedWindow{}, false
 	}
 	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey}
+	// The close record, in the final tree, names the boundary the window
+	// took: a chain carries exactly that one, so it can neither swap nor
+	// drop it (evidencebook#807).
+	switch {
+	case cs.Boundary == nil && cw.Boundary != nil:
+		fail(label, "window %s carries a boundary its close record does not name", label)
+		return VerifiedWindow{}, false
+	case cs.Boundary != nil && cw.Boundary == nil:
+		fail(label, "window %s's close record names a boundary the chain does not carry", label)
+		return VerifiedWindow{}, false
+	case cs.Boundary != nil && chain.V < WindowChainVersion:
+		fail(label, "window %s has a boundary, which a version 1 chain cannot carry", label)
+		return VerifiedWindow{}, false
+	}
 	if cw.Boundary != nil {
 		boundary, ok := verifyBoundary(cw, cp, w, openKey, opts, fail)
 		if !ok {
+			return VerifiedWindow{}, false
+		}
+		if *boundary != *cs.Boundary {
+			fail(label, "window %s carries a boundary other than the one its close record names", label)
 			return VerifiedWindow{}, false
 		}
 		verified.Boundary = boundary
@@ -471,7 +496,7 @@ func verifyBoundary(cw ChainWindow, final signedCheckpoint, w Window, recordKey 
 				IndexRoot
 				AsOfSeq uint64 `json:"as_of_seq"`
 			}
-			if decodeStrict(h.Statement, &root) != nil {
+			if decodeStrict(h.Statement, &root) != nil || root.AsOfSeq != seq-1 {
 				fail(label, "window %s holds a malformed index_root record at %d", label, seq)
 				return nil, false
 			}

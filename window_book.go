@@ -65,6 +65,10 @@ type WindowCloseStatement struct {
 	Start         string         `json:"start"`
 	End           string         `json:"end"`
 	CountsByKind  map[string]int `json:"counts_by_kind"`
+	// Boundary is the tree the window held when it ended and entered its
+	// grace (evidencebook#807): the final tree, which the close record ends,
+	// binds it, so a chain cannot swap or drop it. Absent with no grace.
+	Boundary *WindowTree `json:"boundary,omitempty"`
 }
 
 func windowTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
@@ -81,6 +85,9 @@ type bookWindow struct {
 	// record: no other caller can append either.
 	sealing bool
 	closed  bool
+	// bounded is set once the window took its boundary checkpoint: from
+	// then on only a Close for its period enters, whatever the clock reads.
+	bounded bool
 	// final is the window's final checkpoint once it is closed.
 	final Checkpoint
 }
@@ -132,11 +139,14 @@ func (w *bookWindow) admits(h Header, at time.Time, checkpointing bool) error {
 		// window filled in late commits after its end.
 		return nil
 	}
-	if w.Contains(at) {
+	if w.Contains(at) && !w.bounded {
 		return nil
 	}
-	if recordType == RecordTypeClose && !at.Before(w.End) && at.Before(w.graceEnd) {
+	if recordType == RecordTypeClose && (w.bounded || !at.Before(w.End)) && at.Before(w.graceEnd) {
 		return w.closeInside(h)
+	}
+	if w.bounded {
+		return fmt.Errorf("%w: window %s has ended and takes only a Close for a period inside it", ErrWindowClosed, w.Label)
 	}
 	if !at.Before(w.End) && at.Before(w.graceEnd) {
 		return fmt.Errorf("%w: window %s is in its grace until %s, which takes only a Close for a period inside it", ErrWindowClosed, w.Label, windowTime(w.graceEnd))
@@ -149,7 +159,7 @@ func (w *bookWindow) admits(h Header, at time.Time, checkpointing bool) error {
 func (w *bookWindow) closeInside(h Header) error {
 	v1, _, err := ReadClose(h)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrWindowClosed, err)
 	}
 	if v1 == nil {
 		return fmt.Errorf("%w: window %s takes only a close/v1 Close in its grace", ErrWindowClosed, w.Label)
@@ -457,16 +467,18 @@ func (s *Shelf) boundaryLocked(ctx context.Context, row windowRow) (windowRow, e
 	if err != nil {
 		return windowRow{}, err
 	}
+	// A Close admitted after this checkpoint is in the window's tail, so no
+	// size check races it.
 	cp, err := book.Checkpoint(ctx)
 	if err != nil {
 		return windowRow{}, err
 	}
-	if size := book.Size(); cp.Entries != size {
-		return windowRow{}, fmt.Errorf("%w: window %s's boundary checkpoint covers %d of %d records", ErrCorrupt, row.Label, cp.Entries, size)
-	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE shelf_window_books SET boundary_entries = ?, boundary_root = ? WHERE label = ?`, cp.Entries, cp.Root, row.Label); err != nil {
 		return windowRow{}, err
 	}
+	book.mu.Lock()
+	book.window.bounded = true
+	book.mu.Unlock()
 	row.boundaryEntries, row.boundaryRoot = cp.Entries, cp.Root
 	return row, nil
 }
@@ -553,10 +565,14 @@ func (s *Shelf) closeWindowLocked(ctx context.Context, row windowRow) (windowRow
 		for _, record := range log {
 			counts[record.Header.RecordType]++
 		}
-		if _, err := book.appendWindowRecord(ctx, RecordTypeWindowClose, WindowCloseStatement{
+		statement := WindowCloseStatement{
 			RecordVersion: WindowCloseVersion, Period: s.cfg.Window.Period, Label: row.Label,
 			Start: windowTime(row.Start), End: windowTime(row.End), CountsByKind: counts,
-		}); err != nil {
+		}
+		if row.boundaryEntries > 0 {
+			statement.Boundary = row.tree()
+		}
+		if _, err := book.appendWindowRecord(ctx, RecordTypeWindowClose, statement); err != nil {
 			return windowRow{}, err
 		}
 	}
@@ -598,6 +614,11 @@ func (s *Shelf) attachWindow(ctx context.Context, book *Book, logID string) erro
 		return fmt.Errorf("%w: window row %q: %v", ErrCorrupt, label, err)
 	}
 	bw := &bookWindow{Window: w, graceEnd: w.End.Add(s.cfg.Window.Grace)}
+	var boundary uint64
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(boundary_entries, 0) FROM shelf_window_books WHERE log_id = ?`, logID).Scan(&boundary); err != nil {
+		return err
+	}
+	bw.bounded = boundary > 0
 	if state == windowClosed {
 		final, err := finalCheckpoint(ctx, book, entries, root)
 		if err != nil {

@@ -314,11 +314,13 @@ so a build that knows only version 3 refuses it rather than closing its windows 
 with grace 0 stays version 3. capsulectl's default: 7 days for month, quarter and year windows,
 1 day for week, none for day.
 
-**Roll.** A window's row is `open`, `grace` or `closed`. When the clock passes a window's end the
+**Roll.** A window's row is `open` or `closed`; an `open` row with a stored boundary is in its
+grace. When the clock passes a window's end the
 shelf takes a **boundary checkpoint** of it (stored as `boundary_entries`, `boundary_root`),
 marks it `grace` and opens the next window, whose open record's `previous` names that boundary
 tree. When the clock passes `End + Grace` the shelf closes the window (close record, final
-checkpoint) as before. Every roll closes every `grace` row whose grace has ended, oldest first,
+checkpoint) as before; the close record names the boundary, so a chain can neither swap nor drop
+it, even for the last window of a chain. Every roll closes every `grace` row whose grace has ended, oldest first,
 then opens windows up to the clock; several windows can be in grace only if the grace exceeds a
 period, which the policy refuses. Recovery: a row is `grace` only after its boundary checkpoint
 is stored; a next window's open record is written from the stored boundary, never from `final_*`.
@@ -338,7 +340,9 @@ tree, the consistency proof, that the tail is contiguous from the boundary's las
 the close record, and that every tail record is a close/v1 for a period inside the window or a
 strictly decoded `index_root`; any other record is a named finding (`window 2026-10 holds a
 late <type> record at <seq>`), as is a missing leaf. The boundary is positional, so a backdated
-`committed_at` cannot hide a record. With witnesses named, the boundary and final checkpoints
+`committed_at` cannot hide a record; once a window took its boundary its book refuses every
+record but a Close for its period, whatever the clock reads. What a chain does not show: that a
+holder did not delay a window's boundary past its end to place ordinary records before it. With witnesses named, the boundary and final checkpoints
 must each carry a verifying receipt. `WindowChainVersion` becomes 2; a version 1 chain (grace 0)
 still verifies.
 
