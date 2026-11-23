@@ -2058,7 +2058,7 @@ the free-text reason stays a commitment only the buyer can open.
 - **Q7. The gap until `/3`.** v1 deals are on no `/1` or `/2` card (2.5). Decision (coordinator,
   2026-11-17): new deals stay v0 by default until `/3` is served; v1 is selected by a setting.
   Reason: the 2026-11-19 demo and the `/1` card stay untouched. The plugin applies it
-  (evidencebook-deal#212). **Revised** (Ethan, 2026-11-22: "全面切换 v1", switch fully to v1):
+  (evidencebook-deal#212). **Revised** (Ethan, 2026-11-22: switch fully to x-deal-v1):
   `/3` is served (evidencebook-deal#226), so new deals are x-deal-v1 by default and x-deal-v0 is
   frozen: no new features, and a new v0 deal only by an explicit legacy setting. Books sealed
   under v0 stay readable and verifiable, unchanged, and a v0 deal opened before the switch
