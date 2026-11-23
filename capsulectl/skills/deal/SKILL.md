@@ -260,8 +260,9 @@ A retail checkout is almost always the second shape.
     - `deal report --bundle` (with `--share` too) refuses a copy whose
       report does not verify. To check a deal copy, run `capsulectl deal
       verify --bundle FILE`: the core's generic verbs (`capsulectl
-      presentation list`, `presentation build`, `bundle --html`) read no
-      deal section, so they can build a page for a copy whose deal fails.
+      presentation list`, `presentation build`, and `capsulectl bundle`
+      writing a page) read no deal section, so they can build a page for a
+      copy whose deal fails.
 
 #### The user picked from options
 
