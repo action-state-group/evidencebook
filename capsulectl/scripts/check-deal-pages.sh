@@ -111,8 +111,11 @@ render receipt-edited.html
 check "deal-receipt-edited: the page says the text could not be checked" contains receipt-edited.html.dom "<p class=\"deal-bad\">⚠️ The receipt's text could not be checked against its sealed report"
 check "deal-receipt-edited: the page shows no edited line" lacks receipt-edited.html.dom '<p class="deal-note">A line nobody sealed.</p>'
 check "deal-receipt-edited: no \"not checked\" label" lacks receipt-edited.html.dom 'data-unchecked="x-deal-v0"'
-capsulectl verify --bundle receipt-edited.html >/dev/null 2>&1 && verdict=0 || verdict=$?
-check "deal-receipt-edited: verify --bundle: INVALID, exit 1" test "$verdict" -eq 1
+# The deal-format verdicts are the plugin's own (`capsulectl deal verify
+# --bundle`): the core no longer checks a deal's report since capsule-cli#609,
+# and the plugin carries those checks (evidencebook#735).
+capsulectl deal verify --bundle receipt-edited.html >/dev/null 2>&1 && verdict=0 || verdict=$?
+check "deal-receipt-edited: deal verify --bundle: INVALID, exit 1" test "$verdict" -eq 1
 
 # deal-receipt-downgraded: the standalone report dropped and edited text put
 # inline in x-deal-v0, as a receipt from before reports were sealed carries
@@ -126,8 +129,8 @@ render receipt-downgraded.html
 check "deal-receipt-downgraded: the page says the text could not be checked" contains receipt-downgraded.html.dom "<p class=\"deal-bad\">⚠️ The receipt's text could not be checked against its sealed report"
 check "deal-receipt-downgraded: the page shows no inline line" lacks receipt-downgraded.html.dom '<p class="deal-note">A line nobody sealed.</p>'
 check "deal-receipt-downgraded: no \"not checked\" label" lacks receipt-downgraded.html.dom 'data-unchecked="x-deal-v0"'
-capsulectl verify --bundle receipt-downgraded.html >receipt-downgraded-verify.json 2>/dev/null && verdict=0 || verdict=$?
-check "deal-receipt-downgraded: verify --bundle: INVALID, exit 1" test "$verdict" -eq 1
-check "deal-receipt-downgraded: verify --bundle names the missing sealed report" contains receipt-downgraded-verify.json 'sealed_report_not_named'
+capsulectl deal verify --bundle receipt-downgraded.html >receipt-downgraded-verify.json 2>/dev/null && verdict=0 || verdict=$?
+check "deal-receipt-downgraded: deal verify --bundle: INVALID, exit 1" test "$verdict" -eq 1
+check "deal-receipt-downgraded: deal verify --bundle names the missing sealed report" contains receipt-downgraded-verify.json 'sealed_report_not_named'
 
 exit "$fail"
