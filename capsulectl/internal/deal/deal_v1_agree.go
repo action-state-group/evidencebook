@@ -374,7 +374,7 @@ func (s *dealSession) writeAgreement(ctx context.Context, c *cobra.Command, cad 
 	if noLayer, err := s.v1NoLayer(ctx, d); err != nil {
 		return err
 	} else if noLayer {
-		res["note"] = "the other side keeps no records of its own: your agreement opens your deal book, there is no file for them, and your first act goes ahead without their stamp proof, marked so"
+		res["note"] = "the other side keeps no records of its own: your agreement opens your deal book, the file written is your own copy with no one to send it to, and your first act goes ahead without their stamp proof, marked so"
 	}
 	return cli.Output(c, res)
 }

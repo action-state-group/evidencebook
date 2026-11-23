@@ -6,3 +6,4 @@
   - The deal reads as any other: settlement (the payment check says why it cannot run: there is no key for the other side), report, bundle, `deal list` ("keeps no records of its own") and the Standard History card, which counts the deal from its first act.
 - **`deal receive` refuses an offer whose `to` is null,** because no one can answer it.
 - **`deal agree` on an offer you received** now refuses one that names another key, or no key, instead of sealing an agreement the other side would refuse.
+- An offer to no key that an earlier version kept with `deal receive` stays listed as `offer_received`, and can now be neither agreed to nor declined, since no one can answer it.
