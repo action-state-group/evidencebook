@@ -697,6 +697,7 @@ fn a_derived_value_with_no_canonical_form_is_an_error_not_a_panic() {
 mod set_proofs {
     use super::*;
     use evidence_request::envelope::{sign_with_profile, Anchor, Envelope, EnvelopeParts, PROFILE};
+    use evidence_request::request::{Coverage, Derivation, Freshness};
     use evidencebook::derived::{derived_inputs, verify_set_inclusion};
 
     fn log_key() -> String {
@@ -983,6 +984,164 @@ mod set_proofs {
         let env = resign(&a, &other, material(&a.env));
         let err = verify_set_inclusion(&env, &a.req, &log_key()).unwrap_err();
         assert!(err.0.contains("not the anchor"), "{err}");
+    }
+
+    /// What Go refuses before it reads a proof (`verifyEnvelopeContent`): an
+    /// answer that is not the pinned anchor or does not meet the floor, and one
+    /// over the item limits.
+    #[test]
+    fn an_answer_that_is_not_the_requested_one_is_refused_before_its_proofs() {
+        let f = foreign();
+        let (derivations, id) = pack(true, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 3]}), &at);
+        // A newer checkpoint was asked for: the holder re-signed an older one.
+        let mut pin = a.req.clone();
+        pin.coverage = Coverage::ExpectedPin(anchor_digest(&f.stated[0]));
+        let err = verify_set_inclusion(&a.env, &pin, &log_key()).unwrap_err();
+        assert!(err.0.contains("not the pinned one"), "{err}");
+        assert!(derived_inputs(&a.env, &pin, &log_key()).is_err());
+        // A floor above what the answer states, or not stated at all.
+        let mut floor = a.req.clone();
+        floor.coverage = Coverage::MinFreshness(Freshness::Size(1000));
+        let err = verify_set_inclusion(&a.env, &floor, &log_key()).unwrap_err();
+        assert!(err.0.contains("size meeting the floor"), "{err}");
+        let mut time = a.req.clone();
+        time.coverage = Coverage::MinFreshness(Freshness::Time(
+            evidence_request::time::parse_utc("2030-01-01T00:00:00Z").unwrap(),
+        ));
+        let err = verify_set_inclusion(&a.env, &time, &log_key()).unwrap_err();
+        assert!(err.0.contains("time meeting the floor"), "{err}");
+
+        // Over the item limits: refused before one proof is checked.
+        let art = artifact(&a.env);
+        let mut many = art.clone();
+        let row = art["records"][0].clone();
+        many["records"] = Value::Array(vec![row; evidencebook::derived::MAX_ITEMS + 1]);
+        let err = verify_set_inclusion(&resign(&a, &many, material(&a.env)), &a.req, &log_key())
+            .unwrap_err();
+        assert!(err.0.contains("limit: records"), "{err}");
+        let mut padded = material(&a.env);
+        padded.resize(
+            evidencebook::derived::MAX_ITEMS + 1,
+            (KIND_INCLUSION.into(), vec![0]),
+        );
+        let err = verify_set_inclusion(&resign(&a, &art, padded), &a.req, &log_key()).unwrap_err();
+        assert!(err.0.contains("limit: verification"), "{err}");
+    }
+
+    /// An answer is read only once its envelope is: with no proofs at all, a
+    /// row edited after signing, an envelope for another derivation or a
+    /// `body` that is not the record are refused.
+    #[test]
+    fn rows_are_read_only_from_a_verified_envelope_and_a_body_must_be_its_record() {
+        let f = foreign();
+        let (derivations, id) = pack(false, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 1]}), &at);
+        assert!(!derived_inputs(&a.env, &a.req, &log_key()).unwrap().proven);
+        let mut edited = a.env.clone();
+        edited.artifact = String::from_utf8(edited.artifact.clone())
+            .unwrap()
+            .replace("\"seq\":1", "\"seq\":9")
+            .into_bytes();
+        assert_ne!(edited.artifact, a.env.artifact);
+        let err = derived_inputs(&edited, &a.req, &log_key()).unwrap_err();
+        assert!(err.0.contains("envelope does not verify"), "{err}");
+        let mut other = a.req.clone();
+        other.derivation = Some(Derivation::Digest("ab".repeat(32)));
+        assert!(derived_inputs(&a.env, &other, &log_key()).is_err());
+        // A holder's own re-signed row with a body that is not its record.
+        let mut art = artifact(&a.env);
+        art["records"][0]["body"] = json!("00ff");
+        let err = derived_inputs(&resign(&a, &art, vec![]), &a.req, &log_key()).unwrap_err();
+        assert!(err.0.contains("does not hash to its digest"), "{err}");
+        art["records"][0]["body"] = json!("not hex");
+        assert!(derived_inputs(&resign(&a, &art, vec![]), &a.req, &log_key()).is_err());
+        // A fraction in a field is the holder's value, read as written.
+        let mut art = artifact(&a.env);
+        art["records"][0]["seq"] = json!(1.5);
+        let text = String::from_utf8(serde_json::to_vec(&art).unwrap()).unwrap();
+        let env = {
+            let mut e = a.env.clone();
+            e.artifact = text.into_bytes();
+            e
+        };
+        // Signed again as the holder would: the artifact's text, not its JCS.
+        let env = sign_with_profile(
+            PROFILE,
+            &a.bytes,
+            EnvelopeParts {
+                subject: a.req.subject.clone(),
+                derivation: a.req.derivation.clone(),
+                anchor: Anchor {
+                    digest: a.env.anchor.digest.clone(),
+                    freshness: None,
+                },
+                artifact: env.artifact,
+                verification: vec![],
+                issued_at: ISSUED_AT.into(),
+            },
+            &key("responder") as &dyn EnvelopeSigner,
+        )
+        .unwrap();
+        let inputs = derived_inputs(&env, &a.req, &log_key()).unwrap();
+        assert_eq!(inputs.records[0].fields["seq"], json!(1.5));
+    }
+
+    /// Go reads a proof that need not be deterministic, and checks a
+    /// consistency proof's right peaks exactly.
+    #[test]
+    fn a_proof_is_read_as_go_reads_it() {
+        use ciborium::value::Value as Cbor;
+        let f = foreign();
+        let (derivations, id) = pack(true, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 3]}), &at);
+        let (art, mat) = (artifact(&a.env), material(&a.env));
+        let decode = |octets: &[u8]| ciborium::from_reader::<Cbor, _>(octets).unwrap();
+        let verdict = |mat: Vec<(String, Vec<u8>)>| {
+            verify_set_inclusion(&resign(&a, &art, mat), &a.req, &log_key())
+        };
+        // The first inclusion proof with its index written in two octets.
+        let Cbor::Array(parts) = decode(&mat[1].1) else {
+            panic!("not an array")
+        };
+        let (Cbor::Integer(index), path) = (&parts[0], &parts[1]) else {
+            panic!("not [index, path]")
+        };
+        let index = u64::try_from(*index).unwrap();
+        let mut wide = vec![0x82, 0x19, (index >> 8) as u8, index as u8];
+        ciborium::into_writer(path, &mut wide).unwrap();
+        assert_ne!(wide, mat[1].1);
+        let mut widened = mat.clone();
+        widened[1].1 = wide;
+        verdict(widened).expect("Go accepts a proof that is not deterministic");
+        // The index of another leaf is refused.
+        let mut other = mat.clone();
+        other[1].1 = mat[2].1.clone();
+        assert!(verdict(other).unwrap_err().0.contains("record 0"));
+        // Right peaks that are not the ones the paths leave out.
+        let last = mat.len() - 1;
+        assert_eq!(mat[last].0, KIND_CONSISTENCY);
+        let Cbor::Array(mut parts) = decode(&mat[last].1) else {
+            panic!("not an array")
+        };
+        let Cbor::Array(right) = parts[3].clone() else {
+            panic!("not a list")
+        };
+        for changed in [
+            Vec::new(),
+            [right.clone(), vec![Cbor::Bytes(vec![7; 32])]].concat(),
+        ] {
+            parts[3] = Cbor::Array(changed);
+            let mut octets = Vec::new();
+            ciborium::into_writer(&Cbor::Array(parts.clone()), &mut octets).unwrap();
+            let mut tampered = mat.clone();
+            tampered[last].1 = octets;
+            let err = verdict(tampered).unwrap_err();
+            assert!(err.0.contains("consistency"), "{err}");
+        }
     }
 
     #[test]

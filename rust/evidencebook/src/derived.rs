@@ -21,15 +21,17 @@
 //! is not ported.
 
 use crate::answer::{citing_half, profile_time};
-use crate::derivation::decode_strict;
+use crate::derivation::decode_syntax;
 use crate::staple::consistency_holds;
 use cll::checkpoint::{verify_checkpoint_cose_offline, DecodedCheckpointCose};
 use cll::mmr::{self, InclusionProof};
 use evidence_request::cll_material::{
-    encode_inclusion_proof, KIND_CHECKPOINT, KIND_CONSISTENCY, KIND_INCLUSION,
+    encode_consistency_proof, encode_inclusion_proof, KIND_CHECKPOINT, KIND_CONSISTENCY,
+    KIND_INCLUSION,
 };
 use evidence_request::envelope::{AnchorFreshness, Envelope};
-use evidence_request::request::{Coverage, Derivation, Request};
+use evidence_request::request::{Coverage, Derivation, Freshness, Request};
+use evidence_request::time::parse_utc;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -92,15 +94,13 @@ pub fn derived_inputs(
     let Some(Derivation::Digest(id)) = &envelope.derivation else {
         return bad("the answer is not to a derivation named by the digest of its definition");
     };
-    let proven = if envelope.verification.is_empty() {
-        None
-    } else {
-        Some(verify_set_inclusion(envelope, request, checkpoint_key)?)
-    };
-    let (artifact, rows) = read_artifact(envelope)?;
-    let anchor = artifact_anchor(&artifact)?;
-    let mut records = Vec::with_capacity(rows.len());
-    for (i, row) in rows.iter().enumerate() {
+    let answer = check_answer(envelope, request)?;
+    let proven = !envelope.verification.is_empty();
+    if proven {
+        prove(envelope, &answer, checkpoint_key)?;
+    }
+    let mut records = Vec::with_capacity(answer.rows.len());
+    for (i, row) in answer.rows.iter().enumerate() {
         let (digest, leaf_index) = row_leaf(row, i)?;
         let mut fields = row.as_object().cloned().unwrap_or_default();
         fields.remove("digest");
@@ -113,10 +113,131 @@ pub fn derived_inputs(
     }
     Ok(DerivedInputs {
         derivation: id.clone(),
-        anchor,
-        proven: proven.is_some(),
+        anchor: answer.anchor,
+        proven,
         records,
     })
+}
+
+/// The most records, and the most verification entries, an answer may carry:
+/// the answer item limit a requester applies to what the responder signed
+/// (Go `MaxReplyItems`), checked before any proof is read.
+pub const MAX_ITEMS: usize = crate::answer::MAX_RECORDS as usize;
+
+/// What an answer's envelope and artifact are once the checks that do not
+/// read the verification material have passed.
+struct Answer {
+    anchor: String,
+    rows: Vec<Value>,
+    /// The anchor the proofs are under: the envelope's, or for a request
+    /// pinning its own half the artifact's.
+    want: String,
+}
+
+/// The envelope-level checks of profile §7.3 that precede `anchor_inclusion`
+/// (Go `verifyEnvelopeContent`), for an answer to `request` that names a
+/// derivation by the digest of its definition: the envelope's own signature
+/// and digests, its subject and derivation, the item limits, `anchor_match`
+/// and the artifact's `anchor` and `records` (a row's `body`, when it has
+/// one, must be its record).
+fn check_answer(envelope: &Envelope, request: &Request) -> Result<Answer, SetInclusionError> {
+    envelope
+        .verify()
+        .map_err(|e| SetInclusionError(format!("the envelope does not verify: {e}")))?;
+    if envelope.subject != request.subject || envelope.derivation != request.derivation {
+        return bad("the envelope answers a different subject or derivation");
+    }
+    if !matches!(&request.derivation, Some(Derivation::Digest(_))) {
+        return bad("not a derivation named by the digest of its definition");
+    }
+    if envelope.verification.len() > MAX_ITEMS {
+        return bad(format!(
+            "limit: verification: {} over {MAX_ITEMS}",
+            envelope.verification.len()
+        ));
+    }
+    check_anchor_match(envelope, request)?;
+    // Numbers are read as written: a field's fraction is the holder's value,
+    // not a refusal, as Go's artifact reader reads it.
+    let artifact = decode_syntax(&envelope.artifact)
+        .map_err(|e| SetInclusionError(format!("the artifact is not JSON: {e}")))?;
+    let Some(rows) = artifact.get("records").and_then(Value::as_array).cloned() else {
+        return bad("the artifact holds no records list");
+    };
+    if rows.len() > MAX_ITEMS {
+        return bad(format!("limit: records: {} over {MAX_ITEMS}", rows.len()));
+    }
+    let stated = artifact_anchor(&artifact)?;
+    let half_pin = matches!((citing_half(&request.subject), &request.coverage),
+        (Some(half), Coverage::ExpectedPin(pin)) if pin == half);
+    if !half_pin && stated != envelope.anchor.digest {
+        return bad("the artifact names another anchor");
+    }
+    for (i, row) in rows.iter().enumerate() {
+        let digest = row
+            .get("digest")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if let Some(body) = row.get("body") {
+            let matches = body
+                .as_str()
+                .and_then(|text| hex::decode(text).ok())
+                .is_some_and(|raw| record_body_matches(&raw, digest));
+            if !matches {
+                return bad(format!("record {i} does not hash to its digest"));
+            }
+        }
+    }
+    let want = if half_pin {
+        stated.clone()
+    } else {
+        envelope.anchor.digest.clone()
+    };
+    Ok(Answer {
+        anchor: stated,
+        rows,
+        want,
+    })
+}
+
+/// `anchor_match` (profile §7.1): the envelope's anchor is the pinned one,
+/// or states a size or time meeting the floor.
+fn check_anchor_match(envelope: &Envelope, request: &Request) -> Result<(), SetInclusionError> {
+    match &request.coverage {
+        Coverage::ExpectedPin(pin) if envelope.anchor.digest != *pin => {
+            bad("anchor_match: the anchor is not the pinned one")
+        }
+        Coverage::ExpectedPin(_) => Ok(()),
+        Coverage::MinFreshness(Freshness::Size(floor)) => match &envelope.anchor.freshness {
+            Some(AnchorFreshness::Size(n)) if n >= floor => Ok(()),
+            _ => bad("anchor_match: the anchor does not state a size meeting the floor"),
+        },
+        Coverage::MinFreshness(Freshness::Time(floor)) => match &envelope.anchor.freshness {
+            Some(AnchorFreshness::Time(t)) if parse_utc(t).is_some_and(|t| t >= *floor) => Ok(()),
+            _ => bad("anchor_match: the anchor does not state a time meeting the floor"),
+        },
+    }
+}
+
+/// Whether a row's body is the record its digest names: its SHA-256, or a
+/// capsule as a ledger holds it (carrying that id as `capsule_id`, with the
+/// signature and key id that are no part of it), whose preimage hashes to it
+/// (Go `recordBodyMatches`).
+fn record_body_matches(body: &[u8], digest: &str) -> bool {
+    if hex::encode(Sha256::digest(body)) == digest {
+        return true;
+    }
+    let Ok(Value::Object(mut capsule)) = decode_syntax(body) else {
+        return false;
+    };
+    if capsule.get("capsule_id").and_then(Value::as_str) != Some(digest) {
+        return false;
+    }
+    capsule.retain(|k, _| {
+        k != "capsule_id" && !agent_action_capsule::canonical::is_local_only_field(k)
+    });
+    crate::canonical::jcs(&Value::Object(capsule))
+        .is_ok_and(|preimage| hex::encode(Sha256::digest(preimage)) == digest)
 }
 
 /// The `anchor_inclusion` procedure of §6.2.1 over a record set: the
@@ -140,28 +261,17 @@ pub fn verify_set_inclusion(
     request: &Request,
     checkpoint_key: &str,
 ) -> Result<SetInclusion, SetInclusionError> {
-    envelope
-        .verify()
-        .map_err(|e| SetInclusionError(format!("the envelope does not verify: {e}")))?;
-    if envelope.subject != request.subject || envelope.derivation != request.derivation {
-        return bad("the envelope answers a different subject or derivation");
-    }
-    if !matches!(&request.derivation, Some(Derivation::Digest(_))) {
-        return bad("not a derivation named by the digest of its definition");
-    }
-    let (artifact, rows) = read_artifact(envelope)?;
-    let stated = artifact_anchor(&artifact)?;
-    let half_pin = matches!((citing_half(&request.subject), &request.coverage),
-        (Some(half), Coverage::ExpectedPin(pin)) if pin == half);
-    if !half_pin && stated != envelope.anchor.digest {
-        return bad("the artifact names another anchor");
-    }
-    let want = if half_pin {
-        stated.as_str()
-    } else {
-        envelope.anchor.digest.as_str()
-    };
+    let answer = check_answer(envelope, request)?;
+    prove(envelope, &answer, checkpoint_key)
+}
 
+/// The material of `envelope` against `answer`'s rows ([`verify_set_inclusion`]).
+fn prove(
+    envelope: &Envelope,
+    answer: &Answer,
+    checkpoint_key: &str,
+) -> Result<SetInclusion, SetInclusionError> {
+    let (rows, want) = (&answer.rows, answer.want.as_str());
     let (mut checkpoint, mut consistency): (Option<&[u8]>, Option<&[u8]>) = (None, None);
     let mut inclusions: Vec<&[u8]> = Vec::new();
     for (entry, item) in envelope
@@ -203,18 +313,8 @@ pub fn verify_set_inclusion(
     }
     Ok(SetInclusion {
         statement: checkpoint.to_vec(),
-        anchor: stated,
+        anchor: answer.anchor.clone(),
     })
-}
-
-/// The artifact's members `anchor` and `records`, which must both be there.
-fn read_artifact(envelope: &Envelope) -> Result<(Value, Vec<Value>), SetInclusionError> {
-    let artifact = decode_strict(&envelope.artifact)
-        .map_err(|e| SetInclusionError(format!("the artifact is not JSON: {e}")))?;
-    let Some(rows) = artifact.get("records").and_then(Value::as_array).cloned() else {
-        return bad("the artifact holds no records list");
-    };
-    Ok((artifact, rows))
 }
 
 fn artifact_anchor(artifact: &Value) -> Result<String, SetInclusionError> {
@@ -312,9 +412,14 @@ fn check_inclusion(
         })
         .collect::<Option<Vec<mmr::Hash>>>()
         .ok_or("the inclusion path is not a list of hashes")?;
-    if encode_inclusion_proof(leaf, &path).as_deref() != Some(octets) {
+    // The proof is the one for this leaf, whatever the width of its integers
+    // (Go reads a proof that need not be deterministic): its index is the
+    // leaf's node index, which is what a path for another leaf would not be.
+    let expected = encode_inclusion_proof(leaf, &path)
+        .and_then(|e| ciborium::from_reader::<Cbor, _>(e.as_slice()).ok());
+    if expected != Some(Cbor::Array(parts)) {
         return Err(format!(
-            "the inclusion proof is not the deterministic proof for leaf {leaf}"
+            "the inclusion proof is not the proof for leaf {leaf}"
         ));
     }
     let size = cp.mmr_size;
@@ -350,8 +455,56 @@ fn check_inclusion(
 }
 
 /// Step 13: the checkpoint's commitment extends its own previous one, by
-/// the consistency proof octets.
+/// the consistency proof octets: `[size1, size2, paths, right peaks]` with
+/// exactly the right peaks the paths leave out (Go `VerifyCLLConsistency`),
+/// which reach the checkpoint's commitment.
 fn check_consistency(cp: &DecodedCheckpointCose, octets: &[u8]) -> Result<(), SetInclusionError> {
+    use ciborium::value::Value as Cbor;
+    let malformed = || SetInclusionError("the consistency proof is malformed".into());
+    let mut rest = octets;
+    let Ok(Cbor::Array(parts)) = ciborium::from_reader::<Cbor, _>(&mut rest) else {
+        return Err(malformed());
+    };
+    let uint = |v: &Cbor| match v {
+        Cbor::Integer(n) => u64::try_from(*n).ok(),
+        _ => None,
+    };
+    let [size1, size2, Cbor::Array(raw_paths), _] = parts.as_slice() else {
+        return Err(malformed());
+    };
+    let (Some(size1), Some(size2)) = (uint(size1), uint(size2)) else {
+        return Err(malformed());
+    };
+    let hashes = |v: &Cbor| -> Option<Vec<mmr::Hash>> {
+        let Cbor::Array(items) = v else { return None };
+        items
+            .iter()
+            .map(|i| match i {
+                Cbor::Bytes(b) => mmr::Hash::try_from(b.as_slice()).ok(),
+                _ => None,
+            })
+            .collect()
+    };
+    let paths: Option<Vec<Vec<mmr::Hash>>> = raw_paths.iter().map(hashes).collect();
+    let (true, Some(paths)) = (rest.is_empty(), paths) else {
+        return Err(malformed());
+    };
+    if size1 != cp.prev_size || size2 != cp.mmr_size {
+        return bad("the consistency proof is not between the checkpoint and its previous one");
+    }
+    // The proof the encoder builds from the paths is exactly the right peaks
+    // the paths leave out; the same member for member as this one.
+    let expected = encode_consistency_proof(
+        size1,
+        size2,
+        &cp.prev_peak_hashes,
+        &paths,
+        &cp.new_peak_hashes,
+    )
+    .and_then(|e| ciborium::from_reader::<Cbor, _>(e.as_slice()).ok());
+    if expected != Some(Cbor::Array(parts)) {
+        return bad("the consistency proof does not reach the checkpoint's commitment");
+    }
     let prev = DecodedCheckpointCose {
         mmr_size: cp.prev_size,
         root: cp.prev_root.clone(),
@@ -362,5 +515,29 @@ fn check_consistency(cp: &DecodedCheckpointCose, octets: &[u8]) -> Result<(), Se
         Ok(())
     } else {
         bad("the consistency proof does not reach the checkpoint's commitment")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_body_is_its_digests_record_by_either_rule() {
+        let bytes = br#"{"a":1}"#;
+        let digest = hex::encode(Sha256::digest(bytes));
+        assert!(record_body_matches(bytes, &digest));
+        assert!(!record_body_matches(b"{}", &digest));
+        // A capsule as a ledger holds it: its id, signature and key id are no
+        // part of the preimage the id is the digest of.
+        let id = hex::encode(Sha256::digest(br#"{"a":1,"b":[true]}"#));
+        let capsule =
+            format!(r#"{{"b":[true],"a":1,"capsule_id":"{id}","signature":"s","key_id":"k"}}"#);
+        assert!(record_body_matches(capsule.as_bytes(), &id));
+        let other = hex::encode(Sha256::digest(b"another"));
+        assert!(!record_body_matches(capsule.as_bytes(), &other));
+        let wrong = capsule.replace(r#""a":1"#, r#""a":2"#);
+        assert!(!record_body_matches(wrong.as_bytes(), &id));
+        assert!(!record_body_matches(b"not json", &id));
     }
 }
