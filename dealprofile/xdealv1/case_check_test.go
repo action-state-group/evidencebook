@@ -22,6 +22,12 @@ const caseBuyerLog = "deal/b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
 // handshake, the adjudicator, the dispute's pair and the buyer's copy.
 func caseFixture(t *testing.T) (*handshake, *party, []byte, CaseCopy) {
 	t.Helper()
+	return caseFixtureWith(t, nil)
+}
+
+// caseFixtureWith is caseFixture with the buyer's agreement edited first.
+func caseFixtureWith(t *testing.T, edit func(*AgreeBody)) (*handshake, *party, []byte, CaseCopy) {
+	t.Helper()
 	h, adjudicator, _, _ := caseBookHolder(t)
 	od, err := Digest(h.offer)
 	require.NoError(t, err)
@@ -31,6 +37,9 @@ func caseFixture(t *testing.T) (*handshake, *party, []byte, CaseCopy) {
 	adj.KeyID = adjudicator.key()
 	ab.Adjudicator = Some(adj)
 	ab.Forums = []string{fxForum}
+	if edit != nil {
+		edit(ab)
+	}
 	bb := journalBlock(TypeAgree, "2026-11-01T10:00:00Z", true)
 	bb.Seq, bb.Seen = 1, Some(h.agreementID)
 	agreement := Record{Block: bb, Body: ab}
