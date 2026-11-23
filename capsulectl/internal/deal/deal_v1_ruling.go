@@ -164,6 +164,7 @@ A second final ruling on a row that differs from the first is refused.`,
 	cmd.Flags().String("dispute", "", "The dispute file you were sent (required)")
 	cmd.Flags().StringArray("copy", nil, "A party's adjudicator copy (deal report --share adjudicator); give one or two")
 	cmd.Flags().String("out", "", "Where to write the file to send (default: standard output)")
+	cmd.AddCommand(dealRulingEntriesCommand())
 	return cmd
 }
 

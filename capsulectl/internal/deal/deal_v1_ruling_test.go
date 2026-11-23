@@ -1,8 +1,12 @@
 package deal
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +14,8 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
+	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -201,4 +207,186 @@ func TestAChallengeOfAHeldRuling(t *testing.T) {
 	assert.Equal(t, "kept, and counted", dealRun(t, "receive", file)["record"])
 	// --out goes with a ruling only.
 	assert.Contains(t, v1Err(t, "receive", file, "--out", filepath.Join(t.TempDir(), "x.json")), "--out goes with a ruling")
+}
+
+// The whole flow: a dispute, a ruling entered in both books, and the
+// adjudicator's report of each party's entry from its copy; copies taken
+// before the ruling show nothing, since no witness timed it; a party takes
+// the other side's copy, ruling included.
+func TestRulingEntriesFromBothCopies(t *testing.T) {
+	h, adj := adjudicatedDeal(t)
+	h.buyer.act(t)
+	dispute := filepath.Join(t.TempDir(), "dispute.json")
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
+	buyerBefore := adjudicatorCopy(t, h.buyer, h.dealID)
+	sellerBefore := adjudicatorCopy(t, h.seller, h.dealID)
+
+	adj.act(t)
+	rulingFile := filepath.Join(t.TempDir(), "ruling.json")
+	ruled := dealRun(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "not_met", "--against", "seller", "--final",
+		"--dispute", dispute, "--copy", buyerBefore, "--copy", sellerBefore, "--out", rulingFile)
+	digest := ruled["ruling"].(string)
+	before := dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerBefore, "--copy", sellerBefore)
+	for _, e := range before["entries"].([]any) {
+		row := e.(map[string]any)
+		assert.Equal(t, "not shown entered (the ruling has no witnessed time)", row["words"], "%v", row)
+		assert.Contains(t, row["sent"], "(adjudicator's statement)")
+	}
+
+	for _, side := range []v1Side{h.buyer, h.seller} {
+		side.act(t)
+		dealRun(t, "receive", rulingFile)
+	}
+	buyerAfter := adjudicatorCopy(t, h.buyer, h.dealID)
+	sellerAfter := adjudicatorCopy(t, h.seller, h.dealID)
+	adj.act(t)
+	after := dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerAfter, "--copy", sellerAfter)
+	parties := map[string]string{}
+	for _, e := range after["entries"].([]any) {
+		row := e.(map[string]any)
+		parties[row["party"].(string)] = row["words"].(string)
+	}
+	assert.Equal(t, map[string]string{"buyer": "entered, not witnessed", "seller": "entered, not witnessed"}, parties)
+	assert.Contains(t, v1Err(t, "ruling", "entries", "--deal", h.dealID, "--ruling", strings.Repeat("a", 64), "--copy", buyerAfter), "holds no ruling")
+
+	// The buyer takes the seller's counterparty copy: the ruling it carries
+	// is the one the buyer holds.
+	h.seller.act(t)
+	cp := filepath.Join(t.TempDir(), "cp.json")
+	dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", cp)
+	h.buyer.act(t)
+	got := dealRun(t, "receive", cp)
+	found := false
+	for _, r := range got["records"].([]any) {
+		row := r.(map[string]any)
+		if row["ruling"] == digest {
+			found = true
+			assert.Equal(t, "already kept", row["record"], "%v", row)
+		}
+	}
+	assert.True(t, found, "the copy carries the ruling: %v", got)
+}
+
+// A copy's receive refuses --out, and exits non-zero when a ruling the copy
+// carries is refused: a fork is what the copy is for, never a quiet success.
+func TestReceiveOfACopyReportsARefusedRuling(t *testing.T) {
+	h, adj := adjudicatedDeal(t)
+	h.buyer.act(t)
+	dispute := filepath.Join(t.TempDir(), "dispute.json")
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
+	buyerCopy := adjudicatorCopy(t, h.buyer, h.dealID)
+	adj.act(t)
+	rulingFile := filepath.Join(t.TempDir(), "ruling.json")
+	dealRun(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "not_met", "--against", "seller", "--final",
+		"--dispute", dispute, "--copy", buyerCopy, "--out", rulingFile)
+	h.seller.act(t)
+	dealRun(t, "receive", rulingFile)
+	cp := filepath.Join(t.TempDir(), "cp.json")
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", cp)
+
+	h.buyer.act(t)
+	assert.Contains(t, v1Err(t, "receive", cp, "--out", filepath.Join(t.TempDir(), "x.json")), "goes with a ruling file, not a copy")
+	old := receiveFromStore
+	t.Cleanup(func() { receiveFromStore = old })
+	receiveFromStore = func(ctx context.Context, shelf *evidencebook.Shelf, record []byte, proof *evidencebook.StampProof) (evidencebook.ReceiveResult, error) {
+		if read, err := xdealv1.VerifyBook(record); err == nil && read.Record.Block.RecordType == xdealv1.TypeRuling {
+			return evidencebook.ReceiveResult{}, fmt.Errorf("%w: two different rulings at one place", evidencebook.ErrRefused)
+		}
+		return old(ctx, shelf, record, proof)
+	}
+	assert.Contains(t, v1Err(t, "receive", cp), "a ruling the copy carries was refused")
+}
+
+// Only a cadence log id of the form a shelf gives is one of the deal's own
+// ids: an agreement that names anything else, such as a card number, does
+// not take it out of the gate.
+func TestV1OwnIDsTakesOnlyACadenceLogID(t *testing.T) {
+	assert.True(t, shelfLogIDForm.MatchString("deal-cadence/9261641132323880"))
+	for _, v := range []string{"4111111111111111", "deal-cadence/4111", "deal-cadence/9261641132323880x", "case/9261641132323880"} {
+		assert.False(t, shelfLogIDForm.MatchString(v), v)
+	}
+}
+
+// With a witness the agreement names timing the adjudicator's stamp that
+// covers the ruling, a party's copy checkpointed after that time and without
+// the ruling shows it not entered; a copy from before it shows nothing; and
+// a copy with the ruling shows it entered.
+func TestRulingEntriesByAWitnessedTime(t *testing.T) {
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	keyID := hex.EncodeToString(public)
+	endpoint, _ := countingWitness(t)
+	adj := newAdjudicatorSide(t)
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	p.Checkpoint.Endpoint, p.Checkpoint.PublicKey = endpoint, keyID
+	require.NoError(t, cli.SaveProfile(p, true))
+	h := agreedBoth(t, func(k string) string {
+		o := strings.Replace(disputeOffer(k, "auto:twin"), `"key_id": "adjudicator-key"`, `"key_id": "`+adj.party.signer+`"`, 1)
+		return strings.Replace(o, `"witnesses": []`, `"witnesses": [{"key_id": "`+keyID+`"}]`, 1)
+	})
+	h.buyer.act(t)
+	dispute := filepath.Join(t.TempDir(), "dispute.json")
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
+	buyerBefore := adjudicatorCopy(t, h.buyer, h.dealID)
+	sellerBefore := adjudicatorCopy(t, h.seller, h.dealID)
+
+	adj.act(t)
+	rulingFile := filepath.Join(t.TempDir(), "ruling.json")
+	digest := dealRun(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "not_met", "--against", "seller", "--final",
+		"--dispute", dispute, "--copy", buyerBefore, "--copy", sellerBefore, "--out", rulingFile)["ruling"].(string)
+	clockAt(t, cli.DealClock().Add(time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	iat := cli.DealClock().Add(time.Minute).UTC().Truncate(time.Second)
+	withSession(t, func(s *dealSession) {
+		c, _, err := s.cadenceOf(t.Context())
+		require.NoError(t, err)
+		last, ok, err := c.Last(t.Context())
+		require.NoError(t, err)
+		require.True(t, ok)
+		record, err := checkpoint.ParseRecord(last.Checkpoint)
+		require.NoError(t, err)
+		entry, err := record.EntryHash()
+		require.NoError(t, err)
+		check, err := c.Witnessed(t.Context(), last.N, evidencebook.WitnessReceipt{TSURL: endpoint, EntryHash: hex.EncodeToString(entry),
+			Receipt: mintReceiptAt(t, entry, key, iat), LeafIndex: 0, TreeSize: 1})
+		require.NoError(t, err)
+		require.Equal(t, evidencebook.WitnessVerified, check.State, check.Reason)
+	})
+
+	// Only the seller enters the ruling; the buyer, without it, seals a
+	// record after the ruling's witnessed time, so its checkpoint is later.
+	h.seller.act(t)
+	dealRun(t, "receive", rulingFile)
+	h.buyer.act(t)
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--withdraw", "--out", filepath.Join(t.TempDir(), "withdraw.json"))
+	buyerAfter := adjudicatorCopy(t, h.buyer, h.dealID)
+	sellerAfter := adjudicatorCopy(t, h.seller, h.dealID)
+	adj.act(t)
+	words := func(copies ...string) (map[string]string, map[string]any) {
+		args := []string{"ruling", "entries", "--deal", h.dealID, "--ruling", digest}
+		for _, c := range copies {
+			args = append(args, "--copy", c)
+		}
+		out := dealRun(t, args...)
+		got := map[string]string{}
+		for _, e := range out["entries"].([]any) {
+			row := e.(map[string]any)
+			got[row["party"].(string)] = row["words"].(string)
+		}
+		return got, out
+	}
+	got, out := words(buyerBefore, sellerBefore)
+	for _, e := range out["entries"].([]any) {
+		assert.Equal(t, iat.Format(time.RFC3339), e.(map[string]any)["ruling_witnessed_at"], "the ruling's time is the named witness's")
+	}
+	assert.Equal(t, map[string]string{
+		"buyer":  "not shown entered (no checkpoint after the ruling's witnessed time)",
+		"seller": "not shown entered (no checkpoint after the ruling's witnessed time)",
+	}, got)
+	got, _ = words(buyerAfter, sellerAfter)
+	assert.Equal(t, "entered, not witnessed", got["seller"])
+	assert.True(t, strings.HasPrefix(got["buyer"], "ruling not entered by the buyer as of its checkpoint at "), got["buyer"])
 }

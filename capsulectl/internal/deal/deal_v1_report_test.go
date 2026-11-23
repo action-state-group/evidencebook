@@ -188,7 +188,7 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "adjudicator", "--to", "Lamp Court", "--out", ""), "cannot be empty")
 	assert.Len(t, disclosures(), 2, "an existing or empty --out records nothing")
 
-	v1ShareGate = func([]byte, []sealedEvent, string) error {
+	v1ShareGate = func([]byte, []sealedEvent, string, ...string) error {
 		return cli.InputError("the copy would spell out a private value")
 	}
 	t.Cleanup(func() { v1ShareGate = dealShareGate })
@@ -213,9 +213,9 @@ func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
 	var gotEvents []sealedEvent
 	var gotAudience string
 	var gotBytes []byte
-	v1ShareGate = func(data []byte, events []sealedEvent, audience string) error {
+	v1ShareGate = func(data []byte, events []sealedEvent, audience string, own ...string) error {
 		gotEvents, gotAudience, gotBytes = events, audience, data
-		return dealShareGate(data, events, audience)
+		return dealShareGate(data, events, audience, own...)
 	}
 	t.Cleanup(func() { v1ShareGate = dealShareGate })
 	file := filepath.Join(t.TempDir(), "adj.json")
@@ -447,4 +447,35 @@ func TestAV1ReportBundleAudiencesAndMarkers(t *testing.T) {
 		sum := sha256.Sum256(raw)
 		assert.Equal(t, hex.EncodeToString(sum[:]), recs[i]["receipt_sha256"])
 	}
+}
+
+// An x-deal-v1 deal with no journey record has no event to carry its id, so
+// the report passes the deal id to the gate itself: a deal id whose hex holds
+// a Luhn-valid digit run is taken out, as a v0 deal's is (evidencebook#787).
+func TestAV1ShareTakesTheDealsOwnIDOut(t *testing.T) {
+	const dealID = "deal-b164730259661136" // a letter, then a Luhn-valid run
+	page := []byte(`<!doctype html><script>window.__BUNDLE__ = {"deal_id":"` + dealID + `"};</script>`)
+	assert.ErrorContains(t, dealShareGate(page, nil, cli.DealAudienceCounterparty), "card number", "without the id")
+	assert.NoError(t, dealShareGate(page, nil, cli.DealAudienceCounterparty, dealID))
+	assert.NoError(t, dealShareGate(page, nil, cli.DealAudienceAdjudicator, dealID))
+	leaked := []byte(`<!doctype html><script>window.__BUNDLE__ = {"deal_id":"` + dealID + `","line":"Paid with 4111 1111 1111 1111"};</script>`)
+	assert.ErrorContains(t, dealShareGate(leaked, nil, cli.DealAudienceCounterparty, dealID), "card number", "a card beside the id")
+
+	// A bundle carries a record's payload as base64, and the gate reads the
+	// decoded text too: the id is taken out there as well, and a card number
+	// in the same payload is still refused.
+	encode := func(s string) []byte {
+		return []byte(`{"payload":"` + base64.StdEncoding.EncodeToString([]byte(s)) + `"}`)
+	}
+	payload := `{"canonicalization":"jcs","deal_id":"` + dealID + `","prev":{}}`
+	assert.ErrorContains(t, dealShareGate(encode(payload), nil, cli.DealAudienceCounterparty), "card number", "without the id")
+	assert.NoError(t, dealShareGate(encode(payload), nil, cli.DealAudienceCounterparty, dealID))
+	assert.ErrorContains(t, dealShareGate(encode(`{"deal_id":"`+dealID+`","note":"card 4111111111111111"}`), nil, cli.DealAudienceCounterparty, dealID), "card number")
+
+	// A shelf log id an agreement names (deal-cadence/<16 hex>) is one of the
+	// deal's own ids too.
+	const shelfLog = "deal-cadence/9261641132323880"
+	agreement := []byte(`{"shelf_log_id":"` + shelfLog + `"}`)
+	assert.ErrorContains(t, dealShareGate(agreement, nil, cli.DealAudienceCounterparty, dealID), "card number", "without it")
+	assert.NoError(t, dealShareGate(agreement, nil, cli.DealAudienceCounterparty, dealID, shelfLog))
 }

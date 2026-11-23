@@ -14,6 +14,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -250,7 +251,9 @@ func runV1Report(c *cobra.Command) (err error) {
 			// travels whole with the leg, so the gate scans the copy with
 			// them blanked by structure (evidencebook#771); the file
 			// written is the copy as it is.
-			if err := v1ShareGate(scrubPaymentRefs(file), events, share); err != nil {
+			// The deal's own id is taken out as for a v0 deal: a v1 deal may
+			// have no journey event to carry it (evidencebook#787).
+			if err := v1ShareGate(scrubPaymentRefs(file), events, share, v1OwnIDs(dealID, snap.Book)...); err != nil {
 				return err
 			}
 			record = func() error {
@@ -522,4 +525,30 @@ func (s *dealSession) v1ReportBundle(ctx context.Context, logID string, snap xde
 		return nil, err
 	}
 	return b.JSON, nil
+}
+
+// shelfLogIDForm is a cadence log id as a shelf names it.
+var shelfLogIDForm = regexp.MustCompile(`^deal-cadence/[0-9a-f]{16}$`)
+
+// v1OwnIDs are the identifiers every copy of an x-deal-v1 deal carries,
+// random hex and never a private value: the deal id, and the shelf log id
+// each agreement in the copy's book names (deal-cadence/<16 hex>). The share
+// gate takes them out before it checks, or one whose hex holds a Luhn-valid
+// digit run reads as a card number (evidencebook#787).
+func v1OwnIDs(dealID string, book xdealv1.ReportBook) []string {
+	ids := []string{dealID}
+	pairs := append([]json.RawMessage{book.Agreement}, mapValues(book.ReliedOn)...)
+	for _, raw := range pairs {
+		read, err := xdealv1.VerifyBook(raw)
+		if err != nil {
+			continue
+		}
+		// Only a cadence log id of the form a shelf gives: an agreement is
+		// the other side's word, and an id it chose freely could whitelist a
+		// card number.
+		if ag, ok := agreeOf(read.Record); ok && shelfLogIDForm.MatchString(ag.ShelfLogID) && !slices.Contains(ids, ag.ShelfLogID) {
+			ids = append(ids, ag.ShelfLogID)
+		}
+	}
+	return ids
 }

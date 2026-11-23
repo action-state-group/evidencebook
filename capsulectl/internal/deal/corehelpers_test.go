@@ -61,12 +61,22 @@ const testWitness = "https://witness.example"
 // own tests mint them).
 func mintReceipt(t *testing.T, entry []byte, key ed25519.PrivateKey) []byte {
 	t.Helper()
+	return mintReceiptAt(t, entry, key, time.Time{})
+}
+
+// mintReceiptAt is mintReceipt with the witness's registration time: the iat
+// of the protected CWT claims, omitted when iat is the zero time.
+func mintReceiptAt(t *testing.T, entry []byte, key ed25519.PrivateKey, iat time.Time) []byte {
+	t.Helper()
 	proof, err := cbor.Marshal([]any{int64(1), int64(0), [][]byte{}})
 	require.NoError(t, err)
 	leaf := sha256.Sum256(append([]byte{0}, entry...))
 	message := cose.NewSign1Message()
 	message.Headers.Protected.SetAlgorithm(cose.AlgorithmEdDSA)
 	message.Headers.Protected[int64(395)] = int64(1)
+	if !iat.IsZero() {
+		message.Headers.Protected[int64(15)] = map[any]any{int64(6): iat.Unix()}
+	}
 	message.Headers.Unprotected[int64(396)] = map[any]any{int64(-1): []any{proof}}
 	message.Payload = leaf[:]
 	signer, err := cose.NewSigner(cose.AlgorithmEdDSA, key)
