@@ -1,0 +1,5 @@
+{"role": "buyer", "to": "SELLER_KEY", "terms": {"item": "desk lamp", "currency": "USD"},
+ "pack_digest": "3bac868541cc4b78906ae3d714375a31ff38156c570a6b01e361587a0d9467e4", "agree_by": "2099-11-30T00:00:00Z",
+ "terms_rows": {"rows": [{"id": "paid_as_agreed", "owed_by": "buyer", "owed": {"amount_minor": 6000, "currency": "USD"}, "recomputed": true,
+   "due": {"at": "2099-12-01T00:00:00Z"}, "window_end": {"at": "2099-12-05T00:00:00Z"}}], "named": {}},
+ "adjudicator": null, "forums": [], "witnesses": []}

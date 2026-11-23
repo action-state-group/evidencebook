@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Plays the DEMO jet ski rental end to end against a throwaway deal profile:
-# open -> two seller messages -> the payee switch -> a domain lookup -> the
-# check before paying the deposit -> the user holds -> the report.
-# Prints the difference card and fails if it is not the expected one.
-# Writes the report page to $1 when given. Uses CAPSULECTL if set (a
-# downloaded release binary), else builds from source.
-# Touches nothing outside its own temp directory. No real people or money.
+# Plays the DEMO desk lamp purchase end to end, both sides, on x-deal-v1:
+# the buyer offers -> the seller receives -> each side seals its admission
+# decision -> the buyer seals its intent -> the seller agrees -> the buyer
+# receives that and agrees -> the seller receives the buyer's agreement ->
+# the buyer's check before paying pauses -> the user holds -> the report.
+# Prints the card and fails if it is not the expected one.
+# Uses CAPSULECTL if set (a downloaded release binary), else builds from
+# source. Touches nothing outside its own temp directory. No real people or
+# money. The admission decisions (demo/lamp/admission-*.json) are
+# capsule-engine's real output, kept so the demo needs no engine install; a
+# real deal seals the engine's output for its own counterparty and amount.
+# demo/jet-ski and run-demo-x-deal-v0.sh are the legacy x-deal-v0 demo.
 
 skill_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-demo="$skill_dir/demo/jet-ski"
+demo="$skill_dir/demo/lamp"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 export XDG_CONFIG_HOME="$work/config"
@@ -26,40 +31,43 @@ if [[ -z "$bin" ]]; then
     go build -o "$work/plugins/capsulectl-deal" ./cmd/capsulectl-deal)
   export CAPSULECTL_PLUGIN_ROOTS="$work/plugins"
 fi
-deal() { "$bin" --profile demo deal "$@"; }
+buyer() { "$bin" --profile buyer deal "$@"; }
+seller() { "$bin" --profile seller deal "$@"; }
+cd "$work"
 
-# The x-deal-v0 profile ships with EvidenceBook (dealprofile/x-deal-v0):
-# DEAL_PROFILE_DIR names a copy of it, else the one this repository builds
-# against when the source is here. Without one, the demo pins capsulectl's
-# built-in predicate, whose attributes are the same, and skips the checker.
-profile_dir="${DEAL_PROFILE_DIR:-}"
-if [[ -z "$profile_dir" && -f "$skill_dir/../../go.mod" ]] && command -v go >/dev/null; then
-  # Offline or with no module cache, this finds nothing and the demo falls back.
-  if dir="$(cd "$skill_dir/../.." && go mod download -json github.com/action-state-group/evidencebook 2>/dev/null | jq -er .Dir)"; then
-    profile_dir="$dir/dealprofile/x-deal-v0"
-  fi
-fi
-materiality=builtin:neutral
-if [[ -n "$profile_dir" ]]; then
-  materiality="$profile_dir/materiality-predicate/neutral.json"
-fi
+# Two profiles, one per side. The offer names the seller's key: the buyer
+# takes an agreement only from the key its offer names.
+seller_key=$("$bin" deal init --profile seller --dir seller --no-witness --materiality builtin:neutral | jq -r .public_key)
+# The buyer pins no materiality predicate, so every attribute its agent
+# picked (here, the item) pauses the check for the user.
+"$bin" deal init --profile buyer --dir buyer --no-witness >/dev/null
+sed "s/SELLER_KEY/$seller_key/" "$demo/offer.json" >offer.json
 
-deal init --dir "$work/store" --materiality "$materiality" >/dev/null
-# This demo walks an x-deal-v0 deal, the legacy version: x-deal-v1 is the
-# default, so the demo profile sets x-deal-v0 first (evidencebook#626; the
-# demo moves to x-deal-v1 with B6).
-deal set-version x-deal-v0 >/dev/null
-id=$(deal open --input "$demo/01-open.json" | jq -r .deal_id)
-deal note --deal "$id" --kind message --input "$demo/02-message-quote.json" >/dev/null
-deal note --deal "$id" --kind message --input "$demo/03-message-switch.json" >/dev/null
-deal note --deal "$id" --kind change --input "$demo/04-change.json" >/dev/null
-deal note --deal "$id" --kind evidence --input "$demo/05-evidence-domain.json" >/dev/null
-deal check --deal "$id" --input "$demo/06-check-pay.json" >"$work/check.json"
+# The buyer offers; the user sends offer.sent.json to the seller. Both
+# sides know the deal by the same id.
+buyer offer --input offer.json --out offer.sent.json >offered.json
+offer=$(jq -r .offer offered.json)
+id=$(jq -r .deal_id offered.json)
+seller receive offer.sent.json >/dev/null
+
+# Each side seals its own admission decision, then the buyer its intent.
+seller admit --deal "$id" --input "$demo/admission-seller.json" >/dev/null
+buyer admit --deal "$id" --input "$demo/admission-buyer.json" >/dev/null
+buyer note --deal "$id" --kind intent --input "$demo/intent.json" --opening "$demo/opening.json" >/dev/null
+
+# The agreement exchange: the seller (the acceptor) agrees first.
+seller agree "$offer" --out seller-agreement.json >/dev/null
+buyer receive seller-agreement.json >/dev/null
+buyer agree "$offer" --out buyer-agreement.json >/dev/null
+seller receive buyer-agreement.json >/dev/null
+
+# The check before paying pauses and shows the user a card.
+buyer check --deal "$id" --input "$demo/check-pay.json" >check.json
 
 # Trailing whitespace is not part of the card: a saved file may end in a
 # newline, spaces or CRLF. $(...) drops the trailing newlines.
 trim_end() { sed -e 's/[[:space:]]*$//'; }
-card=$(jq -r .card "$work/check.json" | trim_end)
+card=$(jq -r .card check.json | trim_end)
 expected=$(trim_end <"$demo/expected-card.txt")
 printf '%s\n\n' "$card"
 if [[ "$card" != "$expected" ]]; then
@@ -67,17 +75,11 @@ if [[ "$card" != "$expected" ]]; then
   exit 1
 fi
 
-check_id=$(jq -r .check_id "$work/check.json")
-deal note --deal "$id" --kind approval --check "$check_id" --choice hold --said "hold" >/dev/null
-# The sealed records carry no raw values; check them against the profile.
-deal export --deal "$id" --output "$work/records.json" >/dev/null
-if [[ -n "$profile_dir" ]] && command -v python3 >/dev/null; then
-  python3 "$profile_dir/check_profile.py" "$work/records.json" | tail -1
-fi
+# The user holds: the answer cites the card exactly as shown.
+jq -r .card check.json >card.txt
+check_id=$(jq -r .check_id check.json)
+buyer note --deal "$id" --kind approval --check "$check_id" --choice hold --said "hold" --shown-card card.txt >/dev/null
 
-if [[ -n "${1:-}" ]]; then
-  deal report --deal "$id" --html "$1" | jq -r .trail
-  printf '\nreport: %s\n' "$1"
-else
-  deal report --deal "$id" | jq -r .trail
-fi
+# The report: each row's status and check, and the note that the person
+# has signed nothing yet. Nothing was paid, so nothing is settled.
+buyer report --deal "$id" | jq -r '(.report.rows[] | "\(.id): \(.status), check \(.check)"), "settled: \(.report.settled)", "", .settled_note'

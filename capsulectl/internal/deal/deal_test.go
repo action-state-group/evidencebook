@@ -520,46 +520,54 @@ func TestDealPayAnywayThenTermsChangeAgain(t *testing.T) {
 	assert.Equal(t, ok["capsule_id"], paid["authorized_by"])
 }
 
-// The demo script compares the card with expected-card.txt ignoring trailing
-// whitespace: a file saved with an extra newline, trailing spaces or CRLF
-// line endings is the same card.
+// Each demo script compares the card with expected-card.txt ignoring
+// trailing whitespace: a file saved with an extra newline, trailing spaces
+// or CRLF line endings is the same card. run-demo.sh is the x-deal-v1 demo,
+// run-demo-x-deal-v0.sh the legacy one (until evidencebook#656).
 func TestDealDemoScriptIgnoresTrailingWhitespace(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds capsulectl and runs the demo script")
+		t.Skip("builds capsulectl and runs the demo scripts")
 	}
 	for _, tool := range []string{"bash", "jq"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip(tool + " not installed")
 		}
 	}
-	work := t.TempDir()
 	bin := filepath.Join(installedCapsulectl(t), "capsulectl")
+	for _, c := range []struct{ script, demo, from, to string }{
+		{"run-demo.sh", "demo/lamp", "for the desk lamp", "for the floor lamp"},
+		{"run-demo-x-deal-v0.sh", "demo/jet-ski", "for Saturday", "for Sunday"},
+	} {
+		t.Run(c.script, func(t *testing.T) {
+			skill := filepath.Join(t.TempDir(), "deal")
+			for _, dir := range []string{"scripts", c.demo} {
+				require.NoError(t, os.CopyFS(filepath.Join(skill, dir), os.DirFS(filepath.Join("../../skills/deal", dir))))
+			}
+			card := filepath.Join(skill, c.demo, "expected-card.txt")
+			want, err := os.ReadFile(card)
+			require.NoError(t, err)
+			padded := strings.TrimRight(string(want), "\n") + "  \r\n\n"
+			require.NoError(t, os.WriteFile(card, []byte(padded), 0o600))
 
-	skill := filepath.Join(work, "deal")
-	for _, dir := range []string{"scripts", "demo/jet-ski"} {
-		require.NoError(t, os.CopyFS(filepath.Join(skill, dir), os.DirFS(filepath.Join("../../skills/deal", dir))))
+			demo := func() (string, error) {
+				run := exec.Command("bash", filepath.Join(skill, "scripts", c.script))
+				run.Env = append(os.Environ(), "CAPSULECTL="+bin, "DEAL_PROFILE_DIR="+dealProfileDir)
+				out, err := run.CombinedOutput()
+				return string(out), err
+			}
+			got, err := demo()
+			require.NoError(t, err, got)
+			assert.Contains(t, got, strings.TrimSpace(string(want)))
+
+			// A card that differs in anything but trailing whitespace still fails.
+			other := strings.Replace(padded, c.from, c.to, 1)
+			require.NotEqual(t, padded, other)
+			require.NoError(t, os.WriteFile(card, []byte(other), 0o600))
+			got, err = demo()
+			require.Error(t, err, got)
+			assert.Contains(t, got, "unexpected card")
+		})
 	}
-	want, err := os.ReadFile(filepath.Join(jetSkiDemo, "expected-card.txt"))
-	require.NoError(t, err)
-	padded := strings.TrimRight(string(want), "\n") + "  \r\n\n"
-	require.NoError(t, os.WriteFile(filepath.Join(skill, "demo/jet-ski/expected-card.txt"), []byte(padded), 0o600))
-
-	demo := func() (string, error) {
-		run := exec.Command("bash", filepath.Join(skill, "scripts/run-demo.sh"))
-		run.Env = append(os.Environ(), "CAPSULECTL="+bin, "DEAL_PROFILE_DIR="+dealProfileDir)
-		out, err := run.CombinedOutput()
-		return string(out), err
-	}
-	got, err := demo()
-	require.NoError(t, err, got)
-	assert.Contains(t, got, strings.TrimSpace(string(want)))
-
-	// A card that differs in anything but trailing whitespace still fails.
-	other := strings.Replace(padded, "for Saturday", "for Sunday", 1)
-	require.NoError(t, os.WriteFile(filepath.Join(skill, "demo/jet-ski/expected-card.txt"), []byte(other), 0o600))
-	got, err = demo()
-	require.Error(t, err, got)
-	assert.Contains(t, got, "unexpected card")
 }
 
 // "Call the number I found": the choice is sealed as the answer (it does not
