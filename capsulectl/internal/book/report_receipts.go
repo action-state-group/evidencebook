@@ -3,7 +3,10 @@ package book
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
@@ -32,22 +35,38 @@ func readReceipts(path string) (*report.Receipts, error) {
 	if path == "" {
 		return nil, nil
 	}
-	raw, err := cli.ReadInput(path)
+	// The file holds whole receipt bundles, so it is read with the bundle cap.
+	raw, err := cli.ReadBundleInput(path)
 	if err != nil {
 		return nil, err
 	}
+	const shape = "--receipts must be a JSON list of {\"exchange_capsule_id\", \"receipt\" | \"held\": true}: "
+	if !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) {
+		return nil, cli.InputError(shape + "it is not a list")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	var entries []receiptEntry
-	if err := decoder.Decode(&entries); err != nil {
-		return nil, cli.InputError("--receipts must be a JSON list of {\"exchange_capsule_id\", \"receipt\" | \"held\": true}: " + err.Error())
+	var items []json.RawMessage
+	if err := decoder.Decode(&items); err != nil {
+		return nil, cli.InputError(shape + err.Error())
 	}
 	var extra any
 	if decoder.Decode(&extra) != io.EOF {
 		return nil, cli.InputError("--receipts must contain one JSON list")
 	}
-	deals := make([]report.Receipt, len(entries))
-	for i, e := range entries {
+	deals := make([]report.Receipt, len(items))
+	for i, item := range items {
+		// An entry decides whether a receipt is carried or held, so a field
+		// written twice (or twice by case, which Go's decoder folds) is
+		// refused rather than read as its last value.
+		if err := entryKeysOnce(item); err != nil {
+			return nil, cli.InputError(shape + "entry " + strconv.Itoa(i) + ": " + err.Error())
+		}
+		var e receiptEntry
+		d := json.NewDecoder(bytes.NewReader(item))
+		d.DisallowUnknownFields()
+		if err := d.Decode(&e); err != nil {
+			return nil, cli.InputError(shape + "entry " + strconv.Itoa(i) + ": " + err.Error())
+		}
 		if e.Exchange == "" {
 			return nil, cli.InputError("--receipts: an entry has no exchange_capsule_id")
 		}
@@ -67,4 +86,31 @@ func readReceipts(path string) (*report.Receipts, error) {
 		return nil, err
 	}
 	return &report.Receipts{Module: module, Deals: deals}, nil
+}
+
+// entryKeysOnce refuses a JSON object that is not an object or names a key
+// twice, ignoring case.
+func entryKeysOnce(item json.RawMessage) error {
+	d := json.NewDecoder(bytes.NewReader(item))
+	if token, err := d.Token(); err != nil || token != json.Delim('{') {
+		return errors.New("it is not an object")
+	}
+	seen := make(map[string]bool)
+	for d.More() {
+		token, err := d.Token()
+		if err != nil {
+			return err
+		}
+		key, _ := token.(string)
+		folded := strings.ToLower(key)
+		if seen[folded] {
+			return errors.New("the key " + strconv.Quote(key) + " is written twice")
+		}
+		seen[folded] = true
+		var skip json.RawMessage
+		if err := d.Decode(&skip); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -38,7 +38,16 @@ func TestLaunchersDoNotLinkEachOther(t *testing.T) {
 	deal := deps(module + "cmd/capsulectl-deal")
 	assert.True(t, strings.Contains(book, module+"internal/book"), "the book launcher links the book commands")
 	assert.False(t, linked(book, module+"internal/deal"), "the book launcher must not link the deal package")
-	assert.True(t, linked(book, module+"internal/deal/assets"), "the book launcher links the deal view's files, to carry deal receipts")
+	// Of everything under internal/deal, the book launcher links the deal
+	// view's files and nothing else, so no package of the deal commands'
+	// hooks reaches it by a new import.
+	var underDeal []string
+	for _, line := range strings.Split(book, "\n") {
+		if strings.HasPrefix(line, module+"internal/deal") {
+			underDeal = append(underDeal, line)
+		}
+	}
+	assert.Equal(t, []string{module + "internal/deal/assets"}, underDeal, "the book launcher links the deal view's files, to carry deal receipts, and no other deal package")
 	assert.True(t, linked(deal, module+"internal/deal"), "the deal launcher links the deal commands")
 	assert.False(t, strings.Contains(deal, module+"internal/book"), "the deal launcher must not link the book package")
 }

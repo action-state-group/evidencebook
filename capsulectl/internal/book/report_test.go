@@ -66,7 +66,9 @@ func TestReportBuildReadsABundle(t *testing.T) {
 	}
 	// report check reads the page it checks, which embeds a bundle.
 	// bundle-diff reads the higher and the lower bundle.
-	assert.Equal(t, map[string]int{"reportCommands": 1, "reportCheckCommand": 1, "bundleDiffCommand": 2}, calls)
+	// --receipts is a list of whole receipt bundles, so a settlement's
+	// receipts may together pass MaxInput though each is a bundle (#764).
+	assert.Equal(t, map[string]int{"reportCommands": 1, "reportCheckCommand": 1, "bundleDiffCommand": 2, "readReceipts": 1}, calls)
 }
 
 func runReportBuild(t *testing.T, bundlePath string, extra ...string) (reportBuildResult, string, error) {
