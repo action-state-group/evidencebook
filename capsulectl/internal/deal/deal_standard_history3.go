@@ -70,7 +70,7 @@ func (s *dealSession) standardHistoryV1(ctx context.Context, tick uint64, deriva
 		return standardHistoryCard{}, err
 	}
 	if settings.changedAfter(cutOf(s.p, anchor.Tick.N, anchor.Tick.At)) {
-		return standardHistoryCard{}, fmt.Errorf("%w: %w", cli.Hint(errCardNotYet{}, "the declaration or policy changed after the last checkpoint: run `deal tick`, then ask again"), errStaleAnchor)
+		return standardHistoryCard{}, fmt.Errorf("%w: %w", cli.Hint(errCardNotYet{}, staleAnchorMessage(ctx, cadence)), errStaleAnchor)
 	}
 	// Stamp times are read from every checkpoint at or after a stamp, so they
 	// agree with the handover (which holds none after its anchor) only for the

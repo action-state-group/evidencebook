@@ -73,6 +73,8 @@ The five things that broke on 2026-10-04, and how each one ends up as an alarm:
 
 ## Setting it up (the host is the operator's)
 
+The canary's scripted deal is an x-deal-v0 purchase, the legacy version. capsulectl-deal writes x-deal-v1 by default, so `deal canary run` sets a canary profile that has no version setting to x-deal-v0 on its first run, and says so (`version_pinned`). A canary deployed before the default changed keeps ticking with no step from you. A new canary profile's first tick comes one cadence interval after `deal init`. The canary moves to x-deal-v1 before the legacy setting is removed (evidencebook#656).
+
 ```bash
 # A profile of its own, witnessed by default; nothing else ticks it.
 capsulectl --profile canary deal init --dir ~/.local/share/capsule/canary

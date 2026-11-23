@@ -120,6 +120,8 @@ fixture 2-unilateral-receipt
 demo="$root/skills/deal/demo/retail-checkout"
 export CAPSULE_DEAL_CHECK_URL=
 capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
+# x-deal-v1 is the default; this script walks an x-deal-v0 deal (evidencebook#626, #656).
+capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
 id=$(capsulectl --profile deal deal open --input "$demo/open.json" | jq -r .deal_id)
 capsulectl --profile deal deal check --deal "$id" --input "$demo/check-pay.json" >/dev/null
 capsulectl --profile deal deal note --deal "$id" --kind act --input "$demo/act-pay.json" >/dev/null
@@ -145,6 +147,8 @@ STUB
 chmod 0755 "$plugins/example-rules"
 export CAPSULECTL_PLUGIN_ROOTS="$plugins:$work/plugins"
 capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
+# x-deal-v1 is the default; this script walks an x-deal-v0 deal (evidencebook#626, #656).
+capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
 jq -n --arg c "$plugins/example-rules" '{command: [$c]}' >pin.json
 capsulectl --profile deal profile update --rules-checker pin.json >/dev/null
 id=$(capsulectl --profile deal deal open --input "$demo/open.json" | jq -r .deal_id)
@@ -165,6 +169,8 @@ export CAPSULECTL_PLUGIN_ROOTS="$work/plugins"
 fixture 8-seller-buyer-copy
 export CAPSULE_DEAL_CHECK_URL=
 capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
+# x-deal-v1 is the default; this script walks an x-deal-v0 deal (evidencebook#626, #656).
+capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
 cat >open.json <<'JSON'
 {"type": "purchase", "demo": true, "channel": "marketplace",
  "intent": {"verbatim": "Sell my example bicycle; ask 1900. Tell them about the scratch.", "party_role": "seller",
@@ -212,6 +218,8 @@ fixture 9-seller-later-evidence
 export CAPSULE_DEAL_CHECK_URL=
 src="$root/internal/deal/testdata/deal/seller-later-evidence"
 capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
+# x-deal-v1 is the default; this script walks an x-deal-v0 deal (evidencebook#626, #656).
+capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
 id=$(capsulectl --profile deal deal open --records typed --input "$src/open.json" | jq -r .deal_id)
 note() { capsulectl --profile deal deal note --deal "$id" "$@"; }
 note --kind claim --check "$(represent "$id" "$src/represent-condition.json")" --input "$src/claim-condition.json" >/dev/null
@@ -248,6 +256,8 @@ mkdir -p buyer seller
 side() { export XDG_CONFIG_HOME="$work/3-bilateral-composed/$1/config"; cd "$work/3-bilateral-composed/$1"; }
 side buyer
 capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
+# x-deal-v1 is the default; this script walks an x-deal-v0 deal (evidencebook#626, #656).
+capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
 cat >open.json <<'JSON'
 {"type": "purchase", "channel": "web",
  "intent": {"verbatim": "buy me the example bicycle for at most 1900", "max_total_minor": 190000, "allowed": ["pay"]},
@@ -261,6 +271,8 @@ buyer_key=$(capsulectl profile show deal | jq -er '.TrustedKeys[0]')
 buyer_checkpoint=$(capsulectl profile show deal | jq -er '.Checkpoint.TrustedKeys[0]')
 side seller
 capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
+# x-deal-v1 is the default; this script walks an x-deal-v0 deal (evidencebook#626, #656).
+capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
 cat >open.json <<'JSON'
 {"type": "purchase", "demo": true, "channel": "web",
  "intent": {"verbatim": "Sell my example bicycle; ask 1900", "party_role": "seller",

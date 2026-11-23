@@ -1227,7 +1227,7 @@ func dealInitCommand() *cobra.Command {
 			err = s.close()
 		}
 		if err != nil {
-			return fmt.Errorf("deal profile %s and its store were created, but putting the store on its shelf failed; run `capsulectl --profile %s deal tick` to finish: %w", name, name, err)
+			return fmt.Errorf("deal profile %s and its store were created, but putting the store on its shelf failed; run `capsulectl --profile %s deal set-version x-deal-v1 --migrate` to finish: %w", name, name, err)
 		}
 		// A new store starts in the layout x-deal-v1 deals (the default)
 		// need: it holds nothing, so the move has nothing to carry.
@@ -1273,8 +1273,13 @@ func dealInitCommand() *cobra.Command {
 
 func dealOpenCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "open", Short: "Seal the baseline of an x-deal-v0 deal (the legacy version): the user's verbatim words, who, terms, claims and recourse; x-deal-v1 deals start with `deal offer`", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-		if err := requireLegacyV0(c, "`deal open` starts an x-deal-v0 deal"); err != nil {
-			return err
+		// A buyer's thread of an x-deal-v0 sale already open follows the
+		// sale's version, as a deal follows its offer's: only a new deal
+		// needs the legacy setting.
+		if saleID, _ := c.Flags().GetString("sale"); saleID == "" {
+			if err := requireLegacyV0(c, "`deal open` starts a legacy x-deal-v0 deal"); err != nil {
+				return err
+			}
 		}
 		path, _ := c.Flags().GetString("input")
 		raw, err := cli.ReadInput(path)

@@ -139,7 +139,7 @@ func v1Refusal(verb, dealID string) error {
 // errNotMigrated is what a v1 verb says on a deal store still in the old
 // layout, never the library's error (§3a, item 3).
 func errNotMigrated() error {
-	return fmt.Errorf("%w: %w", errNotMigratedSentinel, cli.InputError("This deal store is in an older layout, and x-deal-v1 deals (the default) need the new one. Move it once with `deal set-version x-deal-v1 --migrate` (one-way; a backup is kept, and `deal set-version --help` says more); your open deals keep working."))
+	return fmt.Errorf("%w: %w", errNotMigratedSentinel, cli.InputError("This deal store is in an older layout, and x-deal-v1 deals (the default) need the new one. Move it once with `deal set-version x-deal-v1 --migrate` (one-way; a backup is kept beside the store, and `deal set-version --help` says more). Your open deals keep their version and keep working after the move."))
 }
 
 // errNotMigratedSentinel marks errNotMigrated for errors.Is.
@@ -499,12 +499,10 @@ func migrateNewStore(ctx context.Context, p cli.Profile) (err error) {
 	if err := cad.Migrate(ctx, cli.DealClock()); err != nil {
 		return err
 	}
-	backup, err := backupPath(p)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(backup); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	// The backup of a store that held nothing is removed; failing to remove
+	// it leaves an empty file, which harms nothing, so it is not an error.
+	if backup, err := backupPath(p); err == nil {
+		_ = os.Remove(backup)
 	}
 	return nil
 }

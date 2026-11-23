@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
-	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,8 +40,8 @@ func TestANewProfileWritesV1ByDefault(t *testing.T) {
 
 	out := dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", filepath.Join(t.TempDir(), "o.json"))
 	assert.NotEmpty(t, out["deal_id"])
-	assert.Contains(t, v1Err(t, "open", "--input", filepath.Join(retailDemo, "open.json")), "`deal open` starts an x-deal-v0 deal, and this profile writes x-deal-v1 deals")
-	assert.Contains(t, v1Err(t, "sale", "new", "--input", writeJSON(t, saleInput)), "`deal sale new` starts an x-deal-v0 sale")
+	assert.Contains(t, v1Err(t, "open", "--input", filepath.Join(retailDemo, "open.json")), "`deal open` starts a legacy x-deal-v0 deal, and this profile writes x-deal-v1 deals")
+	assert.Contains(t, v1Err(t, "sale", "new", "--input", writeJSON(t, saleInput)), "`deal sale new` starts a legacy x-deal-v0 sale")
 
 	again := dealRun(t, "set-version", "x-deal-v1", "--migrate")
 	assert.Equal(t, dealVersionV1, again["deal_version"])
@@ -159,7 +158,39 @@ func TestAV0DealReadsTheSameAfterTheFlip(t *testing.T) {
 	r3, e3 := read()
 	assert.Equal(t, export, e3, "the sealed records are unchanged by the move")
 	assert.NotEmpty(t, r3)
+	assert.Equal(t, report, r3, "its report reads the same after the move")
 	bundle := filepath.Join(t.TempDir(), "b.json")
 	dealRun(t, "report", "--deal", id, "--bundle", bundle)
-	_ = xdealv1.Profile
+	result, err := verifyWithDirectory(t, bundle, "")
+	require.NoError(t, err)
+	assert.Equal(t, "VALID", result["verdict"], "the v0 bundle verifies after the move")
+}
+
+// A buyer's thread of an x-deal-v0 sale opened before the flip follows the
+// sale's version: a profile with no setting still opens it.
+func TestAV0SaleOpenBeforeTheFlipTakesABuyer(t *testing.T) {
+	dealFixture(t)
+	saleID, _ := newSale(t)
+	p := v1Profile(t)
+	dir, err := shDir(p)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(filepath.Join(dir, dealVersionFile)))
+	assert.NotEmpty(t, buyerThread(t, saleID, "buyer-a.example"), "the sale's thread opens on the default")
+	assert.Contains(t, v1Err(t, "sale", "new", "--input", writeJSON(t, saleInput)), "legacy x-deal-v0 sale")
+}
+
+// On a fresh profile, a card asked for right after declaring says when the
+// next checkpoint can be cut, which covers the declaration.
+func TestAFreshProfilesCardSaysWhenToAskAgain(t *testing.T) {
+	freshProfile(t)
+	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
+	msg := v1Err(t, "standard-history", "card", "--out", filepath.Join(t.TempDir(), "c.json"))
+	assert.Contains(t, msg, "run `deal tick` then and ask again")
+}
+
+// The flip leaves the staple alone: it is history_card/2 (Steven u539).
+func TestTheStapleIsUnchangedByTheFlip(t *testing.T) {
+	freshProfile(t)
+	cmd := shStapleCommand()
+	assert.Equal(t, "history_card/2", cmd.Flags().Lookup("derivation").DefValue)
 }

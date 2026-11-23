@@ -50,6 +50,8 @@ ensure_store() {
   local home=$1
   if ! side "$home" list >/dev/null 2>&1; then
     side "$home" init --dir "$home/deal-store" --materiality builtin:neutral --no-witness >/dev/null
+    # x-deal-v1 is the default; this replay walks an x-deal-v0 sale (evidencebook#626, #656).
+    side "$home" set-version x-deal-v0 >/dev/null
   fi
 }
 ensure_store "$seller_home"

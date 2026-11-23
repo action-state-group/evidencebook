@@ -192,7 +192,7 @@ func canaryRunCommand() *cobra.Command {
 			}
 		}
 		if pinned {
-			out["version_pinned"] = "this canary profile had no deal version setting; it is set to the legacy x-deal-v0, which its scripted deal is"
+			out["version_pinned"] = "this canary profile had no deal version setting; it is set to the legacy x-deal-v0, the version its scripted deal uses"
 		}
 		return cli.Output(c, out)
 	}}

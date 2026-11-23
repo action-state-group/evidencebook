@@ -508,11 +508,7 @@ func (s *dealSession) standardHistory(ctx context.Context, tick uint64) (standar
 		return standardHistoryCard{}, err
 	}
 	if settings.changedAfter(cutOf(s.p, anchor.Tick.N, anchor.Tick.At)) {
-		msg := "the declaration or policy changed after the last checkpoint: run `deal tick`, then ask again"
-		if last, ok, err := cadence.Last(ctx); err == nil && ok && last.DueNext.After(cli.DealClock()) {
-			msg = "the declaration or policy changed after the last checkpoint. The next checkpoint can be cut at " + last.DueNext.UTC().Format(time.RFC3339) + "; run `deal tick` then and ask again"
-		}
-		return standardHistoryCard{}, fmt.Errorf("%w: %w", cli.Hint(errCardNotYet{}, msg), errStaleAnchor)
+		return standardHistoryCard{}, fmt.Errorf("%w: %w", cli.Hint(errCardNotYet{}, staleAnchorMessage(ctx, cadence)), errStaleAnchor)
 	}
 	x := s.books()
 	var deals []standardhistory.Deal
@@ -802,4 +798,14 @@ func (s *dealSession) v0CardNote(ctx context.Context, derivation string) (string
 		}
 	}
 	return "", nil
+}
+
+// staleAnchorMessage says a card's anchor predates the declaration or policy,
+// and when the next checkpoint can be cut, which a tick due only then makes:
+// a store's first tick (deal init, a move) sets the next one an interval on.
+func staleAnchorMessage(ctx context.Context, cadence *evidencebook.Cadence) string {
+	if last, ok, err := cadence.Last(ctx); err == nil && ok && last.DueNext.After(cli.DealClock()) {
+		return "the declaration or policy changed after the last checkpoint. The next checkpoint can be cut at " + last.DueNext.UTC().Format(time.RFC3339) + "; run `deal tick` then and ask again"
+	}
+	return "the declaration or policy changed after the last checkpoint: run `deal tick`, then ask again"
 }
