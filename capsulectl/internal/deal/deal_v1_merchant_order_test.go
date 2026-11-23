@@ -234,6 +234,15 @@ func TestBothSidesLegsUnderTheMerchantOrderReadUnjoined(t *testing.T) {
 		raw, _ := json.Marshal(report["row_notes"])
 		assert.Contains(t, string(raw), "a generic verifier does not join")
 	}
+	// Each side's shared copy is written: the order number, known before
+	// paying and so in the check's own event, and the origin travel in the
+	// legs (the B6 hand run found this copy refused).
+	for _, side := range []v1Side{h.buyer, h.seller} {
+		side.act(t)
+		bundle := filepath.Join(t.TempDir(), "shared.json")
+		out := dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "the other side", "--bundle", bundle)
+		assert.Equal(t, bundle, out["bundle"], "%v", out)
+	}
 	// An origin on a Lightning payment's --status is refused plainly.
 	h2, check2 := buyerCheckedFor(t, paymentOffer, 6000, v1LnHash)
 	dealRun(t, "settle", "--deal", h2.dealID, "--check", check2, "--sent", "--payment-ref-type", "ln.payment_hash")
@@ -277,7 +286,7 @@ func TestACardCheckoutsSharedCopyIsWritten(t *testing.T) {
 	raw, err := os.ReadFile(bundle)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "https://kettle.example", "the reference travels whole")
-	assert.Equal(t, []string{"https://kettle.example"}, copyMerchantOrigins(raw), "the origin comes from the copy's own legs")
+	assert.ElementsMatch(t, []string{"K-12", "https://kettle.example"}, copyPaymentRefs(raw), "the reference and origin come from the copy's own legs")
 }
 
 // The allowance takes out only the exact origin: any other form of the
@@ -288,16 +297,17 @@ func TestTheOriginAllowanceHidesNothingElse(t *testing.T) {
 	events := []sealedEvent{{Event: dealEvent{Kind: "open", Open: &dealOpen{Who: dealWho{Name: "Kettle Shop", Domain: "kettle.example", Email: "shop@kettle.example"}}}}}
 	leg := `{"payment_ref":{"type":"x-deal-v1.merchant_order","value":"K-12","origin":"https://kettle.example"}}`
 	for _, audience := range []string{"counterparty", "adjudicator"} {
-		origins := copyMerchantOrigins([]byte(leg))
-		require.Equal(t, []string{"https://kettle.example"}, origins)
+		origins := copyPaymentRefs([]byte(leg))
+		require.ElementsMatch(t, []string{"K-12", "https://kettle.example"}, origins)
 		assert.NoError(t, dealShareGate([]byte(leg), events, audience, origins...), audience)
 		for _, more := range []string{`"note":"see kettle.example"`, `"note":"mail shop@kettle.example"`, `"note":"Kettle Shop"`} {
 			copy := `{"leg":` + leg + `,` + more + `}`
-			assert.ErrorContains(t, dealShareGate([]byte(copy), events, audience, copyMerchantOrigins([]byte(copy))...), "private value", "%s: %s", audience, more)
+			assert.ErrorContains(t, dealShareGate([]byte(copy), events, audience, copyPaymentRefs([]byte(copy))...), "private value", "%s: %s", audience, more)
 		}
 	}
 	noLeg := `{"note":"https://kettle.example"}`
-	assert.Empty(t, copyMerchantOrigins([]byte(noLeg)), "an origin outside a merchant order reference is not allowed")
-	assert.ErrorContains(t, dealShareGate([]byte(noLeg), events, "counterparty", copyMerchantOrigins([]byte(noLeg))...), "private value")
-	assert.Empty(t, copyMerchantOrigins([]byte(`{"payment_ref":{"type":"x-deal-v1.merchant_order","origin":"https://Kettle.Example/x"}}`)), "only an origin in normal form")
+	assert.Empty(t, copyPaymentRefs([]byte(noLeg)), "an origin outside a merchant order reference is not allowed")
+	assert.ErrorContains(t, dealShareGate([]byte(noLeg), events, "counterparty", copyPaymentRefs([]byte(noLeg))...), "private value")
+	assert.Empty(t, copyPaymentRefs([]byte(`{"payment_ref":{"type":"x-deal-v1.merchant_order","origin":"https://Kettle.Example/x"}}`)), "only an origin in normal form")
+	assert.Empty(t, copyPaymentRefs([]byte(`{"payment_ref":{"type":"acp.order_id","value":"4111 1111 1111 1111"}}`)), "never a card number")
 }

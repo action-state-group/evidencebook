@@ -45,7 +45,8 @@ import (
 // allowed are values the copy may carry although the local store holds them:
 // the merchant's order id and tracking number, in the counterparty's copy,
 // when shareableOrderID and shareableTracking allow them, and on x-deal-v1 the
-// merchant order origins the copy's legs carry, in any shared copy. Each is taken out of the page, as written and
+// payment references and merchant order origins the copy's legs carry, in any
+// shared copy. Each is taken out of the page, as written and
 // JSON-escaped, before any check, so it neither trips the checks nor hides
 // anything else.
 func dealPageGate(page []byte, events []sealedEvent, allowed ...string) error {

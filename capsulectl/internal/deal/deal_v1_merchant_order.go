@@ -204,12 +204,14 @@ func (s *dealSession) v1PaymentRowNotes(ctx context.Context, d *v1Deal, rows []s
 	return out, nil
 }
 
-// copyMerchantOrigins are the checkout origins of the merchant order
-// references a copy carries: each payment_ref object of the type, anywhere in
-// the copy's JSON, whose origin is already in normal form. They are the
-// merchant's own identity, in legs sealed and sent whole, so a shared copy
-// may carry them (evidencebook#771); only origins of legs in the copy count.
-func copyMerchantOrigins(data []byte) []string {
+// copyPaymentRefs are the payment reference values a copy's legs carry, and
+// the checkout origins of its merchant order references (in normal form):
+// each payment_ref object anywhere in the copy's JSON. A leg is sealed and
+// sent whole, so its reference cannot be withheld from a shared copy, and a
+// reference is never card data (deal check and deal settle refuse it); the
+// share gate allows them (evidencebook#771). Only references of legs in the
+// copy count.
+func copyPaymentRefs(data []byte) []string {
 	var v any
 	if json.Unmarshal(data, &v) != nil {
 		return nil
@@ -220,8 +222,12 @@ func copyMerchantOrigins(data []byte) []string {
 	walk = func(x any) {
 		switch t := x.(type) {
 		case map[string]any:
-			if ref, ok := t["payment_ref"].(map[string]any); ok && ref["type"] == merchantOrderType {
-				if o, ok := ref["origin"].(string); ok && !seen[o] {
+			if ref, ok := t["payment_ref"].(map[string]any); ok {
+				if v, ok := ref["value"].(string); ok && strings.TrimSpace(v) != "" && !cardLike(v) && !seen[v] {
+					seen[v] = true
+					out = append(out, v)
+				}
+				if o, ok := ref["origin"].(string); ok && ref["type"] == merchantOrderType && !seen[o] {
 					if n, err := normalOrigin(o); err == nil && n == o {
 						seen[o] = true
 						out = append(out, o)
