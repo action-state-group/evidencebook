@@ -198,7 +198,16 @@ func TestTheCallersGateChecksEachCarriedReceipt(t *testing.T) {
 	pass := func(b []byte) error { seen = append(seen, string(b)); return nil }
 	_, err := checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims)
 	require.NoError(t, err)
-	assert.Equal(t, []string{good}, seen, "only the carried bundle is checked")
+	assert.Equal(t, []string{good}, seen, "only the carried bundle is checked, not the held one")
+	seen = nil
+	_, err = checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex2", NotClosed: true}}}, claims)
+	require.NoError(t, err)
+	assert.Empty(t, seen, "a not-closed receipt is not checked")
+	// A bundle the page gate refuses never reaches the caller's gate.
+	tampered := strings.Replace(good, `"root":"`, `"root":"0`, 1)
+	_, err = checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: tampered}}}, claims)
+	assert.ErrorContains(t, err, "does not pass the page gate")
+	assert.Empty(t, seen)
 	refuse := func([]byte) error { return cli.InputError("the deal section does not verify") }
 	_, err = checkReceipts(&Receipts{Module: module, Gate: refuse, Deals: []Receipt{{Exchange: "ex1", Bundle: good}}}, claims)
 	assert.ErrorContains(t, err, "does not pass the caller's check")
