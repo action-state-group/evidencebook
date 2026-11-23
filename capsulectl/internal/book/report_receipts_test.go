@@ -115,6 +115,24 @@ func TestAHeldReceiptAndAnUncitedOneLeaveTheRestAlone(t *testing.T) {
 	assert.Equal(t, []string{"an-exchange-outside-the-window"}, ignoredReceipts(t, output), "the build output names the receipt that reached no deal")
 }
 
+func TestANotClosedEntryIsAnEntryAndOnlyOneStateAnEntry(t *testing.T) {
+	page, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "not_closed": true}}))
+	require.NoError(t, err)
+	receipts := pageOptions(t, page)["receipts"].(map[string]any)
+	_, present := receipts["d1"]
+	assert.True(t, present, "a deal not closed is an entry, never a missing one")
+
+	refused := func(entry map[string]any, want string) {
+		t.Helper()
+		_, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{entry}))
+		require.Error(t, err)
+		assert.ErrorContains(t, err, want)
+	}
+	refused(map[string]any{"exchange_capsule_id": settlementExchange(t), "not_closed": true, "held": true}, "exactly one of them")
+	refused(map[string]any{"exchange_capsule_id": settlementExchange(t), "not_closed": true, "receipt": json.RawMessage(mustRead(t, dealReceipt))}, "exactly one of them")
+	refused(map[string]any{"exchange_capsule_id": settlementExchange(t), "notclosed": true}, "is not one of")
+}
+
 // ignoredReceipts reads the ignored_receipts the build reports.
 func ignoredReceipts(t *testing.T, output string) []string {
 	t.Helper()
@@ -159,7 +177,7 @@ func TestReceiptsFlagRefusals(t *testing.T) {
 	refused("bundle.json", text(`[{"exchange_capsule_id":"a","exchange_capsule_id":"b","held":true}]`), "is written twice")
 	refused("bundle.json", text(`[null]`), "it is not an object")
 	refused("bundle.json", receiptsFile(t, []map[string]any{entry, entry}), `deal "d1" has more than one receipt`)
-	refused("bundle.json", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t)}}), "either carry its bundle or be held")
+	refused("bundle.json", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t)}}), "exactly one of them")
 	refused("shared-bundle.json", receiptsFile(t, []map[string]any{entry}), "more than one deal cite")
 	// A bundle that is no deal receipt is refused: the deal view would not draw it.
 	refused("bundle.json", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "receipt": json.RawMessage(mustRead(t, filepath.Join(settlementDir, "receipt.json")))}}), "is not one the capsulectl.deal-view/v0 module draws")
@@ -249,6 +267,12 @@ func TestTheBrowserOpensACarriedReceiptAndReadsAHeldOne(t *testing.T) {
 	held, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "held": true}}))
 	require.NoError(t, err)
 	assert.Contains(t, clickedReceiptText(t, held), "The holder's disclosure policy keeps this receipt off this page.")
+
+	notClosed, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "not_closed": true}}))
+	require.NoError(t, err)
+	closedText := clickedReceiptText(t, notClosed)
+	assert.Contains(t, closedText, "No receipt: this deal had not closed when this page was built.", "Sherlock2's locked line (capsule-viewer#358), not the built-wrong one")
+	assert.NotContains(t, closedText, "Receipt not carried with this page")
 
 	none, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{}))
 	require.NoError(t, err)

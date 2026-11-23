@@ -240,7 +240,11 @@ func TestDealDiscloseCarriesTheShareableOrderID(t *testing.T) {
 	assert.Equal(t, "SE-104233", rows[0].(map[string]any)["order_id"])
 
 	_, raw = sharedCopy(t, dealID, "adjudicator", "the card issuer")
-	for _, v := range []string{"SE-104233", "104233", "Sam Customer", "sam.customer@mail.example"} {
+	for _, v := range []string{"SE-104233", "Sam Customer", "sam.customer@mail.example"} {
 		assert.NotContains(t, strings.ToLower(raw), strings.ToLower(v))
 	}
+	// The bare number must not stand alone, but six digits can also occur by
+	// chance inside a hex digest or signature of the copy (CI shard 8/10 hit
+	// one), so only an occurrence not flanked by hex digits counts.
+	assert.NotRegexp(t, `(?i)(^|[^0-9a-f])104233([^0-9a-f]|$)`, raw)
 }
