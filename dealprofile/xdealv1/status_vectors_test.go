@@ -79,7 +79,7 @@ func TestStatusVectors(t *testing.T) {
 			return out
 		}
 		ins, err := RowInputs(RowBooks{Offer: full.Offer, Own: retime(full.Own), Counterpart: retime(full.Counterpart), CaseBook: retime(full.CaseBook),
-			ConflictingFinalRulings: full.ConflictingFinalRulings}, at)
+			ConflictingFinalRulings: full.ConflictingFinalRulings, Checks: paymentChecks(full.Payments)}, at)
 		require.NoError(t, err, name)
 		rows := map[string]string{}
 		for i, row := range v.Rows {
@@ -94,6 +94,13 @@ func TestStatusVectors(t *testing.T) {
 	}
 
 	add("appendix-a", base, "2026-11-26T12:00:00Z", nil)
+
+	// payment-refund-not-checked: the payment row's check passed over the
+	// payment's own legs, with one refund leg it did not read
+	// (evidencebook#722); the row says how many, never which.
+	paid := base
+	paid.Payments = map[string]PaymentResult{"paid_as_agreed": {Check: PaymentPass, CheckedOver: []string{label("offer")}, NotChecked: []string{label("refund")}}}
+	add("payment-refund-not-checked", paid, "2026-11-26T12:00:00Z", nil)
 
 	// times-three-cases: a known time, a record first covered by stamp 4
 	// (resolved to its time), and a named record not yet written (its row's

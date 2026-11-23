@@ -14823,7 +14823,7 @@
           "payments": {
             "paid_as_agreed": {
               "check": "",
-              "reason": "refund_cites_offer",
+              "reason": "several_payments",
               "checked_over": [
                 "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737"
               ]

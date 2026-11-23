@@ -1384,7 +1384,9 @@ the witness receipts it is handed (A, above).
   `check_reason` says why the check failed or did not run. `check_excluded` is how many settle
   records it left out, never which: their digests are record digests, which the status value
   never holds (no shared identifier). The digests the check ran over go in the link value's
-  `checked_over` (8.2).
+  `checked_over` (8.2). `check_not_checked` is how many refund or remedy legs citing the offer's
+  terms leg the check did not read: it runs on the payment's own legs, and a refund's terms are not
+  defined yet (Steven, evidencebook#722).
 - **`counterparty_kind`** is `null` until the counterparty's profile record feeds it. No v1 record
   carries SH §7's class yet.
 - **The u611 marking.** A deal whose counterparty runs no layer has `counterparty_layer` false and

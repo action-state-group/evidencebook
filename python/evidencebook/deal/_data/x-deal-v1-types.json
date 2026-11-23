@@ -1846,6 +1846,13 @@
     "omitempty": true
    },
    {
+    "name": "not_checked",
+    "type": {
+     "slice": "string"
+    },
+    "omitempty": true
+   },
+   {
     "name": "settlement",
     "type": {
      "ptr": {

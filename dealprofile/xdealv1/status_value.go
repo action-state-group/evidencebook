@@ -172,6 +172,8 @@ type StatusFirstAct struct {
 // the owing side first made a remedy, ruled or not. CheckReason and
 // CheckExcluded say why a payment check did not run or failed, and how many
 // settle records it left out, without naming any (no shared identifier).
+// CheckNotChecked is how many refund or remedy legs it did not check
+// (PaymentResult.NotChecked, evidencebook#722).
 type StatusRow struct {
 	ID                    string         `json:"id"`
 	Input                 StatusRowInput `json:"input"`
@@ -180,6 +182,7 @@ type StatusRow struct {
 	RemedyMade            StatusTime     `json:"remedy_made"`
 	CheckReason           string         `json:"check_reason,omitempty"`
 	CheckExcluded         int            `json:"check_excluded,omitempty"`
+	CheckNotChecked       int            `json:"check_not_checked,omitempty"`
 }
 
 // StatusRowInput is rowstatus.Input without at, its times StatusTimes.
@@ -366,7 +369,7 @@ func BuildStatus(b StatusBooks) (StatusValue, error) {
 		}
 		row.RemedyMade = remedyMade(books[bookOfRole[in.Row.OwedBy]], in.Row.ID)
 		if p, ok := b.Payments[in.Row.ID]; ok {
-			row.CheckReason, row.CheckExcluded = p.Reason, len(p.Excluded)
+			row.CheckReason, row.CheckExcluded, row.CheckNotChecked = p.Reason, len(p.Excluded), len(p.NotChecked)
 		}
 		v.Rows = append(v.Rows, row)
 		v.Disputes = append(v.Disputes, disputesOf(books, bookOfRole, in.Row.ID, effective)...)

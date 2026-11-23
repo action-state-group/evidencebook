@@ -247,8 +247,9 @@ func TestPaymentCheckReadsTheLegsThatAnswer(t *testing.T) {
 func ptr[T any](v T) *T { return &v }
 
 // The check runs on the paid row's own payment only (Sherlock2 and its twin
-// on the 4a door): several payment rows, or a refund or remedy
-// leg citing the offer's terms leg leave it not run.
+// on the 4a door): several payment rows leave it not run, and a refund or
+// remedy leg citing the offer's terms leg is not checked while the payment's
+// own legs are (Steven, evidencebook#722).
 func TestPaymentCheckNotRun(t *testing.T) {
 	two := func(o *ProposeBody) {
 		o.TermsRows.Rows = append(o.TermsRows.Rows, o.TermsRows.Rows[0])
@@ -269,13 +270,33 @@ func TestPaymentCheckNotRun(t *testing.T) {
 	refund := &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(payerRead.Digest))}
 	m := d.payerMember("settled", "6000")
 	refundPair := d.leg(t, false, refund, m)
+	refundRead, err := VerifyBook(refundPair)
+	require.NoError(t, err)
 	res = d.check(t, payer, payee, refundPair)
-	assert.Equal(t, ReasonRefundCitesOffer, res.Reason)
-	assert.Empty(t, res.Check)
+	assert.Equal(t, PaymentPass, res.Check, "a passing payment passes beside its refund: %s", res.Reason)
+	assert.Equal(t, []string{refundRead.Digest}, res.NotChecked, "the refund leg is not checked")
+	assert.NotContains(t, res.CheckedOver, refundRead.Digest)
 
 	remedy := &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('3'), RemedyFor: &RemedyFor{Row: "as_described"}}
-	res = d.check(t, payer, payee, d.leg(t, false, remedy, d.payerMember("settled", "6000")))
-	assert.Equal(t, ReasonRefundCitesOffer, res.Reason)
+	remedyPair := d.leg(t, false, remedy, d.payerMember("settled", "6000"))
+	remedyRead, err := VerifyBook(remedyPair)
+	require.NoError(t, err)
+	res = d.check(t, payer, payee, remedyPair)
+	assert.Equal(t, PaymentPass, res.Check)
+	assert.Equal(t, []string{remedyRead.Digest}, res.NotChecked)
+
+	// The hole #722 closes: a payer who paid less than the terms seals a
+	// small refund citing the offer; the payment still fails.
+	dl := newPaymentDeal(t, nil, true)
+	short := dl.leg(t, true, payerBody(), dl.payerMember("settled", "5000"))
+	shortPayee := dl.leg(t, false, payeeBody(), dl.payeeMember("settled", "5000"))
+	shortRead, err := VerifyBook(short)
+	require.NoError(t, err)
+	tiny := dl.leg(t, false, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(shortRead.Digest))}, dl.payerMember("settled", "1"))
+	res = dl.check(t, short, shortPayee, tiny)
+	assert.Equal(t, PaymentFail, res.Check, "a refund never hides a failing payment")
+	assert.Equal(t, ReasonAmount, res.Reason)
+	assert.Len(t, res.NotChecked, 1)
 
 	// A refund leg its side later superseded is not read.
 	d2 := newPaymentDeal(t, nil, true)
@@ -290,13 +311,15 @@ func TestPaymentCheckNotRun(t *testing.T) {
 	own2["terms_ref"] = hex.EncodeToString(make([]byte, 32))
 	replaced := d2.leg(t, false, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(p2Read.Digest)), Supersedes: ptr(RefTo(staleRead.Digest))}, own2)
 	res = d2.check(t, p2, q2, stale, replaced)
-	assert.Equal(t, PaymentPass, res.Check, "the stale refund leg no longer suppresses the check: %s", res.Reason)
+	assert.Equal(t, PaymentPass, res.Check, "%s", res.Reason)
+	assert.Empty(t, res.NotChecked, "a superseded refund leg is not listed")
 
 	// A refund under its own terms leg is passed over.
 	own := d.payerMember("settled", "6000")
 	own["terms_ref"] = hex.EncodeToString(make([]byte, 32))
 	res = d.check(t, payer, payee, d.leg(t, false, refund, own))
 	assert.Equal(t, PaymentPass, res.Check)
+	assert.Empty(t, res.NotChecked, "it answers another terms leg")
 }
 
 func TestPaymentCheckRefuses(t *testing.T) {

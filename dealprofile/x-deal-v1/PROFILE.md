@@ -287,9 +287,12 @@ that row, else `payee`. `amount` is the row's `owed` as `{"value": <amount_minor
 `VerifySent` refuses an offer with one payment row that carries none. The price this puts at the
 Capsule's top level is the offer's own terms, which `agent_input` carries beside it. The payment
 check is `xdealv1.PaymentCheck`, AAC's `settlement.Verify` over the terms leg and the two sides'
-legs. It is not run when the terms have more than one payment row, or when a refund or remedy leg
-(`reverses`, `remedy_for`) cites the offer's terms leg; a remedy that is a payment is not counted
-until it has its own terms leg, which this profile does not define yet.
+legs. It is not run when the terms have more than one payment row. It runs on the payment's own
+legs only: a refund or remedy leg (`reverses`, `remedy_for`) that cites the offer's terms leg is
+not checked, and is listed as such (`not_checked`; a status row's `check_not_checked`), so a
+refund never hides a mismatch in the payment it follows (Steven, evidencebook#722). A remedy that
+is a payment is not counted until it has its own terms leg, which this profile does not define
+yet.
 
 `xdealv1.VerifySent` reads such a pair on its own: the Capsule's signature, that the payload is
 the record whose digest is `agent_input_digest`, that the record passes sections 1 to 5, and,

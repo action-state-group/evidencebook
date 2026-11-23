@@ -255,7 +255,9 @@ func TestPaymentVectors(t *testing.T) {
 		add("two-payer-heads-mismatch", d2, a, b, d2.leg(t, false, payeeBody(), d2.payeeMember("settled", "6000")))
 	}
 
-	// Not run: several payment rows; a refund or a remedy citing the offer.
+	// Not run: several payment rows. A refund or a remedy citing the offer
+	// is not checked (not_checked) while the payment's own legs are, and a
+	// short payment beside a refund still fails (evidencebook#722).
 	{
 		two := func(o *ProposeBody) {
 			o.TermsRows.Rows = append(o.TermsRows.Rows, o.TermsRows.Rows[0])
@@ -275,6 +277,12 @@ func TestPaymentVectors(t *testing.T) {
 		own := d.payerMember("settled", "6000")
 		own["terms_ref"] = hex.EncodeToString(make([]byte, 32))
 		add("refund-under-its-own-terms", d, payer, payee, d.leg(t, false, refund, own))
+		ds := newPaymentDeal(t, nil, true)
+		short := ds.leg(t, true, payerBody(), ds.payerMember("settled", "5000"))
+		shortRead, err := VerifyBook(short)
+		require.NoError(t, err)
+		tiny := &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(shortRead.Digest))}
+		add("short-payment-with-refund-fails", ds, short, ds.leg(t, false, payeeBody(), ds.payeeMember("settled", "5000")), ds.leg(t, false, tiny, ds.payerMember("settled", "1")))
 		// A settlement member with terms_ref spelled otherwise is refused:
 		// the refund takes no part (excluded), and the check passes
 		// (evidencebook#559).

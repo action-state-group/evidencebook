@@ -35,8 +35,6 @@ pub const PAYMENT_FAIL: &str = "fail";
 
 /// The terms have more than one payment row.
 pub const REASON_SEVERAL_PAYMENTS: &str = "several_payments";
-/// A refund or remedy leg cites the offer's terms leg.
-pub const REASON_REFUND_CITES_OFFER: &str = "refund_cites_offer";
 /// One side's legs, or none: AAC's terms_only, payer_stated, payee_stated.
 pub const REASON_NOT_AGREED: &str = "not_agreed";
 /// Both sides' legs, which AAC cannot join (payment_ref types, fees).
@@ -106,8 +104,9 @@ fn record_of(pair: &[u8]) -> Result<Map<String, Value>, Error> {
 /// neither party's key or carries a chain. A leg whose side, leg or role
 /// disagree, or that AAC refuses, takes no part (`excluded`) rather than
 /// stopping the check. A leg superseded by a later leg of its side is not
-/// read; a refund or remedy leg that cites the offer's terms leg, and is not
-/// superseded, leaves the check not run.
+/// read; a refund or remedy leg that cites the offer's terms leg is not read
+/// either, and is listed in `not_checked` when it is not superseded: the
+/// check runs on the payment's own legs (evidencebook#722).
 pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
     let sent = verify_sent(&input.offer, None)?;
     if sent.digest != input.offer_digest {
@@ -232,20 +231,20 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         })
         .map(|l| l.read.digest.clone())
         .collect();
-    // A refund or remedy that is a payment needs its own terms leg; one
-    // that cites the offer's leaves the check not run.
-    if legs
+    // A refund or remedy that is a payment needs its own terms leg, which
+    // this profile does not define: it is not checked, and the payment's
+    // own legs are, so a refund never hides a mismatch in the payment it
+    // follows (evidencebook#722).
+    out.not_checked = legs
         .iter()
-        .any(|l| l.refund && !superseded.contains(&l.read.digest))
-    {
-        out.reason = REASON_REFUND_CITES_OFFER.into();
-        return Ok(out);
-    }
+        .filter(|l| l.refund && !superseded.contains(&l.read.digest))
+        .map(|l| l.read.digest.clone())
+        .collect();
     let mut capsules = vec![Value::Object(offer_record)];
     let mut digest_of: HashMap<String, String> = HashMap::new(); // capsule id -> record digest
     let mut read = Vec::new();
     for l in &legs {
-        if superseded.contains(&l.read.digest) {
+        if l.refund || superseded.contains(&l.read.digest) {
             continue;
         }
         capsules.push(Value::Object(l.capsule.clone()));

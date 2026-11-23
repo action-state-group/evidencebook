@@ -110,6 +110,10 @@ pub struct PaymentResult {
     pub checked_over: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub excluded: Vec<String>,
+    /// The refund and remedy legs citing the offer's terms leg, not
+    /// superseded: the check reads none of them (evidencebook#722).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub not_checked: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settlement: Option<Value>,
 }
@@ -278,6 +282,9 @@ pub struct StatusRow {
     pub check_reason: String,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub check_excluded: i64,
+    /// How many refund or remedy legs the check did not read (evidencebook#722).
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub check_not_checked: i64,
 }
 
 /// One dispute record of either side, with its outcome.
@@ -446,6 +453,7 @@ pub fn build_status(b: &StatusBooks) -> Result<StatusValue, Error> {
             remedy_made: StatusTime::None,
             check_reason: String::new(),
             check_excluded: 0,
+            check_not_checked: 0,
         };
         if !input.named.is_empty() {
             let mut named = BTreeMap::new();
@@ -507,6 +515,7 @@ pub fn build_status(b: &StatusBooks) -> Result<StatusValue, Error> {
         if let Some(p) = b.payments.get(&input.row.id) {
             row.check_reason = p.reason.clone();
             row.check_excluded = p.excluded.len() as i64;
+            row.check_not_checked = p.not_checked.len() as i64;
         }
         v.rows.push(row);
         v.disputes

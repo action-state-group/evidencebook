@@ -43,14 +43,13 @@ const (
 
 // Why a payment check was not run, or failed (PaymentResult.Reason).
 const (
-	ReasonSeveralPayments  = "several_payments"   // the terms have more than one payment row
-	ReasonRefundCitesOffer = "refund_cites_offer" // a refund or remedy leg cites the offer's terms leg
-	ReasonNotAgreed        = "not_agreed"         // one side's legs, or none: AAC's terms_only, payer_stated, payee_stated
-	ReasonUnjoined         = "unjoined"           // both sides' legs, which AAC cannot join (payment_ref types, fees)
-	ReasonPending          = "pending"            // agreed, with status pending
-	ReasonMismatch         = "mismatch"           // the two sides' legs differ
-	ReasonStatus           = "status"             // agreed, with status failed or reversed
-	ReasonAmount           = "amount"             // agreed, with an amount other than the terms
+	ReasonSeveralPayments = "several_payments" // the terms have more than one payment row
+	ReasonNotAgreed       = "not_agreed"       // one side's legs, or none: AAC's terms_only, payer_stated, payee_stated
+	ReasonUnjoined        = "unjoined"         // both sides' legs, which AAC cannot join (payment_ref types, fees)
+	ReasonPending         = "pending"          // agreed, with status pending
+	ReasonMismatch        = "mismatch"         // the two sides' legs differ
+	ReasonStatus          = "status"           // agreed, with status failed or reversed
+	ReasonAmount          = "amount"           // agreed, with an amount other than the terms
 )
 
 // PaymentRows are the ids of the payment rows of an offer's terms, in
@@ -189,13 +188,17 @@ type PaymentInput struct {
 // then the legs AAC's verifier read, in the order given. Excluded are the
 // settle records that took no part: no readable settlement member, a leg of
 // another side or role than its signer's, or one AAC's verifier refuses.
-// Settlement is AAC's derived state of the legs that answer the offer's
-// terms leg, when it ran.
+// NotChecked are the refund and remedy legs (reverses, remedy_for) that
+// answer the offer's terms leg and are not superseded: the check runs on
+// the payment's own legs and reads none of them, since a refund's terms are
+// not defined yet (Steven, evidencebook#722). Settlement is AAC's derived
+// state of the payment's legs, when it ran.
 type PaymentResult struct {
 	Check       string                 `json:"check"`
 	Reason      string                 `json:"reason,omitempty"`
 	CheckedOver []string               `json:"checked_over"`
 	Excluded    []string               `json:"excluded,omitempty"`
+	NotChecked  []string               `json:"not_checked,omitempty"`
 	Settlement  *settlement.Settlement `json:"settlement,omitempty"`
 }
 
@@ -225,8 +228,9 @@ type settlementWire struct {
 // side, leg or role disagree, or that AAC refuses, takes no part (Excluded)
 // rather than stopping the check. A leg superseded (supersedes) by a later
 // leg of its side is not read; a refund or remedy leg (reverses,
-// remedy_for) that cites the offer's terms leg, and is not superseded,
-// leaves the check not run.
+// remedy_for) that cites the offer's terms leg is not read either, and is
+// listed in NotChecked when it is not superseded: the check runs on the
+// payment's own legs (evidencebook#722).
 func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 	bad := func(format string, args ...any) (PaymentResult, error) {
 		return PaymentResult{}, stageErr(StagePayment, format, args...)
@@ -357,12 +361,13 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 			}
 		}
 	}
-	// A refund or remedy that is a payment needs its own terms leg; one
-	// that cites the offer's leaves the check not run.
+	// A refund or remedy that is a payment needs its own terms leg, which
+	// this profile does not define: it is not checked, and the payment's
+	// own legs are, so a refund never hides a mismatch in the payment it
+	// follows (evidencebook#722).
 	for _, l := range legs {
 		if l.refund && !superseded[l.read.Digest] {
-			out.Reason = ReasonRefundCitesOffer
-			return out, nil
+			out.NotChecked = append(out.NotChecked, l.read.Digest)
 		}
 	}
 	capsules := []any{}
@@ -374,7 +379,7 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 	digestOf := map[string]string{} // capsule id -> record digest
 	var read []string
 	for _, l := range legs {
-		if superseded[l.read.Digest] {
+		if superseded[l.read.Digest] || l.refund {
 			continue
 		}
 		c, err := decodeRecord(l.capsule)
