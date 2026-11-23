@@ -178,16 +178,25 @@ func TestDealShareGateReadsACardByItsNetworkPrefix(t *testing.T) {
 		assert.NoError(t, dealPageGate([]byte(`<!doctype html><script>window.__BUNDLE__ = {"payment_ref":"`+order+`"};</script>`), nil), order)
 	}
 	for _, card := range []string{
-		"4111111111111111",    // Visa
-		"5555555555554444",    // Mastercard
-		"2223003122003222",    // Mastercard 2-series
-		"378282246310005",     // American Express
-		"6011111111111117",    // Discover
-		"3530111333300000",    // JCB
-		"30569309025904",      // Diners Club
-		"6200000000000005",    // UnionPay
-		"9792000000000003",    // Troy
-		"4111111111111111123", // with a code after it
+		"4111111111111111",        // Visa
+		"5555555555554444",        // Mastercard
+		"2223003122003222",        // Mastercard 2-series
+		"378282246310005",         // American Express
+		"6011111111111117",        // Discover
+		"3530111333300000",        // JCB
+		"30569309025904",          // Diners Club
+		"6200000000000005",        // UnionPay
+		"9792000000000003",        // Troy
+		"30600000000001",          // Diners Club 306
+		"2200123456789019",        // Mir
+		"2205000000000009",        // BORICA
+		"3100000000000003",        // China T-Union
+		"1946000000000005",        // GPN
+		"8600000000000007",        // Uzcard
+		"9704000000000000",        // Napas
+		"9860000000000000",        // HUMO
+		"4111111111111111123",     // with a code after it
+		"123 4111 1111 1111 1111", // with a code before it
 	} {
 		assert.Error(t, dealPageGate(gatePage(t, "Paid with "+card), nil), card)
 	}
