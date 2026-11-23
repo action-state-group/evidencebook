@@ -217,7 +217,7 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 			return err
 		}
 		if record.KeyID != me {
-			return cli.InputError("this profile's store checkpointed with another key, so it cannot stamp a ruling with your record key; switching its checkpoint key back to the earlier one makes the store usable again. " + adjudicatorKeyAdvice)
+			return cli.InputError("this profile's store checkpointed with another key, so it cannot stamp a ruling with your record key; switching its checkpoint key back to the earlier one makes the store readable again. " + adjudicatorKeyAdvice)
 		}
 		break
 	}
