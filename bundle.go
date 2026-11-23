@@ -125,6 +125,13 @@ type Bundle struct {
 	Digest     string
 	Anchor     Checkpoint
 	Disclosure Record
+	// DisclosureEntry is, for a request with DisclosureRecordedElsewhere,
+	// the disclosure record this book would have appended: the host appends
+	// it where it records the disclosure, such as the current window's book
+	// for a bundle of an earlier window in its grace (evidencebook#807). Its
+	// statement names the bundle's digest and its anchor; it cites every
+	// record the bundle discloses. Nil otherwise.
+	DisclosureEntry *Entry
 }
 
 // WithheldItem names material committed but not carried, always with its digest.
@@ -432,9 +439,6 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		}
 	}
 	statement.BundleDigest = digestBytes(data)
-	if req.DisclosureRecordedElsewhere {
-		return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor}, nil
-	}
 	body, err := json.Marshal(statement)
 	if err != nil {
 		return Bundle{}, err
@@ -443,7 +447,11 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	for _, id := range disclosed {
 		links = append(links, Link{Type: Cites, Target: id})
 	}
-	record, err := b.appendLocked(ctx, Entry{RecordType: RecordTypeDisclosure, EpistemicType: ProducerClaim, Links: links, Statement: body})
+	entry := Entry{RecordType: RecordTypeDisclosure, EpistemicType: ProducerClaim, Links: links, Statement: body}
+	if req.DisclosureRecordedElsewhere {
+		return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor, DisclosureEntry: &entry}, nil
+	}
+	record, err := b.appendLocked(ctx, entry)
 	if err != nil {
 		return Bundle{}, err
 	}
