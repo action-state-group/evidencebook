@@ -316,6 +316,41 @@ gives `anchor_match`) and the `card-verified` row records it. The `Example`
 runs both: a 12 USD deal on such a card is asked for a new card (ASK at T0)
 and the 5 USD deal is unchanged.
 
+## Path 6: ask for a report over a holder's records by Terms Pack digest
+
+A requester names a Terms Pack by the digest of its compiled definition in an
+Evidence Request's `derivation` (ER -03 §Derivation). The holder sends only the
+fields the pack declares it reads, with proofs; the requester runs the pack,
+signs the Result and builds one Evidence Bundle that carries the Result and the
+`contract-report/v1` view, which `capsulectl verify` checks and the report page
+renders.
+
+| Step | Who | Function |
+|---|---|---|
+| opt the digest in | holder | `Book.RegisterDerivation` with the compiled definition as `Document`, the requesters it is granted to (`Recipient`, `Recipients`), the subject forms, the fields the pack reads (`Fields`: header members or paths such as `statement.generated_at`) and `Proofs: true`. A digest not registered is refused `derivation_unsupported`; a requester not granted, `not_authorized` |
+| answer | holder | `Book.Respond`: the answer is the registered derivation's artifact, the declared fields of each record at the coverage anchor, with the anchor's signed checkpoint and one inclusion proof per record |
+| ask and keep the answer | requester | `Book.Request`, then `Book.RecordResponse`, which checks the answer and keeps the holder's signed reply |
+| the inputs | requester | `Book.DerivedInputs` reads the recorded, verified answer; it refuses a refusal, a failed answer and a registered token |
+| the report | requester | `Book.ReportFromDerivation` takes the Result the caller's evaluator returns, checks it is a valid Evidence Result v0 whose claims cite exactly the response record, seals it, and builds the bundle with every payload and `contract-report/v1` |
+
+What the report may claim: the records are in the holder's log at a signed
+checkpoint (each digest's inclusion proof is checked), and the field values are
+what the holder attested for them. A projection of declared fields cannot be
+bound to a record's digest without the record, so the values are the holder's
+word; and the proofs show the rows given are in the log, never that no row was
+left out. The Result is the requester's, signed by its own book; the holder
+signed the inputs. The module runs no pack: the evaluator is the caller's
+(`capsule-engine` for its packs), and it reads `DerivedInputs.Derivation` to
+check it runs the pack the holder answered. Until the interop profile defines
+record-set material (agent-action-capsule#668) the proofs use the existing
+`cll-checkpoint` and `cll-inclusion-proof` kinds, and a verifier that does not
+read them reports `anchor_inclusion` NOT_CHECKED.
+
+Tests: `TestTermsPackReportEndToEnd` (root package) answers, records, reports and
+verifies a five-row pack; the report module's
+`TestDerivedReportBundleRendersAsTheReportPage` renders the same bundle
+(`report/testdata/derived-report/bundle.json`) with no unsupported claim.
+
 ## Other languages
 
 The Rust crate (`rust/evidencebook`) and the Python package

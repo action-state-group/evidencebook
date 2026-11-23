@@ -493,7 +493,11 @@ not by validating produced headers against it.
   prove one record. For `full_history`, `range`, `correlation`, `exchange`
   and any registered derivation, the profile defines no material (P-13), so
   this responder sends none rather than invent a kind, and a verifier reports
-  `anchor_inclusion` as `NOT_CHECKED`. Each served record carries its body,
+  `anchor_inclusion` as `NOT_CHECKED`. One exception, by the holder's choice:
+  a registered derivation with `Proofs` set (a Terms Pack served by digest,
+  #606) carries the anchor's checkpoint and one inclusion proof per record,
+  in the existing kinds, and this requester checks them; the profile text is
+  agent-action-capsule#668. Each served record carries its body,
   which hashes to its digest.
 - **Only a Checkpointed Local Log answers.** A book over another substrate
   refuses every profile request whose answer would need an anchor
