@@ -186,7 +186,7 @@ A retail checkout is almost always the second shape.
 
    `CHECK_ID` is the `check_id` the check printed; `--choice` is one of the
    check's `options` (`proceed` or `hold`); `card.txt` holds the check's
-   `card` field exactly as returned. Go on only if that returns `"proceed":
+   `card` field unchanged. Go on only if that returns `"proceed":
    true`.
 9. **The payment, in two calls.** Before handing it to the rail:
 
