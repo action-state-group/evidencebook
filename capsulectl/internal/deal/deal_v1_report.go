@@ -250,7 +250,9 @@ func runV1Report(c *cobra.Command) (err error) {
 			// travels whole with the leg, so the gate scans the copy with
 			// them blanked by structure (evidencebook#771); the file
 			// written is the copy as it is.
-			if err := v1ShareGate(scrubPaymentRefs(file), events, share); err != nil {
+			// The deal's own id is taken out as for a v0 deal: a v1 deal may
+			// have no journey event to carry it (evidencebook#787).
+			if err := v1ShareGate(scrubPaymentRefs(file), events, share, dealID); err != nil {
 				return err
 			}
 			record = func() error {

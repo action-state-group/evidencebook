@@ -266,7 +266,7 @@ func isWholeID(events []sealedEvent, v string) bool {
 // spending limit in the counterparty's. It reads the same plain form as the
 // share gate (foldText). An amount the copy shows anyway (the price asked, an
 // amount paid) is not a leak.
-func dealCeilingGate(data []byte, events []sealedEvent, audience string) error {
+func dealCeilingGate(data []byte, events []sealedEvent, audience string, own ...string) error {
 	if audience == cli.DealAudienceKeep {
 		return nil
 	}
@@ -277,7 +277,10 @@ func dealCeilingGate(data []byte, events []sealedEvent, audience string) error {
 	// first, as the page gate takes out the ids it allows: a run of hex is
 	// never prose, and one that holds "3cad8" is not 8 Canadian dollars.
 	folded := []byte(foldText(string(data)))
-	for _, id := range dealOwnIDs(events) {
+	if len(own) == 0 {
+		own = dealOwnIDs(events)
+	}
+	for _, id := range own {
 		folded = removeWholeToken(folded, []byte(foldText(id)))
 	}
 	data = removeHexTokens(folded)
@@ -324,7 +327,8 @@ func dealCeilingGate(data []byte, events []sealedEvent, audience string) error {
 
 // dealOwnIDs are the deal's own identifiers, which every shared copy carries (the
 // x-deal-v0 deal_id and the log id deal/<deal_id>): random hex, never a private
-// value. The gate takes them out before it checks, or a deal id whose hex happens to
+// value. An x-deal-v1 copy passes its deal id to dealShareGate itself, since a
+// v1 deal with no journey record has no event to carry it. The gate takes them out before it checks, or a deal id whose hex happens to
 // hold a Luhn-valid digit run reads as a card number and the deal can never be
 // shared.
 func dealOwnIDs(events []sealedEvent) []string {
@@ -337,10 +341,11 @@ func dealOwnIDs(events []sealedEvent) []string {
 // dealShareGate is the last check before a shared copy is written or a share
 // is put on record: the share gate, then the spending-limit gate for the
 // counterparty.
-func dealShareGate(data []byte, events []sealedEvent, audience string) error {
-	allowed := append(dealShareableIDs(events, audience), dealOwnIDs(events)...)
+func dealShareGate(data []byte, events []sealedEvent, audience string, own ...string) error {
+	own = append(dealOwnIDs(events), own...)
+	allowed := append(dealShareableIDs(events, audience), own...)
 	if err := dealPageGate(data, events, allowed...); err != nil {
 		return err
 	}
-	return dealCeilingGate(data, events, audience)
+	return dealCeilingGate(data, events, audience, own...)
 }
