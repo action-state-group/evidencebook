@@ -218,3 +218,17 @@ func TestSharedOperatorNothingOtherwise(t *testing.T) {
 	assert.Empty(t, SharedOperator(Record{Block: Block{At: soRulingAt}, Body: DisputeBody{}}, ag, soStamp, [][]byte{valid}, nil), "not a ruling")
 	assert.Equal(t, NotIndependentSharedOperator, SharedOperator(ruling, ag, soStamp, [][]byte{[]byte("x"), valid}, nil), "one valid among bad ones")
 }
+
+// An adjudicator key equal to a party key is one operator at every time: it
+// is labeled with no binding and with no stamped time, which only a
+// binding's window needs (#822 review).
+func TestSharedOperatorSameKeyNeedsNoTime(t *testing.T) {
+	for _, party := range []soKey{soBuyer, soSeller} {
+		ag := soAgreement(party.id)
+		assert.Equal(t, NotIndependentSharedOperator, SharedOperator(soRuling(soRulingAt), ag, soStamp, nil, nil))
+		assert.Equal(t, NotIndependentSharedOperator, SharedOperator(soRuling(soRulingAt), ag, time.Time{}, nil, nil))
+	}
+	// A binding still needs the time.
+	b := soJCS(t, soBinding(t, soAdj, soBuyer))
+	assert.Empty(t, SharedOperator(soRuling(soRulingAt), soAgreement(soAdj.id), time.Time{}, [][]byte{b}, nil))
+}
