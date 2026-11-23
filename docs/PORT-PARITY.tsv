@@ -463,6 +463,7 @@ dealprofile/xdealv1	func	ResolveRow	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	RowInputs	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	RowsDigest	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	SealRuling	x-deal-v1	frozen #774	frozen #775
+dealprofile/xdealv1	func	SharedOperator	x-deal-v1	frozen #782	frozen #782
 dealprofile/xdealv1	func	Some	x-deal-v1	ported	frozen #653
 dealprofile/xdealv1	func	StampTime	x-deal-v1	ported	frozen #653
 dealprofile/xdealv1	func	Start	x-deal-v1	ported	ported
