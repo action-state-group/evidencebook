@@ -596,13 +596,17 @@ func dealSettleCommand() *cobra.Command {
 			}
 			v1ReceiveContext(c)
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
+				var err error
+				if in.check, err = s.resolveV1Check(ctx, in.dealID, in.check); err != nil {
+					return err
+				}
 				return s.settle(ctx, c, in)
 			})
 		},
 	}
 	f := cmd.Flags()
 	f.String("deal", "", "The x-deal-v1 deal (required)")
-	f.String("check", "", "Your passing pay check (or cancel check, for a refund) that a payment rests on")
+	f.String("check", "", "Your passing pay check (or cancel check, for a refund) that a payment rests on: the check_id deal check printed (or the check record's digest)")
 	f.Bool("sent", false, "Before the handoff: check the payment and count it as in flight; seals no leg")
 	f.String("status", "", "settled or failed for a payment when the rail answers; pending, settled or failed for what you received")
 	f.String("row", "", "The payment row (default: the offer's only one)")
@@ -1421,3 +1425,59 @@ func (s *dealSession) reconcileV1Settle(ctx context.Context, dealID string, book
 // refundFeeGuard refuses a new refund send on a cancel check that states a
 // fee; a seam, so a test can make a send as one made before the rule.
 var refundFeeGuard = true
+
+// resolveV1Check is the record digest --check names: the check id `deal
+// check` printed, or the check record's digest itself. The id is the Capsule
+// id of the check's verdict, which refs the journal check record by digest,
+// so the id is followed to that record. A person copies the id the check
+// printed, so both are taken; "" stays "".
+func (s *dealSession) resolveV1Check(ctx context.Context, dealID, ref string) (string, error) {
+	if ref == "" {
+		return "", nil
+	}
+	events, err := s.v1Events(ctx, dealID)
+	if err != nil {
+		return "", err
+	}
+	verdict := ""
+	for _, se := range events {
+		if se.Event.Kind == "check" && se.CapsuleID == ref {
+			verdict = se.Digest
+		}
+	}
+	if verdict == "" {
+		return ref, nil
+	}
+	journal, err := s.v1DealJournal(ctx, dealID)
+	if err != nil {
+		return "", err
+	}
+	checks := map[string]bool{}
+	for _, r := range journal {
+		if r.Block.RecordType == xdealv1.TypeCheck {
+			d, err := xdealv1.Digest(r)
+			if err != nil {
+				return "", err
+			}
+			checks[d] = true
+		}
+	}
+	for _, r := range journal {
+		if r.Block.RecordType != xdealv1.TypeVerdict {
+			continue
+		}
+		d, err := xdealv1.Digest(r)
+		if err != nil {
+			return "", err
+		}
+		if d != verdict {
+			continue
+		}
+		for _, rr := range r.Block.Refs {
+			if checks[rr.Digest] {
+				return rr.Digest, nil
+			}
+		}
+	}
+	return ref, nil
+}

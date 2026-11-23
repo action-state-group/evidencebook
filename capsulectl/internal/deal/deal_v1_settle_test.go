@@ -656,3 +656,28 @@ func TestARefundOnACancelWithAFeeIsNotBuilt(t *testing.T) {
 	_, err := os.Stat(refundFile)
 	require.NoError(t, err, "the in-flight refund completed")
 }
+
+// A person copies the check_id `deal check` printed: deal settle takes it,
+// as it takes the check's record digest, and both name the same check.
+func TestSettleTakesTheCheckIDDealCheckPrinted(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+v1LnHash+`"`)))
+	require.Equal(t, "pass", out["verdict"], "%v", out)
+	checkID := out["check_id"].(string)
+	var digest string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		digest = checkDigest(t, journal)
+		resolved, err := s.resolveV1Check(t.Context(), h.dealID, checkID)
+		require.NoError(t, err)
+		assert.Equal(t, digest, resolved, "the check id resolves to the check's record digest")
+	})
+	require.NotEqual(t, digest, checkID, "the printed id is not the digest, which is why it must be resolved")
+	sent := dealRun(t, "settle", "--deal", h.dealID, "--check", checkID, "--sent", "--payment-ref-type", "ln.payment_hash")
+	assert.NotEmpty(t, sent)
+	settled := dealRun(t, "settle", "--deal", h.dealID, "--check", digest, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+	assert.Equal(t, "settled", settled["status"], "the digest and the id name the same send")
+}
