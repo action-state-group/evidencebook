@@ -848,7 +848,11 @@ func (s *dealSession) settleSent(ctx context.Context, c *cobra.Command, a *v1Act
 	} else if prev != nil && prev.Leg != "" {
 		return cli.InputError("check " + in.check + " is used: its payment was sealed as leg " + prev.Leg + ", and a check authorizes one payment")
 	} else if prev != nil {
-		return cli.InputError("a payment on check " + in.check + " is in flight (" + strconv.FormatInt(prev.Amount, 10) + " " + prev.Currency + ", " + prev.RefType + " " + prev.Ref + "): when the rail answers, run " + statusHint(in.dealID, in.check, prev.Reverses, prev.RefType))
+		ref := prev.RefType + " " + prev.Ref
+		if prev.Ref == "" {
+			ref = prev.RefType + ", the order number to come with --status"
+		}
+		return cli.InputError("a payment on check " + in.check + " is in flight (" + strconv.FormatInt(prev.Amount, 10) + " " + prev.Currency + ", " + ref + "): when the rail answers, run " + statusHint(in.dealID, in.check, prev.Reverses, prev.RefType))
 	}
 	if in.reverses != "" {
 		if err := s.refundTaken(ctx, a, in.reverses, true); err != nil {
