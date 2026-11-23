@@ -210,16 +210,18 @@ func TestCheckCaseTwoCopies(t *testing.T) {
 
 }
 
-// Two copies must name each other: an agreement that names a layered
-// counterparty names exactly the other copy's signer, and one with no layer
-// names none to compare (CheckCase's cross-check).
+// Two copies must name each other: each agreement names exactly the other
+// copy's signer as its layered counterparty; an agreement with no layer
+// names nobody, so a second copy beside it is refused (CheckCase's
+// cross-check).
 func TestNamesCounterparty(t *testing.T) {
 	yes := true
 	no := false
 	named := AgreeBody{CounterpartyLayer: &yes, CounterpartyKey: Some("seller-key")}
 	assert.True(t, namesCounterparty(named, "seller-key"))
 	assert.False(t, namesCounterparty(named, "stranger-key"), "a copy under a key the other agreement does not name")
-	assert.True(t, namesCounterparty(AgreeBody{CounterpartyLayer: &no, CounterpartyKey: NullOf[string]()}, "any"))
+	assert.False(t, namesCounterparty(AgreeBody{CounterpartyLayer: &no, CounterpartyKey: NullOf[string]()}, "any"), "no layer: no second book")
+	assert.False(t, namesCounterparty(AgreeBody{}, "any"))
 }
 
 // CheckCaseRecord takes a party's withdrawal and a challenge of a ruling the

@@ -93,13 +93,13 @@ func readCaseCopy(c CaseCopy, adjudicatorKey string) (caseCopy, error) {
 	return caseCopy{role: ag.Role, key: first.KeyID, last: read.Report.RestsOn.Own.Last, agreement: first.Record, ag: ag}, nil
 }
 
-// namesCounterparty reports whether ag, when it names a counterparty key,
-// names key; an agreement with no layered counterparty names none.
+// namesCounterparty reports whether ag names key as its layered
+// counterparty. With two copies both sides keep a deal book, so each
+// agreement must name the other copy's signer: an agreement whose
+// counterparty runs no layer has no second book, and a second copy beside it
+// can only be forged.
 func namesCounterparty(ag AgreeBody, key string) bool {
-	if ag.CounterpartyLayer == nil || !*ag.CounterpartyLayer || ag.CounterpartyKey.V == nil {
-		return true
-	}
-	return *ag.CounterpartyKey.V == key
+	return ag.CounterpartyLayer != nil && *ag.CounterpartyLayer && ag.CounterpartyKey.V != nil && *ag.CounterpartyKey.V == key
 }
 
 // CheckCase reads a dispute (its book pair) and one or both parties'
@@ -110,7 +110,8 @@ func namesCounterparty(ag AgreeBody, key string) bool {
 //   - each copy passes VerifyReportBundle, is an adjudicator copy, and its
 //     agreement names adjudicatorKey;
 //   - the copies are of one deal and one offer, one per side, and with two,
-//     each agreement names the other copy's signer as its counterparty and
+//     each agreement names the other copy's signer as its layered
+//     counterparty and
 //     both name the same adjudicator terms and forums;
 //   - with one copy, the other side's key is that agreement's
 //     counterparty_key, and a copy whose agreement names none is refused;
