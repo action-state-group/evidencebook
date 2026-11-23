@@ -97,11 +97,6 @@ func openWindowedBook(ctx context.Context, p cli.Profile, signer evidencebook.Si
 		return openedBook{}, fmt.Errorf("%w: %s holds no window policy", evidencebook.ErrCorrupt, shelfFile(p))
 	}
 	clock := &monotonicClock{}
-	if _, reproduced, err := reproductionAt(); err != nil {
-		return openedBook{}, err
-	} else if reproduced {
-		return openedBook{}, cli.InputError(SourceDateEpochEnv + " is set, but this is a live windowed store: only a JSONL book is reproduced")
-	}
 	shelf, err := evidencebook.OpenSQLiteShelf(ctx, windowedConfig(p, signer, checkpointKey, artifacts, clock.now, policy))
 	if err != nil {
 		return openedBook{}, bookError(err)
@@ -124,6 +119,12 @@ func openWindowedBook(ctx context.Context, p cli.Profile, signer evidencebook.Si
 		}
 	} else if ephemeral {
 		return fail(cli.Hint(cli.ErrInput, "the windowed store holds no window yet; a verb that writes opens the first"))
+	}
+	if _, reproduced, err := reproductionAt(); err != nil {
+		return fail(err)
+	} else if reproduced {
+		// A read-only open returned above; a writing one would stamp a caller time.
+		return fail(cli.InputError(SourceDateEpochEnv + " is set, but this is a live windowed store: only a JSONL book is reproduced"))
 	}
 	if err = clock.refuseIfAhead(p); err != nil {
 		return fail(err)
@@ -251,13 +252,7 @@ func windowCoverage(bundle []byte, holderKey, witnessDirectory string, diagnosti
 		// report.Build refuses it with the page gate's own reason.
 		return nil, nil
 	}
-	windowed := false
-	for _, r := range verified.Records {
-		if r.Header != nil && r.Header.RecordType == evidencebook.RecordTypeWindowChain {
-			windowed = true
-		}
-	}
-	if !windowed {
+	if !citesWindowChain(verified) {
 		if holderKey != "" || witnessDirectory != "" {
 			return nil, cli.InputError("--holder-checkpoint-key and --witness-directory apply to a report over a holder's windows, and this bundle's Result cites no window chain")
 		}
@@ -371,4 +366,65 @@ func (f failingWitnessStore) GetWitness(context.Context, string, uint64) (cll.Wi
 }
 func (f failingWitnessStore) CommitWitness(context.Context, uint32, cll.WitnessState) error {
 	return f.err
+}
+
+// answeredRecords are the evidence_request_answered records of a book, or of
+// every window's book of a windowed store, oldest window first.
+func answeredRecords(ctx context.Context, opened openedBook) ([]evidencebook.Record, error) {
+	filter := evidencebook.Filter{RecordType: evidencebook.RecordTypeRequestAnswered}
+	if opened.shelf == nil {
+		return opened.book.Query(ctx, filter)
+	}
+	windows, err := opened.shelf.Windows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []evidencebook.Record
+	for _, w := range windows {
+		book, _, err := opened.shelf.WindowBook(ctx, w.Label)
+		if err != nil {
+			return nil, err
+		}
+		records, err := book.Query(ctx, filter)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, records...)
+	}
+	return out, nil
+}
+
+// refuseRetiredLog refuses to create a windowed store for a profile whose
+// pre-book cll.jsonl still holds entries: they move into a JSONL book with
+// `book migrate`, which a windowed store does not take.
+func refuseRetiredLog(p cli.Profile) error {
+	if retired, err := scanRetiredLog(p); err == nil && (len(retired.entries) > 0 || retired.checkpoint != nil) {
+		return cli.Hint(cli.ErrInput, "this profile's cll.jsonl holds entries not yet in a book: run `store init` and `book migrate --log-id <new-log-id>` (a JSONL book); a windowed store does not take them")
+	}
+	return nil
+}
+
+// citesWindowChain reports whether a verified bundle's Evidence Result cites
+// a window_chain record: a report over a holder's windows.
+func citesWindowChain(verified evidencebook.VerifiedBundle) bool {
+	types := make(map[string]string, len(verified.Records))
+	var result *evidencebook.Header
+	for _, r := range verified.Records {
+		if r.Header == nil || !r.HeaderVerified {
+			continue
+		}
+		types[r.RecordID] = r.Header.RecordType
+		if r.Header.RecordType == evidencebook.RecordTypeEvidenceResult {
+			result = r.Header
+		}
+	}
+	if result == nil {
+		return false
+	}
+	for _, target := range result.LinksTo(evidencebook.Cites) {
+		if types[target] == evidencebook.RecordTypeWindowChain {
+			return true
+		}
+	}
+	return false
 }

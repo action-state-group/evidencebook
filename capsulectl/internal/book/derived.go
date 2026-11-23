@@ -104,6 +104,9 @@ func reportDeriveCommand() *cobra.Command {
 				return cli.InputError("--response, --pack, --result and --out are required")
 			}
 			if chainPath != "" {
+				if allowUnproven {
+					return cli.InputError("--allow-unproven does not apply with --chain: a report over windows needs every answer's proofs")
+				}
 				return deriveOverWindows(c, chainPath, responses, pack, resultPath, out)
 			}
 			if len(responses) > 1 {

@@ -151,6 +151,17 @@ func TestAReportOverMonthWindowsThroughTheCommands(t *testing.T) {
 	assert.True(t, coverage.Covered)
 	assert.Len(t, coverage.Windows, 3)
 	assert.Equal(t, x.digest, coverage.Derivation)
+	assert.Equal(t, []string{"Without --witness-directory, the windows' continuity is as the holder signed it.", "No check shows that an answer holds every row of its window."}, coverage.Limits)
+
+	// Witnesses named, no receipt carried: every window is named unwitnessed.
+	directory := writeDirectory(t, map[string]interface{}{"name": "w", "endpoint": "https://witness.example", "binding": "cll", "key_ids": []string{strings.Repeat("ab", 32)}})
+	out, err = invoke(t, "", "report", "coverage", "--bundle", bundle, "--holder-checkpoint-key", holderKey, "--witness-directory", directory)
+	require.Error(t, err)
+	assert.Contains(t, out, "window 2026-09 not witnessed")
+	assert.NotContains(t, out, `"limits"`, "limits are printed only for a range that passes")
+	_, err = invoke(t, "", "report", "derive", "--profile", "a", "--chain", chainPath, "--pack", x.digest, "--result", x.windowsResult(responses), "--out", filepath.Join(x.dir, "u.json"), "--response", responses[0], "--allow-unproven")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--allow-unproven does not apply with --chain")
 
 	other, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -347,4 +358,16 @@ func TestReportBuildRefusesCoverageFlagsOnAnotherReport(t *testing.T) {
 	_, _, err := runReportBuild(t, bundle, "--card", "outcome", "--holder-checkpoint-key", strings.Repeat("ab", 32))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cites no window chain")
+}
+
+func TestWindowInitRefusesAProfileWithAnUnmigratedLog(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, day1)
+	p, _ := bookProfile(t, "a")
+	legacyLog(t, p, 1, 0, false)
+	_, err := invoke(t, "", "book", "window", "init", "--profile", "a")
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, err.Error(), "book migrate")
+	_, statErr := os.Stat(shelfFile(p))
+	assert.ErrorIs(t, statErr, os.ErrNotExist, "nothing was created")
 }

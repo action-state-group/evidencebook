@@ -65,6 +65,9 @@ func windowCommands() *cobra.Command {
 		if _, err := period.ParseWindow(period.WindowAt(time.Unix(0, 0)).Label); err != nil {
 			return cli.InputError("--period must be day, week, month, quarter or year")
 		}
+		if err := refuseRetiredLog(p); err != nil {
+			return err
+		}
 		for _, existing := range []string{shelfFile(p), filepath.Join(p.Connection.Database, "book", "log.jsonl")} {
 			if _, err := os.Stat(existing); err == nil {
 				return cli.Hint(cli.ErrInput, "this profile already has a book store ("+existing+"); a store's window is fixed when it is created")
@@ -110,7 +113,7 @@ func windowCommands() *cobra.Command {
 		return cli.Output(c, windowListResult{Profile: p.Name, Period: opened.shelf.WindowPolicy().Period, Windows: windows})
 	}}
 
-	chain := &cobra.Command{Use: "chain", Short: "Write the window chain (window_chain/v1) of closed windows --from through --to: what a requester or auditor is handed for a period; without witness receipts it shows continuity only as the holder signed it", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	chain := &cobra.Command{Use: "chain", Short: "Write the window chain (window_chain/v1) of closed windows --from through --to: what a requester or auditor is handed for a period; without witness receipts it shows continuity only as the holder signed it (signs: the store rolls as it opens)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		from, _ := c.Flags().GetString("from")
 		to, _ := c.Flags().GetString("to")
 		out, _ := c.Flags().GetString("out")
@@ -142,7 +145,7 @@ func windowCommands() *cobra.Command {
 	chain.Flags().String("to", "", "The last window's label")
 	chain.Flags().String("out", "", "Write the chain here (new file)")
 
-	publish := &cobra.Command{Use: "publish", Short: "Deliver each closed window's final checkpoint to the profile's witness and print the receipts (the core's `cll checkpoint publish` delivers only the profile's own log)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	publish := &cobra.Command{Use: "publish", Short: "Deliver each closed window's final checkpoint to the profile's witness and print the receipts; a closed window's earlier checkpoints are superseded by its final one (signs; the core's `cll checkpoint publish` delivers only the profile's own log)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		p, opened, err := selectedWindowedBook(c)
 		if err != nil {
 			return err
