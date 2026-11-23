@@ -397,6 +397,8 @@ fn record_strings<'a>(v: &'a Value, path: &str, out: &mut Vec<(String, &'a str)>
 struct Scans {
     exempt: Regex,
     phone: Regex,
+    date_token: Regex,
+    space: Regex,
     email: Regex,
 }
 
@@ -413,6 +415,8 @@ fn scans() -> &'static Scans {
         ))
         .expect("pattern"),
         phone: Regex::new(&format!(r"\+?\(?{D}[{D}{S}().-]{{6,}}{D}")).expect("pattern"),
+        date_token: Regex::new(&format!(r"^\(?{D}{{4}}-{D}{{2}}-{D}{{2}}$")).expect("pattern"),
+        space: Regex::new(&format!(r"[{S}]+")).expect("pattern"),
         email: Regex::new(&format!(r"[^{S}@]+@[^{S}@]+\.[^{S}@]+")).expect("pattern"),
     })
 }
@@ -442,6 +446,14 @@ const BANNED_WORDS: &[&str] = &[
     "trustworthiness",
 ];
 
+/// Whether a phone-shaped match is nothing but ISO dates (YYYY-MM-DD) set
+/// apart by white space, as in "2 nights from 2026-12-10". Any other token, a
+/// digit run or a sign or bracket glued to a date included, keeps the match a
+/// phone number.
+fn only_dates(p: &Scans, m: &str) -> bool {
+    p.space.split(m).all(|tok| p.date_token.is_match(tok))
+}
+
 /// Refuses a raw phone number, email address or local-store value anywhere
 /// in the record, a member name included.
 fn stage_personal_data(doc: &Value, local_values: &[&str]) -> Result<(), Error> {
@@ -458,6 +470,9 @@ fn stage_personal_data(doc: &Value, local_values: &[&str]) -> Result<(), Error> 
             continue;
         }
         for m in p.phone.find_iter(s) {
+            if only_dates(p, m.as_str()) {
+                continue;
+            }
             if m.as_str().chars().filter(|c| is_nd(*c)).count() >= 7 {
                 return Err(stage_err(
                     STAGE_PERSONAL_DATA,

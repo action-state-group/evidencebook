@@ -578,6 +578,10 @@ def stage_personal_data(rec, local_store_values=()):
         if _EXEMPT.match(s):
             continue
         for m in _PHONE.finditer(s):
+            # A match that is only ISO dates set apart by white space ("2 nights from 2026-12-10")
+            # is not a phone number; a digit run, sign or bracket glued to a date keeps it one.
+            if all(re.fullmatch(r"\(?\d{4}-\d{2}-\d{2}", t) for t in m.group().split()):
+                continue
             if len(re.sub(r"\D", "", m.group())) >= 7:
                 raise StageError("personal_data", f"raw phone number at {path}")
         if _EMAIL.search(s):

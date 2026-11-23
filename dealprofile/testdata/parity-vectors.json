@@ -970,6 +970,66 @@
       "stage": "canonicalization"
     },
     {
+      "name": "a date in text: 2 nights from 2026-12-10",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"2 nights from 2026-12-10\"}}",
+      "stage": "schema"
+    },
+    {
+      "name": "a date in text: from 2026-12-10.",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"from 2026-12-10.\"}}",
+      "stage": "schema"
+    },
+    {
+      "name": "a date in text: (2026-12-10)",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"(2026-12-10)\"}}",
+      "stage": "schema"
+    },
+    {
+      "name": "a date in text: 2026-12-10 2026-12-12",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"2026-12-10 2026-12-12\"}}",
+      "stage": "schema"
+    },
+    {
+      "name": "a date in text: call 555-0100 on 2026-12-10",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"call 555-0100 on 2026-12-10\"}}",
+      "stage": "personal_data"
+    },
+    {
+      "name": "a date in text: +1 202 2026-12-10",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"+1 202 2026-12-10\"}}",
+      "stage": "personal_data"
+    },
+    {
+      "name": "a date in text: 555 2026-12-10",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"555 2026-12-10\"}}",
+      "stage": "personal_data"
+    },
+    {
+      "name": "a date in text: +1 202-2026-12-10",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"+1 202-2026-12-10\"}}",
+      "stage": "personal_data"
+    },
+    {
+      "name": "a date in text: 12026-12-10",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"12026-12-10\"}}",
+      "stage": "personal_data"
+    },
+    {
+      "name": "a date in text: 2026-12-10 14:00",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"2026-12-10 14:00\"}}",
+      "stage": "personal_data"
+    },
+    {
+      "name": "a date in text: 2026-12-10T10:00:00Z in text",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"2026-12-10T10:00:00Z in text\"}}",
+      "stage": "schema"
+    },
+    {
+      "name": "a date in text: ２０２６-１２-１０ stay",
+      "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"２０２６-１２-１０ stay\"}}",
+      "stage": "schema"
+    },
+    {
       "name": "a phone in a member name",
       "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"call 415 555 0199\":1}}",
       "stage": "personal_data"
@@ -1202,7 +1262,7 @@
     {
       "name": "text \"2026-10-06T09:00:00\"",
       "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"2026-10-06T09:00:00\"}}",
-      "stage": "personal_data"
+      "stage": "schema"
     },
     {
       "name": "text \"acme/tool/1.2.3\"",
