@@ -99,9 +99,10 @@ func cardLike(ref string) bool {
 }
 
 // cardPrefix reports whether digits start with a card network's prefix:
-// Visa 4; Mastercard 51-55 and 2221-2720; American Express 34 and 37;
-// Discover 6011, 644-649 and 65; JCB 3528-3589; Diners Club 300-305, 36 and
-// 38.
+// Visa 4; Mastercard 51-55 and 2221-2720; Maestro 50 and 56-69; American
+// Express 34 and 37; Discover 6011, 644-649 and 65; JCB 3528-3589; Diners
+// Club 300-305, 3095, 36, 38 and 39; UnionPay 62 and 81; Mir 2200-2204;
+// RuPay 60 and 81-82. Every 4, 5 and 6 is one of these.
 func cardPrefix(d string) bool {
 	in := func(n, lo, hi int) bool {
 		v := 0
@@ -110,9 +111,17 @@ func cardPrefix(d string) bool {
 		}
 		return v >= lo && v <= hi
 	}
-	return d[0] == '4' || in(2, 51, 55) || in(4, 2221, 2720) || in(2, 34, 34) || in(2, 37, 37) ||
-		in(4, 6011, 6011) || in(3, 644, 649) || in(2, 65, 65) || in(4, 3528, 3589) ||
-		in(3, 300, 305) || in(2, 36, 36) || in(2, 38, 38)
+	switch d[0] {
+	case '4', '5', '6':
+		return true
+	case '2':
+		return in(4, 2200, 2204) || in(4, 2221, 2720)
+	case '3':
+		return in(3, 300, 305) || in(4, 3095, 3095) || in(2, 34, 34) || in(4, 3528, 3589) || in(2, 36, 39)
+	case '8':
+		return in(2, 81, 82)
+	}
+	return false
 }
 
 // refuseCardData refuses a payment reference that is a card number.

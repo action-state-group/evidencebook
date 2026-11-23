@@ -130,7 +130,8 @@ func TestNoCardDataInAReference(t *testing.T) {
 	for _, ok := range []string{v1LnHash, "A-1234", "4111111111111112", "123456", "ORDER 4111", "1002003004005005", "70001234567892"} {
 		assert.False(t, cardLike(ok), ok)
 	}
-	for _, card := range []string{"2223003122003222", "6011111111111117", "3530111333300000", "30569309025904", "6445644564456445"} {
+	for _, card := range []string{"2223003122003222", "6011111111111117", "3530111333300000", "30569309025904", "6445644564456445",
+		"6212345678901232", "2200123456789019", "5018123456789014", "8112345678901239", "3912345678901232"} {
 		assert.True(t, cardLike(card), "a network's prefix and the checksum: %s", card)
 	}
 	dealID := noLayerAgreed(t)
@@ -170,6 +171,11 @@ func TestAPaymentWithNoReferenceIsRecordedHonestly(t *testing.T) {
 	bound := merchantPayCheck(t, other, `,"payment_ref":"A-7"`)
 	dealRun(t, "settle", "--deal", other, "--check", bound, "--sent", "--payment-ref-type", merchantOrderType, "--payment-ref-origin", shop)
 	assert.Contains(t, v1Err(t, "settle", "--deal", other, "--check", bound, "--status", "settled", "--no-payment-ref", "--out", out), "--no-payment-ref goes only with --status settled")
+	// A Lightning payment: refused.
+	ln := noLayerAgreed(t)
+	lnCheck := merchantPayCheck(t, ln, `,"payment_ref":"`+v1LnHash+`"`)
+	dealRun(t, "settle", "--deal", ln, "--check", lnCheck, "--sent", "--payment-ref-type", "ln.payment_hash")
+	assert.Contains(t, v1Err(t, "settle", "--deal", ln, "--check", lnCheck, "--status", "settled", "--no-payment-ref", "--out", out), "--no-payment-ref goes only with --status settled")
 	// A payee leg: refused.
 	assert.Contains(t, v1Err(t, "settle", "--deal", other, "--row", "paid_as_agreed", "--status", "settled", "--received", "100", "--receive-fee", "0", "--no-payment-ref", "--out", out), "--no-payment-ref goes only")
 }
