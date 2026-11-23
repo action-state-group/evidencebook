@@ -56,6 +56,7 @@ package	kind	symbol	feature	rust	python
 .	func	VerifyOpening	originals-and-stores	frozen #640	ported
 .	func	VerifyOpenings	shelf	ported	ported
 .	func	VerifyStampProof	shelf	ported	ported
+.	func	VerifyWitnessReceipt	shelf	frozen #774	frozen #775
 .	type	A2AOptions	a2a-mcp-carriage	frozen #627	frozen #140
 .	type	A2ARequest	a2a-mcp-carriage	frozen #627	frozen #140
 .	type	A2AResponse	a2a-mcp-carriage	frozen #627	frozen #140
@@ -444,6 +445,7 @@ dealprofile/xdealv1	func	CheckSealed	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Decode	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Digest	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Encode	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	EntryOf	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	func	HeldRuling	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	func	KnownTime	x-deal-v1	ported	frozen #653
 dealprofile/xdealv1	func	NameAllRulings	x-deal-v1	ported	ported
@@ -495,6 +497,8 @@ dealprofile/xdealv1	type	CheckBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Counterparty	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Date	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	DisputeBody	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	Entry	x-deal-v1	frozen #774	frozen #775
+dealprofile/xdealv1	type	EntryInput	x-deal-v1	frozen #774	frozen #775
 dealprofile/xdealv1	type	FirstAct	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	Named	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	Null	x-deal-v1	ported	not needed
