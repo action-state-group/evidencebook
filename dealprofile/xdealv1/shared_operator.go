@@ -9,24 +9,32 @@ import (
 // NotIndependentSharedOperator is the only label SharedOperator returns. There
 // is no positive counterpart: a reader shows this text or nothing, never
 // "independent", because a binding can show that two keys share a controller
-// and the absence of one shows nothing about independence (u120, u534).
+// and the absence of one shows nothing about independence (#780).
 const NotIndependentSharedOperator = "not independent (shared operator)"
 
 // SharedOperator returns NotIndependentSharedOperator when the ruling's
 // adjudicator key and either party's key are bound to one controller, and ""
-// otherwise.
+// otherwise. An adjudicator key equal to a party key is the same operator
+// with no binding needed.
 //
 // The adjudicator key is the agreement's adjudicator.key_id; the party keys
 // are the ruling's keys.buyer and keys.seller. A binding counts only when it
 // is a controller-binding record with claim same_controller_asserted that
-// verifies, window and signatures included, at the ruling's stamped time
-// (block.at) and names exactly the adjudicator key and one party key.
+// verifies, window and signatures included, at stampedAt and names exactly
+// the adjudicator key and one party key.
+//
+// stampedAt is the ruling's stamped time: the time of the witnessed
+// checkpoint that covers the ruling, which the caller takes from the case
+// book's stamp. It is never the ruling's own block.at, which is the
+// adjudicator's word (PROFILE §2): an adjudicator sharing an operator could
+// set it outside the binding's window to escape the label. A zero stampedAt,
+// a ruling not yet covered by a stamp, gives "".
+//
 // revocations are the revocation statements delivered with the bindings;
-// judged at the ruling's time, one revoked after the ruling does not remove
-// the label. A bad signature, a missing or unreadable time and any
-// INCONCLUSIVE result give "". The verifier reads no member of the record for
+// judged at stampedAt, one revoked after it does not remove the label. A bad
+// signature and any INCONCLUSIVE result give "". The verifier reads no member of the record for
 // this and holds no list of any operator's keys: the bindings are the proof.
-func SharedOperator(ruling Record, agreement AgreeBody, bindings, revocations [][]byte) string {
+func SharedOperator(ruling Record, agreement AgreeBody, stampedAt time.Time, bindings, revocations [][]byte) string {
 	var body RulingBody
 	switch b := ruling.Body.(type) {
 	case RulingBody:
@@ -43,18 +51,20 @@ func SharedOperator(ruling Record, agreement AgreeBody, bindings, revocations []
 		return ""
 	}
 	adjudicator := agreement.Adjudicator.V.KeyID
-	at, err := time.Parse(time.RFC3339, ruling.Block.At)
-	if adjudicator == "" || err != nil {
+	if adjudicator == "" || stampedAt.IsZero() {
 		return ""
+	}
+	if adjudicator == body.Keys.Buyer || adjudicator == body.Keys.Seller {
+		return NotIndependentSharedOperator
 	}
 	opts := controllerbinding.Options{Revocations: revocations}
 	for _, binding := range bindings {
-		report := controllerbinding.Verify(binding, []time.Time{at}, opts)
+		report := controllerbinding.Verify(binding, []time.Time{stampedAt}, opts)
 		if report.Claim != controllerbinding.ClaimSameController {
 			continue
 		}
 		for _, party := range []string{body.Keys.Buyer, body.Keys.Seller} {
-			if party != adjudicator && report.AppliesTo(adjudicator, party) {
+			if report.AppliesTo(adjudicator, party) {
 				return NotIndependentSharedOperator
 			}
 		}
