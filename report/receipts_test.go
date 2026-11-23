@@ -187,6 +187,33 @@ func TestAReceiptTheModuleDoesNotTakeIsRefused(t *testing.T) {
 	require.NoError(t, checkReceiptBundle("d1", carried(t), moduleManifest{ID: ReceiptModuleID}))
 }
 
+// The caller's Gate runs on each carried receipt, after the page gate, and
+// its refusal refuses the receipt; held and not-closed receipts carry no
+// bundle and are not handed to it (evidencebook#735).
+func TestTheCallersGateChecksEachCarriedReceipt(t *testing.T) {
+	claims := []cli.ResultClaim{{ID: "d1::paid", Evidence: []string{"ex1"}}, {ID: "d2::paid", Evidence: []string{"ex2"}}}
+	module := receiptModule(t, ReceiptModuleID)
+	good := carried(t).Bundle
+	var seen []string
+	pass := func(b []byte) error { seen = append(seen, string(b)); return nil }
+	_, err := checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims)
+	require.NoError(t, err)
+	assert.Equal(t, []string{good}, seen, "only the carried bundle is checked, not the held one")
+	seen = nil
+	_, err = checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex2", NotClosed: true}}}, claims)
+	require.NoError(t, err)
+	assert.Empty(t, seen, "a not-closed receipt is not checked")
+	// A bundle the page gate refuses never reaches the caller's gate.
+	tampered := strings.Replace(good, `"root":"`, `"root":"0`, 1)
+	_, err = checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: tampered}}}, claims)
+	assert.ErrorContains(t, err, "does not pass the page gate")
+	assert.Empty(t, seen)
+	refuse := func([]byte) error { return cli.InputError("the deal section does not verify") }
+	_, err = checkReceipts(&Receipts{Module: module, Gate: refuse, Deals: []Receipt{{Exchange: "ex1", Bundle: good}}}, claims)
+	assert.ErrorContains(t, err, "does not pass the caller's check")
+	assert.ErrorContains(t, err, "the deal section does not verify")
+}
+
 func TestAMultiDealResultMapsEachReceiptToItsOwnDeal(t *testing.T) {
 	claims := []cli.ResultClaim{
 		{ID: "d1::paid", Evidence: []string{"ex1", "leg1"}}, {ID: "d1::served", Evidence: []string{"ex1"}},
