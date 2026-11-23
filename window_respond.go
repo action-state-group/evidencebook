@@ -39,6 +39,9 @@ func (s *Shelf) Respond(ctx context.Context, request Message, opts RespondOption
 		reply, record, err := answering.respondInto(ctx, request, opts, false, current)
 		// A roll may close the window that was current between choosing it
 		// and recording the answer in it: answer once more in the next one.
+		// The retry counts the ask against the limiters again, so near a
+		// limit such an ask may be refused one early; it happens only when a
+		// roll lands mid-answer.
 		if errors.Is(err, ErrWindowClosed) && attempt == 0 {
 			continue
 		}

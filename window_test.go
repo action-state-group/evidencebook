@@ -802,3 +802,58 @@ func TestARollBeforeThePolicyStartsWritesNothing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, windows)
 }
+
+func TestAWitnessedChainVerifiesUnderItsWitnesses(t *testing.T) {
+	ctx := context.Background()
+	r := newWindowReport(t)
+	witnessKey, directory := testWitness()
+	chain, err := r.holder.WindowChain(ctx, "2026-10", "2026-12", WindowChainOptions{
+		Receipts: func(_ context.Context, final Checkpoint) ([]json.RawMessage, error) {
+			return []json.RawMessage{rawReceipt(t, mintReceipt(t, final.Statement, witnessKey))}, nil
+		},
+	})
+	require.NoError(t, err)
+	verified, findings := VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint, Witnesses: directory})
+	assert.Empty(t, findings)
+	assert.Len(t, verified, 3)
+	// A receipt over another window's checkpoint does not witness this one.
+	chain.Windows[1].Receipts = chain.Windows[0].Receipts
+	_, findings = VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint, Witnesses: directory})
+	require.NotEmpty(t, findings)
+	assert.Contains(t, findings[0].Text, "window 2026-11 not witnessed")
+}
+
+func TestCoverageNamesAResultThatCitesNoAnswer(t *testing.T) {
+	ctx := context.Background()
+	r := newWindowReport(t)
+	chain, err := r.holder.WindowChain(ctx, "2026-10", "2026-12", WindowChainOptions{})
+	require.NoError(t, err)
+	chainRecord, err := r.requester.RecordWindowChain(ctx, chain, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
+	require.NoError(t, err)
+	var responses []string
+	for i, label := range []string{"2026-10", "2026-11", "2026-12"} {
+		responses = append(responses, r.answer(t, label, i+1).RecordID)
+	}
+	// A Result built outside ReportFromWindows: it cites the answers in its
+	// links, but its claim's evidence is the chain alone.
+	result, err := evaluateWindows([]string{chainRecord.RecordID})(nil)
+	require.NoError(t, err)
+	links := []Link{{Type: Cites, Target: chainRecord.RecordID}}
+	for _, id := range responses {
+		links = append(links, Link{Type: Cites, Target: id})
+	}
+	sealed, err := r.requester.Append(ctx, Entry{RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: packContract, Links: links, Statement: result})
+	require.NoError(t, err)
+	_, err = r.requester.Checkpoint(ctx)
+	require.NoError(t, err)
+	bundle, err := r.requester.Bundle(ctx, BundleRequest{Root: sealed.RecordID, Payloads: PayloadsAll})
+	require.NoError(t, err)
+	coverage, err := VerifyReportCoverage(bundle.JSON, CoverageOptions{CheckpointKey: r.keys.Checkpoint})
+	require.NoError(t, err)
+	var texts []string
+	for _, f := range coverage.Findings {
+		texts = append(texts, f.Text)
+	}
+	require.NotEmpty(t, texts)
+	assert.Contains(t, texts[0], "the Result: claim 0 cites none of the answers")
+}

@@ -165,11 +165,13 @@ What it shows and what it does not:
 - A year handover is this document alone; the shelf log is not needed.
 - With witness receipts, a window replaced after the fact shows as a break against what the
   witness signed. Without them the chain proves continuity only as the holder states it: one key
-  signs every window, so a holder could re-cut window N and re-sign N+1..M. A verifier that
-  holds two different chains for one base reports equivocation.
-- The chain shows which windows exist and that each was answered, never that an answer holds
-  every row of its window (the limit #606 already states). An empty window reveals only that
-  nothing was recorded in it.
+  signs every window, so a holder could re-cut window N and re-sign N+1..M. Two different chains
+  for one base, signed by one key, are equivocation; a verifier that holds both can see it by
+  comparing them. This item does not detect it.
+- The chain shows which windows exist and that they link. The report's coverage check shows each
+  was answered, never that an answer holds every row of its window (the limit #606 already
+  states). An empty window shows only that the holder recorded nothing in it; it does not show
+  that nothing happened.
 - Why not the whole-shelf handover (`shelf_handover.go`, `461-shelf-facts.md` §2.7): it
   detects a replaced book against the witnessed shelf log, but it hands over every entry of the
   shelf, and a report's auditor is handed only the windows of its range.
@@ -192,8 +194,9 @@ What it shows and what it does not:
   Result as `ReportFromWindows` does, the chain record verifies, the windows tile the range,
   each response's anchor is its window's final tree and its proofs verify there, and lists every
   gap by name: `window 2026-03 has no answer`, `windows do not tile 2026-01..2026-12`, `chain
-  breaks at <label>`. `capsulectl verify --bundle` prints its lines, and `book report build`
-  puts the same lines on the page. A range with any finding never passes.
+  breaks at <label>`. A range with any finding never passes. The core's `capsulectl verify`
+  builds without this package and cannot run it; PR 2 adds the book plugin verb that prints
+  these lines, and `book report build` puts the same lines on the page.
 
 `ReportFromDerivation` over one response stays for unwindowed holders.
 
@@ -223,7 +226,7 @@ retired-entries check applies to JSONL books only.
 | `respond` | `Shelf.Respond` (§4) |
 | `close`, `reconcile` | a period inside the current window; a period in an earlier window is refused with a hint, since its Close would link records in another book (follow-up issue) |
 | `migrate` | refused (JSONL books only) |
-| new: `book window list`, `book window roll`, `book window chain --from --to --out`, `book report derive --chain <file> --response <id>...` | |
+| new: `book window list`, `book window roll`, `book window chain --from --to --out`, `book report derive --chain <file> --response <id>...`, `book report coverage --bundle` (prints `VerifyReportCoverage`'s lines) | |
 
 ## 7. Owner, doors, ports, PRs
 
@@ -272,12 +275,12 @@ The default window is **month** for a new report-side store; existing books stay
 - Respond: routed by checkpoint pin, by half pin and by freshness; a past window answers and the
   answered record lands in the current window; a closed book never issues an anchor.
 - Chain: a gap, a wrong `previous`, an open without `previous` after `Since`, a changed bound, a
-  record after the close, an unwitnessed window when witnesses are named, and two chains for one
-  base, each named.
+  record after the close, and an unwitnessed window when witnesses are named, each named; a
+  witnessed chain passing.
 - Report: a missing window, a duplicate window, a response pinned to a tree that is not the
   final one, mixed holder keys, a range the chain does not tile, and a range crossing two
   chains, each named; the bundle verifies and the page shows the lines.
 - capsulectl-book: `store init` default and print; writes across a boundary under a fixed clock;
-  `book window roll` and `chain`; a two-window `report derive` and `capsulectl verify --bundle`;
+  `book window roll` and `chain`; a two-window `report derive` and the plugin's coverage verb;
   witness state per log id; core `bundle` and `cll list` on the current window; `close` on the
   previous month refused with its hint.
