@@ -17,8 +17,9 @@ import (
 // on, the stamp proof of its x-deal-v1 deal book and the witness receipts
 // its shelf holds for that cadence checkpoint: the file `deal ruling
 // entries --proof` reads to say "entered" rather than "entered, not
-// witnessed" (evidencebook#788). It carries hashes and signatures only, so
-// it is not a disclose act (Sherlock2, #773). It stamps nothing.
+// witnessed" (evidencebook#788). It carries no record content, only
+// checkpoints, proofs and witness receipts, so it is not a disclose act
+// (Sherlock2, #773). It stamps nothing.
 
 func dealCheckpointProofCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -28,9 +29,9 @@ func dealCheckpointProofCommand() *cobra.Command {
 --share ... --bundle wrote), the stamp proof of your x-deal-v1 deal book and the
 witness receipts your shelf holds for that cadence checkpoint. Send the file to
 the adjudicator with your copy: deal ruling entries --proof reads it to say
-"entered" rather than "entered, not witnessed". It carries hashes and
-signatures only. It stamps nothing: when no stamp covers that checkpoint yet,
-run deal tick once one is due, then this again.`,
+"entered" rather than "entered, not witnessed". It carries no record content,
+only checkpoints, proofs and witness receipts. It stamps nothing: when no stamp
+covers that checkpoint yet, run deal tick once one is due, then this again.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			str := func(name string) string { v, _ := c.Flags().GetString(name); return strings.TrimSpace(v) }

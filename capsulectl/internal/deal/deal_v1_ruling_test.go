@@ -333,6 +333,12 @@ func TestRulingEntriesByAWitnessedTime(t *testing.T) {
 		o := strings.Replace(disputeOffer(k, "auto:twin"), `"key_id": "adjudicator-key"`, `"key_id": "`+adj.party.signer+`"`, 1)
 		return strings.Replace(o, `"witnesses": []`, `"witnesses": [{"key_id": "`+keyID+`"}]`, 1)
 	})
+	// The seller's shelf is witnessed by the same witness, for its proof.
+	h.seller.act(t)
+	sp, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	sp.Checkpoint.Endpoint, sp.Checkpoint.PublicKey = endpoint, keyID
+	require.NoError(t, cli.SaveProfile(sp, true))
 	h.buyer.act(t)
 	dispute := filepath.Join(t.TempDir(), "dispute.json")
 	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
@@ -346,21 +352,7 @@ func TestRulingEntriesByAWitnessedTime(t *testing.T) {
 	clockAt(t, cli.DealClock().Add(time.Hour))
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	iat := cli.DealClock().Add(time.Minute).UTC().Truncate(time.Second)
-	withSession(t, func(s *dealSession) {
-		c, _, err := s.cadenceOf(t.Context())
-		require.NoError(t, err)
-		last, ok, err := c.Last(t.Context())
-		require.NoError(t, err)
-		require.True(t, ok)
-		record, err := checkpoint.ParseRecord(last.Checkpoint)
-		require.NoError(t, err)
-		entry, err := record.EntryHash()
-		require.NoError(t, err)
-		check, err := c.Witnessed(t.Context(), last.N, evidencebook.WitnessReceipt{TSURL: endpoint, EntryHash: hex.EncodeToString(entry),
-			Receipt: mintReceiptAt(t, entry, key, iat), LeafIndex: 0, TreeSize: 1})
-		require.NoError(t, err)
-		require.Equal(t, evidencebook.WitnessVerified, check.State, check.Reason)
-	})
+	witnessLastStamp(t, endpoint, key, iat)
 
 	// Only the seller enters the ruling; the buyer, without it, seals a
 	// record after the ruling's witnessed time, so its checkpoint is later.
@@ -395,4 +387,43 @@ func TestRulingEntriesByAWitnessedTime(t *testing.T) {
 	got, _ = words(buyerAfter, sellerAfter)
 	assert.Equal(t, "entered, not witnessed", got["seller"])
 	assert.True(t, strings.HasPrefix(got["buyer"], "ruling not entered by the buyer as of its checkpoint at "), got["buyer"])
+
+	// The seller's proof, with the named witness's receipt for the stamp its
+	// copy rests on, makes its entry "entered".
+	h.seller.act(t)
+	sellerProof := filepath.Join(t.TempDir(), "seller-proof.json")
+	assert.Equal(t, float64(0), dealRun(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", sellerAfter, "--out", sellerProof)["witness_receipts"])
+	witnessLastStamp(t, endpoint, key, cli.DealClock().UTC().Truncate(time.Second))
+	require.NoError(t, os.Remove(sellerProof))
+	assert.Equal(t, float64(1), dealRun(t, "checkpoint", "proof", "--deal", h.dealID, "--copy", sellerAfter, "--out", sellerProof)["witness_receipts"])
+	adj.act(t)
+	out = dealRun(t, "ruling", "entries", "--deal", h.dealID, "--ruling", digest, "--copy", buyerAfter, "--copy", sellerAfter, "--proof", sellerProof)
+	got = map[string]string{}
+	for _, e := range out["entries"].([]any) {
+		row := e.(map[string]any)
+		got[row["party"].(string)] = row["words"].(string)
+	}
+	assert.Equal(t, "entered", got["seller"])
+	assert.True(t, strings.HasPrefix(got["buyer"], "ruling not entered by the buyer"), got["buyer"])
+}
+
+// witnessLastStamp records, for the selected profile's last stamp, a receipt
+// from the witness at endpoint signed by key with registration time iat.
+func witnessLastStamp(t *testing.T, endpoint string, key ed25519.PrivateKey, iat time.Time) {
+	t.Helper()
+	withSession(t, func(s *dealSession) {
+		c, _, err := s.cadenceOf(t.Context())
+		require.NoError(t, err)
+		last, ok, err := c.Last(t.Context())
+		require.NoError(t, err)
+		require.True(t, ok)
+		record, err := checkpoint.ParseRecord(last.Checkpoint)
+		require.NoError(t, err)
+		entry, err := record.EntryHash()
+		require.NoError(t, err)
+		check, err := c.Witnessed(t.Context(), last.N, evidencebook.WitnessReceipt{TSURL: endpoint, EntryHash: hex.EncodeToString(entry),
+			Receipt: mintReceiptAt(t, entry, key, iat), LeafIndex: 0, TreeSize: 1})
+		require.NoError(t, err)
+		require.Equal(t, evidencebook.WitnessVerified, check.State, check.Reason)
+	})
 }
