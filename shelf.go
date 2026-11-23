@@ -147,7 +147,8 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	// A window policy is checked before anything touches the disk, so a
 	// refused one leaves no file behind (evidencebook#827). A stored policy
 	// passed these checks when its shelf was created, so a policy that fails
-	// them could never match it either.
+	// them matches none, except a since off a period start by under a second,
+	// which the stored form (whole seconds) once matched and is now refused.
 	if cfg.Window != nil {
 		if err := cfg.Window.validate(); err != nil {
 			return nil, err
