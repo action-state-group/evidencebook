@@ -28,7 +28,7 @@ type ActAuthorization struct {
 	Act, Check, Verdict, Approval Record
 	// AmountNotHeld says why the act's settled amount was not held to its
 	// check, "" when it was or there was none to hold: on a cancel check
-	// that states a fee_minor and no amount_minor, who bears the fee is not
+	// that states a fee_minor other than 0 and no amount_minor, who bears the fee is not
 	// recorded, so the refund owed is not known (evidencebook#719,
 	// Sherlock2). A caller shows it, never as a match.
 	AmountNotHeld string

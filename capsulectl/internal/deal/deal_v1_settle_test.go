@@ -614,3 +614,32 @@ func TestACorruptDealDoesNotStopTheHistory(t *testing.T) {
 		assert.False(t, scope.Complete)
 	})
 }
+
+// A seller's cancel that states a cancellation fee does not say who bears
+// it, so no refund amount is picked for it: deal settle refuses, and says
+// why (Sherlock2 on #742; #743).
+func TestARefundOnACancelWithAFeeIsNotBuilt(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+
+	h.seller.act(t)
+	received := dealRun(t, "settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
+		"--received", "4500", "--receive-fee", "0", "--status", "settled", "--out", filepath.Join(t.TempDir(), "received.json"))
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"cancel","amount_minor":4500,"fee_minor":500,"terms":{"item":"lamp","price_minor":4500,"currency":"USD"}}`))
+	require.Equal(t, "pass", out["verdict"], "%v", out)
+	var cancel string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		cancel = checkDigest(t, journal)
+		cb, err := s.checkRecord(t.Context(), h.dealID, cancel)
+		require.NoError(t, err)
+		require.Nil(t, cb.AmountMinor, "a seller's cancel records its amount as cancelled_amount_minor")
+		require.NotNil(t, cb.FeeMinor)
+	})
+	msg := v1Err(t, "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received["digest"].(string), "--sent", "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32))
+	assert.Contains(t, msg, "does not say who bears it")
+	assert.Contains(t, msg, "evidencebook#743")
+}

@@ -686,7 +686,12 @@ func (s *dealSession) settle(ctx context.Context, c *cobra.Command, in settleIn)
 		return cli.InputError("a refund rests on a cancel check, and --check " + in.check + " is a " + cb.Action + " check")
 	}
 	// A seller's cancel check records the refund as cancelled_amount_minor
-	// (sealCancelAmount): the refund is that amount.
+	// (sealCancelAmount): the refund is that amount. With a cancellation fee
+	// beside it, the record does not say who bears the fee, so the refund owed
+	// is not known, and no amount is picked (Sherlock2 on #742; #743).
+	if cb.AmountMinor == nil && cb.Action == "cancel" && cb.CancelledAmountMinor != nil && cb.FeeMinor != nil && *cb.FeeMinor != 0 {
+		return cli.InputError("--check " + in.check + " is a cancel that states a cancellation fee, and the record does not say who bears it, so the refund owed is not known and no refund is built for it (evidencebook#743)")
+	}
 	if cb.AmountMinor == nil && cb.Action == "cancel" && cb.CancelledAmountMinor != nil {
 		amount := *cb.CancelledAmountMinor
 		cb.AmountMinor = &amount

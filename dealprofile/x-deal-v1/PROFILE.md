@@ -318,7 +318,7 @@ and returns per act the record digests the person signs. A settle's leg travels 
 `xdealv1.CheckActs`, which is the same check given each act's settlement member as well. A caller
 holding the Capsules uses it. Where both the leg and the check carry them, the leg's asset code
 equals the check's `currency`, and its settled amount equals the check's `amount_minor`; on a
-`cancel` check that states no `amount_minor` and no `fee_minor`, a refund leg's settled amount equals
+`cancel` check that states no `amount_minor` and no `fee_minor` (or `fee_minor` 0), a refund leg's settled amount equals
 its `cancelled_amount_minor` (a seller's outgoing cancel records the amount there); with a
 `fee_minor` other than 0, who bears the fee is not recorded, so no amount is held, and `CheckActs`
 says so (`AmountNotHeld`). A payer leg
