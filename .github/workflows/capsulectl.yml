@@ -5,14 +5,16 @@ name: capsulectl
 # release (capsulectl/v*), two launchers. capsulectl-book moved here from
 # capsule-cli (capsule-cli#326); capsulectl-deal, with its history, from
 # evidencebook-deal (evidencebook#610). It requires this repository's library
-# at a version, never the working tree, so it runs on its own.
+# at a version, never the working tree, so it runs on its own. Its tests do
+# read fixtures from the working tree outside capsulectl/ (report/testdata and
+# testdata/card-registration), which is why those paths are in the filters.
 
 on:
   push:
     branches: [main]
-    paths: ["capsulectl/**", "report/testdata/**", ".github/workflows/capsulectl.yml"]
+    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", ".github/workflows/capsulectl.yml"]
   pull_request:
-    paths: ["capsulectl/**", "report/testdata/**", ".github/workflows/capsulectl.yml"]
+    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", ".github/workflows/capsulectl.yml"]
   workflow_dispatch:
   schedule:
     # Nightly: every case under the race detector (see the tests job's env).
