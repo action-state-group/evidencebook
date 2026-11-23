@@ -21,7 +21,7 @@
 //! is not ported.
 
 use crate::answer::{citing_half, profile_time};
-use crate::derivation::decode_syntax;
+use crate::derivation::{decode_strict, decode_syntax_exact};
 use crate::staple::consistency_holds;
 use cll::checkpoint::{verify_checkpoint_cose_offline, DecodedCheckpointCose};
 use cll::mmr::{self, InclusionProof};
@@ -159,7 +159,7 @@ fn check_answer(envelope: &Envelope, request: &Request) -> Result<Answer, SetInc
     check_anchor_match(envelope, request)?;
     // Numbers are read as written: a field's fraction is the holder's value,
     // not a refusal, as Go's artifact reader reads it.
-    let artifact = decode_syntax(&envelope.artifact)
+    let artifact = decode_syntax_exact(&envelope.artifact)
         .map_err(|e| SetInclusionError(format!("the artifact is not JSON: {e}")))?;
     let Some(rows) = artifact.get("records").and_then(Value::as_array).cloned() else {
         return bad("the artifact holds no records list");
@@ -227,7 +227,8 @@ fn record_body_matches(body: &[u8], digest: &str) -> bool {
     if hex::encode(Sha256::digest(body)) == digest {
         return true;
     }
-    let Ok(Value::Object(mut capsule)) = decode_syntax(body) else {
+    // A capsule's numbers have a canonical form or the capsule has no id.
+    let Ok(Value::Object(mut capsule)) = decode_strict(body) else {
         return false;
     };
     if capsule.get("capsule_id").and_then(Value::as_str) != Some(digest) {
@@ -539,5 +540,12 @@ mod tests {
         let wrong = capsule.replace(r#""a":1"#, r#""a":2"#);
         assert!(!record_body_matches(wrong.as_bytes(), &id));
         assert!(!record_body_matches(b"not json", &id));
+        // A number with no canonical form makes no capsule id: `1e400` is not
+        // read as the `null` whose capsule hashes to the digest.
+        let nulled = hex::encode(Sha256::digest(br#"{"a":null}"#));
+        let overflow = format!(r#"{{"a":1e400,"capsule_id":"{nulled}"}}"#);
+        assert!(!record_body_matches(overflow.as_bytes(), &nulled));
+        let fraction = format!(r#"{{"a":1.5,"capsule_id":"{nulled}"}}"#);
+        assert!(!record_body_matches(fraction.as_bytes(), &nulled));
     }
 }

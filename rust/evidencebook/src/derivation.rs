@@ -411,6 +411,7 @@ pub(crate) fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
         at: 0,
         canonical: None,
         keep_numbers: false,
+        refuse_lossy: false,
     };
     reader.space();
     let value = reader.value(0)?;
@@ -431,6 +432,18 @@ pub(crate) fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
 /// canonical form. An integer of at most 18 digits is an integer; any other
 /// number is a float, which no JSON-RPC id may be.
 pub(crate) fn decode_syntax(document: &[u8]) -> Result<Value, DerivationError> {
+    decode_numbers_as_written(document, false)
+}
+
+/// [`decode_syntax`] for a document whose values are read back as they are
+/// (a holder's answer): a number the model cannot hold, an infinite one such
+/// as `1e400` or an integer of more than 18 digits, is refused instead of
+/// becoming `null` or a rounded float.
+pub(crate) fn decode_syntax_exact(document: &[u8]) -> Result<Value, DerivationError> {
+    decode_numbers_as_written(document, true)
+}
+
+fn decode_numbers_as_written(document: &[u8], exact: bool) -> Result<Value, DerivationError> {
     let text = std::str::from_utf8(document)
         .map_err(|_| DerivationError::NotJson("JSON text is not valid UTF-8".into()))?;
     let mut reader = Reader {
@@ -438,6 +451,7 @@ pub(crate) fn decode_syntax(document: &[u8]) -> Result<Value, DerivationError> {
         at: 0,
         canonical: None,
         keep_numbers: true,
+        refuse_lossy: exact,
     };
     reader.space();
     let value = reader.value(0)?;
@@ -458,6 +472,9 @@ struct Reader<'a> {
     /// Read a number with no canonical form as the number it is, instead of
     /// as `null` with `canonical` set ([`decode_syntax`]).
     keep_numbers: bool,
+    /// With `keep_numbers`, refuse a number kept lossily (see
+    /// [`decode_syntax_exact`]).
+    refuse_lossy: bool,
 }
 
 impl Reader<'_> {
@@ -688,19 +705,28 @@ impl Reader<'_> {
         };
         if let Some(reason) = reason {
             if self.keep_numbers {
-                let kept = token
+                let whole = token
                     .parse::<i64>()
                     .ok()
                     .filter(|_| token.trim_start_matches('-').len() <= 18)
-                    .map(Value::from)
-                    .or_else(|| {
-                        token
-                            .parse::<f64>()
-                            .ok()
-                            .and_then(serde_json::Number::from_f64)
-                            .map(Value::Number)
-                    });
-                return Ok(kept.unwrap_or(Value::Null));
+                    .map(Value::from);
+                // A long integer is read as the float it rounds to, which an
+                // exact reader does not accept as the number it is.
+                if self.refuse_lossy && whole.is_none() && integer {
+                    return Err(self.malformed("integer of more than 18 digits"));
+                }
+                let kept = whole.or_else(|| {
+                    token
+                        .parse::<f64>()
+                        .ok()
+                        .and_then(serde_json::Number::from_f64)
+                        .map(Value::Number)
+                });
+                return match kept {
+                    Some(value) => Ok(value),
+                    None if self.refuse_lossy => Err(self.malformed("number out of range")),
+                    None => Ok(Value::Null),
+                };
             }
             self.canonical.get_or_insert(reason);
             return Ok(Value::Null);

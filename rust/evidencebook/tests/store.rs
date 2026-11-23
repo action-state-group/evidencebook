@@ -1087,6 +1087,32 @@ mod set_proofs {
         .unwrap();
         let inputs = derived_inputs(&env, &a.req, &log_key()).unwrap();
         assert_eq!(inputs.records[0].fields["seq"], json!(1.5));
+        // A number the reader cannot hold is refused, never read as `null`
+        // or as a rounded float.
+        for number in ["1e400", "12345678901234567890"] {
+            let text = String::from_utf8(env.artifact.clone())
+                .unwrap()
+                .replace("1.5", number);
+            let env = sign_with_profile(
+                PROFILE,
+                &a.bytes,
+                EnvelopeParts {
+                    subject: a.req.subject.clone(),
+                    derivation: a.req.derivation.clone(),
+                    anchor: Anchor {
+                        digest: a.env.anchor.digest.clone(),
+                        freshness: None,
+                    },
+                    artifact: text.into_bytes(),
+                    verification: vec![],
+                    issued_at: ISSUED_AT.into(),
+                },
+                &key("responder") as &dyn EnvelopeSigner,
+            )
+            .unwrap();
+            let err = derived_inputs(&env, &a.req, &log_key()).unwrap_err();
+            assert!(err.0.contains("not JSON"), "{number}: {err}");
+        }
     }
 
     /// Go reads a proof that need not be deterministic, and checks a
