@@ -233,7 +233,14 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 			block.AgreementRef = &agreement
 		}
 		block.Seen = xdealv1.NullOf[string]()
-		if d.CounterpartyKey != "" && d.CounterpartyLogID != "" {
+		// A book of a counterparty with no layer has seen null throughout
+		// (PROFILE §4.7), whatever else this profile has received (a
+		// referee's ruling, say).
+		noLayer, err := s.v1NoLayer(ctx, d)
+		if err != nil {
+			return bookSealed{}, err
+		}
+		if !noLayer && d.CounterpartyKey != "" && d.CounterpartyLogID != "" {
 			cp, err := s.shelf.CountedPrefix(ctx, d.CounterpartyKey, d.CounterpartyLogID)
 			if err != nil {
 				return bookSealed{}, err
@@ -242,7 +249,7 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 				block.Seen = xdealv1.Some(cp.Last)
 			}
 		}
-		if in.Seen != "" {
+		if in.Seen != "" && !noLayer {
 			block.Seen = xdealv1.Some(in.Seen)
 		}
 		rec := xdealv1.Record{Block: block, Body: in.Body}
@@ -401,4 +408,19 @@ func (s *dealSession) gateFirstAct(ctx context.Context, dealID string, act xdeal
 	}
 	act.Block.DealID = dealID
 	return s.v1Profile.GateAct(ctx, xdealv1.ActGateInput{Own: own, Act: act, CounterpartAgreement: d.CounterpartyAgreement, CommitmentShelfLog: commitmentShelfLog})
+}
+
+// v1NoLayer reports whether a deal is with a counterparty that runs no layer:
+// this profile made its offer and the offer names no key (to null, PROFILE
+// §4.7).
+func (s *dealSession) v1NoLayer(ctx context.Context, d *v1Deal) (bool, error) {
+	if d == nil || d.OfferDigest == "" {
+		return false, nil
+	}
+	offer, err := s.offerByDigest(ctx, d.OfferDigest)
+	if err != nil || offer == nil || !offer.Own {
+		return false, err
+	}
+	prop, ok := proposeOf(offer.Record)
+	return ok && prop.To.V == nil, nil
 }

@@ -126,6 +126,13 @@ func (s *dealSession) receiveV1(ctx context.Context, c *cobra.Command, push v1Pu
 		if err = s.refuseOwnDeal(ctx, info); err != nil {
 			return err
 		}
+		// An offer to a counterparty with no layer (to null) stays with its
+		// offerer and is never sent (PROFILE §4.7): no one can answer it.
+		if info.sent != nil && info.kind == xdealv1.TypePropose {
+			if prop, ok := proposeOf(info.sent.Record); ok && prop.To.V == nil {
+				return cli.InputError("this offer names no key (to is null): it is an offer to a party that keeps no records of its own, and it stays with whoever made it. Nothing can answer it, so it is not kept")
+			}
+		}
 	}
 	if info == nil && push.StampProof == nil {
 		return cli.InputError("the file holds neither a record nor a stamp proof")
@@ -268,6 +275,12 @@ func (s *dealSession) noteReceived(ctx context.Context, info *receivedInfo) erro
 			return err
 		}
 		if err = s.ensureOfferedRow(ctx, d); err != nil {
+			return err
+		}
+		// A deal with no layer on the other side has no counterparty: a
+		// record received for it (a referee's ruling) is kept, and no one is
+		// registered as the other side.
+		if noLayer, err := s.v1NoLayer(ctx, d); err != nil || noLayer {
 			return err
 		}
 		if d.CounterpartyLogID == "" {

@@ -69,8 +69,14 @@ func TestADeclineNeedsAnOfferSentToYourKey(t *testing.T) {
 	h.buyer.act(t)
 	assert.Contains(t, v1Err(t, "offer", "decline", h.offer, "--out", filepath.Join(t.TempDir(), "d.json")), "withdraw it with `deal offer cancel`")
 
-	open := offeredTo(t, func(string) string { return v1OfferInput }) // to: null
-	assert.Contains(t, v1Err(t, "offer", "decline", open.offer, "--out", filepath.Join(t.TempDir(), "d.json")), "open to anyone")
+	// An offer to no key (to null) is to a party with no layer: it is never
+	// received, so there is nothing to decline (#762).
+	noKey := newV1Side(t)
+	noKeyFile := filepath.Join(t.TempDir(), "o.json")
+	dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", noKeyFile)
+	h.buyer.act(t)
+	assert.Contains(t, v1Err(t, "receive", noKeyFile), "names no key (to is null)")
+	_ = noKey
 
 	other := newV1Side(t)
 	elsewhere := offeredTo(t, func(string) string { return offerTo(other.party.signer) })

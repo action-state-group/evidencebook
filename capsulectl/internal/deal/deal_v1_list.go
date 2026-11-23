@@ -147,7 +147,11 @@ func (s *dealSession) v1ListingOf(ctx context.Context, p cli.Profile, dealID str
 			l.CheckpointNote = v1CheckpointNote(p)
 		}
 	}
-	sum.Text = v1SummaryText(sum, l.PaymentRows)
+	noLayer, err := s.v1NoLayer(ctx, d)
+	if err != nil {
+		return dealListing{}, false, err
+	}
+	sum.Text = v1SummaryText(sum, l.PaymentRows, noLayer)
 	l.Summary = sum
 	return l, true, nil
 }
@@ -204,7 +208,7 @@ func (s *dealSession) v1ListState(ctx context.Context, d *v1Deal) (string, strin
 }
 
 // v1SummaryText is the summary's line, as dealSummaryOf writes v0's.
-func v1SummaryText(sum dealSummary, paymentRows *int) string {
+func v1SummaryText(sum dealSummary, paymentRows *int, noLayer bool) string {
 	amount := "amount not recorded"
 	switch {
 	case sum.Amount != nil:
@@ -214,7 +218,11 @@ func v1SummaryText(sum dealSummary, paymentRows *int) string {
 	case paymentRows != nil:
 		amount = "no payment row in the offer"
 	}
-	return strings.Join([]string{sum.What, "counterparty: no name recorded (key only)", amount, sum.Outcome}, " · ")
+	who := "counterparty: no name recorded (key only)"
+	if noLayer {
+		who = "counterparty: keeps no records of its own"
+	}
+	return strings.Join([]string{sum.What, who, amount, sum.Outcome}, " · ")
 }
 
 // v1InRange says whether any of an x-deal-v1 deal's records (its offer, its

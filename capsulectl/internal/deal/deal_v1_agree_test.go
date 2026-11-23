@@ -164,7 +164,8 @@ func TestAnAgreementRefusesWhatItCannotCite(t *testing.T) {
 	h := newV1Side(t)
 	_ = h
 	buyerOffer := filepath.Join(t.TempDir(), "o.json")
-	res := dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", buyerOffer)
+	// An offer naming a key: one to no key (to null) is agreed alone (#762).
+	res := dealRun(t, "offer", "--input", writeJSON(t, offerTo(strings.Repeat("e", 64))), "--out", buyerOffer)
 	digest := res["offer"].(string)
 
 	assert.Contains(t, v1Err(t, "agree", digest, "--out", filepath.Join(t.TempDir(), "a.json")), "has no admission decision: seal capsule-engine's with `deal admit")
@@ -193,7 +194,7 @@ const engineAdmit = `{"answers":[{"digest":"b752ebd2ceed2379f1342389d96e32d3d6ac
 func TestAnAgreementCitesAnEngineAdmit(t *testing.T) {
 	newV1Side(t)
 	buyerOffer := filepath.Join(t.TempDir(), "o.json")
-	digest := dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", buyerOffer)["offer"].(string)
+	digest := dealRun(t, "offer", "--input", writeJSON(t, offerTo(strings.Repeat("e", 64))), "--out", buyerOffer)["offer"].(string)
 	dec := json.NewDecoder(strings.NewReader(engineAdmit))
 	dec.DisallowUnknownFields()
 	var body xdealv1.AdmitBody
@@ -215,14 +216,14 @@ func TestReceiveRefusesWhatItCannotRead(t *testing.T) {
 func TestAV0ProfileThatReceivesAV1OfferAnswersInV1(t *testing.T) {
 	// A profile reads both versions whatever its setting: its setting only
 	// governs the offers it writes (design §3).
+	seller := newV1Side(t) // a v0 profile, store migrated by the user's choice only
+	dealRun(t, "set-version", "x-deal-v0")
 	buyer := newV1Side(t)
 	buyer.act(t)
 	offerFile := filepath.Join(t.TempDir(), "offer.json")
-	res := dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", offerFile)
+	res := dealRun(t, "offer", "--input", writeJSON(t, offerTo(seller.party.signer)), "--out", offerFile)
 
-	dealFixture(t) // a v0 profile, store migrated by the user's choice only
-	dealRun(t, "set-version", "x-deal-v1", "--migrate")
-	dealRun(t, "set-version", "x-deal-v0")
+	seller.act(t)
 	got := dealRun(t, "receive", offerFile)
 	assert.Equal(t, "kept, and counted", got["record"])
 	admit := sealAdmit(t, "GO")

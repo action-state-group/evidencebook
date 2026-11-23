@@ -237,6 +237,17 @@ func (s *dealSession) dealEntry3(ctx context.Context, bookID string, v xdealv1.S
 			startIn.OffererAgreementTime = &w
 		}
 	}
+	// A deal with a counterparty that runs no layer starts at the holder's
+	// first act (xdealv1.Start, Steven u611): its time, known or stamped, or
+	// none yet.
+	if fa := v.Start.FirstAct; fa != nil {
+		startIn.FirstAct = &xdealv1.FirstAct{}
+		if t := fa.Time; t.Known != "" {
+			startIn.FirstAct.Time = &t.Known
+		} else if w, ok := stamps[t.Stamp]; ok && !t.IsNone() {
+			startIn.FirstAct.Time = &w
+		}
+	}
 	started, err := xdealv1.Start(startIn)
 	if err != nil {
 		return standardhistory.Deal{}, false, fmt.Errorf("%w: book %s: %v", evidencebook.ErrCorrupt, bookID, err)
@@ -301,6 +312,9 @@ func (s *dealSession) witnessedTime(ctx context.Context, bookID string, v xdealv
 // statusTimes are the times a status value names, for the stamps to resolve.
 func statusTimes(v xdealv1.StatusValue) []xdealv1.StatusTime {
 	out := []xdealv1.StatusTime{v.Start.OffererAgreementTime}
+	if v.Start.FirstAct != nil {
+		out = append(out, v.Start.FirstAct.Time)
+	}
 	for _, r := range v.Rows {
 		out = append(out, r.RemedyMade)
 		out = append(out, r.StatementNamedByOther...)

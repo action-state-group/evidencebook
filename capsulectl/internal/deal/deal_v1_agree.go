@@ -111,7 +111,12 @@ are.
 
 Each side stamps right after its agreement and the file carries its stamp
 proof: neither side's first act is sealed until it holds the other's. The
-offerer agrees only once it holds the acceptor's agreement (deal receive).
+offerer agrees only once it holds the acceptor's agreement (deal receive),
+and you can agree to a received offer only when it names your key.
+
+An offer of yours whose to is null is to a party that keeps no records of
+its own (a shop, say): you agree to it alone, at once, and your first act
+goes ahead without a stamp proof from them, marked so.
 Needs the deal store in the new layout (deal set-version x-deal-v1
 --migrate).`,
 		Args: cobra.ExactArgs(1),
@@ -196,9 +201,20 @@ Needs the deal store in the new layout (deal set-version x-deal-v1
 				}
 				side, role := xdealv1.SideOfferer, prop.Role
 				cptyKey, heldAcceptor := d.CounterpartyKey, ""
+				// An offer whose to is null is to a counterparty with no layer
+				// (PROFILE §4.7): its offerer agrees alone, at once.
+				noLayer := offer.Own && prop.To.V == nil
 				if !offer.Own {
+					switch {
+					case prop.To.V == nil:
+						return cli.InputError("this offer names no key (to is null): it is to a party that keeps no records, and only its offerer agrees to it")
+					case *prop.To.V != s.ownKeyID():
+						return cli.InputError("this offer was sent to another key, so you cannot agree to it: the other side would refuse an agreement from a key it did not name")
+					}
 					side, role = xdealv1.SideAcceptor, oppositeRole(prop.Role)
 					cptyKey = offer.Signer
+				} else if noLayer {
+					cptyKey = ""
 				} else if d.CounterpartyAgreement == "" {
 					return cli.InputError("the acceptor's agreement has not been received: `deal receive FILE` takes it, and you agree after")
 				} else {
@@ -216,12 +232,16 @@ Needs the deal store in the new layout (deal set-version x-deal-v1
 				if err != nil {
 					return err
 				}
-				layer := true
+				layer := !noLayer
+				counterpartyKey := xdealv1.Some(cptyKey)
+				if noLayer {
+					counterpartyKey = xdealv1.Null[string]{Present: true}
+				}
 				body := xdealv1.AgreeBody{
 					Kind: xdealv1.KindAgreement, Offer: xdealv1.RefTo(offerDigest), RowsDigest: rowsDigest,
 					Side: side, Role: role, Admit: refOf(admit), Intent: refOf(intent),
 					Witnesses: prop.Witnesses, Adjudicator: prop.Adjudicator, Forums: forumsOf(prop),
-					CounterpartyLayer: &layer, CounterpartyKey: xdealv1.Some(cptyKey),
+					CounterpartyLayer: &layer, CounterpartyKey: counterpartyKey,
 					CheckpointKey: ckey, ShelfLogID: cp.LogID,
 				}
 				if _, err := s.db.ExecContext(ctx, `INSERT INTO deal_v1 (deal_id, side, role, offer_digest, counterparty_key, counterparty_agreement, own_agreement_id, own_agreement_digest) VALUES (?, ?, ?, ?, '', '', '', '') ON CONFLICT(deal_id) DO NOTHING`, dealID, side, role, offerDigest); err != nil {
@@ -350,7 +370,13 @@ func (s *dealSession) writeAgreement(ctx context.Context, c *cobra.Command, cad 
 			}
 		}
 	}
-	return cli.Output(c, map[string]any{"deal_id": d.DealID, "agreement": d.OwnAgreementDigest, "side": d.Side, "file": out, "stamp_proof": push.StampProof != nil})
+	res := map[string]any{"deal_id": d.DealID, "agreement": d.OwnAgreementDigest, "side": d.Side, "file": out, "stamp_proof": push.StampProof != nil}
+	if noLayer, err := s.v1NoLayer(ctx, d); err != nil {
+		return err
+	} else if noLayer {
+		res["note"] = "the other side keeps no records of its own: your agreement opens your deal book, there is no file for them, and your first act goes ahead without their stamp proof, marked so"
+	}
+	return cli.Output(c, res)
 }
 
 // citableAdmit refuses an admit an agreement cannot cite (x-deal-v1
