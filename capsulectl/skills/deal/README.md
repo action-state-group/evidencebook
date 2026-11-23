@@ -65,7 +65,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 |---|---|
 | `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates the profile: its store, signing and checkpoint seeds (mode 0600) and its cadence log. Prints `public_key`, the key the other side names in an offer's `to`. |
 | `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). |
-| `deal offer cancel OFFER` / `deal offer decline OFFER` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
+| `deal offer cancel OFFER --out FILE` / `deal offer decline OFFER --out FILE` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
 | `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof) and says whether it counts yet. Seals nothing. |
 | `deal admit --deal ID --input FILE` | Seals capsule-engine's admission decision (`capsule-engine admission evaluate --admit FILE`) for the deal; only `"admits_deal": true` is accepted. |
 | `deal note --deal ID --kind intent --input FILE [--opening FILE]` | Seals what the user asked; the deal's first intent carries `--opening`. Other kinds on x-deal-v1: `searched`, `options`, `recommended`, `chose`, `couldnt`, `message`, `claim`, `evidence`, `change`, `disclosure`, and `approval` (`--check CHECK_ID --choice OPTION --said WORDS --shown-card FILE`). |
@@ -73,7 +73,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal check --deal ID --input FILE` | The final review: seals the snapshot, compares it with what was asked and agreed, and returns `proceed`, or a `pause` or `deny` with its card. A pay check carries `payment_ref`. |
 | `deal settle --deal ID --sent --check CHECK_ID --payment-ref-type TYPE` | Before the handoff to the rail: checks the payment and counts it as in flight. Seals no leg. |
 | `deal settle --deal ID --check CHECK_ID --status settled\|failed --out FILE` | When the rail answers: seals your payer leg and writes the file to send. |
-| `deal settle --deal ID --received N --receive-fee N --status S --payment-ref-type T --payment-ref R --out FILE` | What you received: your payee leg. `--reverses LEG` makes a leg a refund of a leg of your own book; `--supersedes LEG` replaces an earlier observation. |
+| `deal settle --deal ID --received N --receive-fee N --status S --payment-ref-type T --payment-ref R [--payment-ref-network N] --out FILE` | What you received: your payee leg (`--payment-ref-network` on x402). `--reverses LEG` makes a leg a refund of a leg of your own book; `--supersedes LEG` replaces an earlier observation. |
 | `deal perform --deal ID --act ACT --check CHECK_ID --observed HOW --out FILE` | An act other than a payment (a delivery), on a passing commit check. |
 | `deal statement --deal ID --statement ROW=VALUE --out FILE` | How a row went: `met`, `not_met` or `cannot_tell`. |
 | `deal dispute --deal ID --row ROW --out FILE [--forum F] [--withdraw]` | Disputes a row before the agreement's referee, or takes it back. |
@@ -866,6 +866,8 @@ user is never asked to look anything up: `deal note` answers `"state":
 "deferred"` with a `reason`, keeps the email on the device, and the next
 `deal tick` reads the key records and seals the email then (listed under
 `merchant_emails` in its result, each one still waiting with its reason).
+On an x-deal-v1 deal the email is not held: the note is refused, nothing is
+sealed, and the email is noted again once DNS answers.
 The result and each waiting entry carry a stable `reason_code` beside the raw
 `reason`: branch on the code, never on the reason, which is a diagnostic and
 is not spoken. Codes are never renamed; new ones may be added, so treat an

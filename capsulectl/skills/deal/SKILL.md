@@ -80,8 +80,9 @@ seller makes the offer, the two sides swap in steps 2 to 6.
 
    The user sends `offer.sent.json` to the seller. A counter-offer is `deal
    offer --counter-to OFFER --input ...`; withdrawing your own offer before
-   the deal starts is `deal offer cancel OFFER`, and declining one sent to you
-   is `deal offer decline OFFER`. Each writes a file to send.
+   the deal starts is `deal offer cancel OFFER --out FILE`, and declining one
+   sent to you is `deal offer decline OFFER --out FILE`. Each writes the file
+   to send.
 3. **The other side keeps it.** On the seller's side, `deal receive
    offer.sent.json`. Every file the other side sends later (its agreement,
    statements, payment legs, a dispute) is kept the same way, with `deal
@@ -110,9 +111,14 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    #                "recourse":{"rail":"card","refundable":true}}
    ```
 
-   Then the journey, as notes (see "The user picked from options"), and the
-   intent for the user's pick. Sealing these before agreeing lets the
-   agreement cite the intent (`deal agree --intent DIGEST`).
+   `verbatim` is the user's exact words, never your paraphrase. `allowed`
+   says what they asked you to do: `"allowed": []` when they only asked for
+   options, the actions (`["pay"]`) when they asked you to act, and left out
+   only when they handed you the whole deal; left out, nothing is
+   restricted. `max_total_minor` is their limit. Then the journey, as notes
+   (see "The user picked from options"), and the intent for the user's pick.
+   The first intent's output prints `intent`, its journal digest: `deal agree
+   --intent DIGEST` cites it.
 6. **The agreement exchange.** The side the offer was sent to agrees first:
    1. the seller runs `deal agree OFFER --out seller-agreement.json`, and the
       user sends the file;
@@ -124,13 +130,20 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    that checkpoint's proof. Neither side's first act is sealed until it holds
    the other's: an act run too early is refused and says to run it again
    once the file arrives. Running `deal agree` again rewrites the same file.
-7. **Final review:** Fill the checkout up to the last screen before the
-   order is placed; do not press the final button. Then `deal check` with
-   `"action": "pay"`, the cart's item and price as `terms`, the exact total
-   about to be charged, tax and shipping included, as `amount_minor`, and
+7. **Final review:** Before you type any of the user's own details into the
+   checkout (name, email, delivery address, phone), follow "Disclosure"
+   below for them, on this deal. Then fill the checkout up to the last screen
+   before the order is placed; do not press the final button. Then `deal
+   check` with `"action": "pay"`, the cart's item and price as `terms`, the
+   exact total about to be charged, tax and shipping included, as
+   `amount_minor`, `who` and `recourse` as the checkout shows them now (the
+   payee and the rail, so a change since the opening shows), and
    `payment_ref`, the reference fixed before paying that the payment will be
    made under (a Lightning payment hash, an ACP order id, the x402
-   authorization nonce):
+   authorization nonce). On a card or a wallet, `authorized_max_minor` is
+   the largest amount the payment may be authorized for, as the checkout or
+   wallet shows it (a hold larger than the total included), never just the
+   total:
 
    ```sh
    capsulectl --profile deal deal check --deal ID --input pay.json
@@ -138,8 +151,6 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    #            "terms":{"item":"desk lamp","price_minor":6000,"currency":"USD"},"payment_ref":"..."}
    ```
 
-   Before you type any of the user's own details into the checkout, follow
-   "Disclosure" below for them, on this deal.
 8. **The user's answer.** Any request to the user to go ahead uses the
    check's `approval_text`, as it is. On `"proceed": true`, go on. On
    `pause`, show the card exactly as the Rules say, then seal what the user
@@ -151,8 +162,8 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    ```
 
    `CHECK_ID` is the `check_id` the check printed; `--choice` is one of the
-   check's `options` (`proceed` or `hold`); `card.txt` holds the card text
-   exactly as the check returned it. Go on only if that returns `"proceed":
+   check's `options` (`proceed` or `hold`); `card.txt` holds the check's
+   `card` field exactly as returned. Go on only if that returns `"proceed":
    true`.
 9. **The payment, in two calls.** Before handing it to the rail:
 
@@ -168,8 +179,13 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    ```
 
    (`--status failed` when it failed; a failed payment uses up its check, so
-   check again before retrying.) On x402, give `--payment-ref-network NETWORK`
-   on both calls and the transaction as `--payment-ref` on the second. While
+   check again before retrying.) `TYPE` is the rail's registered reference
+   type: `ln.payment_hash`, `bolt12.invoice_payment_hash`, `acp.order_id`,
+   `ucp.order_id`, `x402.transaction`, and the others `deal settle --help`
+   names. On every type but `ln.payment_hash`, `bolt12.invoice_payment_hash`,
+   `acp.order_id` and `ucp.order_id`, the second call also takes
+   `--payment-ref`, the rail's own reference as it comes back; on x402 give
+   `--payment-ref-network NETWORK` on both calls. While
    the rail still says pending, run nothing more for this payment. The user
    sends `payer-leg.json` to the other side.
 10. **How it went.** Each side states how its rows went:
@@ -281,8 +297,9 @@ only (see the legacy file).
     --payment-ref-type TYPE --payment-ref REF --out payee-leg.json
   ```
 
-  `--status pending` first when the rail says so; a later observation of the
-  same payment names the earlier leg with `--supersedes`.
+  On x402 add `--payment-ref-network NETWORK`. `--status pending` first when
+  the rail says so; a later observation of the same payment names the
+  earlier leg with `--supersedes`.
 - **What was delivered** is an act on a commit check: `deal check` with
   `"action": "commit"`, the user's answer as in Purchase step 8, then
 
@@ -322,7 +339,10 @@ sent in a message. Use the deal of the errand it belongs to.
    # d.json: {"channel":"sms","fields":[{"class":"phone","value":"the number you gave"}]}
    ```
 
-   `class` is `name`, `phone`, `email`, `home_address`, `address`,
+   To a platform, add `"to":"platform"` and `"who":{...}` named as in its
+   check; to anyone else (a courier), `"to":"other"` and `"who":{...}`:
+   without them the note is for the counterparty, and a check that named
+   someone else does not cover it. `class` is `name`, `phone`, `email`, `home_address`, `address`,
    `pickup_location`, `pickup_area`, `other_contact`, `credential`,
    `verification_code`, `payment_card` or `id_document`. If a class would go
    to this recipient for the first time and no check the user approved named
@@ -337,12 +357,15 @@ sent in a message. Use the deal of the errand it belongs to.
 - **After agreeing:** a cancel is checked like any act: `deal check` with
   `"action": "cancel"`, the user's answer, then cancel with the merchant.
 - **A refund the user pays** (the user is the seller) rests on that cancel
-  check: `deal settle --deal ID --sent --check CANCEL_CHECK_ID ...`, then
-  `--status` as in Purchase step 9, naming the payment it refunds with
-  `--reverses PAID_DIGEST`.
-- **A refund the user receives** is a payee leg that reverses the payment:
-  `deal settle --deal ID --reverses PAID_DIGEST --received N --receive-fee N
-  --status settled --out refund-leg.json`.
+  check and names the leg of the user's own book it refunds:
+  `deal settle --deal ID --sent --check CANCEL_CHECK_ID --reverses LEG
+  --payment-ref-type TYPE`, then `--status` as in Purchase step 9.
+- **A refund the user receives** is a payee leg that reverses the user's own
+  payment: `deal settle --deal ID --reverses LEG --received N --receive-fee N
+  --status settled --payment-ref-type TYPE --payment-ref REF --out
+  refund-leg.json`.
+- `LEG` is the `digest` `deal settle` printed for that leg of your own
+  book.
 - A refund leg is shown as not checked: refunds have no terms of their own
   yet, and the payment check covers the payment's own legs.
 
@@ -378,20 +401,20 @@ capsulectl --profile deal deal note --deal ID --kind evidence --email confirmati
 ```
 
 This seals the raw message on this device, reads the signing domain's DKIM
-key from DNS **now**, seals that key with it, and checkpoints at once (unless
-the key cannot be read now: see below). Do it promptly: DKIM keys are
+key from DNS **now**, and seals that key with it; the next cadence tick
+checkpoints it. Do it promptly: DKIM keys are
 rotated and revoked, and a signature can only be checked later against a key
 that was sealed while it was still published.
 Prompt sealing is the whole protection.
 
 **If the signing domain's key cannot be read now.** When this device cannot
-reach DNS, the result is `"state": "deferred"`: nothing is sealed yet, the
-email is kept on this device, and the next `deal tick` reads the signing
-domain's key and seals it (its result lists it under `merchant_emails`). Tell
-the user only this, plainly: "the email's signature will be checked later".
-Never ask the user to look anything up, run a command, or find a record:
-checking the key is this tool's job, not theirs. Until the tick seals it, the
-email is not checked: never describe it as confirmed or as sealed.
+reach DNS, the note is refused and nothing is sealed: on an x-deal-v1 deal
+the email is not held for later. Keep the `.eml` file and note it again when
+the network answers. Tell the user only this, plainly: "the email's
+signature will be checked later". Never ask the user to look anything up,
+run a command, or find a record: checking the key is this tool's job, not
+theirs. Until it is sealed, the email is not checked: never describe it as
+confirmed or as sealed.
 
 The result has two separate statements. Report them separately, in their own
 words, and never as one combined badge:
@@ -682,7 +705,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 |---|---|
 | `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates the profile: its store, signing and checkpoint seeds (mode 0600) and its cadence log. Prints `public_key`, the key the other side names in an offer's `to`. |
 | `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). |
-| `deal offer cancel OFFER` / `deal offer decline OFFER` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
+| `deal offer cancel OFFER --out FILE` / `deal offer decline OFFER --out FILE` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
 | `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof) and says whether it counts yet. Seals nothing. |
 | `deal admit --deal ID --input FILE` | Seals capsule-engine's admission decision (`capsule-engine admission evaluate --admit FILE`) for the deal; only `"admits_deal": true` is accepted. |
 | `deal note --deal ID --kind intent --input FILE [--opening FILE]` | Seals what the user asked; the deal's first intent carries `--opening`. Other kinds on x-deal-v1: `searched`, `options`, `recommended`, `chose`, `couldnt`, `message`, `claim`, `evidence`, `change`, `disclosure`, and `approval` (`--check CHECK_ID --choice OPTION --said WORDS --shown-card FILE`). |
@@ -690,7 +713,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal check --deal ID --input FILE` | The final review: seals the snapshot, compares it with what was asked and agreed, and returns `proceed`, or a `pause` or `deny` with its card. A pay check carries `payment_ref`. |
 | `deal settle --deal ID --sent --check CHECK_ID --payment-ref-type TYPE` | Before the handoff to the rail: checks the payment and counts it as in flight. Seals no leg. |
 | `deal settle --deal ID --check CHECK_ID --status settled\|failed --out FILE` | When the rail answers: seals your payer leg and writes the file to send. |
-| `deal settle --deal ID --received N --receive-fee N --status S --payment-ref-type T --payment-ref R --out FILE` | What you received: your payee leg. `--reverses LEG` makes a leg a refund of a leg of your own book; `--supersedes LEG` replaces an earlier observation. |
+| `deal settle --deal ID --received N --receive-fee N --status S --payment-ref-type T --payment-ref R [--payment-ref-network N] --out FILE` | What you received: your payee leg (`--payment-ref-network` on x402). `--reverses LEG` makes a leg a refund of a leg of your own book; `--supersedes LEG` replaces an earlier observation. |
 | `deal perform --deal ID --act ACT --check CHECK_ID --observed HOW --out FILE` | An act other than a payment (a delivery), on a passing commit check. |
 | `deal statement --deal ID --statement ROW=VALUE --out FILE` | How a row went: `met`, `not_met` or `cannot_tell`. |
 | `deal dispute --deal ID --row ROW --out FILE [--forum F] [--withdraw]` | Disputes a row before the agreement's referee, or takes it back. |
