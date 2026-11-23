@@ -421,11 +421,24 @@ func TestTheCoreChecksAWindowLogsCheckpoint(t *testing.T) {
 	assert.True(t, BookBackend{}.OwnsLogID(b, "b/2026-11"))
 	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-13"), "not a label of the store's period")
 	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-10"), "before the store's first window")
-	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-12"), "after the window holding this clock")
 	assert.False(t, BookBackend{}.OwnsLogID(b, "c/2026-11"))
 	renamed := b
 	renamed.LogID = "b2"
 	assert.False(t, BookBackend{}.OwnsLogID(renamed, "b2/2026-11"), "the store's windows are under its own base")
 	jsonl, _ := storedJSONLProfile(t, "j")
 	assert.False(t, BookBackend{}.OwnsLogID(jsonl, "j/2026-11"), "a JSONL book has no window logs")
+}
+
+// An unreadable pre-book cll.jsonl stops store init: a windowed store would
+// leave its entries no way into a book.
+func TestStoreInitRefusesAnUnreadableRetiredLog(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC))
+	b, _ := bookProfile(t, "b")
+	require.NoError(t, os.MkdirAll(filepath.Dir(retiredLogPath(b)), 0o700))
+	require.NoError(t, os.WriteFile(retiredLogPath(b), []byte("{not json}\n"), 0o600))
+	_, err := invoke(t, "", "store", "init", "--profile", "b")
+	require.Error(t, err)
+	_, statErr := os.Stat(shelfFile(b))
+	assert.ErrorIs(t, statErr, os.ErrNotExist, "no windowed store was created")
 }
