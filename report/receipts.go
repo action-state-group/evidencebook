@@ -63,9 +63,15 @@ type Receipt struct {
 	// takes.
 	Bundle string
 	// Held says the holder's disclosure policy keeps this deal's receipt off
-	// the page; the page says so on its claims. Exactly one of Bundle and
-	// Held is set.
+	// the page; the page says so on its claims. Exactly one of Bundle, Held
+	// and NotClosed is set.
 	Held bool
+	// NotClosed says the deal had not closed when the page was built, so it
+	// has no receipt yet (an invoiced exchange with no settlement or delivery
+	// recorded). The page says so apart from a held receipt and from one not
+	// carried (capsule-viewer#358). Only the holder knows this: the Result
+	// cannot tell a deal that never closes from one still in progress.
+	NotClosed bool
 }
 
 // checkedReceipts are Receipts that passed checkReceipts, in the emitter's
@@ -73,6 +79,8 @@ type Receipt struct {
 type checkedReceipts struct {
 	texts    map[string]string
 	withheld []string
+	// notClosed are the deal ids that had not closed, sorted.
+	notClosed []string
 	// ignored are the exchange capsule ids of receipts no deal's claims cite,
 	// in the order given.
 	ignored []string
@@ -140,8 +148,18 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 			return checkedReceipts{}, refusef("receipts: deal %q has more than one receipt (%q and %q)", deal, prior, r.Exchange)
 		}
 		seen[deal] = r.Exchange
-		if r.Held == (r.Bundle != "") {
-			return checkedReceipts{}, refusef("receipts: the receipt of %q (deal %q) must either carry its bundle or be held by the share policy, and not both", r.Exchange, deal)
+		states := 0
+		for _, set := range []bool{r.Bundle != "", r.Held, r.NotClosed} {
+			if set {
+				states++
+			}
+		}
+		if states != 1 {
+			return checkedReceipts{}, refusef("receipts: the receipt of %q (deal %q) must either carry its bundle, be held by the share policy, or be not closed, and exactly one of them", r.Exchange, deal)
+		}
+		if r.NotClosed {
+			out.notClosed = append(out.notClosed, deal)
+			continue
 		}
 		if r.Held {
 			out.withheld = append(out.withheld, deal)
@@ -153,6 +171,7 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 		out.texts[deal] = r.Bundle
 	}
 	sort.Strings(out.withheld)
+	sort.Strings(out.notClosed)
 	return out, nil
 }
 
