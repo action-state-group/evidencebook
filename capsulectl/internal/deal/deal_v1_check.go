@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -59,16 +60,25 @@ func (s *dealSession) useV1Check(ctx context.Context, dealID string) ([]sealedEv
 // v1CheckInput refuses what a v1 check cannot take: a pay check without its
 // payment reference, a payment reference on any other check, and an offer
 // check (offers on a v1 deal are `deal offer`; a seller's sale flow is B3).
-func v1CheckInput(snap dealSnapshot) error {
+func v1CheckInput(snap *dealSnapshot) error {
+	// The reference is taken as shown, trimmed, and never card data
+	// (evidencebook#771), before anything is sealed.
+	snap.PaymentRef = strings.TrimSpace(snap.PaymentRef)
+	after := snap.PaymentRefAfterPayment
+	snap.PaymentRefAfterPayment = false
 	switch {
 	case snap.Action == offerAction:
 		return cli.InputError("an offer on an x-deal-v1 deal is sealed with `deal offer`, not checked with `deal check --input` action offer")
-	case snap.Action == "pay" && snap.PaymentRef == "":
-		return cli.InputError("a pay check on an x-deal-v1 deal records payment_ref, the reference fixed before paying that the payment will be made under (a Lightning payment hash, an ACP order id, the x402 authorization nonce): the payer leg cites the check that recorded it. Add payment_ref to the check input")
+	case after && snap.Action != "pay":
+		return cli.InputError("payment_ref_after_payment goes on a pay check only")
+	case after && snap.PaymentRef != "":
+		return cli.InputError("payment_ref_after_payment says the reference is not known before paying, and payment_ref gives one: leave out one of them")
+	case snap.Action == "pay" && snap.PaymentRef == "" && !after:
+		return cli.InputError("a pay check on an x-deal-v1 deal records payment_ref, the reference fixed before paying that the payment will be made under (a Lightning payment hash, an ACP order id, the x402 authorization nonce, the merchant's order number when the checkout shows it): the payer leg cites the check that recorded it. Add payment_ref to the check input, or, when the checkout shows no reference before you pay, \"payment_ref_after_payment\": true")
 	case snap.Action != "pay" && snap.PaymentRef != "":
 		return cli.InputError("payment_ref goes on a pay check only: nothing cites it on a " + snap.Action + " check")
 	}
-	return nil
+	return refuseCardData("payment_ref", snap.PaymentRef)
 }
 
 // v1CapsuleWithInput is the record the rules checker reads for a v1 deal's

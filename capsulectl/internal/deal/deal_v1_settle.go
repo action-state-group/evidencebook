@@ -137,18 +137,30 @@ var equalRefTypes = map[string]bool{"ln.payment_hash": true, "bolt12.invoice_pay
 // qualifiers into AAC's flat payment_ref (settlement-records-01: qualifiers at
 // the top level, each required, exactly).
 type paymentRefFlags struct {
-	Type, Value, Network, Method, DebtorAgent string
+	Type, Value, Network, Method, DebtorAgent, Origin string
+	// emptyValue lets a merchant order's value be "": a send on a pay check
+	// that has no reference before paying, or a checkout that failed and
+	// left no order number (evidencebook#771). Only settleSent and the
+	// payer leg of such a send set it.
+	emptyValue bool
 }
 
 func (p paymentRefFlags) member() (map[string]any, error) {
+	if p.Type == merchantOrderType {
+		return p.merchantOrder()
+	}
 	t, ok := aacsettlement.PaymentRefTypes[p.Type]
 	if !ok {
-		names := make([]string, 0, len(aacsettlement.PaymentRefTypes))
+		names := make([]string, 0, len(aacsettlement.PaymentRefTypes)+1)
 		for n := range aacsettlement.PaymentRefTypes {
 			names = append(names, n)
 		}
+		names = append(names, merchantOrderType)
 		slices.Sort(names)
 		return nil, cli.InputError("--payment-ref-type must be one of " + strings.Join(names, ", "))
+	}
+	if p.Origin != "" {
+		return nil, cli.InputError("--payment-ref-origin goes with " + merchantOrderType + " only")
 	}
 	if p.Value == "" {
 		return nil, cli.InputError("--payment-ref is required: the payment's reference on the rail")
@@ -167,6 +179,31 @@ func (p paymentRefFlags) member() (map[string]any, error) {
 		}
 	}
 	return ref, nil
+}
+
+// merchantOrder is the x-deal-v1.merchant_order payment_ref: the value (the
+// order id, trimmed) and the checkout origin in normal form, nothing else.
+func (p paymentRefFlags) merchantOrder() (map[string]any, error) {
+	for name, v := range map[string]string{"network": p.Network, "method": p.Method, "debtor-agent": p.DebtorAgent} {
+		if v != "" {
+			return nil, cli.InputError("--payment-ref-" + name + " does not go with " + merchantOrderType)
+		}
+	}
+	if p.Origin == "" {
+		return nil, cli.InputError("--payment-ref-origin is required for " + merchantOrderType + ": the checkout's origin, such as https://shop.example")
+	}
+	origin, err := normalOrigin(p.Origin)
+	if err != nil {
+		return nil, err
+	}
+	value := strings.TrimSpace(p.Value)
+	if value == "" && !p.emptyValue {
+		return nil, cli.InputError("--payment-ref is required: the merchant's order number")
+	}
+	if err := refuseCardData("--payment-ref", value); err != nil {
+		return nil, err
+	}
+	return map[string]any{"type": merchantOrderType, "value": value, "origin": origin}, nil
 }
 
 // legAmountOf is minor units of a currency as an AAC amount.
@@ -560,6 +597,9 @@ func dealSettleCommand() *cobra.Command {
 			in.ref.Network, _ = f.GetString("payment-ref-network")
 			in.ref.Method, _ = f.GetString("payment-ref-method")
 			in.ref.DebtorAgent, _ = f.GetString("payment-ref-debtor-agent")
+			in.ref.Origin, _ = f.GetString("payment-ref-origin")
+			// A reference is taken as shown, trimmed (evidencebook#771).
+			in.ref.Value = strings.TrimSpace(in.ref.Value)
 			in.routingFee, _ = f.GetInt64("routing-fee")
 			in.received, _ = f.GetInt64("received")
 			in.receiveFee, _ = f.GetInt64("receive-fee")
@@ -615,6 +655,7 @@ func dealSettleCommand() *cobra.Command {
 	f.String("payment-ref-type", "", "The rail's reference type, such as ln.payment_hash or x402.transaction")
 	f.String("payment-ref", "", "The payment's reference on the rail")
 	f.String("payment-ref-network", "", "The network, for x402.transaction")
+	f.String("payment-ref-origin", "", "The checkout's origin (scheme and host, such as https://shop.example), for "+merchantOrderType+", the merchant's order number on a card checkout")
 	f.String("payment-ref-method", "", "The method, for mpp.reference")
 	f.String("payment-ref-debtor-agent", "", "The debtor agent, for iso20022.end_to_end_id")
 	f.Int64("routing-fee", 0, "A routing fee you paid, in minor units")
@@ -756,7 +797,20 @@ func sendRef(in settleIn, cb *xdealv1.CheckBody) (paymentRefFlags, error) {
 		// reference is the refund's own.
 		return p, nil
 	}
-	if equalRefTypes[p.Type] {
+	if cb.PaymentRef == "" {
+		// A pay check with no reference before paying (a card checkout,
+		// evidencebook#771): only the merchant's order number, given when the
+		// rail answers.
+		switch {
+		case p.Type != merchantOrderType:
+			return p, cli.InputError("check " + in.check + " records no payment_ref (the checkout showed no reference before paying), so the payment is sent as " + merchantOrderType + ": give --payment-ref-type " + merchantOrderType + " --payment-ref-origin ORIGIN")
+		case p.Value != "":
+			return p, cli.InputError("check " + in.check + " records no payment_ref, so the order number comes when the rail answers: leave out --payment-ref here and give it with --status")
+		}
+		p.emptyValue = true
+		return p, nil
+	}
+	if equalRefTypes[p.Type] || p.Type == merchantOrderType {
 		if p.Value == "" {
 			p.Value = cb.PaymentRef
 		}
@@ -874,6 +928,8 @@ func statusHint(dealID, check, reverses, refType string) string {
 	h += " --status settled|failed --out FILE"
 	switch {
 	case equalRefTypes[refType]:
+	case refType == merchantOrderType:
+		h += " [--payment-ref THE_ORDER_NUMBER, when the check recorded none]"
 	case reverses == "" || refType == "x402.transaction":
 		h += " --payment-ref THE_RAILS_REFERENCE"
 	default:
@@ -1081,7 +1137,14 @@ func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]a
 	if in.ref.Type != "" && in.ref.Type != send.RefType {
 		return nil, cli.InputError("the payment was sent under " + send.RefType + ", and --payment-ref-type is " + in.ref.Type)
 	}
-	for name, flag := range map[string]string{"network": in.ref.Network, "method": in.ref.Method, "debtor_agent": in.ref.DebtorAgent} {
+	for name, flag := range map[string]string{"network": in.ref.Network, "method": in.ref.Method, "debtor_agent": in.ref.DebtorAgent, "origin": in.ref.Origin} {
+		if name == "origin" && flag != "" {
+			n, err := normalOrigin(flag)
+			if err != nil {
+				return nil, err
+			}
+			flag = n
+		}
 		if flag != "" && flag != bound[name] {
 			return nil, cli.InputError("the payment was sent with " + name + " " + fmt.Sprint(bound[name]) + ", and --payment-ref-" + strings.ReplaceAll(name, "_", "-") + " differs")
 		}
@@ -1090,10 +1153,21 @@ func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]a
 	// the rail's own reference comes back with its answer: a payment, whose
 	// send bound the check's pre-payment reference, must give it; a refund,
 	// whose send bound what the refunder knew then, may.
+	equal := equalRefTypes[send.RefType] || (send.RefType == merchantOrderType && send.Ref != "")
 	switch {
-	case equalRefTypes[send.RefType] && in.ref.Value != "" && in.ref.Value != send.Ref:
+	case equal && in.ref.Value != "" && in.ref.Value != send.Ref:
 		return nil, cli.InputError("on " + send.RefType + " the leg's reference is the one the payment was sent under (" + send.Ref + "), and --payment-ref differs")
-	case equalRefTypes[send.RefType]:
+	case equal:
+	case send.RefType == merchantOrderType && in.ref.Value != "":
+		// The order number recorded after paying (evidencebook#771).
+		if err := refuseCardData("--payment-ref", in.ref.Value); err != nil {
+			return nil, err
+		}
+		bound["value"] = in.ref.Value
+	case send.RefType == merchantOrderType && in.status == legFailed:
+		// A checkout that failed may leave no order number: the leg carries "".
+	case send.RefType == merchantOrderType:
+		return nil, cli.InputError("--payment-ref is required: the merchant's order number, which the checkout shows once paid (a failed checkout may leave it out with --status failed)")
 	case in.ref.Value != "":
 		bound["value"] = in.ref.Value
 	case cb.Action == "pay" || send.RefType == "x402.transaction":

@@ -284,14 +284,19 @@ type dealSnapshot struct {
 	// hash, an ACP order id, the x402 authorization nonce): the payer leg's
 	// check is the one that recorded it (xdealv1-write-path §12 item 5).
 	// x-deal-v0 has no such member.
-	PaymentRef  string        `json:"payment_ref,omitempty"`
-	Action      string        `json:"action"`
-	Description string        `json:"description,omitempty"`
-	AmountMinor *int64        `json:"amount_minor,omitempty"`
-	SeenItem    *bool         `json:"seen_item,omitempty"`
-	Who         *dealWho      `json:"who,omitempty"`
-	Terms       *dealTerms    `json:"terms,omitempty"`
-	Recourse    *dealRecourse `json:"recourse,omitempty"`
+	PaymentRef string `json:"payment_ref,omitempty"`
+	// PaymentRefAfterPayment says, on an x-deal-v1 pay check, that the rail
+	// has no reference before paying (a card checkout whose order number
+	// comes after, evidencebook#771): the check then carries no payment_ref.
+	// It is read from the input and never sealed (deal check clears it).
+	PaymentRefAfterPayment bool          `json:"payment_ref_after_payment,omitempty"`
+	Action                 string        `json:"action"`
+	Description            string        `json:"description,omitempty"`
+	AmountMinor            *int64        `json:"amount_minor,omitempty"`
+	SeenItem               *bool         `json:"seen_item,omitempty"`
+	Who                    *dealWho      `json:"who,omitempty"`
+	Terms                  *dealTerms    `json:"terms,omitempty"`
+	Recourse               *dealRecourse `json:"recourse,omitempty"`
 	// Disclosing names, for a share, the classes of the user's data about to
 	// be given (phone, address, ...): the check pauses on the first time a
 	// class goes to this counterparty, never on a repeat.
