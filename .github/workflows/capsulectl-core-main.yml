@@ -5,7 +5,9 @@ name: capsulectl against capsule-cli main
 # from capsule-cli `main` rather than the release go.mod pins (capsule-cli#326,
 # design note section 3.4). The plugin still builds against its pinned core
 # and writes the deal page with that core's runtime; main hosts the plugin,
-# verifies each copy, and builds the receipt's bundle into a page with its own
+# verifies each copy (a deal's report through the plugin's `deal verify`,
+# since main's core no longer checks it, capsule-cli#609), and builds the
+# receipt's bundle into a page with its own
 # runtime (check-deal-pages.sh, deal-receipt-rebuilt). This catches a core
 # change that would stop main verifying or rendering what the newest deal
 # build produces, before that change ships in a release. A scheduled run that
