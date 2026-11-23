@@ -17,18 +17,19 @@ import (
 // carrying receipts with any other module would answer every "Open receipt"
 // with "no module". The viewer also opens a composed receipt with
 // capsulectl.deal-view-composed/v0, but a composed bundle is rooted at the
-// composer's composition record, not at the exchange capsule a claim cites,
-// so there is nothing yet to bind it to its deal by: it is refused here until
-// that binding exists.
+// composer's composition record, which names no exchange capsule, so there is
+// nothing yet to bind it to its deal by: it is refused here until that
+// binding exists (agent-action-capsule#674, capsule-viewer#353).
 const ReceiptModuleID = "capsulectl.deal-view/v0"
 
 // Receipts are the deal receipts a contract report page carries
-// (capsule-viewer#228, #351): the receipt module the page opens them with and,
-// for each deal the Result's claims name, either that deal's receipt bundle or
-// the fact that the holder's share policy keeps it off the page. The report
-// never decides what the policy allows: the caller states it, and a deal it
-// states neither way is refused, so nothing is carried by default and a deal
-// is never left to read as "built wrong".
+// (capsule-viewer#228, #351): the receipt module the page opens them with and
+// the receipts the holder hands over, each carried or held by the holder's
+// share policy. The report never decides what the policy allows: the caller
+// states it per receipt. Nil carries nothing, and the page is then the page
+// built without the field. A deal of the Result no receipt names says
+// "Receipt not carried with this page", which is true of it: nothing was
+// handed over.
 //
 // A deal is the part of a claim id before "::" (a Result whose claim ids have
 // none carries no deal, and Receipts on it is refused).
@@ -36,21 +37,28 @@ type Receipts struct {
 	// Module is the deal view script and its pins. Its manifest names
 	// ReceiptModuleID, and the emitter checks that the manifest pins the
 	// script and stylesheets. A carried bundle must also satisfy the
-	// manifest's requires.extensions.required and forbids.extensions, as the
-	// page's module resolution reads them, or the page could not open it.
+	// manifest's requires.bundle_kind, requires.extensions.required,
+	// forbids.extensions and forbids.profiles, as the page's module
+	// resolution reads them, or the page could not open it.
 	Module emitter.Module
-	// Deals has one entry for every deal the Result's claims name.
+	// Deals are the receipts handed over, at most one per deal.
 	Deals []Receipt
 }
 
-// Receipt is one deal's receipt, carried or held by policy.
+// Receipt is one deal's receipt, carried or held by policy, named by the
+// exchange capsule it was fetched by.
 type Receipt struct {
-	// Deal is the claim ids' part before "::".
-	Deal string
+	// Exchange is the id of an exchange capsule of the deal: the capsule a
+	// node serves a deal's receipt by. The deal is the one whose claims cite
+	// it as evidence; a capsule no claim cites, or that claims of two deals
+	// cite, is refused. That the bundle is the receipt of this capsule's deal
+	// is the caller's word: nothing in a plain receipt names the exchange
+	// capsule a Result cites (capsule-viewer#353 and agent-action-capsule#674
+	// are to give the Result a digest to check it against).
+	Exchange string
 	// Bundle is the receipt bundle as the node served it (JSON text, kept
-	// exactly as given). It must verify (VALID), and its root must be a
-	// capsule one of the deal's claims cites as evidence: the exchange
-	// capsule the Result names for that deal.
+	// exactly as given). It must pass the page gate and be one the module
+	// takes.
 	Bundle string
 	// Held says the holder's disclosure policy keeps this deal's receipt off
 	// the page; the page says so on its claims. Exactly one of Bundle and
@@ -75,61 +83,64 @@ func dealOf(claimID string) (string, bool) {
 }
 
 // checkReceipts judges receipts against the Result's claims before anything
-// is rendered: the module is a receipt module, every deal the claims name has
-// exactly one entry and no entry names another deal, and each carried bundle
-// verifies and is rooted at a capsule its deal's claims cite.
+// is rendered: the module is a receipt module, every receipt names an
+// exchange capsule exactly one deal's claims cite, a deal has at most one
+// receipt, and each carried bundle passes the page gate and is one the module
+// takes.
 func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipts, error) {
 	var manifest moduleManifest
 	if err := json.Unmarshal(receipts.Module.Manifest, &manifest); err != nil || manifest.ID != ReceiptModuleID {
 		return checkedReceipts{}, refusef("receipts: the module must carry the manifest of %s, the module a page opens a plain deal receipt with", ReceiptModuleID)
 	}
-	cited := make(map[string]map[string]bool)
+	// The deals that cite each capsule.
+	citedBy := make(map[string]map[string]bool)
+	named := false
 	for _, claim := range claims {
 		deal, ok := dealOf(claim.ID)
 		if !ok {
 			continue
 		}
-		if cited[deal] == nil {
-			cited[deal] = make(map[string]bool)
-		}
+		named = true
 		for _, id := range claim.Evidence {
-			cited[deal][id] = true
+			if citedBy[id] == nil {
+				citedBy[id] = make(map[string]bool)
+			}
+			citedBy[id][deal] = true
 		}
 	}
-	if len(cited) == 0 {
+	if !named {
 		return checkedReceipts{}, refusef("receipts: no claim of the Result names a deal (an id of the form <deal>::<requirement>), so there is nothing to carry")
 	}
 	out := checkedReceipts{texts: make(map[string]string)}
-	seen := make(map[string]bool)
-	deals := make([]string, 0, len(cited))
-	for deal := range cited {
-		deals = append(deals, deal)
-	}
-	sort.Strings(deals)
+	seen := make(map[string]string)
 	for _, r := range receipts.Deals {
-		if cited[r.Deal] == nil {
-			return checkedReceipts{}, refusef("receipts: %q is not a deal any claim of the Result names", r.Deal)
+		dealsOf := citedBy[r.Exchange]
+		switch len(dealsOf) {
+		case 0:
+			return checkedReceipts{}, refusef("receipts: no claim of the Result cites %q, so it is the exchange capsule of no deal", r.Exchange)
+		case 1:
+		default:
+			return checkedReceipts{}, refusef("receipts: the claims of more than one deal cite %q, so its deal is ambiguous", r.Exchange)
 		}
-		if seen[r.Deal] {
-			return checkedReceipts{}, refusef("receipts: deal %q has more than one entry", r.Deal)
+		var deal string
+		for d := range dealsOf {
+			deal = d
 		}
-		seen[r.Deal] = true
+		if prior, dup := seen[deal]; dup {
+			return checkedReceipts{}, refusef("receipts: deal %q has more than one receipt (%q and %q)", deal, prior, r.Exchange)
+		}
+		seen[deal] = r.Exchange
 		if r.Held == (r.Bundle != "") {
-			return checkedReceipts{}, refusef("receipts: deal %q must either carry its receipt bundle or be held by the share policy, and not both", r.Deal)
+			return checkedReceipts{}, refusef("receipts: the receipt of %q (deal %q) must either carry its bundle or be held by the share policy, and not both", r.Exchange, deal)
 		}
 		if r.Held {
-			out.withheld = append(out.withheld, r.Deal)
+			out.withheld = append(out.withheld, deal)
 			continue
 		}
-		if err := checkReceiptBundle(r, cited[r.Deal], manifest); err != nil {
+		if err := checkReceiptBundle(deal, r, manifest); err != nil {
 			return checkedReceipts{}, err
 		}
-		out.texts[r.Deal] = r.Bundle
-	}
-	for _, deal := range deals {
-		if !seen[deal] {
-			return checkedReceipts{}, refusef("receipts: deal %q has no entry: carry its receipt or mark it held by policy", deal)
-		}
+		out.texts[deal] = r.Bundle
 	}
 	sort.Strings(out.withheld)
 	return out, nil
@@ -176,25 +187,20 @@ func (m moduleManifest) accepts(bundleKind string, extensions map[string]interfa
 }
 
 // checkReceiptBundle holds one carried receipt to what the page then shows:
-// it passes the page gate (the verdict a deal page is written under), the
-// module the page carries takes it, and its root is an exchange capsule the
-// deal's claims cite, so a bundle filed under the wrong deal is refused.
-func checkReceiptBundle(r Receipt, cited map[string]bool, module moduleManifest) error {
+// it passes the page gate (the verdict a deal page is written under) and the
+// module the page carries takes it.
+func checkReceiptBundle(deal string, r Receipt, module moduleManifest) error {
 	value, err := cli.DecodeBundleJSON([]byte(r.Bundle))
 	if err != nil {
-		return refusef("receipts: the receipt bundle of deal %q does not decode: %s", r.Deal, cli.SafeError(err))
+		return refusef("receipts: the receipt bundle of deal %q does not decode: %s", deal, cli.SafeError(err))
 	}
 	if err := cli.PageGate(value); err != nil {
-		return refusef("receipts: the receipt bundle of deal %q does not pass the page gate, so it is not carried: %s", r.Deal, cli.SafeError(err))
+		return refusef("receipts: the receipt bundle of deal %q does not pass the page gate, so it is not carried: %s", deal, cli.SafeError(err))
 	}
 	extensions, _ := value["extensions"].(map[string]interface{})
 	kind, _ := value["bundle_kind"].(string)
 	if !module.accepts(kind, extensions, profilesOf(value)) {
-		return refusef("receipts: the receipt bundle of deal %q is not one the %s module draws (its extensions do not meet the module's requires and forbids)", r.Deal, module.ID)
-	}
-	root, _ := value["root"].(string)
-	if !cited[root] {
-		return refusef("receipts: the receipt bundle of deal %q is rooted at %q, which no claim of that deal cites as evidence", r.Deal, root)
+		return refusef("receipts: the receipt bundle of deal %q is not one the %s module draws (its kind, extensions or root profile do not meet the module's requires and forbids)", deal, module.ID)
 	}
 	return nil
 }
