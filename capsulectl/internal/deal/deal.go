@@ -70,7 +70,8 @@ type dealSession struct {
 	unlock func() error
 	shared bool // a read under the shared lock (openDealStoreRead)
 	// hostCadence is the witness state dealReportBundle found for the bundle
-	// it last built: what a bundle that is not witnessed no longer carries.
+	// it last built, what a bundle that is not witnessed no longer carries;
+	// "not_carried" for a bundle read from a file (deal report --from-bundle).
 	hostCadence map[string]interface{}
 	// htmlDeferred is a --html given with an email that is deferred: no
 	// page is written until the email is sealed, and the result says so.
@@ -2950,6 +2951,9 @@ func dealReportCommand() *cobra.Command {
 			var err error
 			if fromBundle != "" {
 				b, err = s.dealBundleOf(fromBundle, dealID, events)
+				// A file carries a witnessed chain only: for any other bundle it
+				// cannot say whether a witness is pending or not configured.
+				s.hostCadence = map[string]interface{}{"state": "not_carried"}
 			} else {
 				b, err = s.dealReportBundle(ctx, events, report, audience, dealVerifyCommand(htmlPath), true, dealRefereeOf(audience, recipient))
 			}

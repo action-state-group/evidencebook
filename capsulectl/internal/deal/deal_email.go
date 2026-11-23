@@ -152,6 +152,9 @@ func dealAssuranceRung(b, producer map[string]interface{}) map[string]any {
 	if len(witnesses) == 0 {
 		out := map[string]any{"rung": "self_attested", "witness_state": "not_configured"}
 		switch state {
+		case "not_carried":
+			out["witness_state"] = "not_carried"
+			sealed += "This copy was written without a witnessed chain, and a file does not say whether the witness is pending or was never set up. "
 		case "scheduled":
 			out["witness_state"] = "scheduled"
 			sealed += "Witness pending. A receipt is not witnessed at the moment it is made: its checkpoint goes to the witness at the next tick of this profile's checkpoint cadence" + cadencePhrase(cadence) + ", and only then can it be witnessed. Until then it is sealed on this device only. "

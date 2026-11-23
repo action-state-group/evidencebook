@@ -103,3 +103,26 @@ func TestSaleAndHistoryBundlesCarryParentWitness(t *testing.T) {
 		requireParentWitness(t, d, directory)
 	}
 }
+
+// An unwitnessed bundle carries no witness state, so a report made from the
+// file says so ("not_carried") instead of "not configured" or a state it
+// cannot know; the same deal's own report says "scheduled" (evidencebook#737).
+func TestReportFromAnUnwitnessedBundleDoesNotGuessTheWitnessState(t *testing.T) {
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	dealID := retailDeal(t)
+
+	out, bundlePath, _, _ := dealReportFiles(t, dealID)
+	assert.Equal(t, "scheduled", out["assurance"].(map[string]any)["witness_state"], "made now, the report knows")
+	var b map[string]any
+	require.NoError(t, json.Unmarshal(mustRead(t, bundlePath), &b))
+	assert.NotContains(t, b["extensions"], DealCadenceExtension)
+	assert.NotContains(t, b["extensions"], DealParentWitnessExtension)
+
+	from, _, _, _ := dealReportFiles(t, dealID, "--from-bundle", bundlePath)
+	assert.Equal(t, "not_carried", from["assurance"].(map[string]any)["witness_state"])
+	assert.Equal(t, "not_carried", from["grade"].(map[string]any)["witness"].(map[string]any)["state"])
+	assert.Equal(t, "self_attested", from["assurance"].(map[string]any)["rung"])
+}
