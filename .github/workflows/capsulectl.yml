@@ -10,9 +10,9 @@ name: capsulectl
 on:
   push:
     branches: [main]
-    paths: ["capsulectl/**", ".github/workflows/capsulectl.yml"]
+    paths: ["capsulectl/**", "report/testdata/presentation/**", ".github/workflows/capsulectl.yml"]
   pull_request:
-    paths: ["capsulectl/**", ".github/workflows/capsulectl.yml"]
+    paths: ["capsulectl/**", "report/testdata/presentation/**", ".github/workflows/capsulectl.yml"]
   workflow_dispatch:
   schedule:
     # Nightly: every case under the race detector (see the tests job's env).
