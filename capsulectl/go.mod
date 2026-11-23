@@ -10,7 +10,7 @@ require (
 	github.com/action-state-group/capsule-viewer/go v0.23.0
 	github.com/action-state-group/checkpointed-local-log/go v0.4.0
 	github.com/action-state-group/evidencebook v0.26.1-0.20261123183707-940aaba92807
-	github.com/action-state-group/evidencebook/report v0.6.0
+	github.com/action-state-group/evidencebook/report v0.7.0
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
