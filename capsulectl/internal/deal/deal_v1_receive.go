@@ -141,6 +141,13 @@ func (s *dealSession) receiveV1(ctx context.Context, c *cobra.Command, push v1Pu
 	out := map[string]any{}
 	if info != nil {
 		out["record_type"], out["deal_id"] = info.kind, info.dealID
+		// A ruling's record digest is what a statement names it by and what
+		// deal dispute --challenge takes.
+		if info.book != nil && info.kind == xdealv1.TypeRuling {
+			if d, err := xdealv1.Digest(info.book.Record); err == nil {
+				out["ruling"] = d
+			}
+		}
 	}
 	if res.Record != nil {
 		out["record"] = recordWords(res.Record)

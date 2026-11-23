@@ -220,7 +220,7 @@ the v1 decline is a subcommand of `offer`.
 | `deal perform` | `perform` | deal book | a delivery or any other act; `--check CHECK` cites the passing check (CHECK is the check_id `deal check` printed, or the check record's digest); names are the record names (Sherlock2 a864342c) |
 | `deal settle` | `settle` | deal book | a payment leg (`--leg payer\|payee`) or a refund (`--reverses DIGEST`, `--remedy-for ROW`); `--check` on a payer leg. `deal perform` and `deal settle` are new verbs: v0 has neither (it records both through `deal note --kind act`) |
 | `deal statement --row ROW --value met\|not_met\|cannot_tell [--remedy ROW]` | `statement` | deal book | `--remedy` for a statement that chooses a remedy |
-| `deal dispute --row ROW [--forum F]`, `... --withdraw`, `... --challenge RULING` | `dispute` | deal book | `--forum` only picks among the forums the agreement names, and defaults to the only one; an agreement with `adjudicator: null` names none, so `deal dispute` refuses with a message |
+| `deal dispute --row ROW [--forum F]`, `... --withdraw`, `... --challenge RULING --grounds FILE` | `dispute` | deal book | `--forum` only picks among the forums the agreement names, and defaults to the only one; an agreement with `adjudicator: null` names none, so `deal dispute` refuses with a message |
 | `deal check`, `deal note` | the journal overlay and journey kinds | journal | unchanged flags; on a v1 deal they seal the v1 records |
 
 The rows' vocabulary and the statement words are rowstatus's, used exactly (Sherlock2 2a004e65,
@@ -240,8 +240,12 @@ terms pack states them, and a dispute and a ruling must name one of them. The `f
 agreement carry `forums`, `CheckDispute` and `CheckRuling` keep a dispute or ruling inside them, and
 a dispute must cite its agreement. `deal offer` takes `--forum F` (repeatable). `deal dispute`
 writes into the deal book, so it lands with the deal book writers after `deal agree`: the dispute and
-the withdrawal are built (evidencebook-deal#95); `--challenge RULING` waits for the ruling the adjudicator
-sends back.
+the withdrawal are built (evidencebook-deal#95). `--challenge RULING --grounds FILE` is built too
+(evidencebook#773): it names a ruling the holder holds and the SHA-256 of the grounds, and changes no
+row status, so the first final ruling still applies (Sherlock2, evidencebook#773). The adjudicator's
+verb is `deal ruling` (evidencebook#773): it seals a ruling in the deal's case book (PROFILE.md §4,
+"The case book"), from the dispute and one or both parties' adjudicator copies, stamps it, and writes
+the file both parties take with `deal receive`, which names it in each party's book.
 
 ## 6. Settled and local
 
@@ -772,8 +776,9 @@ and on §12's local event list.
 
 **Built in two pull requests:** `perform` and `statement` first, with items 1, 2, 6, 7, 8 and 9 as
 they apply to a perform. Then `settle`, with items 3, 4 and 5 and the rest of 8 and 9.
-Item 6's `--remedy-ruling` and `deal statement --names` wait on evidencebook#714: the plugin holds
-no rulings and no cancellation lookup yet.
+Item 6's `--remedy-ruling` and `deal statement --names` wait on evidencebook#714. A party now holds
+the rulings it received (`deal receive`; `xdealv1.HeldRuling` finds one by digest, evidencebook#615),
+so only the flags and the cancellation lookup remain.
 
 **Tests.**
 - **Acts.**
