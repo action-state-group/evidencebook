@@ -422,8 +422,9 @@ rely on this act. The person cannot add them yet: where they travel is still
 being defined (agent-action-capsule#627).
 
 The act rests on your passing commit check (--check, from deal check): it is
-sealed only when that check's verdict has its approval, no detail changed
-since, and the approval has authorized no other act. Your first act is refused
+sealed only when that check's verdict has its approval, that answer was
+applied (deal note said "proceed": true: no later check or changed detail
+came first), and the approval has authorized no other act. Your first act is refused
 until you hold the other side's stamp proof on its agreement (deal receive
 brings it); run deal perform again then. If the other side runs no stamping,
 the act is sealed and the output says no stamp proof came.

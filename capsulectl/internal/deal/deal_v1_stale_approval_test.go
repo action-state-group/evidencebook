@@ -26,28 +26,45 @@ func TestAStaleAnswerAuthorizesNothingOnV1(t *testing.T) {
 	ref := strings.Repeat("ab", 32)
 	pay := `{"action":"pay","amount_minor":6000,"authorized_max_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"},"payment_ref":"` + ref + `"}`
 	commit := `{"action":"commit","amount_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"}}`
-	h := struct{ dealID string }{noLayerAgreed(t)}
-	first, card := pausedV1Check(t, h.dealID, pay)
-	pausedV1Check(t, h.dealID, commit)
-	res, err := answer(t, h.dealID, first, "yes", card)
+	dealID := noLayerAgreed(t)
+	first, card := pausedV1Check(t, dealID, pay)
+	pausedV1Check(t, dealID, commit)
+	res, err := answer(t, dealID, first, "yes", card)
 	require.NoError(t, err)
 	assert.Equal(t, false, res["proceed"], "the answer came after a later check")
-	sent := []string{"settle", "--deal", h.dealID, "--sent", "--payment-ref-type", "ln.payment_hash", "--check"}
+	sent := []string{"settle", "--deal", dealID, "--sent", "--payment-ref-type", "ln.payment_hash", "--check"}
 	assert.Contains(t, v1Err(t, append(sent, first)...), "was not applied")
 
 	// The same for an act on a commit check.
-	act, actCard := pausedV1Check(t, h.dealID, commit)
-	again, againCard := pausedV1Check(t, h.dealID, pay)
-	_, err = answer(t, h.dealID, act, "yes", actCard)
+	act, actCard := pausedV1Check(t, dealID, commit)
+	again, againCard := pausedV1Check(t, dealID, pay)
+	_, err = answer(t, dealID, act, "yes", actCard)
 	require.NoError(t, err)
 	perform := func(check string) []string {
-		return []string{"perform", "--deal", h.dealID, "--check", check, "--act", "deliver", "--observed", "self", "--out", filepath.Join(t.TempDir(), "p.json")}
+		return []string{"perform", "--deal", dealID, "--check", check, "--act", "deliver", "--observed", "self", "--out", filepath.Join(t.TempDir(), "p.json")}
 	}
 	assert.Contains(t, v1Err(t, perform(act)...), "was not applied")
 
 	// An answer to the newest check is applied, and the payment goes ahead.
-	res, err = answer(t, h.dealID, again, "yes", againCard)
+	res, err = answer(t, dealID, again, "yes", againCard)
 	require.NoError(t, err)
 	require.Equal(t, true, res["proceed"], "%v", res)
 	dealRun(t, append(sent, again)...)
+}
+
+// A check answered twice: the second answer is marked already answered, and
+// the first, applied answer still authorizes the payment (the library reads
+// the verdict's first answer).
+func TestASecondAnswerLeavesTheFirstInForceOnV1(t *testing.T) {
+	ref := strings.Repeat("ab", 32)
+	pay := `{"action":"pay","amount_minor":6000,"authorized_max_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"},"payment_ref":"` + ref + `"}`
+	dealID := noLayerAgreed(t)
+	check, card := pausedV1Check(t, dealID, pay)
+	res, err := answer(t, dealID, check, "yes", card)
+	require.NoError(t, err)
+	require.Equal(t, true, res["proceed"], "%v", res)
+	res, err = answer(t, dealID, check, "yes again", card)
+	require.NoError(t, err)
+	assert.Equal(t, false, res["proceed"], "the second answer is not applied")
+	dealRun(t, "settle", "--deal", dealID, "--sent", "--payment-ref-type", "ln.payment_hash", "--check", check)
 }
