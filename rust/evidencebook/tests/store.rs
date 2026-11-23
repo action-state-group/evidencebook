@@ -337,6 +337,7 @@ fn beyond_the_profile_a_registered_derivation_carries_its_records_material() {
             recipient: None,
             forms: vec![SubjectKind::Range, SubjectKind::CitingRecords],
             fields: vec!["seq".into()],
+            ..Default::default()
         })
         .unwrap();
     let at = pinned(&f, 1);
@@ -472,6 +473,7 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
             recipient: None,
             forms: vec![SubjectKind::FullHistory],
             fields: vec!["seq".into()],
+            ..Default::default()
         })
         .unwrap();
     let own = "ab".repeat(32);
@@ -533,6 +535,7 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
             recipient: Some("alice".into()),
             forms: vec![SubjectKind::Range],
             fields: vec!["seq".into()],
+            ..Default::default()
         })
         .unwrap();
     let answers_all = |_: &str, _: &Subject, _: &StatedCheckpoint| {
@@ -687,4 +690,489 @@ fn a_derived_value_with_no_canonical_form_is_an_error_not_a_panic() {
         ISSUED_AT,
     );
     assert!(matches!(r, Err(AnswerError::Artifact(_))));
+}
+
+// ---- Terms Pack derivations: grants, nested fields and set proofs (#746) ----
+
+mod set_proofs {
+    use super::*;
+    use evidence_request::envelope::{sign_with_profile, Anchor, Envelope, EnvelopeParts, PROFILE};
+    use evidence_request::request::{Coverage, Derivation, Freshness};
+    use evidencebook::derived::{derived_inputs, verify_set_inclusion};
+
+    fn log_key() -> String {
+        hex::encode(key("log").verifying_key().to_bytes())
+    }
+
+    fn pack(proofs: bool, fields: &[&str], forms: Vec<SubjectKind>) -> (Derivations, String) {
+        let mut derivations = Derivations::new();
+        let id = derivations
+            .register(DerivationDefinition {
+                document: br#"{"pack":"terms"}"#.to_vec(),
+                recipients: vec!["bob".into(), "alice".into()],
+                forms,
+                fields: fields.iter().map(|f| (*f).into()).collect(),
+                proofs,
+                ..Default::default()
+            })
+            .unwrap();
+        (derivations, id)
+    }
+
+    struct Answer {
+        bytes: Vec<u8>,
+        req: Request,
+        env: Envelope,
+    }
+
+    fn answer(
+        f: &Foreign,
+        derivations: &Derivations,
+        id: &str,
+        subject: Value,
+        anchor: &ResolvedAnchor,
+    ) -> Answer {
+        let wire = json!({"subject": subject, "derivation": id,
+            "coverage": {"expected_pin": anchor.digest()}});
+        let bytes = serde_json::to_vec(&wire).unwrap();
+        let req = parse_json(&bytes).unwrap();
+        let selection = select(f, f, &req, anchor, 100).unwrap();
+        let env = build(
+            f,
+            f,
+            &req,
+            &bytes,
+            anchor,
+            &selection,
+            Options {
+                derivations: Some(derivations),
+                requester: Some("alice"),
+                ..Options::default()
+            },
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+        .unwrap();
+        Answer { bytes, req, env }
+    }
+
+    /// The holder signs `artifact` and `material` for the same request: a
+    /// responder that lies is still a signed envelope.
+    fn resign(a: &Answer, artifact: &Value, material: Vec<(String, Vec<u8>)>) -> Envelope {
+        let artifact = evidence_request::jcs::to_string(artifact)
+            .unwrap()
+            .into_bytes();
+        sign_with_profile(
+            PROFILE,
+            &a.bytes,
+            EnvelopeParts {
+                subject: a.req.subject.clone(),
+                derivation: a.req.derivation.clone(),
+                anchor: Anchor {
+                    digest: a.env.anchor.digest.clone(),
+                    freshness: None,
+                },
+                artifact,
+                verification: material,
+                issued_at: ISSUED_AT.into(),
+            },
+            &key("responder") as &dyn EnvelopeSigner,
+        )
+        .unwrap()
+    }
+
+    fn material(env: &Envelope) -> Vec<(String, Vec<u8>)> {
+        env.verification
+            .iter()
+            .map(|v| v.kind.clone())
+            .zip(env.verification_content.clone())
+            .collect()
+    }
+
+    fn artifact(env: &Envelope) -> Value {
+        serde_json::from_slice(&env.artifact).unwrap()
+    }
+
+    #[test]
+    fn a_grant_to_several_requesters_with_a_nested_field_and_proofs_verifies() {
+        let f = foreign();
+        let (derivations, id) = pack(
+            true,
+            &["seq", "correlation.k"],
+            vec![SubjectKind::Range, SubjectKind::CitingRecords],
+        );
+        let registered = derivations.get(&id).unwrap();
+        assert_eq!(registered.grants(), ["alice", "bob"]);
+        assert_eq!(registered.authorizes(Some("bob")), Some(true));
+        assert_eq!(registered.authorizes(Some("carol")), Some(false));
+        assert_eq!(registered.authorizes(None), Some(false));
+
+        // Under the first checkpoint there is no earlier one: a checkpoint and a
+        // proof per record; under the second, its consistency proof last.
+        for (checkpoint, range, want_kinds) in [
+            (
+                0,
+                [0, 1],
+                vec![KIND_CHECKPOINT, KIND_INCLUSION, KIND_INCLUSION],
+            ),
+            (
+                1,
+                [0, 4],
+                vec![
+                    KIND_CHECKPOINT,
+                    KIND_INCLUSION,
+                    KIND_INCLUSION,
+                    KIND_INCLUSION,
+                    KIND_INCLUSION,
+                    KIND_INCLUSION,
+                    KIND_CONSISTENCY,
+                ],
+            ),
+        ] {
+            let at = pinned(&f, checkpoint);
+            let a = answer(&f, &derivations, &id, json!({"range": range}), &at);
+            assert_eq!(kinds(&a.env), want_kinds);
+            let art = artifact(&a.env);
+            // Only the declared member of correlation travels, nested.
+            let first = &art["records"][0];
+            assert_eq!(
+                first["correlation"],
+                json!({"k": format!("c-{}", range[0])})
+            );
+            assert_eq!(
+                first.as_object().unwrap().keys().collect::<Vec<_>>(),
+                ["correlation", "digest", "leaf_index", "seq"]
+            );
+            let verified = verify_set_inclusion(&a.env, &a.req, &log_key()).unwrap();
+            assert_eq!(verified.statement, f.stated[checkpoint].statement);
+            assert_eq!(verified.anchor, at.digest());
+            let inputs = derived_inputs(&a.env, &a.req, &log_key()).unwrap();
+            assert!(inputs.proven);
+            assert_eq!(inputs.derivation, id);
+            assert_eq!(inputs.records.len(), (range[1] - range[0] + 1) as usize);
+            assert_eq!(
+                inputs.records[0].fields.keys().collect::<Vec<_>>(),
+                ["correlation", "seq"]
+            );
+        }
+    }
+
+    #[test]
+    fn without_proofs_the_answer_carries_no_material_and_is_not_proven() {
+        let f = foreign();
+        let (derivations, id) = pack(false, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 1]}), &at);
+        assert!(a.env.verification.is_empty());
+        let inputs = derived_inputs(&a.env, &a.req, &log_key()).unwrap();
+        assert!(!inputs.proven, "proven only from a successful check");
+        assert_eq!(inputs.records.len(), 2);
+        assert!(verify_set_inclusion(&a.env, &a.req, &log_key()).is_err());
+    }
+
+    #[test]
+    fn a_row_that_is_added_dropped_moved_or_misplaced_fails_a_check() {
+        let f = foreign();
+        let (derivations, id) = pack(true, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 3]}), &at);
+        let (art, mat) = (artifact(&a.env), material(&a.env));
+        let check = |art: &Value, mat: Vec<(String, Vec<u8>)>| {
+            let env = resign(&a, art, mat);
+            verify_set_inclusion(&env, &a.req, &log_key())
+                .unwrap_err()
+                .0
+        };
+        // Each case is signed by the holder, so only the material can refuse it.
+        let mut moved = art.clone();
+        moved["records"].as_array_mut().unwrap().swap(0, 1);
+        assert!(check(&moved, mat.clone()).contains("record 0"), "moved");
+        let mut dropped = art.clone();
+        dropped["records"].as_array_mut().unwrap().pop();
+        assert!(
+            check(&dropped, mat.clone()).contains("one per record"),
+            "dropped"
+        );
+        let mut added = art.clone();
+        let extra = added["records"][0].clone();
+        added["records"].as_array_mut().unwrap().push(extra);
+        assert!(
+            check(&added, mat.clone()).contains("one per record"),
+            "added"
+        );
+        let mut leaf = art.clone();
+        leaf["records"][2]["leaf_index"] = json!(3);
+        assert!(check(&leaf, mat.clone()).contains("record 2"), "wrong leaf");
+        let mut digest = art.clone();
+        digest["records"][1]["digest"] = art["records"][2]["digest"].clone();
+        assert!(
+            check(&digest, mat.clone()).contains("record 1"),
+            "wrong digest"
+        );
+        let mut no_records = art.clone();
+        no_records.as_object_mut().unwrap().remove("records");
+        assert!(check(&no_records, mat.clone()).contains("no records list"));
+        // The material.
+        let mut flipped = mat.clone();
+        let last = flipped.len() - 1;
+        assert_eq!(flipped[last].0, KIND_CONSISTENCY);
+        let n = flipped[last].1.len();
+        flipped[last].1[n - 1] ^= 1;
+        assert!(
+            check(&art, flipped).contains("consistency"),
+            "tampered consistency"
+        );
+        let mut twice = mat.clone();
+        twice.push(mat[0].clone());
+        assert!(check(&art, twice).contains("more than one checkpoint"));
+        let mut other = mat.clone();
+        other.push(("cll-unknown".into(), vec![1]));
+        assert!(check(&art, other).contains("not one this requester implements"));
+        // A checkpoint that is not the anchor.
+        let mut elsewhere = mat.clone();
+        elsewhere[0].1 = f.stated[0].statement.clone();
+        assert!(check(&art, elsewhere).contains("not the anchor"));
+    }
+
+    #[test]
+    fn the_pinned_key_is_the_checkpoints_and_the_envelope_is_checked_first() {
+        let f = foreign();
+        let (derivations, id) = pack(true, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 3]}), &at);
+        let other_key = hex::encode(key("other").verifying_key().to_bytes());
+        for pinned_key in [other_key.as_str(), ""] {
+            let err = verify_set_inclusion(&a.env, &a.req, pinned_key).unwrap_err();
+            assert!(err.0.contains("not the pinned key"), "{err}");
+        }
+        // A verification item swapped after signing breaks the envelope's own
+        // binding, which is read before any material.
+        let mut swapped = a.env.clone();
+        swapped.verification_content[1] = swapped.verification_content[2].clone();
+        let err = verify_set_inclusion(&swapped, &a.req, &log_key()).unwrap_err();
+        assert!(err.0.contains("envelope does not verify"), "{err}");
+        // An envelope that answers another request.
+        let mut other = a.req.clone();
+        other.subject = Subject::Range(0, 2);
+        let err = verify_set_inclusion(&a.env, &other, &log_key()).unwrap_err();
+        assert!(err.0.contains("different subject"), "{err}");
+        // A stated freshness the checkpoint does not commit.
+        let mut lying = a.env.clone();
+        lying.anchor.freshness = Some(evidence_request::envelope::AnchorFreshness::Size(1));
+        assert!(verify_set_inclusion(&lying, &a.req, &log_key()).is_err());
+    }
+
+    /// A request pinning the requester's own half is answered with the
+    /// half's digest as the envelope's anchor and the serving checkpoint's in
+    /// the artifact; the proofs are under the artifact's.
+    #[test]
+    fn a_request_pinning_its_own_half_is_checked_under_the_artifacts_anchor() {
+        let f = foreign();
+        let (derivations, id) = pack(true, &["seq"], vec![SubjectKind::CitingRecords]);
+        let half_pin = ResolvedAnchor::ExchangeHalf(half());
+        #[rustfmt::skip]
+        let subject = json!({"exchange": half()}); // vocabulary-gate: request-draft wire token
+        let a = answer(&f, &derivations, &id, subject, &half_pin);
+        assert_eq!(a.env.anchor.digest, half());
+        let art = artifact(&a.env);
+        assert_ne!(art["anchor"], json!(half()));
+        let verified = verify_set_inclusion(&a.env, &a.req, &log_key()).unwrap();
+        assert_eq!(json!(verified.anchor), art["anchor"]);
+        // A substituted artifact anchor is not the checkpoint the proofs carry.
+        let mut other = art.clone();
+        other["anchor"] = json!(anchor_digest(&f.stated[0]));
+        let env = resign(&a, &other, material(&a.env));
+        let err = verify_set_inclusion(&env, &a.req, &log_key()).unwrap_err();
+        assert!(err.0.contains("not the anchor"), "{err}");
+    }
+
+    /// What Go refuses before it reads a proof (`verifyEnvelopeContent`): an
+    /// answer that is not the pinned anchor or does not meet the floor, and one
+    /// over the item limits.
+    #[test]
+    fn an_answer_that_is_not_the_requested_one_is_refused_before_its_proofs() {
+        let f = foreign();
+        let (derivations, id) = pack(true, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 3]}), &at);
+        // A newer checkpoint was asked for: the holder re-signed an older one.
+        let mut pin = a.req.clone();
+        pin.coverage = Coverage::ExpectedPin(anchor_digest(&f.stated[0]));
+        let err = verify_set_inclusion(&a.env, &pin, &log_key()).unwrap_err();
+        assert!(err.0.contains("not the pinned one"), "{err}");
+        assert!(derived_inputs(&a.env, &pin, &log_key()).is_err());
+        // A floor above what the answer states, or not stated at all.
+        let mut floor = a.req.clone();
+        floor.coverage = Coverage::MinFreshness(Freshness::Size(1000));
+        let err = verify_set_inclusion(&a.env, &floor, &log_key()).unwrap_err();
+        assert!(err.0.contains("size meeting the floor"), "{err}");
+        let mut time = a.req.clone();
+        time.coverage = Coverage::MinFreshness(Freshness::Time(
+            evidence_request::time::parse_utc("2030-01-01T00:00:00Z").unwrap(),
+        ));
+        let err = verify_set_inclusion(&a.env, &time, &log_key()).unwrap_err();
+        assert!(err.0.contains("time meeting the floor"), "{err}");
+
+        // Over the item limits: refused before one proof is checked.
+        let art = artifact(&a.env);
+        let mut many = art.clone();
+        let row = art["records"][0].clone();
+        many["records"] = Value::Array(vec![row; evidencebook::derived::MAX_ITEMS + 1]);
+        let err = verify_set_inclusion(&resign(&a, &many, material(&a.env)), &a.req, &log_key())
+            .unwrap_err();
+        assert!(err.0.contains("limit: records"), "{err}");
+        let mut padded = material(&a.env);
+        padded.resize(
+            evidencebook::derived::MAX_ITEMS + 1,
+            (KIND_INCLUSION.into(), vec![0]),
+        );
+        let err = verify_set_inclusion(&resign(&a, &art, padded), &a.req, &log_key()).unwrap_err();
+        assert!(err.0.contains("limit: verification"), "{err}");
+    }
+
+    /// An answer is read only once its envelope is: with no proofs at all, a
+    /// row edited after signing, an envelope for another derivation or a
+    /// `body` that is not the record are refused.
+    #[test]
+    fn rows_are_read_only_from_a_verified_envelope_and_a_body_must_be_its_record() {
+        let f = foreign();
+        let (derivations, id) = pack(false, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 1]}), &at);
+        assert!(!derived_inputs(&a.env, &a.req, &log_key()).unwrap().proven);
+        let mut edited = a.env.clone();
+        edited.artifact = String::from_utf8(edited.artifact.clone())
+            .unwrap()
+            .replace("\"seq\":1", "\"seq\":9")
+            .into_bytes();
+        assert_ne!(edited.artifact, a.env.artifact);
+        let err = derived_inputs(&edited, &a.req, &log_key()).unwrap_err();
+        assert!(err.0.contains("envelope does not verify"), "{err}");
+        let mut other = a.req.clone();
+        other.derivation = Some(Derivation::Digest("ab".repeat(32)));
+        assert!(derived_inputs(&a.env, &other, &log_key()).is_err());
+        // A holder's own re-signed row with a body that is not its record.
+        let mut art = artifact(&a.env);
+        art["records"][0]["body"] = json!("00ff");
+        let err = derived_inputs(&resign(&a, &art, vec![]), &a.req, &log_key()).unwrap_err();
+        assert!(err.0.contains("does not hash to its digest"), "{err}");
+        art["records"][0]["body"] = json!("not hex");
+        assert!(derived_inputs(&resign(&a, &art, vec![]), &a.req, &log_key()).is_err());
+        // The only number a derived row holds is a safe integer (a record
+        // header is canonical JSON): a fraction, an exponent that overflows or
+        // underflows and a long integer are refused, never read as `null`,
+        // rounded or flushed to zero.
+        for number in ["1.5", "1e400", "1e-400", "12345678901234567890"] {
+            let mut art = artifact(&a.env);
+            art["records"][0]["seq"] = json!(1);
+            let text = String::from_utf8(serde_json::to_vec(&art).unwrap())
+                .unwrap()
+                .replacen("\"seq\":1", &format!("\"seq\":{number}"), 1);
+            assert!(text.contains(number), "{number}");
+            let env = sign_with_profile(
+                PROFILE,
+                &a.bytes,
+                EnvelopeParts {
+                    subject: a.req.subject.clone(),
+                    derivation: a.req.derivation.clone(),
+                    anchor: Anchor {
+                        digest: a.env.anchor.digest.clone(),
+                        freshness: None,
+                    },
+                    artifact: text.into_bytes(),
+                    verification: vec![],
+                    issued_at: ISSUED_AT.into(),
+                },
+                &key("responder") as &dyn EnvelopeSigner,
+            )
+            .unwrap();
+            let err = derived_inputs(&env, &a.req, &log_key()).unwrap_err();
+            assert!(err.0.contains("not JSON"), "{number}: {err}");
+        }
+    }
+
+    /// Go reads a proof that need not be deterministic, and checks a
+    /// consistency proof's right peaks exactly.
+    #[test]
+    fn a_proof_is_read_as_go_reads_it() {
+        use ciborium::value::Value as Cbor;
+        let f = foreign();
+        let (derivations, id) = pack(true, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let a = answer(&f, &derivations, &id, json!({"range": [0, 3]}), &at);
+        let (art, mat) = (artifact(&a.env), material(&a.env));
+        let decode = |octets: &[u8]| ciborium::from_reader::<Cbor, _>(octets).unwrap();
+        let verdict = |mat: Vec<(String, Vec<u8>)>| {
+            verify_set_inclusion(&resign(&a, &art, mat), &a.req, &log_key())
+        };
+        // The first inclusion proof with its index written in two octets.
+        let Cbor::Array(parts) = decode(&mat[1].1) else {
+            panic!("not an array")
+        };
+        let (Cbor::Integer(index), path) = (&parts[0], &parts[1]) else {
+            panic!("not [index, path]")
+        };
+        let index = u64::try_from(*index).unwrap();
+        let mut wide = vec![0x82, 0x19, (index >> 8) as u8, index as u8];
+        ciborium::into_writer(path, &mut wide).unwrap();
+        assert_ne!(wide, mat[1].1);
+        let mut widened = mat.clone();
+        widened[1].1 = wide;
+        verdict(widened).expect("Go accepts a proof that is not deterministic");
+        // The index of another leaf is refused.
+        let mut other = mat.clone();
+        other[1].1 = mat[2].1.clone();
+        assert!(verdict(other).unwrap_err().0.contains("record 0"));
+        // Right peaks that are not the ones the paths leave out.
+        let last = mat.len() - 1;
+        assert_eq!(mat[last].0, KIND_CONSISTENCY);
+        let Cbor::Array(mut parts) = decode(&mat[last].1) else {
+            panic!("not an array")
+        };
+        let Cbor::Array(right) = parts[3].clone() else {
+            panic!("not a list")
+        };
+        for changed in [
+            Vec::new(),
+            [right.clone(), vec![Cbor::Bytes(vec![7; 32])]].concat(),
+        ] {
+            parts[3] = Cbor::Array(changed);
+            let mut octets = Vec::new();
+            ciborium::into_writer(&Cbor::Array(parts.clone()), &mut octets).unwrap();
+            let mut tampered = mat.clone();
+            tampered[last].1 = octets;
+            let err = verdict(tampered).unwrap_err();
+            assert!(err.0.contains("consistency"), "{err}");
+        }
+    }
+
+    #[test]
+    fn the_proofs_and_the_checkpoint_count_against_the_item_limit() {
+        let f = foreign();
+        let (derivations, id) = pack(true, &["seq"], vec![SubjectKind::Range]);
+        let at = pinned(&f, 1);
+        let wire = json!({"subject": {"range": [0, 3]}, "derivation": id,
+            "coverage": {"expected_pin": at.digest()}});
+        let bytes = serde_json::to_vec(&wire).unwrap();
+        let req = parse_json(&bytes).unwrap();
+        let mut selection = select(&f, &f, &req, &at, 100).unwrap();
+        selection.records = (0..evidencebook::answer::MAX_RECORDS - 1).collect();
+        let err = build(
+            &f,
+            &f,
+            &req,
+            &bytes,
+            &at,
+            &selection,
+            Options {
+                derivations: Some(&derivations),
+                requester: Some("alice"),
+                ..Options::default()
+            },
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+        .unwrap_err();
+        assert!(matches!(err, AnswerError::OverLimit), "{err:?}");
+    }
 }

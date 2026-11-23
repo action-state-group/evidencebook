@@ -11,9 +11,15 @@
 //! - a definition declares the subject forms it is defined over, never
 //!   `checkpoints`, and its field set, which only names record header
 //!   members ([`HEADER_FIELDS`]);
-//! - a definition that names a recipient is answered to that authenticated
-//!   requester only; anyone else is refused `not_authorized`. One that names
-//!   none is answered under the responder's own share policy.
+//! - a definition that names recipients (`recipient` and `recipients`, one
+//!   grant set: a Terms Pack's digest served to several requesters) is
+//!   answered to those authenticated requesters only; anyone else is refused
+//!   `not_authorized`. One that names none is answered under the responder's
+//!   own share policy;
+//! - a declared field may be a path into a header member
+//!   (`statement.generated_at`), which reveals that member only;
+//! - with `proofs` the answer carries the anchor's checkpoint and a proof per
+//!   record ([`crate::derived`] checks them).
 //!
 //! A recipient-specific disclosure is such a derivation (interop profile
 //! §6.5): a new identity, never a variant of the canonical artifact of the
@@ -32,7 +38,8 @@
 //! [`crate::answer::Options::derivations`] set: RFC 8785 of `{anchor,
 //! derivation, evidence_stream, records, subject}`, each record carrying its
 //! `digest`, its `leaf_index` and the declared header members it has
-//! ([`crate::store::RecordSource::header_of`]), and nothing else.
+//! ([`crate::store::RecordSource::header_of`]), and nothing else; with
+//! `proofs`, the material goes beside the artifact in the envelope.
 
 use crate::request::SubjectKind;
 use evidence_request::registry::{Reason, SubjectForm};
@@ -67,21 +74,41 @@ pub const HEADER_FIELDS: [&str; 15] = [
 const MAX_NESTING: usize = 32;
 
 /// A derivation a responder serves by the digest of its definition.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DerivationDefinition {
     /// The definition document, a JSON object.
     pub document: Vec<u8>,
     /// The authenticated requester the projection is prepared for, as the
-    /// definition names it. Only that requester is answered. `None` (or an
-    /// empty name) answers it under the responder's share policy like any
-    /// protected subject.
+    /// definition names it. `None` (or an empty name) names no one: with no
+    /// [`Self::recipients`] either, it is answered under the responder's
+    /// share policy like any protected subject.
     pub recipient: Option<String>,
+    /// Further requesters the holder grants the same derivation to, so one
+    /// definition digest (a Terms Pack's) is served to several of them. The
+    /// grant is `recipient` and `recipients` together, as a set; an empty
+    /// name here is [`DerivationError::EmptyRecipient`]. Every one is
+    /// answered the same bytes.
+    pub recipients: Vec<String>,
     /// The subject forms it is defined over; any other form is refused
     /// `no_such_subject` (-00 §3.3).
     pub forms: Vec<SubjectKind>,
-    /// The declared field set: the record header members the projection
-    /// reveals, and nothing else (-00 §8).
+    /// The declared field set: what the projection reveals of each record,
+    /// and nothing else (-00 §8). A field is a record header member
+    /// (`statement`) or a path into one (`statement.generated_at`, names
+    /// joined by `.`; the Plan IR's field-path grammar over objects). A path
+    /// reveals that member only, nested as the record holds it. A path whose
+    /// step is not an object in a record is left out of that record's
+    /// projection. A path and a field it extends, or one of its own
+    /// prefixes, are [`DerivationError::FieldConflict`] together.
     pub fields: Vec<String>,
+    /// Make the answer carry the anchor's signed checkpoint, one inclusion
+    /// proof per record in record order and, when the checkpoint extends an
+    /// earlier one, the proof that it does (Go `cllSetMaterial`). The rows
+    /// are then the holder's log's records at the anchor, whatever values
+    /// the holder attests for them: membership of the rows given, never that
+    /// no row was left out. Off, the answer carries no verification
+    /// material (P-13).
+    pub proofs: bool,
 }
 
 /// Why a definition was not registered.
@@ -101,12 +128,21 @@ pub enum DerivationError {
     Undeclared,
     #[error("a derivation over records cannot be defined over checkpoints")]
     OverCheckpoints,
-    #[error("{0:?} is not a record header member")]
+    #[error("{0:?} is not a record header member or a path into one")]
     NotAHeaderMember(String),
-    /// The document is registered already with a different recipient, or
-    /// different sets of forms or fields. Its identifier binds only the
-    /// document, so registering it again must not change what it answers.
-    #[error("derivation {0} is registered with a different recipient, forms or fields")]
+    /// A declared field extends another, or is extended by it: they would
+    /// say two things about one member.
+    #[error("{0:?} and {1:?} declare the same member twice")]
+    FieldConflict(String, String),
+    #[error("a derivation recipient has a name")]
+    EmptyRecipient,
+    /// The document is registered already with a different grant, different
+    /// sets of forms or fields, or a different proofs setting. Its
+    /// identifier binds only the document, so registering it again must not
+    /// change what it answers.
+    #[error(
+        "derivation {0} is registered with a different recipient, forms, fields or proofs setting"
+    )]
     Redeclared(String),
 }
 
@@ -114,9 +150,13 @@ pub enum DerivationError {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Registered {
     id: String,
-    recipient: Option<String>,
+    /// `recipient` and `recipients` as one sorted set; empty when the holder
+    /// named no one.
+    grants: Vec<String>,
     forms: Vec<SubjectKind>,
     fields: Vec<String>,
+    paths: Vec<Vec<String>>,
+    proofs: bool,
 }
 
 impl Registered {
@@ -125,9 +165,16 @@ impl Registered {
         &self.id
     }
 
-    /// The one requester it is answered to, when the definition names one.
-    pub fn recipient(&self) -> Option<&str> {
-        self.recipient.as_deref()
+    /// The requesters it is answered to, sorted, when the definition names
+    /// any.
+    pub fn grants(&self) -> &[String] {
+        &self.grants
+    }
+
+    /// Whether its answer carries the anchor's checkpoint and a proof per
+    /// record.
+    pub fn proofs(&self) -> bool {
+        self.proofs
     }
 
     /// The subject forms it is defined over.
@@ -135,9 +182,15 @@ impl Registered {
         &self.forms
     }
 
-    /// The header members each record of its artifact may carry.
+    /// The declared fields, as written.
     pub fn fields(&self) -> &[String] {
         &self.fields
+    }
+
+    /// The declared fields, each as its names: a header member and the
+    /// object members below it.
+    pub fn paths(&self) -> &[Vec<String>] {
+        &self.paths
     }
 
     /// Whether it is defined over this subject form.
@@ -146,12 +199,13 @@ impl Registered {
     }
 
     /// Whether `requester` (`None` when unauthenticated) is answered:
-    /// `Some(true)` or `Some(false)` when the definition names a recipient,
+    /// `Some(true)` or `Some(false)` when the definition names recipients,
     /// `None` when it names none and the responder's share policy decides.
     pub fn authorizes(&self, requester: Option<&str>) -> Option<bool> {
-        self.recipient
-            .as_deref()
-            .map(|recipient| requester == Some(recipient))
+        if self.grants.is_empty() {
+            return None;
+        }
+        Some(requester.is_some_and(|r| self.grants.iter().any(|g| g == r)))
     }
 }
 
@@ -187,17 +241,22 @@ impl Derivations {
         if definition.forms.contains(&SubjectKind::Checkpoints) {
             return Err(DerivationError::OverCheckpoints);
         }
-        if let Some(field) = definition
-            .fields
-            .iter()
-            .find(|f| !HEADER_FIELDS.contains(&f.as_str()))
-        {
-            return Err(DerivationError::NotAHeaderMember(field.clone()));
+        let paths = check_field_set(&definition.fields)?;
+        if definition.recipients.iter().any(String::is_empty) {
+            return Err(DerivationError::EmptyRecipient);
         }
+        let mut grants: Vec<String> = definition
+            .recipient
+            .filter(|r| !r.is_empty())
+            .into_iter()
+            .chain(definition.recipients)
+            .collect();
+        grants.sort();
+        grants.dedup();
         let id = hex::encode(Sha256::digest(&canonical));
-        let recipient = definition.recipient.filter(|r| !r.is_empty());
         if let Some(prev) = self.by_id.get(&id) {
-            return if prev.recipient == recipient
+            return if prev.grants == grants
+                && prev.proofs == definition.proofs
                 && same_set(&prev.forms, &definition.forms)
                 && same_set(&prev.fields, &definition.fields)
             {
@@ -208,9 +267,11 @@ impl Derivations {
         }
         let registered = Registered {
             id: id.clone(),
-            recipient,
+            grants,
             forms: definition.forms,
             fields: definition.fields,
+            paths,
+            proofs: definition.proofs,
         };
         self.by_id.insert(id.clone(), registered);
         Ok(id)
@@ -275,6 +336,42 @@ impl Derivations {
     }
 }
 
+/// A declared field's names, or `None` when it is not a header member
+/// followed by object member names (`^[A-Za-z_][A-Za-z0-9_]*$`, the Plan
+/// IR's field-path grammar).
+fn field_path(field: &str) -> Option<Vec<String>> {
+    let names: Vec<String> = field.split('.').map(str::to_owned).collect();
+    if !HEADER_FIELDS.contains(&names[0].as_str()) {
+        return None;
+    }
+    let name_ok = |n: &str| {
+        let mut chars = n.chars();
+        chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    };
+    names[1..].iter().all(|n| name_ok(n)).then_some(names)
+}
+
+/// Each declared field as its names, or the first field that is not a path
+/// or that extends (or is extended by) an earlier one. A field declared
+/// twice is one field.
+fn check_field_set(fields: &[String]) -> Result<Vec<Vec<String>>, DerivationError> {
+    let mut paths = Vec::with_capacity(fields.len());
+    for (i, field) in fields.iter().enumerate() {
+        paths.push(
+            field_path(field).ok_or_else(|| DerivationError::NotAHeaderMember(field.clone()))?,
+        );
+        for other in &fields[..i] {
+            if field.starts_with(&format!("{other}.")) || other.starts_with(&format!("{field}.")) {
+                return Err(DerivationError::FieldConflict(other.clone(), field.clone()));
+            }
+        }
+    }
+    Ok(paths)
+}
+
 /// Whether `a` and `b` hold the same members, in any order and with any
 /// repetition.
 fn same_set<T: PartialEq>(a: &[T], b: &[T]) -> bool {
@@ -314,6 +411,7 @@ pub(crate) fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
         at: 0,
         canonical: None,
         keep_numbers: false,
+        refuse_lossy: false,
     };
     reader.space();
     let value = reader.value(0)?;
@@ -334,6 +432,19 @@ pub(crate) fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
 /// canonical form. An integer of at most 18 digits is an integer; any other
 /// number is a float, which no JSON-RPC id may be.
 pub(crate) fn decode_syntax(document: &[u8]) -> Result<Value, DerivationError> {
+    decode_numbers_as_written(document, false)
+}
+
+/// [`decode_syntax`] for a document whose values are read back as they are
+/// (a holder's answer): the only number it holds is an integer within
+/// +/-(2^53 - 1), so no value is ever read as `null`, rounded or flushed to zero (a
+/// fraction or an exponent, `1e400` and `1e-400` alike, is refused). A record
+/// header is canonical JSON, which has no such number.
+pub(crate) fn decode_syntax_exact(document: &[u8]) -> Result<Value, DerivationError> {
+    decode_numbers_as_written(document, true)
+}
+
+fn decode_numbers_as_written(document: &[u8], exact: bool) -> Result<Value, DerivationError> {
     let text = std::str::from_utf8(document)
         .map_err(|_| DerivationError::NotJson("JSON text is not valid UTF-8".into()))?;
     let mut reader = Reader {
@@ -341,6 +452,7 @@ pub(crate) fn decode_syntax(document: &[u8]) -> Result<Value, DerivationError> {
         at: 0,
         canonical: None,
         keep_numbers: true,
+        refuse_lossy: exact,
     };
     reader.space();
     let value = reader.value(0)?;
@@ -361,6 +473,9 @@ struct Reader<'a> {
     /// Read a number with no canonical form as the number it is, instead of
     /// as `null` with `canonical` set ([`decode_syntax`]).
     keep_numbers: bool,
+    /// With `keep_numbers`, refuse a number that is not a safe integer (see
+    /// [`decode_syntax_exact`]).
+    refuse_lossy: bool,
 }
 
 impl Reader<'_> {
@@ -591,6 +706,11 @@ impl Reader<'_> {
         };
         if let Some(reason) = reason {
             if self.keep_numbers {
+                if self.refuse_lossy {
+                    return Err(
+                        self.malformed("a number other than an integer within +/-(2^53 - 1)")
+                    );
+                }
                 let kept = token
                     .parse::<i64>()
                     .ok()
@@ -633,6 +753,7 @@ mod tests {
             recipient: None,
             forms: vec![SubjectKind::Record],
             fields: vec!["seq".into()],
+            ..Default::default()
         }
     }
 
@@ -818,5 +939,152 @@ mod tests {
         )
         .unwrap();
         assert!(d.check(&plain, None, false).unwrap().is_none());
+    }
+
+    fn with(f: impl FnOnce(&mut DerivationDefinition)) -> DerivationDefinition {
+        let mut def = define(r#"{"pack":"terms"}"#);
+        f(&mut def);
+        def
+    }
+
+    /// The grant is `recipient` and `recipients` together, as one sorted set;
+    /// only an empty entry of `recipients` is invalid, an empty `recipient`
+    /// names no one.
+    #[test]
+    fn a_grant_is_a_set_of_requesters() {
+        let mut d = Derivations::new();
+        let id = d
+            .register(with(|def| {
+                def.recipient = Some("bob".into());
+                def.recipients = vec!["carol".into(), "alice".into(), "bob".into()];
+            }))
+            .unwrap();
+        let r = d.get(&id).unwrap();
+        assert_eq!(r.grants(), ["alice", "bob", "carol"]);
+        for who in ["alice", "bob", "carol"] {
+            assert_eq!(r.authorizes(Some(who)), Some(true), "{who}");
+        }
+        assert_eq!(r.authorizes(Some("dave")), Some(false));
+        assert_eq!(r.authorizes(None), Some(false));
+        assert_eq!(r.authorizes(Some("")), Some(false));
+
+        let mut d = Derivations::new();
+        let id = d
+            .register(with(|def| {
+                def.recipient = Some(String::new());
+                def.recipients = vec!["alice".into()];
+            }))
+            .unwrap();
+        assert_eq!(d.get(&id).unwrap().grants(), ["alice"]);
+        let id = Derivations::new()
+            .register(with(|def| def.recipient = Some(String::new())))
+            .unwrap();
+        assert_eq!(id.len(), 64);
+        assert_eq!(
+            Derivations::new().register(with(
+                |def| def.recipients = vec!["alice".into(), String::new()]
+            )),
+            Err(DerivationError::EmptyRecipient)
+        );
+    }
+
+    /// Registering again must not change what it answers: the same grant as a
+    /// set, forms, fields and proofs setting, or the first registration stands.
+    #[test]
+    fn registering_again_with_another_grant_or_proofs_setting_is_refused() {
+        let mut d = Derivations::new();
+        let first = |def: &mut DerivationDefinition| {
+            def.recipients = vec!["alice".into(), "bob".into()];
+            def.proofs = true;
+        };
+        let id = d.register(with(first)).unwrap();
+        let again = d
+            .register(with(|def| {
+                first(def);
+                def.recipients.reverse();
+                def.recipient = Some("alice".into());
+            }))
+            .unwrap();
+        assert_eq!(again, id);
+        for changed in [
+            with(|def| def.recipients = vec!["alice".into()]),
+            with(|def| {
+                first(def);
+                def.proofs = false;
+            }),
+            with(|def| {
+                first(def);
+                def.recipients.push("carol".into());
+            }),
+        ] {
+            assert_eq!(
+                d.register(changed),
+                Err(DerivationError::Redeclared(id.clone()))
+            );
+        }
+        assert_eq!(d.get(&id).unwrap().grants(), ["alice", "bob"]);
+        assert!(d.get(&id).unwrap().proofs());
+    }
+
+    #[test]
+    fn a_field_is_a_header_member_or_a_path_into_one() {
+        let ok = |fields: &[&str]| {
+            Derivations::new().register(with(|def| {
+                def.fields = fields.iter().map(|f| (*f).to_owned()).collect();
+            }))
+        };
+        let id = ok(&["statement.generated_at", "record_type", "seq"]).unwrap();
+        let mut d = Derivations::new();
+        let id2 = d
+            .register(with(|def| {
+                def.fields = vec!["statement.generated_at".into(), "statement.v1.x_2".into()];
+            }))
+            .unwrap();
+        assert_eq!(id, id2, "the identifier binds the document only");
+        assert_eq!(
+            d.get(&id2).unwrap().paths(),
+            [
+                vec!["statement".to_owned(), "generated_at".to_owned()],
+                vec!["statement".to_owned(), "v1".to_owned(), "x_2".to_owned()]
+            ]
+        );
+        // A field declared twice is one field.
+        assert!(ok(&["seq", "seq"]).is_ok());
+        for bad in [
+            "payload",
+            "statement.",
+            ".statement",
+            "statement..a",
+            "statement.a-b",
+            "statement.1a",
+            "statement.a b",
+            "nope.x",
+            "",
+        ] {
+            assert_eq!(
+                ok(&[bad]),
+                Err(DerivationError::NotAHeaderMember(bad.to_owned())),
+                "{bad:?}"
+            );
+        }
+        // A path and a field it extends, or one of its own prefixes, say two
+        // things about one member; a sibling path does not extend it.
+        for (a, b) in [
+            ("statement", "statement.generated_at"),
+            ("statement.generated_at", "statement"),
+            ("statement.a", "statement.a.b"),
+        ] {
+            assert_eq!(
+                ok(&[a, b]),
+                Err(DerivationError::FieldConflict(a.to_owned(), b.to_owned())),
+                "{a} {b}"
+            );
+        }
+        assert!(
+            ok(&["statement.a", "statement.ab", "statement2"]).is_err_and(
+                |e| matches!(e, DerivationError::NotAHeaderMember(f) if f == "statement2")
+            )
+        );
+        assert!(ok(&["statement.a", "statement.ab"]).is_ok());
     }
 }

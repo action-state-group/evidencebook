@@ -462,7 +462,22 @@ pub fn build(
             if registered.authorizes(options.requester) == Some(false) {
                 return Err(AnswerError::NotAuthorized);
             }
-            let set = record_set(log, records, selection, at, options, &mut material)?;
+            // The checkpoint, a proof per record and a consistency proof are
+            // verification entries, which a requester caps at the number it
+            // caps the records: refuse here what it would record as failed.
+            if registered.proofs() && selection.records.len() as u64 + 2 > MAX_RECORDS {
+                return Err(AnswerError::OverLimit);
+            }
+            let proofs = registered.proofs();
+            let set = record_set(
+                log,
+                records,
+                selection,
+                at,
+                options.prove_beyond_profile || proofs,
+                proofs,
+                &mut material,
+            )?;
             head.insert("derivation".into(), json!(registered.id()));
             head.insert("records".into(), projection(records, &set, registered)?);
             jcs(head)?
@@ -531,7 +546,15 @@ pub fn build(
             record.body
         }
         (None, _) => {
-            let set = record_set(log, records, selection, at, options, &mut material)?;
+            let set = record_set(
+                log,
+                records,
+                selection,
+                at,
+                options.prove_beyond_profile,
+                false,
+                &mut material,
+            )?;
             head.insert("records".into(), records_value(&set));
             jcs(head)?
         }
@@ -583,7 +606,7 @@ pub fn build(
 
 /// A checkpoint time in the profile's form: UTC, any fraction dropped
 /// (profile §5.2). The substrate writes `YYYY-MM-DDTHH:MM:SS[.f]Z`.
-fn profile_time(timestamp: &str) -> String {
+pub(crate) fn profile_time(timestamp: &str) -> String {
     match timestamp.split_once('.') {
         Some((seconds, _)) => format!("{seconds}Z"),
         None => timestamp.to_string(),
@@ -655,15 +678,17 @@ fn inclusion(leaf_index: u64, path: &[[u8; 32]]) -> Result<Vec<u8>, AnswerError>
 }
 
 /// The selected records of a record set or a registered derivation, each
-/// checked against its committed entry, and beyond the profile their
-/// material: the anchor checkpoint and one inclusion proof per record, in
-/// the artifact's order.
+/// checked against its committed entry, and beyond the profile, when `prove`,
+/// their material: the anchor checkpoint, one inclusion proof per record in
+/// the artifact's order and, when `with_consistency` and the checkpoint
+/// extends an earlier one, the proof that it does (Go `cllSetMaterial`).
 fn record_set(
     log: &dyn CheckpointedLog,
     records: &dyn RecordSource,
     selection: &Selection,
     at: &StatedCheckpoint,
-    options: Options<'_>,
+    prove: bool,
+    with_consistency: bool,
     material: &mut Vec<(String, Vec<u8>)>,
 ) -> Result<Vec<Record>, AnswerError> {
     if selection.records.is_empty() {
@@ -674,11 +699,17 @@ fn record_set(
         .iter()
         .map(|&i| record_at(records, i))
         .collect::<Result<Vec<_>, _>>()?;
-    if options.prove_beyond_profile {
+    if prove {
         material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
         for r in &set {
             let path = log.inclusion_path(r.leaf_index, at.checkpoint.mmr_size)?;
             material.push((KIND_INCLUSION.into(), inclusion(r.leaf_index, &path)?));
+        }
+        if with_consistency && at.checkpoint.prev_size > 0 {
+            material.push((
+                KIND_CONSISTENCY.into(),
+                consistency(log, at.checkpoint.prev_size, at.checkpoint.mmr_size)?,
+            ));
         }
     }
     Ok(set)
@@ -697,7 +728,9 @@ fn record_at(records: &dyn RecordSource, leaf_index: u64) -> Result<Record, Answ
 }
 
 /// A registered derivation's records: each record's digest, its position,
-/// and the declared header members it has.
+/// and the declared fields it has. A path reveals that member only, nested as
+/// the record holds it; a path with a step that is not an object in a record
+/// is left out of that record.
 fn projection(
     source: &dyn RecordSource,
     set: &[Record],
@@ -709,14 +742,45 @@ fn projection(
         let mut entry = Map::new();
         entry.insert("digest".into(), json!(record.digest));
         entry.insert("leaf_index".into(), json!(record.leaf_index));
-        for name in registered.fields() {
-            if let Some(value) = header.get(name) {
-                entry.insert(name.clone(), value.clone());
+        for path in registered.paths() {
+            if let Some(value) = look_up(&header, path) {
+                set_path(&mut entry, path, value.clone());
             }
         }
         out.push(Value::Object(entry));
     }
     Ok(Value::Array(out))
+}
+
+/// The member `names` reach through nested objects, or `None` when one is
+/// missing or a step is not an object.
+fn look_up<'a>(object: &'a Map<String, Value>, names: &[String]) -> Option<&'a Value> {
+    let (first, rest) = names.split_first()?;
+    let mut value = object.get(first)?;
+    for name in rest {
+        value = value.as_object()?.get(name)?;
+    }
+    Some(value)
+}
+
+/// Put `value` at `names` inside `object`, creating the objects between. The
+/// declared set holds no path that extends another, so no step meets a value
+/// another path put there.
+fn set_path(object: &mut Map<String, Value>, names: &[String], value: Value) {
+    let Some((last, parents)) = names.split_last() else {
+        return;
+    };
+    let mut at = object;
+    for name in parents {
+        let slot = at
+            .entry(name.clone())
+            .or_insert_with(|| Value::Object(Map::new()));
+        match slot.as_object_mut() {
+            Some(inner) => at = inner,
+            None => return,
+        }
+    }
+    at.insert(last.clone(), value);
 }
 
 fn records_value(records: &[Record]) -> Value {

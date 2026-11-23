@@ -481,9 +481,16 @@ impl Run<'_, '_> {
         let chain = anchor_at + 1;
         // A card of counts whatever the history's length: the item cap
         // bounds record lists, and the card lists none.
+        // A pack served with proofs carries a checkpoint, a proof per record
+        // and perhaps a consistency proof, which a requester caps at the
+        // number it caps the records: refuse here, with the limit reason,
+        // what it would record as failed (Go `buildArtifact`).
+        let proofs = matches!(&req.derivation, Some(Derivation::Digest(id))
+            if self.responder.derivations.get(id).is_some_and(Registered::proofs));
         let over = !is_standard_history(&req)
             && !is_history_card_2(&req)
             && (leaves.len() > max_items
+                || proofs && leaves.len() + 2 > max_items.min(answer::MAX_RECORDS as usize)
                 || (matches!(req.subject, Subject::Checkpoints) || is_history_card(&req))
                     && chain > max_items
                 || matches!(req.subject, Subject::CheckpointRange(a, b)
@@ -1212,9 +1219,9 @@ fn authorized(
         // stranger.
         return gate.requester.is_some();
     }
-    if let Some(recipient) = registered.and_then(Registered::recipient) {
-        // The holder's grant to the one requester it names.
-        return gate.requester == Some(recipient);
+    if let Some(granted) = registered.and_then(|r| r.authorizes(gate.requester)) {
+        // The holder's grant to the requesters it names.
+        return granted;
     }
     match &req.subject {
         // A correlation subject matches its key exactly, never by prefix or

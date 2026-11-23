@@ -65,6 +65,7 @@ pub mod canonical;
 #[cfg(feature = "deal")]
 pub mod deal;
 pub mod derivation;
+pub mod derived;
 pub mod disclosure;
 mod ed25519;
 pub mod index;
