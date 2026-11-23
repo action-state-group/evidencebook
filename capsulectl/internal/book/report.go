@@ -235,6 +235,6 @@ func reportCommands() *cobra.Command {
 	build.Flags().Bool("dry-run", false, "Write the page marked draft in its report-card/v1 block and mint no permalink")
 	build.Flags().Bool("diagnostic", false, "For a bundle that fails verification or is incomplete, write a page marked as a diagnostic page (title, banner and the viewer's failed-bundle callout) instead of none; the command still fails with the bundle's own error. Refused for a bundle that verifies, and with --seal or --permalink")
 	build.Flags().Bool("seal", false, "Also seal the written page's SHA-256 in the book of --profile, with the bundle digest and the Result root, and checkpoint it; `report check` checks a page against it. A --dry-run page is never sealed")
-	group.AddCommand(build, reportCheckCommand())
+	group.AddCommand(build, reportCheckCommand(), reportDeriveCommand())
 	return group
 }
