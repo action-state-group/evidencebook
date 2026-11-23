@@ -1,7 +1,7 @@
 # x-deal-v0: the deal record profile
 
 **Status: draft, v0, frozen. Not registered. Not the default.** New deals are x-deal-v1
-([../x-deal-v1/PROFILE.md](../x-deal-v1/PROFILE.md)) from capsulectl-deal VERSION (evidencebook#626).
+([../x-deal-v1/PROFILE.md](../x-deal-v1/PROFILE.md)) from capsulectl-deal capsulectl/v0.1.0-rc50 (evidencebook#626).
 This profile gets no new features. A deal opened under it before the switch finishes under it,
 and an x-deal-v0 deal is started only by an explicit legacy setting
 (`deal set-version x-deal-v0`, until evidencebook#656 removes it). Books and records sealed under it stay readable and verifiable,
