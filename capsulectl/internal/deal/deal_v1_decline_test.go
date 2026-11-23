@@ -97,7 +97,7 @@ func TestAStoppedDeclineBlocksAnAgreementAndFinishes(t *testing.T) {
 	assert.Contains(t, v1Err(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json")), "run `deal offer decline` again to finish it")
 	again := filepath.Join(t.TempDir(), "d2.json")
 	_, stderr := invokeSplit(t, "--profile", "deal", "deal", "offer", "decline", h.offer, "--reason", "other", "--out", again)
-	assert.Contains(t, stderr, "already sealed with reason none; it is written again unchanged")
+	assert.Contains(t, stderr, "already sealed with no reason; it is written again unchanged")
 	firstBytes, err := os.ReadFile(first)
 	require.NoError(t, err)
 	againBytes, err := os.ReadFile(again)

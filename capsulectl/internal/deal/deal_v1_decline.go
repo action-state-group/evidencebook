@@ -123,11 +123,11 @@ To decline a held evidence request, use 'deal decline'.`,
 					payload, digest = op.payload, op.recordDigest
 					if stored, err := xdealv1.Decode(payload); err == nil && reason != "" {
 						if ag, ok := agreeOf(stored); ok && ag.Reason != reason {
-							was := ag.Reason
-							if was == "" {
-								was = "none"
+							was := "reason " + ag.Reason
+							if ag.Reason == "" {
+								was = "no reason"
 							}
-							if _, err := fmt.Fprintln(c.ErrOrStderr(), "this decline was already sealed with reason "+was+"; it is written again unchanged"); err != nil {
+							if _, err := fmt.Fprintln(c.ErrOrStderr(), "this decline was already sealed with "+was+"; it is written again unchanged"); err != nil {
 								return err
 							}
 						}
