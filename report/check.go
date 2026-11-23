@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/action-state-group/evidencebook"
 	htmlstd "html"
 	"io"
 	"regexp"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/envelope"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/evidencebook"
 	"golang.org/x/net/html"
 )
 
