@@ -117,7 +117,7 @@ Needs a profile on x-deal-v1 (deal set-version x-deal-v1 --migrate).`,
 	cmd.Flags().String("counter-to", "", "Make this a counter-offer to the offer with this digest")
 	cmd.Flags().StringArray("forum", nil, "A forum both sides accept for a dispute (repeatable); added to the input's forums")
 	cmd.Flags().String("out", "", "Where to write the Capsule that carries the offer (default: standard output)")
-	cmd.AddCommand(dealOfferCancelCommand())
+	cmd.AddCommand(dealOfferCancelCommand(), dealOfferDeclineCommand())
 	return cmd
 }
 
