@@ -300,7 +300,7 @@ func TestPaymentCheckNotRun(t *testing.T) {
 
 	// Nor by superseding the short payment leg: a refund, or a payer leg
 	// of another terms leg, replaces no payment leg (review of #757).
-	viaRefund := dl.leg(t, false, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(shortRead.Digest)), Supersedes: ptr(RefTo(shortRead.Digest))}, dl.payerMember("settled", "1"))
+	viaRefund := dl.leg(t, true, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(shortRead.Digest)), Supersedes: ptr(RefTo(shortRead.Digest))}, dl.payerMember("settled", "1"))
 	res = dl.check(t, short, shortPayee, viaRefund)
 	assert.Equal(t, PaymentFail, res.Check, "a refund superseding the payment leg does not hide it")
 	assert.Equal(t, ReasonAmount, res.Reason)
@@ -309,6 +309,13 @@ func TestPaymentCheckNotRun(t *testing.T) {
 	viaOther := dl.leg(t, true, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('4'), Supersedes: ptr(RefTo(shortRead.Digest))}, other)
 	res = dl.check(t, short, shortPayee, viaOther)
 	assert.Equal(t, PaymentFail, res.Check, "a leg of another terms leg does not supersede the payment leg")
+	// Nor by a later payer leg AAC's verifier refuses (a status it does
+	// not know): it takes no part, so it replaces nothing.
+	malformed := dl.payerMember("done", "6000")
+	viaMalformed := dl.leg(t, true, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('5'), Supersedes: ptr(RefTo(shortRead.Digest))}, malformed)
+	res = dl.check(t, short, shortPayee, viaMalformed)
+	assert.Equal(t, PaymentFail, res.Check, "a refused leg does not supersede the payment leg")
+	assert.Contains(t, res.Excluded, digestOf(t, viaMalformed))
 	// A later payment leg of this terms leg still replaces it.
 	fixed := dl.leg(t, true, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('1'), Supersedes: ptr(RefTo(shortRead.Digest))}, dl.payerMember("settled", "5000"))
 	res = dl.check(t, short, shortPayee, fixed)

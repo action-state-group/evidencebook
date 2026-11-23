@@ -290,7 +290,10 @@ check is `xdealv1.PaymentCheck`, AAC's `settlement.Verify` over the terms leg an
 legs. It is not run when the terms have more than one payment row. It runs on the payment's own
 legs only: a refund or remedy leg (`reverses`, `remedy_for`) that cites the offer's terms leg is
 not checked, and is listed as such (`not_checked`; a status row's `check_not_checked`), so a
-refund never hides a mismatch in the payment it follows (Steven, evidencebook#722). A remedy that
+refund never hides a mismatch in the payment it follows (Steven, evidencebook#722). A leg
+superseded (`supersedes`) by a later leg of its side is not read, with one limit: a payment leg is
+superseded only by a later payment leg of the same terms leg that AAC's verifier reads beside the
+offer, never by a refund, a leg of another terms leg, or a leg the verifier refuses. A remedy that
 is a payment is not counted until it has its own terms leg, which this profile does not define
 yet.
 

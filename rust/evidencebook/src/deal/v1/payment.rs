@@ -172,7 +172,8 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
     // this terms leg (the flag), so neither a refund nor a record of another
     // terms leg can take a failing payment out of the check
     // (evidencebook#722).
-    let mut supersedes: Vec<(String, Ref, u64, bool)> = Vec::new();
+    // The flag holds the superseding payment leg's index in `legs`.
+    let mut supersedes: Vec<(String, Ref, u64, Option<usize>)> = Vec::new();
     for (i, raw) in input.legs.iter().enumerate() {
         let read = verify_book(raw)?;
         if read.record.block.deal_id != sent.record.block.deal_id {
@@ -189,7 +190,7 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
             return Err(bad(format!("leg {i} is signed by neither party's key")));
         };
         let sp = body.supersedes.as_ref().map(|target| {
-            supersedes.push((read.key_id.clone(), target.clone(), read.seq, false));
+            supersedes.push((read.key_id.clone(), target.clone(), read.seq, None));
             supersedes.len() - 1
         });
         let capsule = record_of(raw)?;
@@ -220,7 +221,7 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
             continue;
         }
         if let (Some(sp), false) = (sp, refund) {
-            supersedes[sp].3 = true;
+            supersedes[sp].3 = Some(legs.len());
         }
         legs.push(LegRead {
             read,
@@ -229,8 +230,36 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         });
     }
 
+    let mut policy: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (key, role) in &role_of {
+        policy
+            .entry((*role).to_string())
+            .or_default()
+            .push(key.clone());
+    }
+    for keys in policy.values_mut() {
+        keys.sort();
+    }
+    let options = SettlementOptions {
+        key_policy: Some(policy),
+        ..Default::default()
+    };
+    // A payment leg supersedes only when AAC's verifier reads it beside the
+    // offer: a leg it refuses (a malformed member, say) takes no part, and
+    // so replaces nothing (evidencebook#757 review).
+    for sp in &mut supersedes {
+        if let Some(i) = sp.3 {
+            let pair = [
+                Value::Object(offer_record.clone()),
+                Value::Object(legs[i].capsule.clone()),
+            ];
+            if !verify_settlements(&pair, &options).failures.is_empty() {
+                sp.3 = None;
+            }
+        }
+    }
     // A leg superseded by a later leg of its side is not read (a payment
-    // leg only by a later payment leg of this terms leg).
+    // leg only by a later payment leg of this terms leg that AAC reads).
     let superseded: HashSet<String> = legs
         .iter()
         .filter(|l| {
@@ -238,7 +267,7 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
                 *key == l.read.key_id
                     && *target == ref_to(&l.read.digest)
                     && l.read.seq < *seq
-                    && (l.refund || *payment)
+                    && (l.refund || payment.is_some())
             })
         })
         .map(|l| l.read.digest.clone())
@@ -263,23 +292,7 @@ pub fn payment_check(input: &PaymentInput) -> Result<PaymentResult, Error> {
         digest_of.insert(l.read.record_id.clone(), l.read.digest.clone());
         read.push(l.read.digest.clone());
     }
-    let mut policy: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (key, role) in &role_of {
-        policy
-            .entry((*role).to_string())
-            .or_default()
-            .push(key.clone());
-    }
-    for keys in policy.values_mut() {
-        keys.sort();
-    }
-    let res = verify_settlements(
-        &capsules,
-        &SettlementOptions {
-            key_policy: Some(policy),
-            ..Default::default()
-        },
-    );
+    let res = verify_settlements(&capsules, &options);
     // A leg AAC's verifier refuses takes no part in its state.
     let mut refused = HashSet::new();
     for f in &res.failures {

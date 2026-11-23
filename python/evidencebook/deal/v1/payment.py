@@ -206,7 +206,7 @@ def payment_check(inp: PaymentInput) -> PaymentResult:
         sp = None
         if body["supersedes"] is not None:
             sp = len(supersedes)
-            supersedes.append([read.key_id, body["supersedes"], read.seq, False])
+            supersedes.append([read.key_id, body["supersedes"], read.seq, None])
         members = _record_members(raw)
         chain = members.get("chain")
         if chain is not None and chain.strip() != "null":
@@ -222,19 +222,30 @@ def payment_check(inp: PaymentInput) -> PaymentResult:
             out.excluded.append(read.digest)
             continue
         if sp is not None and not refund:
-            supersedes[sp][3] = True
+            supersedes[sp][3] = len(legs)  # the superseding payment leg's index
         legs.append((read, members, refund))
 
+    policy: dict[str, list[str]] = {}
+    for key, role in role_of.items():
+        policy.setdefault(role, []).append(key)
+    offer_capsule = json.loads(_marshal_members(offer_members))
+    # A payment leg supersedes only when AAC's verifier reads it beside the
+    # offer: a leg it refuses takes no part, and so replaces nothing.
+    for sp in supersedes:
+        if sp[3] is not None:
+            pair = [offer_capsule, json.loads(_marshal_members(legs[sp[3]][1]))]
+            if verify_settlements(pair, key_policy=policy).failures:
+                sp[3] = None
     superseded: set[str] = set()
     for read, _, refund in legs:
         for key, target, seq, payment in supersedes:
-            if key == read.key_id and target == ref_to(read.digest) and read.seq < seq and (refund or payment):
+            if key == read.key_id and target == ref_to(read.digest) and read.seq < seq and (refund or payment is not None):
                 superseded.add(read.digest)
     # A refund or remedy that is a payment needs its own terms leg, which
     # this profile does not define: it is not checked, and the payment's
     # own legs are, so a refund never hides a mismatch (evidencebook#722).
     out.not_checked = [read.digest for read, _, refund in legs if refund and read.digest not in superseded]
-    capsules: list[Any] = [json.loads(_marshal_members(offer_members))]
+    capsules: list[Any] = [offer_capsule]
     digest_of: dict[str, str] = {}
     read_digests: list[str] = []
     for read, members, refund in legs:
@@ -243,9 +254,6 @@ def payment_check(inp: PaymentInput) -> PaymentResult:
         capsules.append(json.loads(_marshal_members(members)))
         digest_of[read.record_id] = read.digest
         read_digests.append(read.digest)
-    policy: dict[str, list[str]] = {}
-    for key, role in role_of.items():
-        policy.setdefault(role, []).append(key)
     res = verify_settlements(capsules, key_policy=policy)
     refused: set[str] = set()
     for f in res.failures:

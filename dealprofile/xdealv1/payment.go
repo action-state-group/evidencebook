@@ -303,6 +303,7 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		target  Ref
 		seq     uint64
 		payment bool
+		capsule map[string]json.RawMessage
 	}
 	var supersedes []supersession
 	for i, raw := range in.Legs {
@@ -357,11 +358,34 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 			continue
 		}
 		if sp >= 0 && !refund {
-			supersedes[sp].payment = true
+			supersedes[sp].payment, supersedes[sp].capsule = true, pair.Record
 		}
 		legs = append(legs, legRead{read: read, capsule: pair.Record, refund: refund})
 	}
 
+	offerCapsule, err := decodeRecord(offerPair.Record)
+	if err != nil {
+		return bad("the offer's Capsule: %v", err)
+	}
+	policy := map[string][]string{}
+	for key, role := range roleOf {
+		policy[role] = append(policy[role], key)
+	}
+	// A payment leg supersedes only when AAC's verifier reads it beside the
+	// offer: a leg it refuses (a malformed member, say) takes no part, and
+	// so replaces nothing (evidencebook#757 review).
+	for i, sp := range supersedes {
+		if !sp.payment {
+			continue
+		}
+		c, err := decodeRecord(sp.capsule)
+		if err != nil {
+			return bad("a leg's Capsule: %v", err)
+		}
+		if len(settlement.Verify(settlement.Input{Capsules: []any{offerCapsule, c}, KeyPolicy: policy}).Failures) > 0 {
+			supersedes[i].payment = false
+		}
+	}
 	// A leg superseded by a later leg of its side is not read: the book
 	// keeps the replaced one, and the deal reads the outcome (§4.2, §8).
 	superseded := map[string]bool{}
@@ -381,12 +405,7 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 			out.NotChecked = append(out.NotChecked, l.read.Digest)
 		}
 	}
-	capsules := []any{}
-	offerCapsule, err := decodeRecord(offerPair.Record)
-	if err != nil {
-		return bad("the offer's Capsule: %v", err)
-	}
-	capsules = append(capsules, offerCapsule)
+	capsules := []any{offerCapsule}
 	digestOf := map[string]string{} // capsule id -> record digest
 	var read []string
 	for _, l := range legs {
@@ -400,10 +419,6 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		capsules = append(capsules, c)
 		digestOf[l.read.RecordID] = l.read.Digest
 		read = append(read, l.read.Digest)
-	}
-	policy := map[string][]string{}
-	for key, role := range roleOf {
-		policy[role] = append(policy[role], key)
 	}
 	res := settlement.Verify(settlement.Input{Capsules: capsules, KeyPolicy: policy})
 	// A leg AAC's verifier refuses takes no part in its state.
