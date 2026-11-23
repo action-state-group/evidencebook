@@ -25,6 +25,12 @@ import (
 type v1Push struct {
 	Record     json.RawMessage          `json:"record,omitempty"`
 	StampProof *evidencebook.StampProof `json:"stamp_proof,omitempty"`
+	// A ruling's push also carries the adjudicator's witness receipts for
+	// the stamp's shelf checkpoint, which time the ruling, and the
+	// controller bindings it delivers (#780, #819). Never revocations: those
+	// come only from the party that receives it.
+	WitnessReceipts []evidencebook.WitnessReceipt `json:"witness_receipts,omitempty"`
+	Bindings        []json.RawMessage             `json:"bindings,omitempty"`
 }
 
 func proposeOf(r xdealv1.Record) (*xdealv1.ProposeBody, bool) {

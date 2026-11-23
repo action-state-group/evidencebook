@@ -39,6 +39,14 @@ in your deal book by a statement naming it. --out then writes that statement as
 the file to send to the other side, so the other side holds it and counts your
 later records.
 
+For a ruling it also says when it was stamped (stamped_at): the earliest time a
+witness your agreement names registered the adjudicator's stamp, from the
+receipts the file carries, or "unknown" when none does. When the adjudicator's
+key and a party's key are bound to one controller at that time, it says
+"independence": "not independent (shared operator)". The bindings checked are
+those the file carries and those you give (--binding); revocations count only
+when you give them (--revocation). It never says a ruling is independent.
+
 Needs the deal store in the new layout (deal set-version x-deal-v1 --migrate).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -52,6 +60,12 @@ Needs the deal store in the new layout (deal set-version x-deal-v1 --migrate).`,
 				return cli.InputError("the file is not a JSON object: " + err.Error())
 			}
 			if members["bundle_version"] != nil && members["extensions"] != nil {
+				if b, _ := c.Flags().GetStringArray("binding"); len(b) > 0 {
+					return cli.InputError("--binding and --revocation go with a ruling file, not a copy")
+				}
+				if r, _ := c.Flags().GetStringArray("revocation"); len(r) > 0 {
+					return cli.InputError("--binding and --revocation go with a ruling file, not a copy")
+				}
 				if out, _ := c.Flags().GetString("out"); out != "" {
 					return cli.InputError("--out goes with a ruling file, not a copy: receive the ruling itself with --out to write the statement naming it")
 				}
@@ -92,6 +106,8 @@ Needs the deal store in the new layout (deal set-version x-deal-v1 --migrate).`,
 		},
 	}
 	cmd.Flags().String("out", "", "With a ruling: write the statement your book seals to name it, the file to send to the other side")
+	cmd.Flags().StringArray("binding", nil, "With a ruling: a controller-binding record to check the adjudicator's key against, such as one its operator publishes (repeatable)")
+	cmd.Flags().StringArray("revocation", nil, "With a ruling: a revocation of such a binding (repeatable)")
 	return cmd
 }
 
@@ -197,6 +213,23 @@ func (s *dealSession) receiveV1(ctx context.Context, c *cobra.Command, push v1Pu
 		out["refused"] = rerr.Error()
 		_ = cli.Output(c, out)
 		return rerr
+	}
+	bindingPaths, _ := c.Flags().GetStringArray("binding")
+	revocationPaths, _ := c.Flags().GetStringArray("revocation")
+	if info != nil && info.kind == xdealv1.TypeRuling && info.book != nil {
+		own, err := readJSONFiles("--binding", bindingPaths)
+		if err != nil {
+			return err
+		}
+		revocations, err := readJSONFiles("--revocation", revocationPaths)
+		if err != nil {
+			return err
+		}
+		if err := s.independence(ctx, info, push, own, revocations, out); err != nil {
+			return err
+		}
+	} else if len(bindingPaths) > 0 || len(revocationPaths) > 0 {
+		return cli.InputError("--binding and --revocation go with a ruling: they are checked against its adjudicator's key")
 	}
 	if path, _ := c.Flags().GetString("out"); path != "" {
 		if info == nil || info.kind != xdealv1.TypeRuling {

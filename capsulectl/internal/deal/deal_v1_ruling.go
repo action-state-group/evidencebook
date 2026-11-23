@@ -69,6 +69,7 @@ type rulingFlags struct {
 	final                                   bool
 	remedy                                  *xdealv1.RulingRemedy
 	copies                                  []string
+	bindings                                []json.RawMessage
 }
 
 func readRulingFlags(c *cobra.Command) (rulingFlags, error) {
@@ -76,6 +77,11 @@ func readRulingFlags(c *cobra.Command) (rulingFlags, error) {
 	f := rulingFlags{dealID: str("deal"), row: str("row"), value: str("value"), forum: str("forum"), out: str("out"), dispute: str("dispute")}
 	f.final, _ = c.Flags().GetBool("final")
 	f.copies, _ = c.Flags().GetStringArray("copy")
+	bindingPaths, _ := c.Flags().GetStringArray("binding")
+	var err error
+	if f.bindings, err = readJSONFiles("--binding", bindingPaths); err != nil {
+		return f, err
+	}
 	if !cli.DealIDPattern.MatchString(f.dealID) {
 		return f, cli.InputError("--deal must be a deal id: deal- followed by 16 hex characters")
 	}
@@ -145,7 +151,10 @@ stays. A profile that has checkpointed with another key cannot switch to it: mak
 a new one, with another name and --dir, leave the old store as it is, and seal
 nothing more with it (one key, one live store).
 
-Run again with the same flags, it writes the same ruling and seals nothing new.
+The file carries your witness receipts for the stamp, which tell a party when
+the ruling was stamped, and any controller bindings you give (--binding).
+Run again with the same flags, it writes the same ruling and seals nothing new,
+and writes the file again with the receipts your shelf holds by then.
 A second final ruling on a row that differs from the first is refused.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
@@ -170,6 +179,7 @@ A second final ruling on a row that differs from the first is refused.`,
 	cmd.Flags().String("currency", "", "The remedy's currency (with --amount-minor)")
 	cmd.Flags().String("dispute", "", "The dispute file you were sent (required)")
 	cmd.Flags().StringArray("copy", nil, "A party's adjudicator copy (deal report --share adjudicator); give one or two")
+	cmd.Flags().StringArray("binding", nil, "A controller-binding record between your key and a party's, to deliver with the ruling (repeatable)")
 	cmd.Flags().String("out", "", "Where to write the file to send (default: standard output)")
 	cmd.AddCommand(dealRulingEntriesCommand())
 	return cmd
@@ -276,7 +286,14 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(v1Push{Record: sealed.Pair, StampProof: &proof})
+	// The receipts the shelf holds for the stamp time the ruling for a
+	// party (#819); a later run, once the witness's receipt is back, writes
+	// the file again with it.
+	receipts, err := cad.Receipts(ctx, proof.ShelfCheckpoint)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(v1Push{Record: sealed.Pair, StampProof: &proof, WitnessReceipts: receipts, Bindings: f.bindings})
 	if err != nil {
 		return err
 	}
