@@ -167,7 +167,8 @@ func TestARulingRefusals(t *testing.T) {
 	require.NoError(t, cli.SaveProfile(p, true))
 	msg := v1Err(t, append(base, "--copy", buyerCopy)...)
 	assert.Contains(t, msg, "checkpointed with another key")
-	assert.Contains(t, msg, "deal init --dir DIR --signing-key-file KEY --checkpoint-key-file KEY")
+	assert.Contains(t, msg, "deal init --dir NEWDIR --signing-key-file KEY --checkpoint-key-file KEY")
+	assert.Contains(t, msg, "switching its checkpoint key back")
 	withSession(t, func(s *dealSession) {
 		books, err := s.shelf.Books(t.Context())
 		require.NoError(t, err)

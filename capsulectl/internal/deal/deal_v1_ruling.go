@@ -136,10 +136,12 @@ read.
 
 Your rulings of a deal go in one case book, whose place both parties compute,
 and a ruling counts only from that log. Your profile must checkpoint with your
-record key, since the agreement names you by that key: make it with one key for
-both, before it checkpoints anything,
+record key, since the agreement names you by that key, and a profile's
+checkpoint key is set when the profile is made. Make the adjudicator's profile
+with one key for both:
   capsulectl --profile NAME deal init --dir DIR --signing-key-file KEY --checkpoint-key-file KEY
-A profile that has already checkpointed with another key cannot switch to it.
+A profile that has checkpointed with another key cannot switch to it: make a new
+one in a new --dir, and stop sealing with the old one (one key, one live store).
 
 Run again with the same flags, it writes the same ruling and seals nothing new.
 A second final ruling on a row that differs from the first is refused.`,
@@ -173,8 +175,9 @@ A second final ruling on a row that differs from the first is refused.`,
 
 // adjudicatorKeyAdvice is how an adjudicator's profile comes to checkpoint
 // with its record key: made so, before its first checkpoint.
-const adjudicatorKeyAdvice = "An adjudicator checkpoints with its record key, since the agreement names it by that key: make its profile with one key for both, before it checkpoints anything: " +
-	"`capsulectl --profile NAME deal init --dir DIR --signing-key-file KEY --checkpoint-key-file KEY` (KEY: the key file you sign records with)"
+const adjudicatorKeyAdvice = "An adjudicator checkpoints with its record key, since the agreement names it by that key, and a profile's checkpoint key is set when the profile is made: " +
+	"make a new adjudicator profile in a new --dir with one key for both, `capsulectl --profile NEW deal init --dir NEWDIR --signing-key-file KEY --checkpoint-key-file KEY` (KEY: the key file you sign records with), " +
+	"and stop sealing with this one (one key, one live store)"
 
 // rule checks the inputs, seals the ruling once, stamps it and writes the push.
 func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags) error {
@@ -201,7 +204,7 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 			return err
 		}
 		if record.KeyID != me {
-			return cli.InputError("this profile's store checkpointed with another key, so it cannot stamp a ruling with your record key. " + adjudicatorKeyAdvice)
+			return cli.InputError("this profile's store checkpointed with another key, so it cannot stamp a ruling with your record key; switching its checkpoint key back to the earlier one makes the store usable again. " + adjudicatorKeyAdvice)
 		}
 	}
 	raw, err := os.ReadFile(f.dispute)
