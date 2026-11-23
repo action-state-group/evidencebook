@@ -191,6 +191,11 @@ func reportCommands() *cobra.Command {
 		if err != nil {
 			return err
 		}
+		holderKey, _ := c.Flags().GetString("holder-checkpoint-key")
+		witnessDirectory, _ := c.Flags().GetString("witness-directory")
+		if view.Coverage, err = windowCoverage(raw, holderKey, witnessDirectory, diagnostic, permalink); err != nil {
+			return err
+		}
 		// Nothing is written until everything report.Build checks has
 		// passed; when only the page gate refuses, the result is still
 		// reported, and the refusal says why.
@@ -245,12 +250,14 @@ func reportCommands() *cobra.Command {
 	build.Flags().String("contract", "", "The compiled Evidence Contract v0 the Result cites; the page reads each requirement's tier from it. Needs --contract-digest. Cannot be used with --permalink")
 	build.Flags().String("contract-digest", "", "Lowercase hex SHA-256 of the --contract file's bytes; the build is refused and no page is written if they differ")
 	build.Flags().String("receipts", "", "A JSON list of the deal receipts the page carries: {\"exchange_capsule_id\", \"receipt\": <the bundle the node served>} or {\"exchange_capsule_id\", \"held\": true} when the holder's share policy keeps it off the page, or {\"exchange_capsule_id\", \"not_closed\": true} when the deal had not closed when the page was built (one of the three per entry). Each entry is mapped to the deal whose claims cite its exchange capsule (an id no deal cites is ignored; one two deals cite is refused); a deal with no entry reads \"Receipt not carried with this page\". Nothing is carried without it. Each carried receipt must be VALID by the deal plugin's capsulectl deal verify --bundle, so --receipts needs the deal plugin installed; without --receipts it is not needed. Cannot be used with --permalink or --diagnostic")
+	build.Flags().String("holder-checkpoint-key", "", "For a report over a holder's windows (`report derive --chain`): the holder's checkpoint key (64 hex), obtained independently of the bundle. The page states the range covered; a range with any gap is refused and no page is written")
+	build.Flags().String("witness-directory", "", "For a report over windows: a witness directory under which every window's final checkpoint must carry a receipt")
 	build.Flags().String("out", "", "Write the offline report.html here (new file)")
 	build.Flags().Bool("permalink", false, "Also mint a viewer permalink over the same embedded bundle")
 	build.Flags().String("base-url", cli.DefaultBundleURL, "Bundle viewer base URL for --permalink")
 	build.Flags().Bool("dry-run", false, "Write the page marked draft in its report-card/v1 block and mint no permalink")
 	build.Flags().Bool("diagnostic", false, "For a bundle that fails verification or is incomplete, write a page marked as a diagnostic page (title, banner and the viewer's failed-bundle callout) instead of none; the command still fails with the bundle's own error. Refused for a bundle that verifies, and with --seal or --permalink")
 	build.Flags().Bool("seal", false, "Also seal the written page's SHA-256 in the book of --profile, with the bundle digest and the Result root, and checkpoint it; `report check` checks a page against it. A --dry-run page is never sealed")
-	group.AddCommand(build, reportCheckCommand(), reportDeriveCommand())
+	group.AddCommand(build, reportCheckCommand(), reportDeriveCommand(), reportCoverageCommand())
 	return group
 }

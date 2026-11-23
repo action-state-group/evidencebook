@@ -133,13 +133,18 @@ func sameStrings(a, b []string) bool {
 // registerDerivations registers every pack of the profile's directory with
 // the book, as the book registers per open: nothing is written into its
 // history. It returns the packs for `doctor` to describe.
-func registerDerivations(book *evidencebook.Book, p cli.Profile) ([]loadedDerivation, error) {
+func registerDerivations(opened openedBook, p cli.Profile) ([]loadedDerivation, error) {
 	loaded, err := loadDerivations(p)
 	if err != nil {
 		return nil, err
 	}
+	register := opened.book.RegisterDerivation
+	if opened.shelf != nil {
+		// Every window's book answers the packs (evidencebook#689 §3).
+		register = opened.shelf.RegisterDerivation
+	}
 	for _, l := range loaded {
-		id, err := book.RegisterDerivation(l.def)
+		id, err := register(l.def)
 		if err != nil {
 			return nil, cli.InputError(fmt.Sprintf("pack file %s: %v", l.file, err))
 		}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -93,14 +94,22 @@ func reportDeriveCommand() *cobra.Command {
 			"This command runs no pack: --result is what your evaluator produced.",
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
-			response, _ := c.Flags().GetString("response")
+			responses, _ := c.Flags().GetStringArray("response")
 			pack, _ := c.Flags().GetString("pack")
 			resultPath, _ := c.Flags().GetString("result")
 			out, _ := c.Flags().GetString("out")
 			allowUnproven, _ := c.Flags().GetBool("allow-unproven")
-			if response == "" || pack == "" || resultPath == "" || out == "" {
+			chainPath, _ := c.Flags().GetString("chain")
+			if len(responses) == 0 || pack == "" || resultPath == "" || out == "" {
 				return cli.InputError("--response, --pack, --result and --out are required")
 			}
+			if chainPath != "" {
+				return deriveOverWindows(c, chainPath, responses, pack, resultPath, out)
+			}
+			if len(responses) > 1 {
+				return cli.InputError("several --response answers need --chain: the holder's window chain they were asked over")
+			}
+			response := responses[0]
 			if _, e := os.Lstat(out); e == nil {
 				return cli.Hint(cli.ErrInput, "--out "+out+" already exists; nothing was written; pass another path")
 			}
@@ -158,7 +167,8 @@ func reportDeriveCommand() *cobra.Command {
 			return cli.Output(c, printed)
 		},
 	}
-	cmd.Flags().String("response", "", "The response record of the holder's answer, as `book request --response` printed it")
+	cmd.Flags().StringArray("response", nil, "The response record of the holder's answer, as `book request --response` printed it; with --chain, one per window (repeat the flag)")
+	cmd.Flags().String("chain", "", "The holder's window chain (`book window chain`) the answers were asked over, one answer per window pinned to its final checkpoint: the bundle carries it, and the windows must tile its range")
 	cmd.Flags().String("pack", "", "The digest of the Terms Pack your evaluator ran: it must be the one the holder answered (no default: the check is that you name it)")
 	cmd.Flags().String("result", "", "The Evidence Result v0 your evaluator produced (a file, or - for stdin)")
 	cmd.Flags().String("out", "", "Write the Evidence Bundle here (new file); `book report build --bundle` renders it and `capsulectl verify --bundle` checks it")
@@ -181,4 +191,157 @@ func readResultInput(c *cobra.Command, path string) ([]byte, error) {
 		return nil, cli.InputError("the Result exceeds the input size limit")
 	}
 	return raw, nil
+}
+
+// reportWindowsResult is what `report derive --chain` prints.
+type reportWindowsResult struct {
+	Chain          string   `json:"chain_record_id"`
+	Responses      []string `json:"responses"`
+	From           string   `json:"from"`
+	To             string   `json:"to"`
+	ResultRecordID string   `json:"result_record_id,omitempty"`
+	BundleDigest   string   `json:"bundle_digest,omitempty"`
+	Out            string   `json:"out,omitempty"`
+}
+
+// deriveOverWindows is `report derive --chain`: the holder's window chain is
+// sealed in this book, then the Result over every window's answer, and the
+// bundle is written only once its coverage of the chain's range has no
+// finding (evidencebook#689 §5).
+func deriveOverWindows(c *cobra.Command, chainPath string, responses []string, pack, resultPath, out string) (err error) {
+	if _, e := os.Lstat(out); e == nil {
+		return cli.Hint(cli.ErrInput, "--out "+out+" already exists; nothing was written; pass another path")
+	}
+	result, err := readResultInput(c, resultPath)
+	if err != nil {
+		return err
+	}
+	rawChain, err := cli.ReadInput(chainPath)
+	if err != nil {
+		return err
+	}
+	var chain evidencebook.WindowChain
+	if err = cli.DecodeJSONAs("--chain "+chainPath, rawChain, &chain); err != nil {
+		return err
+	}
+	p, err := cli.Selected(c)
+	if err != nil {
+		return err
+	}
+	conduct, err := conductPacks(p)
+	if err != nil {
+		return err
+	}
+	key, err := cli.PrivateKey(p.Signing)
+	if err != nil {
+		return err
+	}
+	opened, err := openBook(c.Context(), p, false)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, opened.release()) }()
+	// The holder's checkpoint key is the one this book pinned when it
+	// recorded the answers.
+	first, err := opened.book.Get(c.Context(), responses[0])
+	if err != nil {
+		return bookError(err)
+	}
+	var statement evidencebook.ResponseStatement
+	if err = json.Unmarshal(first.Header.Statement, &statement); err != nil {
+		return err
+	}
+	chainOpts := evidencebook.VerifyChainOptions{CheckpointKey: statement.CheckpointKey}
+	chainRecord, err := opened.book.RecordWindowChain(c.Context(), chain, chainOpts)
+	if err != nil {
+		return bookError(err)
+	}
+	printed := reportWindowsResult{Chain: chainRecord.RecordID, Responses: responses, From: chain.From, To: chain.To}
+	report, err := opened.book.ReportFromWindows(c.Context(), chainRecord.RecordID, responses,
+		func([]evidencebook.WindowInputs) (json.RawMessage, error) { return result, nil },
+		evidencebook.ReportOptions{Bundle: evidencebook.BundleRequest{ProducerKey: key.Public().(ed25519.PublicKey), ConductPacks: conduct}, Derivation: pack},
+		chainOpts)
+	printed.ResultRecordID = report.Result.RecordID
+	if err != nil {
+		return errors.Join(bookError(err), cli.Output(c, printed))
+	}
+	coverage, err := evidencebook.VerifyReportCoverage(report.Bundle.JSON, evidencebook.CoverageOptions{CheckpointKey: statement.CheckpointKey})
+	if err != nil {
+		return errors.Join(err, cli.Output(c, printed))
+	}
+	if len(coverage.Findings) > 0 {
+		return errors.Join(cli.InputError("the report does not cover its range: "+findingsText(coverage.Findings)), cli.Output(c, printed))
+	}
+	if err = cli.AtomicFile(out, report.Bundle.JSON, false); err != nil {
+		return errors.Join(err, cli.Output(c, printed))
+	}
+	printed.BundleDigest, printed.Out = report.Bundle.Digest, out
+	return cli.Output(c, printed)
+}
+
+func findingsText(findings []evidencebook.ChainFinding) string {
+	texts := make([]string, len(findings))
+	for i, f := range findings {
+		texts[i] = f.Text
+	}
+	return strings.Join(texts, "; ")
+}
+
+// reportCoverageResult is what `report coverage` prints: the range, the
+// windows proved, and every finding. Covered is true only with no finding.
+type reportCoverageResult struct {
+	Covered    bool                          `json:"covered"`
+	From       string                        `json:"from"`
+	To         string                        `json:"to"`
+	Derivation string                        `json:"derivation,omitempty"`
+	Windows    []evidencebook.VerifiedWindow `json:"windows"`
+	Findings   []string                      `json:"findings"`
+}
+
+func reportCoverageCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "coverage",
+		Short: "Check that a report over a holder's windows covers its range: the chain links, the windows tile the range, and every window has its answer (reads only; needs no profile)",
+		Long: "Checks the bundle `report derive --chain` wrote, under the holder's checkpoint key you obtained yourself (never one read from the bundle). Each gap is named (\"window 2026-03 has no answer\", \"chain breaks at 2026-04\"); a range with any finding is not covered, and the command exits non-zero. " +
+			"Without witness receipts a chain shows continuity only as the holder signed it, and no check shows that an answer holds every row of its window.",
+		Args: cli.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			bundlePath, _ := c.Flags().GetString("bundle")
+			holderKey, _ := c.Flags().GetString("holder-checkpoint-key")
+			directory, _ := c.Flags().GetString("witness-directory")
+			if bundlePath == "" || holderKey == "" {
+				return cli.InputError("--bundle and --holder-checkpoint-key are required")
+			}
+			raw, err := cli.ReadInput(bundlePath)
+			if err != nil {
+				return err
+			}
+			opts := evidencebook.CoverageOptions{CheckpointKey: holderKey}
+			if directory != "" {
+				rows, e := os.ReadFile(directory)
+				if e != nil {
+					return cli.InputError("--witness-directory: " + e.Error())
+				}
+				if opts.Witnesses, e = evidencebook.ParseWitnessDirectory(rows); e != nil {
+					return cli.InputError("--witness-directory: " + e.Error())
+				}
+			}
+			coverage, err := evidencebook.VerifyReportCoverage(raw, opts)
+			if err != nil {
+				return bookError(err)
+			}
+			printed := reportCoverageResult{Covered: len(coverage.Findings) == 0, From: coverage.From, To: coverage.To, Derivation: coverage.Derivation, Windows: coverage.Windows, Findings: []string{}}
+			for _, f := range coverage.Findings {
+				printed.Findings = append(printed.Findings, f.Text)
+			}
+			if !printed.Covered {
+				return errors.Join(cli.InputError("the report does not cover its range: "+findingsText(coverage.Findings)), cli.Output(c, printed))
+			}
+			return cli.Output(c, printed)
+		},
+	}
+	cmd.Flags().String("bundle", "", "The report bundle `report derive --chain` wrote")
+	cmd.Flags().String("holder-checkpoint-key", "", "The holder's checkpoint key (64 hex), obtained independently of the bundle")
+	cmd.Flags().String("witness-directory", "", "A witness directory: every window's final checkpoint must then carry a receipt that verifies under it")
+	return cmd
 }

@@ -24,7 +24,7 @@ func isBook(p cli.Profile) bool { return p.Type == "jsonl" && p.LogOwner() == Na
 const aliasRemovedIn = "v0.2.0"
 
 // BookMetadata is capsulectl-book's cli-plugin-metadata answer.
-var BookMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"close", "reconcile", "request", "respond", "remote", "result", "report", "holder-page", "backfill", "migrate", "doctor", "policy", "bundle-diff", "card"}, Presentations: []cli.PluginPresentation{standardHistoryPresentation()}}
+var BookMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"close", "reconcile", "request", "respond", "remote", "result", "report", "holder-page", "backfill", "migrate", "doctor", "policy", "bundle-diff", "card", "window"}, Presentations: []cli.PluginPresentation{standardHistoryPresentation()}}
 
 // BookCommands are capsulectl-book's own commands: `capsulectl book ...`.
 // The binary also holds the core tree, which reaches book profiles through
@@ -38,7 +38,7 @@ func BookCommands() []*cobra.Command {
 		}
 		return nil
 	})
-	return []*cobra.Command{closeCommand(), reconcileCommand(), request, respond, remote, resultCommands(), reportCommands(), holderPageCommand(), backfillCommands(), migrateCommand(), doctorCommand(), policyCommands(), bundleDiffCommand(), cardCommands()}
+	return []*cobra.Command{closeCommand(), reconcileCommand(), request, respond, remote, resultCommands(), reportCommands(), holderPageCommand(), backfillCommands(), migrateCommand(), doctorCommand(), policyCommands(), bundleDiffCommand(), cardCommands(), windowCommands()}
 }
 
 // BookAliases are `capsulectl book list|get|head`, which read another
@@ -141,6 +141,11 @@ func migrateCommand() *cobra.Command {
 		}
 		if e = refuseUnderReproduction("book migrate"); e != nil {
 			return e
+		}
+		if windowed, e := isWindowedStore(p); e != nil {
+			return e
+		} else if windowed {
+			return cli.InputError("book migrate moves a pre-book cll.jsonl into a JSONL book; this profile's store is split by window")
 		}
 		newLogID, _ := c.Flags().GetString("log-id")
 		result, e := migrateStore(c.Context(), p, newLogID, bookNow())
