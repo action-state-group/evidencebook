@@ -393,11 +393,3 @@ The Go shelf's hooks from #484, #490, #517, #525, #526, #528 and #530, which the
   differential check compares the verifier with Go's.
 
 - The Goose loop reference can register its `standard_history/1` card on a transparency service its host names ([#620](https://github.com/action-state-group/evidencebook/issues/620)): `loop_register_card` and `GOOSE_CARD_SERVICE` (a service file, `card-service.example.json` names this demo's choice, capsule-anchor run by Action State Group), `scripted_run.py` registers each node's card only when a service is named, and `go run ./test/interop/goose-card` takes the statement and the relying party's own policy and reports `card_registered`. Opt-in with no default service; the card is complete without it; `anchor_inclusion` stays `NOT_CHECKED`. The registration code is the demo's own (`python/examples/goose/card_registration.py`), not part of the `evidencebook` package, and needs agent-action-capsule 0.19.0.
-
-### Fixed (breaking): `evidencebook.deal.v1.payment_check` runs on the payment's own legs beside a refund (evidencebook#722)
-
-- A refund or remedy leg citing the offer's terms leg no longer stops the check with `refund_cites_offer`. That let a 1-unit refund turn a failing payment into "not checked".
-- The check now runs on the payment's own legs. Those refund legs, when not superseded, are listed in the new `PaymentResult.not_checked`, and a status row counts them in `check_not_checked`. This matches Go byte for byte, on the shared vectors.
-- A payment leg is now superseded only by a later payment leg answering the same terms leg that AAC's verifier reads beside the offer. Before, a refund, a leg of another terms leg, or a malformed leg carrying `supersedes` could take the payment leg out of the check, which read "not agreed" instead of failed. A refund is still superseded by any later leg of its side. `not_checked` is the dataclass's last field, so positional construction is unchanged.
-- `REASON_REFUND_CITES_OFFER` is removed.
-- This is a correctness fix to a function the package already has, not a new port.
