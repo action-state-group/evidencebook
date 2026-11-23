@@ -114,7 +114,7 @@ proof: neither side's first act is sealed until it holds the other's. The
 offerer agrees only once it holds the acceptor's agreement (deal receive),
 and you can agree to a received offer only when it names your key.
 
-An offer of yours whose to is null is to a party that keeps no records of
+An offer of yours whose to is null is to a party that keeps no signed records of
 its own (a shop, say): you agree to it alone, at once, and your first act
 goes ahead without a stamp proof from them, marked so.
 Needs the deal store in the new layout (deal set-version x-deal-v1
@@ -207,7 +207,7 @@ Needs the deal store in the new layout (deal set-version x-deal-v1
 				if !offer.Own {
 					switch {
 					case prop.To.V == nil:
-						return cli.InputError("this offer names no key (to is null): it is to a party that keeps no records, and only its offerer agrees to it")
+						return cli.InputError("this offer names no key (to is null): it is to a party that keeps no signed records, and only its offerer agrees to it")
 					case *prop.To.V != s.ownKeyID():
 						return cli.InputError("this offer was sent to another key, so you cannot agree to it: the other side would refuse an agreement from a key it did not name")
 					}
@@ -374,7 +374,7 @@ func (s *dealSession) writeAgreement(ctx context.Context, c *cobra.Command, cad 
 	if noLayer, err := s.v1NoLayer(ctx, d); err != nil {
 		return err
 	} else if noLayer {
-		res["note"] = "the other side keeps no records of its own: your agreement opens your deal book, the file written is your own copy with no one to send it to, and your first act goes ahead without their stamp proof, marked so"
+		res["note"] = "the other side keeps no signed records of its own: your agreement opens your deal book, the file written is your own copy with no one to send it to, and your first act goes ahead without their stamp proof, marked so"
 	}
 	return cli.Output(c, res)
 }

@@ -60,7 +60,7 @@ To decline a held evidence request, use 'deal decline'.`,
 					return cli.InputError("the record " + offer + " is not an offer")
 				}
 				if prop.To.V == nil {
-					return cli.InputError("this offer names no key (to is null): it is to a party that keeps no records, and only its offerer holds it, so there is nothing to decline")
+					return cli.InputError("this offer names no key (to is null): it is to a party that keeps no signed records, and only its offerer holds it, so there is nothing to decline")
 				}
 				if *prop.To.V != s.ownKeyID() {
 					return cli.InputError("this offer was sent to another key, so you cannot decline it: only the key it was sent to can sign its decline")

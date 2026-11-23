@@ -34,7 +34,7 @@ func noLayerAgreedWith(t *testing.T, edit func(string) string) (dealID string) {
 	intent := dealRun(t, "note", "--deal", dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
 	agreed := dealRun(t, "agree", offered["offer"].(string), "--admit", sealAdmit(t, "GO"), "--intent", intent["intent"].(string), "--out", filepath.Join(t.TempDir(), "a.json"))
 	assert.Equal(t, "offerer", agreed["side"])
-	assert.Contains(t, agreed["note"], "the other side keeps no records of its own")
+	assert.Contains(t, agreed["note"], "the other side keeps no signed records of its own")
 	return dealID
 }
 
@@ -99,7 +99,7 @@ func TestARetailPurchaseWithNoLayerOnTheOtherSide(t *testing.T) {
 
 	list, err := invoke(t, "", "--profile", "deal", "deal", "list", "--json")
 	require.NoError(t, err)
-	assert.Contains(t, list, "keeps no records of its own")
+	assert.Contains(t, list, "counterparty: keeps no signed records")
 }
 
 // The no-layer deal starts at its first act: before it, the Standard

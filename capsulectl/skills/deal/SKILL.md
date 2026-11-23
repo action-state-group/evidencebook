@@ -1,6 +1,6 @@
 ---
 name: deal
-description: The record and final review of every errand that ends in a checkout, payment, order, booking, signature, cancellation, or sharing of the user's contact details or credentials that an agent does for the user, including a retail checkout from a known merchant at a fixed price. Seals the offer, both sides' agreement, what was asked, shown, chosen, approved and done with `capsulectl deal`, and shows the user any difference.
+description: The record and final review of every errand that ends in a checkout, payment, order, booking, signature, cancellation, or sharing of the user's contact details or credentials that an agent does for the user, including a retail checkout from a known merchant at a fixed price. Seals the offer, the agreement (both sides' when the other side keeps signed records), what was asked, shown, chosen, approved and done with `capsulectl deal`, and shows the user any difference.
 ---
 
 # deal
@@ -71,7 +71,7 @@ seller makes the offer, the two sides swap in steps 2 to 6.
 **Two shapes.** When the other side runs this tool too (another agent, a
 marketplace seller who keeps records), the deal is between two books and the
 files go back and forth (steps 2 to 6 as written). When it does not (a shop's
-website, a merchant that keeps no records of its own), the deal has your book
+website, a merchant that keeps no signed records of its own), the deal has your book
 only: your offer names no key, you agree to it yourself, and nothing goes to
 the other side (the "No layer on the other side" notes in steps 2, 3 and 6).
 A retail checkout is almost always the second shape.
@@ -747,7 +747,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | Command | What it does |
 |---|---|
 | `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates the profile: its store, signing and checkpoint seeds (mode 0600) and its cadence log. Prints `public_key`, the key the other side names in an offer's `to`. |
-| `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). An offer with `"to": null` is to a party that keeps no records: nothing to send. |
+| `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). An offer with `"to": null` is to a party that keeps no signed records: nothing to send. |
 | `deal offer cancel OFFER --out FILE` / `deal offer decline OFFER --out FILE` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
 | `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof) and says whether it counts yet. Seals nothing. |
 | `deal admit --deal ID --input FILE` | Seals capsule-engine's admission decision (`capsule-engine admission evaluate --admit FILE`) for the deal; only `"admits_deal": true` is accepted. |
