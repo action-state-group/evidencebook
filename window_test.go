@@ -405,13 +405,20 @@ func TestAReportOverWindowsCoversItsRange(t *testing.T) {
 	report, err := r.requester.ReportFromWindows(ctx, chainRecord.RecordID, responses, evaluateWindows(responses),
 		ReportOptions{Derivation: r.pack}, VerifyChainOptions{})
 	require.NoError(t, err)
-	coverage, err := VerifyReportCoverage(report.Bundle.JSON, CoverageOptions{})
+	coverage, err := VerifyReportCoverage(report.Bundle.JSON, CoverageOptions{CheckpointKey: r.keys.Checkpoint})
 	require.NoError(t, err)
 	assert.Empty(t, coverage.Findings)
 	assert.Equal(t, "2026-10", coverage.From)
 	assert.Equal(t, "2026-12", coverage.To)
 	require.Len(t, coverage.Windows, 3)
 	assert.Equal(t, "2026-11", coverage.Windows[1].Label)
+	assert.Equal(t, r.pack, coverage.Derivation)
+	// Under a holder key the verifier did not obtain, nothing is proved.
+	stranger, err := VerifyReportCoverage(report.Bundle.JSON, CoverageOptions{CheckpointKey: hex.EncodeToString(seededKey(200)[32:])})
+	require.NoError(t, err)
+	assert.NotEmpty(t, stranger.Findings)
+	_, err = VerifyReportCoverage(report.Bundle.JSON, CoverageOptions{})
+	assert.ErrorIs(t, err, ErrInvalid, "the holder key is required")
 
 	// A window without its answer is named, and no Result is sealed over it.
 	_, err = r.requester.ReportFromWindows(ctx, chainRecord.RecordID, []string{responses[0], responses[2]}, evaluateWindows([]string{responses[0], responses[2]}),
@@ -455,7 +462,7 @@ func TestCoverageNamesAnAnswerNotAtItsFinalTree(t *testing.T) {
 	assert.Contains(t, texts, "windows do not tile 2026-10..2026-12: the chain covers 2026-10..2026-11")
 	assert.Contains(t, texts, fmt.Sprintf("window 2026-10's answer is anchored at a tree of %d records, not its final tree of %d", early.Entries, oct.Entries))
 	assert.Contains(t, texts, "window 2026-10 has no answer")
-	assert.Contains(t, texts, "an answer at acme/2026-11 is under another holder checkpoint key than the others")
+	assert.Contains(t, texts, fmt.Sprintf("an answer at acme/2026-11 is under holder checkpoint key another, not the holder's %s", r.keys.Checkpoint))
 }
 
 func TestAWindowChainNamesEachBreak(t *testing.T) {
@@ -719,4 +726,79 @@ func TestAPolicyNotStartedYetSaysSo(t *testing.T) {
 	_, _, err := f.open(t).Current(context.Background())
 	require.ErrorIs(t, err, ErrClockBehind)
 	assert.Contains(t, err.Error(), "the window policy starts at 2027-01-01T00:00:00Z")
+}
+
+func TestACrashAfterTheClosingCheckpointIsFinished(t *testing.T) {
+	ctx := context.Background()
+	f := newWindowFixture(t)
+	shelf := f.open(t)
+	oct, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	mustAppend(t, oct, observation("deal", "a"))
+	setClock(f.clock, utc(2026, 11, 2))
+	_, err = oct.Checkpoint(ctx) // step 1, then the process stops
+	require.NoError(t, err)
+	require.NoError(t, shelf.Release())
+	shelf = f.open(t)
+	_, w, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "2026-11", w.Label)
+	chain, err := shelf.WindowChain(ctx, "2026-10", "2026-10", WindowChainOptions{})
+	require.NoError(t, err)
+	_, findings := VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: shelfCheckpointKey(f)})
+	assert.Empty(t, findings)
+}
+
+func TestTheUnsignedAskLimitHoldsAcrossABoundary(t *testing.T) {
+	ctx := context.Background()
+	f := newWindowFixture(t)
+	shelf := f.open(t)
+	oct, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	_, _, err = oct.AdoptPolicy(ctx, HolderPerson)
+	require.NoError(t, err)
+	setClock(f.clock, utc(2026, 10, 30))
+	ask := func() string {
+		book, _, err := shelf.Current(ctx)
+		require.NoError(t, err)
+		cp, err := book.Checkpoint(ctx)
+		require.NoError(t, err)
+		req := EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("x"))}, Coverage: Coverage{ExpectedPin: anchorDigest(cp)}}
+		decided := ""
+		reply, _, err := shelf.Respond(ctx, jsonRequest(t, req), RespondOptions{Policy: DefaultSharePolicy(), OnRefusal: func(_, d, _ string) { decided = d }})
+		require.NoError(t, err)
+		require.NotNil(t, reply.Refusal)
+		return decided
+	}
+	assert.Equal(t, ReasonNotAuthorized, ask())
+	assert.Equal(t, ReasonNotAuthorized, ask())
+	setClock(f.clock, time.Date(2026, 11, 1, 1, 0, 0, 0, time.UTC))
+	assert.Equal(t, ReasonNotAuthorized, ask(), "the third ask of the week, in November")
+	assert.NotEqual(t, ReasonNotAuthorized, ask(), "the fourth is over the week's limit")
+}
+
+func TestWindowLookupsRefuseWhatHasNoFinalTree(t *testing.T) {
+	ctx := context.Background()
+	f := newWindowFixture(t)
+	shelf := f.open(t)
+	_, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	_, err = shelf.WindowChain(ctx, "2026-10", "2026-10", WindowChainOptions{})
+	assert.ErrorIs(t, err, ErrInvalid, "an open window has no final tree")
+	_, _, err = shelf.WindowBook(ctx, "2026-08")
+	assert.ErrorIs(t, err, ErrNotFound)
+	_, err = shelf.WindowChain(ctx, "2026-08", "2026-10", WindowChainOptions{})
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestARollBeforeThePolicyStartsWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	f.cfg.Window = monthly("acme", utc(2027, 1, 1))
+	shelf := f.open(t)
+	_, err := shelf.Roll(ctx)
+	require.ErrorIs(t, err, ErrClockBehind)
+	windows, err := shelf.Windows(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, windows)
 }

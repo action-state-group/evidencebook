@@ -182,8 +182,13 @@ func (b *Book) ReportFromWindows(ctx context.Context, chainRecordID string, resp
 	if err != nil {
 		return Report{}, err
 	}
-	key := answers[0].key
-	chainOpts.CheckpointKey = key
+	// The answers were recorded under the holder keys this requester pinned
+	// (RecordResponse), so their key is the chain's; a key the caller names
+	// must be that one.
+	if chainOpts.CheckpointKey != "" && chainOpts.CheckpointKey != answers[0].key {
+		return Report{}, fmt.Errorf("%w: the answers are under holder checkpoint key %s, not %s", ErrInvalid, answers[0].key, chainOpts.CheckpointKey)
+	}
+	chainOpts.CheckpointKey = answers[0].key
 	windows, findings, err := coverage(chainRecord.Header, payload, answers, chainOpts)
 	if err != nil {
 		return Report{}, err
@@ -277,7 +282,7 @@ func coverage(chainHeader Header, payload []byte, answers []windowAnswer, opts V
 	}
 	for _, a := range answers {
 		if a.key != opts.CheckpointKey {
-			findings = append(findings, ChainFinding{Text: fmt.Sprintf("an answer at %s is under another holder checkpoint key than the others", a.tree.LogID)})
+			findings = append(findings, ChainFinding{Text: fmt.Sprintf("an answer at %s is under holder checkpoint key %s, not the holder's %s", a.tree.LogID, a.key, opts.CheckpointKey)})
 		}
 		if a.derivation != answers[0].derivation {
 			findings = append(findings, ChainFinding{Text: fmt.Sprintf("an answer at %s answers derivation %s, not %s as the others", a.tree.LogID, a.derivation, answers[0].derivation)})
@@ -364,9 +369,14 @@ type ReportCoverage struct {
 }
 
 // CoverageOptions are what a verifier of a report's coverage brings: the
-// witness directory, when the agreement names witnesses.
+// holder's checkpoint key, obtained independently of the bundle, and the
+// witness directory when the agreement names witnesses.
 type CoverageOptions struct {
-	Witnesses []WitnessRow
+	// CheckpointKey is the key id the holder signs its checkpoints with.
+	// Required: a key read from the bundle would let whoever built it
+	// stand in for the holder.
+	CheckpointKey string
+	Witnesses     []WitnessRow
 }
 
 // VerifyReportCoverage checks a report bundle over windows (ReportFromWindows)
@@ -377,6 +387,9 @@ type CoverageOptions struct {
 // verify there under one holder key. Each gap is a named finding. An error
 // is for a bundle that does not verify or is not a report over windows.
 func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, error) {
+	if opts.CheckpointKey == "" {
+		return ReportCoverage{}, fmt.Errorf("%w: the holder's checkpoint key is required", ErrInvalid)
+	}
 	verified, err := VerifyBundle(bundle)
 	if err != nil {
 		return ReportCoverage{}, err
@@ -395,10 +408,13 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 	if len(results) != 1 {
 		return ReportCoverage{}, fmt.Errorf("%w: the bundle holds %d Evidence Results, not one", ErrInvalid, len(results))
 	}
+	result := results[0]
 	var chainHeader *Header
 	var chainPayload []byte
+	chainID := ""
 	var answers []windowAnswer
-	for _, target := range results[0].Header.LinksTo(Cites) {
+	var answerIDs []string
+	for _, target := range result.Header.LinksTo(Cites) {
 		r, ok := byID[target]
 		if !ok {
 			return ReportCoverage{}, fmt.Errorf("%w: the Result cites %s, which the bundle does not carry verified", ErrInvalid, target)
@@ -411,7 +427,7 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 			if chainPayload, err = bundlePayload(verified, r); err != nil {
 				return ReportCoverage{}, err
 			}
-			chainHeader = r.Header
+			chainHeader, chainID = r.Header, target
 		case RecordTypeResponse:
 			reply, err := bundlePayload(verified, r)
 			if err != nil {
@@ -422,6 +438,7 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 				return ReportCoverage{}, fmt.Errorf("answer %s: %w", target, err)
 			}
 			answers = append(answers, answer)
+			answerIDs = append(answerIDs, target)
 		}
 	}
 	if chainHeader == nil {
@@ -432,13 +449,15 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 		return ReportCoverage{}, fmt.Errorf("%w: the window chain record does not carry its body", ErrInvalid)
 	}
 	out := ReportCoverage{From: statement.From, To: statement.To, Findings: []ChainFinding{}}
-	chainOpts := VerifyChainOptions{Witnesses: opts.Witnesses}
+	if _, err := checkWindowsResult(result.Header.Statement, answerIDs, chainID); err != nil {
+		out.Findings = append(out.Findings, ChainFinding{Text: "the Result: " + strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": ")})
+	}
 	if len(answers) == 0 {
 		out.Findings = append(out.Findings, ChainFinding{Text: "the Result cites no answer"})
 	} else {
-		chainOpts.CheckpointKey, out.Derivation = answers[0].key, answers[0].derivation
+		out.Derivation = answers[0].derivation
 	}
-	windows, findings, err := coverage(*chainHeader, chainPayload, answers, chainOpts)
+	windows, findings, err := coverage(*chainHeader, chainPayload, answers, VerifyChainOptions{CheckpointKey: opts.CheckpointKey, Witnesses: opts.Witnesses})
 	if err != nil {
 		return ReportCoverage{}, err
 	}

@@ -54,7 +54,8 @@ type ChainWindow struct {
 // WindowChainOptions selects what Shelf.WindowChain carries.
 type WindowChainOptions struct {
 	// Receipts returns the witness receipts the host holds for a final
-	// checkpoint, in the bundle form; nil carries none.
+	// checkpoint, in the bundle form; nil carries none. It runs under the
+	// shelf's lock and must not call back into the Shelf.
 	Receipts func(ctx context.Context, final Checkpoint) ([]json.RawMessage, error)
 }
 

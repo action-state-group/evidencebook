@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
@@ -20,21 +21,29 @@ import (
 // checkpoint cannot meet is answered coverage_unsatisfiable. Book.Respond is
 // the rule for everything else.
 func (s *Shelf) Respond(ctx context.Context, request Message, opts RespondOptions) (Reply, Record, error) {
-	s.mu.Lock()
-	current, _, err := s.currentLocked(ctx)
-	if err != nil {
+	for attempt := 0; ; attempt++ {
+		s.mu.Lock()
+		current, _, err := s.currentLocked(ctx)
+		if err != nil {
+			s.mu.Unlock()
+			return Reply{}, Record{}, err
+		}
+		answering, err := s.answeringBookLocked(ctx, request)
 		s.mu.Unlock()
-		return Reply{}, Record{}, err
+		if err != nil {
+			return Reply{}, Record{}, err
+		}
+		if answering == nil {
+			answering = current
+		}
+		reply, record, err := answering.respondInto(ctx, request, opts, false, current)
+		// A roll may close the window that was current between choosing it
+		// and recording the answer in it: answer once more in the next one.
+		if errors.Is(err, ErrWindowClosed) && attempt == 0 {
+			continue
+		}
+		return reply, record, err
 	}
-	answering, err := s.answeringBookLocked(ctx, request)
-	s.mu.Unlock()
-	if err != nil {
-		return Reply{}, Record{}, err
-	}
-	if answering == nil {
-		answering = current
-	}
-	return answering.respondInto(ctx, request, opts, false, current)
 }
 
 // answeringBookLocked is the window book a request's pin names, nil when it
@@ -50,26 +59,29 @@ func (s *Shelf) answeringBookLocked(ctx context.Context, request Message) (*Book
 	if err != nil {
 		return nil, err
 	}
-	halfPin := check.Request.Subject.Kind == SubjectExchange && pin == check.Request.Subject.Digest
+	if check.Request.Subject.Kind != SubjectExchange || pin != check.Request.Subject.Digest {
+		// A checkpoint pin: the window whose stored checkpoints hold it,
+		// read from the store without opening every book.
+		for _, row := range slices.Backward(rows) {
+			checkpoints, err := (&sqliteStore{db: s.db, bookID: row.logID}).Checkpoints(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if slices.ContainsFunc(checkpoints, func(cp Checkpoint) bool { return cp.Kind == SubstrateKindCLL && anchorDigest(cp) == pin }) {
+				return s.openLocked(ctx, row.logID)
+			}
+		}
+		return nil, nil
+	}
 	for _, row := range slices.Backward(rows) {
 		book, err := s.openLocked(ctx, row.logID)
 		if err != nil {
 			return nil, err
 		}
-		if halfPin {
-			book.mu.Lock()
-			log := book.logLocked()
-			book.mu.Unlock()
-			if slices.ContainsFunc(log, func(r Record) bool { return slices.Contains(r.Header.LinksTo(Cites), pin) }) {
-				return book, nil
-			}
-			continue
-		}
-		checkpoints, err := book.store.Checkpoints(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if slices.ContainsFunc(checkpoints, func(cp Checkpoint) bool { return cp.Kind == SubstrateKindCLL && anchorDigest(cp) == pin }) {
+		book.mu.Lock()
+		log := book.logLocked()
+		book.mu.Unlock()
+		if slices.ContainsFunc(log, func(r Record) bool { return slices.Contains(r.Header.LinksTo(Cites), pin) }) {
 			return book, nil
 		}
 	}

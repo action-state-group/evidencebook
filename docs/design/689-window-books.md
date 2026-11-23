@@ -70,7 +70,7 @@ A windowed shelf has exactly one writable book: the newest open window's.
   checkpoints commit, and the policy the shelf carries in (below), which carry their real commit
   time: an open can be committed after its start (a window filled in late), a close and the
   index roots before it at or after its end. After the close a book is **closed**: book state, kept in
-  `shelf_window_books (log_id, label, state, final_size, final_root)`, refuses every append and
+  `shelf_window_books (label, log_id, start, state, final_entries, final_root)`, refuses every append and
   every checkpoint other than returning its final one.
 - **Open record** (`record_type: "window_open"`, leaf 0, `producer_claim`):
 
@@ -177,8 +177,9 @@ What it shows and what it does not:
 **The report.** The requester asks each window book in the range, pinning its final checkpoint
 (any checkpoint of the final size and root is accepted), and records each response as today.
 
-- `Book.RecordWindowChain(ctx, chain, reported Period)` seals a `window_chain` record whose
-  payload is the chain and whose statement is the reported range and the chain's digest. It
+- `Book.RecordWindowChain(ctx, chain, VerifyChainOptions)` seals a `window_chain` record whose
+  payload is the chain and whose statement is the reported range (the chain's From..To) and the
+  chain's digest. It
   refuses a chain that fails `VerifyWindowChain` or does not tile the range.
 - `Book.ReportFromWindows(ctx, chainRecord, responses, evaluate, opts, chainOpts)`: every response answers
   the same pack, under the same holder checkpoint key (the key `RecordResponse` pins,
@@ -186,7 +187,9 @@ What it shows and what it does not:
   gate `checkDerivedResult` (`derived_report.go:254-276`) is relaxed for it: each claim cites at
   least one of those response records and may cite the chain record, and nothing else. The
   bundle (with `contract-report/v1`) carries them all by closure, payloads included.
-- `VerifyReportCoverage(bundle, CoverageOptions{Witnesses})` checks the chain record verifies, the windows tile the range,
+- `VerifyReportCoverage(bundle, CoverageOptions{CheckpointKey, Witnesses})`, under the holder
+  checkpoint key the verifier obtained itself (never one read from the bundle), checks the
+  Result as `ReportFromWindows` does, the chain record verifies, the windows tile the range,
   each response's anchor is its window's final tree and its proofs verify there, and lists every
   gap by name: `window 2026-03 has no answer`, `windows do not tile 2026-01..2026-12`, `chain
   breaks at <label>`. `capsulectl verify --bundle` prints its lines, and `book report build`

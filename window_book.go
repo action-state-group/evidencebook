@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -241,6 +240,10 @@ func (s *Shelf) now() time.Time {
 	return time.Now()
 }
 
+// errNotWindowBook marks a log id that is no window book of a windowed
+// shelf, so WindowBook can say the window has none.
+var errNotWindowBook = errors.New("is not a window book of this windowed shelf")
+
 // windowed reports ErrInvalid for a shelf with no window policy.
 func (s *Shelf) windowed() error {
 	if s.cfg.Window == nil {
@@ -271,9 +274,6 @@ func (s *Shelf) currentLocked(ctx context.Context) (*Book, Window, error) {
 		return nil, Window{}, err
 	}
 	now := s.now()
-	if now.Before(s.cfg.Window.Since) {
-		return nil, Window{}, fmt.Errorf("%w: the window policy starts at %s; the clock reads %s", ErrClockBehind, windowTime(s.cfg.Window.Since), now.UTC().Format(time.RFC3339))
-	}
 	if now.Before(latest.Start) {
 		return nil, Window{}, fmt.Errorf("%w: the clock reads %s, before window %s began (%s)", ErrClockBehind, now.UTC().Format(time.RFC3339), latest.Label, windowTime(latest.Start))
 	}
@@ -309,6 +309,9 @@ func (s *Shelf) rollLocked(ctx context.Context) (windowRow, error) {
 	}
 	var latest windowRow
 	if len(rows) == 0 {
+		if now := s.now(); now.Before(policy.Since) {
+			return windowRow{}, fmt.Errorf("%w: the window policy starts at %s; the clock reads %s", ErrClockBehind, windowTime(policy.Since), now.UTC().Format(time.RFC3339))
+		}
 		if latest, err = s.openWindowLocked(ctx, policy.first(), nil); err != nil {
 			return windowRow{}, err
 		}
@@ -459,7 +462,7 @@ func (s *Shelf) attachWindow(ctx context.Context, book *Book, logID string) erro
 	var entries uint64
 	err := s.db.QueryRowContext(ctx, `SELECT label, state, COALESCE(final_entries, 0), COALESCE(final_root, '') FROM shelf_window_books WHERE log_id = ?`, logID).Scan(&label, &state, &entries, &root)
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: %s is not a window book of this windowed shelf", ErrInvalid, logID)
+		return fmt.Errorf("%w: %s %w", ErrInvalid, logID, errNotWindowBook)
 	}
 	if err != nil {
 		return err
@@ -523,7 +526,7 @@ func (s *Shelf) WindowBook(ctx context.Context, label string) (*Book, Window, er
 	}
 	book, err := s.openLocked(ctx, w.LogID(s.cfg.Window.Base))
 	if err != nil {
-		if errors.Is(err, ErrInvalid) && strings.Contains(err.Error(), "not a window book") {
+		if errors.Is(err, errNotWindowBook) {
 			return nil, Window{}, fmt.Errorf("%w: window %s has no book", ErrNotFound, label)
 		}
 		return nil, Window{}, err
