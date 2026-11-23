@@ -45,4 +45,12 @@ var (
 	// kept changing while room was made for it (Shelf.Receive): sending it
 	// again later may succeed.
 	ErrBusy = errors.New("evidencebook: busy; try again")
+	// ErrWindowClosed reports a write to a window book outside its window,
+	// or to one whose window is closed (evidencebook#689): the caller asks
+	// Shelf.Current for the window that is open now.
+	ErrWindowClosed = errors.New("evidencebook: window closed")
+	// ErrClockBehind reports a windowed shelf whose clock reads earlier than
+	// the start of its newest window: the clock stepped back over a window
+	// boundary, and the shelf never reopens a window it has moved past.
+	ErrClockBehind = errors.New("evidencebook: clock behind the newest window")
 )

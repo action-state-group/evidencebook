@@ -62,6 +62,11 @@ type ShelfConfig struct {
 	// the profile that reads its records, the store's bounds and the
 	// holder's retention.
 	Receive ReceiveConfig
+	// Window, when set, splits the shelf into one book per time window
+	// (evidencebook#689). It is written when the shelf's file is created
+	// and must be given unchanged on every open; a file created without one
+	// can never gain one. A windowed shelf holds window books only.
+	Window *WindowPolicy
 }
 
 // HeldLock is a writer lock a host holds on the shelf's store. Held reports
@@ -99,7 +104,13 @@ type Shelf struct {
 	// shelf.
 	cadenceLogs []*CLLSubstrate
 	cadence     *Cadence
-	released    bool
+	// windowAsks and windowRegistry are what a windowed shelf's books
+	// share (evidencebook#689 §3): the unsigned-ask limiter, and the
+	// derivations registered with Shelf.RegisterDerivation, held in a book
+	// that is never opened as one.
+	windowAsks     *WindowLimiter
+	windowRegistry *Book
+	released       bool
 	// closed mirrors released for the lock-free readers of the received
 	// store, which never take mu.
 	closed atomic.Bool
@@ -182,13 +193,21 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	if err := db.PingContext(ctx); err != nil {
 		return nil, errors.Join(err, db.Close(), unlock())
 	}
-	if err := initSQLiteStore(ctx, db); err != nil {
+	if err := initSQLiteStore(ctx, db, cfg.Window); err != nil {
 		return nil, errors.Join(err, db.Close(), unlock())
 	}
-	return &Shelf{
+	shelf := &Shelf{
 		cfg: cfg, db: db, unlock: unlock, random: newRandomSource(cfg.Random),
 		books: make(map[string]*Book), hosts: make(map[string]*HostLog),
-	}, nil
+	}
+	if cfg.Window != nil {
+		policy := *cfg.Window
+		policy.Since = policy.Since.UTC()
+		shelf.cfg.Window = &policy
+		shelf.windowAsks = NewWindowLimiter(0, 7*24*time.Hour)
+		shelf.windowRegistry = &Book{derivations: make(map[string]derivationEntry)}
+	}
+	return shelf, nil
 }
 
 // Open returns the book whose log id is logID, creating it on first use. It
@@ -316,6 +335,9 @@ func (s *Shelf) openLocked(ctx context.Context, logID string) (*Book, error) {
 	})
 	if err != nil {
 		return nil, errors.Join(err, substrate.Release())
+	}
+	if err := s.attachWindow(ctx, book, logID); err != nil {
+		return nil, errors.Join(err, book.Release())
 	}
 	s.books[logID] = book
 	return book, nil

@@ -162,6 +162,11 @@ func (c *Cadence) Migrate(ctx context.Context, now time.Time) error {
 	if s.released {
 		return ErrReleased
 	}
+	if s.cfg.Window != nil {
+		// Version 2 would drop the window's version 3, which keeps every
+		// build that does not know windows off the file (evidencebook#689).
+		return fmt.Errorf("%w: a windowed shelf does not take the facts migration", ErrUnsupported)
+	}
 	state, err := migrationState(ctx, s.db)
 	if err != nil {
 		return err
