@@ -20,6 +20,8 @@ func TestBuildStatesTheCoverageOfAReportOverWindows(t *testing.T) {
 	assert.Contains(t, html, `<div class="aac-banner" data-state="verified" role="status"><strong>Covers 2026-01 to 2026-12.</strong> Each of the 12 windows has its answer`)
 	assert.Contains(t, html, "no check shows that an answer holds every row of its window")
 	assert.Equal(t, 1, strings.Count(html, `data-state="verified" role="status"`))
+	_, err = page.Permalink("")
+	require.ErrorIs(t, err, ErrRefused, "the permalink carries the bundle alone and would state no range")
 
 	one, err := Build(mustRead(t, bookFormBundle), View{Card: "human_role", Coverage: &Coverage{From: "2026", To: "2026", Windows: 1}})
 	require.NoError(t, err)
@@ -28,6 +30,7 @@ func TestBuildStatesTheCoverageOfAReportOverWindows(t *testing.T) {
 	escaped, err := Build(mustRead(t, bookFormBundle), View{Card: "human_role", Coverage: &Coverage{From: "<b>", To: "x", Windows: 1}})
 	require.NoError(t, err)
 	assert.NotContains(t, string(escaped.HTML), "Covers <b>")
+	assert.Contains(t, string(escaped.HTML), "Covers &lt;b&gt; to x.")
 
 	plain, err := Build(mustRead(t, bookFormBundle), View{Card: "human_role"})
 	require.NoError(t, err)

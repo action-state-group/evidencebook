@@ -185,7 +185,8 @@ type View struct {
 	// every window of answered. The page states it in a banner above the
 	// report, with what the check does not show. A range with any gap is
 	// never given here: its caller builds no page for it. A diagnostic page
-	// carries none.
+	// carries none. Like Wording, it lives in the page, not in the bundle,
+	// so a page built with one gets no permalink.
 	Coverage *Coverage
 }
 
@@ -288,7 +289,7 @@ type Page struct {
 	failure error
 	// worded is set when the page carries a wording layer; contracted when
 	// it carries a contract.
-	worded, contracted, charted, receipted bool
+	worded, contracted, charted, receipted, covered bool
 }
 
 // Build verifies bundle, a held and disclosed Evidence Bundle (JSON) whose
@@ -466,7 +467,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 		Root: root.id, Form: root.form, Member: root.member, Card: view.Card, Draft: view.Draft,
 		Claims: len(checked.Claims), UnsupportedClaims: unsupportedClaims(value, checked.Claims), ContractRefs: checked.Contracts,
 		Diagnostic: diagnostic, DiagnosticReasons: reasons,
-		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0, receipted: view.Receipts != nil,
+		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0, receipted: view.Receipts != nil, covered: view.Coverage != nil,
 		IgnoredReceipts: receipts.ignored,
 	}
 	if view.Contract != nil {
@@ -576,6 +577,9 @@ func (p *Page) Permalink(base string) (string, error) {
 	}
 	if p.receipted {
 		return "", refusal("a page with receipts gets no permalink: the permalink carries the bundle alone, and the viewer would draw no receipt")
+	}
+	if p.covered {
+		return "", refusal("a page with coverage gets no permalink: the permalink carries the bundle alone, and the viewer would state no range")
 	}
 	fragment, err := aacbundle.EncodeFragment(p.bundle)
 	if err != nil {
