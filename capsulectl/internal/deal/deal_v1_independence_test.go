@@ -174,3 +174,39 @@ func TestARulingIsLabeledNotIndependentByABinding(t *testing.T) {
 	// --binding goes with a ruling only.
 	assert.Contains(t, v1Err(t, "receive", dispute, "--binding", binding), "go with a ruling")
 }
+
+// An adjudicator whose key is a party's key is labeled even when no witness
+// receipt gives a stamped time: one key is one operator at every time
+// (Sherlock2 and the twin on #822).
+func TestARulingByAPartysOwnKeyIsLabeledWithNoStampedTime(t *testing.T) {
+	var sellerSeed string
+	h := agreedBoth(t, func(k string) string {
+		return strings.Replace(disputeOffer(k, "auto:twin"), `"key_id": "adjudicator-key"`, `"key_id": "`+k+`"`, 1)
+	})
+	h.seller.act(t)
+	sp, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	sellerSeed = sp.Signing.File
+	require.NotEmpty(t, sellerSeed)
+	h.buyer.act(t)
+	dispute := filepath.Join(t.TempDir(), "dispute.json")
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
+	buyerCopy := adjudicatorCopy(t, h.buyer, h.dealID)
+
+	// The adjudicator's home, made with the seller's record key for both.
+	dealTestEnv(t, t.TempDir())
+	out, err := invoke(t, "", "deal", "init", "--profile", "deal", "--dir", filepath.Join(t.TempDir(), "adj"), "--no-witness",
+		"--signing-key-file", sellerSeed, "--checkpoint-key-file", sellerSeed)
+	require.NoError(t, err, out)
+	dealRun(t, "set-version", "x-deal-v1", "--migrate")
+	adj := v1Side{party: thisDealParty(t)}
+	require.Equal(t, h.seller.party.signer, adj.party.signer)
+	ruling := filepath.Join(t.TempDir(), "ruling.json")
+	dealRun(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "met", "--against", "none", "--final",
+		"--dispute", dispute, "--copy", buyerCopy, "--out", ruling)
+
+	h.buyer.act(t)
+	got := dealRun(t, "receive", ruling)
+	assert.Equal(t, stampedAtUnknown, got["stamped_at"])
+	assert.Equal(t, xdealv1.NotIndependentSharedOperator, got["independence"])
+}

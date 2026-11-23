@@ -37,7 +37,8 @@ func readJSONFiles(flag string, paths []string) ([]json.RawMessage, error) {
 
 // independence adds to a received ruling's output its stamped time and,
 // when SharedOperator gives it, the label "not independent (shared
-// operator)" (#780, #819). The stamped time is the earliest registration
+// operator)" (#780, #819): an adjudicator key that is a party's key, at any
+// time, or one a binding ties to a party's key at the stamped time. The stamped time is the earliest registration
 // time among the push's witness receipts that verify, for the stamp's shelf
 // checkpoint, under a key the holder's agreement names; never the ruling's
 // own at. The bindings are the push's and the holder's own (--binding); the

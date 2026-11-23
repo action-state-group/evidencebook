@@ -42,7 +42,7 @@ later records.
 For a ruling it also says when it was stamped (stamped_at): the earliest time a
 witness your agreement names registered the adjudicator's stamp, from the
 receipts the file carries, or "unknown" when none does. When the adjudicator's
-key and a party's key are bound to one controller at that time, it says
+key is a party's key, or both are bound to one controller at that time, it says
 "independence": "not independent (shared operator)". The bindings checked are
 those the file carries and those you give (--binding); revocations count only
 when you give them (--revocation). It never says a ruling is independent.
