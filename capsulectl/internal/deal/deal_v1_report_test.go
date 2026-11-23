@@ -454,7 +454,7 @@ func TestAV1ReportBundleAudiencesAndMarkers(t *testing.T) {
 // the report passes the deal id to the gate itself: a deal id whose hex holds
 // a Luhn-valid digit run is taken out, as a v0 deal's is (evidencebook#787).
 func TestAV1ShareTakesTheDealsOwnIDOut(t *testing.T) {
-	const dealID = "deal-b164730259661136" // a letter, then a Luhn-valid run
+	const dealID = "deal-b416473025966117" // a letter, then a card-like run (network prefix and Luhn)
 	page := []byte(`<!doctype html><script>window.__BUNDLE__ = {"deal_id":"` + dealID + `"};</script>`)
 	assert.ErrorContains(t, dealShareGate(page, nil, cli.DealAudienceCounterparty), "card number", "without the id")
 	assert.NoError(t, dealShareGate(page, nil, cli.DealAudienceCounterparty, dealID))
@@ -475,7 +475,7 @@ func TestAV1ShareTakesTheDealsOwnIDOut(t *testing.T) {
 
 	// A shelf log id an agreement names (deal-cadence/<16 hex>) is one of the
 	// deal's own ids too.
-	const shelfLog = "deal-cadence/9261641132323880"
+	const shelfLog = "deal-cadence/4261641132323889"
 	agreement := []byte(`{"shelf_log_id":"` + shelfLog + `"}`)
 	assert.ErrorContains(t, dealShareGate(agreement, nil, cli.DealAudienceCounterparty, dealID), "card number", "without it")
 	assert.NoError(t, dealShareGate(agreement, nil, cli.DealAudienceCounterparty, dealID, shelfLog))

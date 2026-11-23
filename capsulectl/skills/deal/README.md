@@ -642,8 +642,9 @@ detector with the scrubber. It looks for every place and
 address fragment, identifier, payment reference, code, card number and email
 in the deal's local store. It checks each one as written, in any case, digits
 only, with separators removed, base64 (all four alphabets), hex, and URL-,
-JSON- and HTML-escaped. It also looks for any Luhn-valid card number and any
-code word (code, OTP, PIN, passcode) followed by a number. A short value is
+JSON- and HTML-escaped. It also looks for any card number (a card network's
+prefix and the card checksum) and any code word (code, OTP, PIN, passcode)
+followed by a number. A short value is
 skipped only inside a digest or signature (a run of 64 or more hex or base64
 characters). In an order reference or a URL path it counts. A hit refuses the
 copy: nothing is written and nothing goes on record. On a page, the gate reads
