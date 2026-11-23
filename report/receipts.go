@@ -24,8 +24,8 @@ const ReceiptModuleID = "capsulectl.deal-view/v0"
 
 // Receipts are the deal receipts a contract report page carries
 // (capsule-viewer#228, #351): the receipt module the page opens them with and
-// the receipts the holder hands over, each carried or held by the holder's
-// share policy. The report never decides what the policy allows: the caller
+// the receipts the holder hands over, each carried, held by the holder's
+// share policy, or not closed. The report never decides what the policy allows: the caller
 // states it per receipt. Nil carries nothing, and the page is then the page
 // built without the field. A deal of the Result no receipt names says
 // "Receipt not carried with this page", which is true of it: nothing was
@@ -45,7 +45,7 @@ type Receipts struct {
 	Deals []Receipt
 }
 
-// Receipt is one deal's receipt, carried or held by policy, named by the
+// Receipt is one deal's receipt, carried, held by policy or not closed, named by the
 // exchange capsule it was fetched by.
 type Receipt struct {
 	// Exchange is the id of an exchange capsule of the deal: the capsule a
@@ -132,7 +132,7 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 		case 0:
 			// A node hands over a receipt for every exchange it holds, before
 			// the report decides which became deals of its window: one no deal
-			// cites is not on this page, carried or held. The caller is told
+			// cites is not on this page, carried, held or not closed. The caller is told
 			// which (Page.IgnoredReceipts), so a mis-keyed id is not silent.
 			out.ignored = append(out.ignored, r.Exchange)
 			continue

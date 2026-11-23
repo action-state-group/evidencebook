@@ -94,10 +94,7 @@ func TestANotClosedDealIsAnEntryApartFromHeldAndMissing(t *testing.T) {
 	require.True(t, ok, "the page carries the receipts setting")
 	got, present := receipts["d1"]
 	assert.True(t, present, "a deal not closed is an entry, never a missing one (missing reads as built wrong)")
-	held, err := Build(bundle, settlementView(t, Receipt{Exchange: exchange(t), Held: true}))
-	require.NoError(t, err)
-	heldReceipts, _ := optionsOf(t, string(held.HTML))["receipts"].(map[string]any)
-	assert.NotEqual(t, heldReceipts["d1"], got, "and it is not the held entry")
+	assert.Equal(t, map[string]any{"state": "not-closed"}, got, "capsule-viewer go v0.23.0's value for a deal that had not closed: neither held's null nor a bundle")
 
 	// Exactly one state per entry.
 	for name, r := range map[string]Receipt{
