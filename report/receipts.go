@@ -43,6 +43,15 @@ type Receipts struct {
 	Module emitter.Module
 	// Deals are the receipts handed over, at most one per deal.
 	Deals []Receipt
+	// Gate, when set, is the caller's own check of each carried receipt
+	// bundle, run after the page gate: a non-nil error refuses the receipt.
+	// The page gate is capsule-cli's core, which reads no deal section
+	// (capsule-cli#609), so the caller that defines the receipts' format
+	// (capsulectl-book, through the deal plugin's verify) checks it here; this
+	// package stays generic and links no format's code (evidencebook#735).
+	// Its error is shown through cli.SafeError: return a cli.InputError for
+	// its text to reach the refusal.
+	Gate func(bundle []byte) error
 }
 
 // Receipt is one deal's receipt, carried, held by policy or not closed, named by the
@@ -167,6 +176,11 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 		}
 		if err := checkReceiptBundle(deal, r, manifest); err != nil {
 			return checkedReceipts{}, err
+		}
+		if receipts.Gate != nil {
+			if err := receipts.Gate([]byte(r.Bundle)); err != nil {
+				return checkedReceipts{}, refusef("receipts: the receipt bundle of deal %q does not pass the caller's check, so it is not carried: %s", deal, cli.SafeError(err))
+			}
 		}
 		out.texts[deal] = r.Bundle
 	}
