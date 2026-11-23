@@ -278,11 +278,15 @@ const (
 )
 
 var (
-	scanExempt   = regexp.MustCompile(`^([0-9a-f]{16,}|(deal|sale)-[0-9a-f]+|` + pyDigit + `{4}-` + pyDigit + `{2}-` + pyDigit + `{2}(T` + pyDigit + `{2}:` + pyDigit + `{2}:` + pyDigit + `{2}Z)?|[a-z0-9-]+/[a-z0-9-]+/` + pyDigit + `+\.` + pyDigit + `+\.` + pyDigit + `+)\n?$`)
-	scanPhone    = regexp.MustCompile(`\+?\(?` + pyDigit + `[` + pyDigit + pySpace + `().-]{6,}` + pyDigit)
-	scanNonDigit = regexp.MustCompile(`\P{Nd}`)
-	scanEmail    = regexp.MustCompile(`[^` + pySpace + `@]+@[^` + pySpace + `@]+\.[^` + pySpace + `@]+`)
-	scanWords    = regexp.MustCompile(`[^a-z]+`)
+	scanExempt = regexp.MustCompile(`^([0-9a-f]{16,}|(deal|sale)-[0-9a-f]+|` + pyDigit + `{4}-` + pyDigit + `{2}-` + pyDigit + `{2}(T` + pyDigit + `{2}:` + pyDigit + `{2}:` + pyDigit + `{2}Z)?|[a-z0-9-]+/[a-z0-9-]+/` + pyDigit + `+\.` + pyDigit + `+\.` + pyDigit + `+)\n?$`)
+	scanPhone  = regexp.MustCompile(`\+?\(?` + pyDigit + `[` + pyDigit + pySpace + `().-]{6,}` + pyDigit)
+	// scanDateToken is one white-space-separated piece of a phone match that
+	// is an ISO date, with the opening bracket a date in brackets leaves.
+	scanDateToken = regexp.MustCompile(`^\(?` + pyDigit + `{4}-` + pyDigit + `{2}-` + pyDigit + `{2}$`)
+	scanSpace     = regexp.MustCompile(`[` + pySpace + `]+`)
+	scanNonDigit  = regexp.MustCompile(`\P{Nd}`)
+	scanEmail     = regexp.MustCompile(`[^` + pySpace + `@]+@[^` + pySpace + `@]+\.[^` + pySpace + `@]+`)
+	scanWords     = regexp.MustCompile(`[^a-z]+`)
 	// bannedWords label or grade a counterparty; a record never carries them.
 	bannedWords = map[string]bool{
 		"scam": true, "scams": true, "scammer": true, "scammers": true, "scammy": true, "fraud": true, "frauds": true,
@@ -303,6 +307,9 @@ func stagePersonalData(doc any, localValues []string) error {
 			continue
 		}
 		for _, m := range scanPhone.FindAllString(s, -1) {
+			if onlyDates(m) {
+				continue
+			}
 			if utf8.RuneCountInString(scanNonDigit.ReplaceAllString(m, "")) >= 7 {
 				return stageErr(StagePersonalData, "raw phone number at %s", rs.path)
 			}
@@ -318,6 +325,19 @@ func stagePersonalData(doc any, localValues []string) error {
 		}
 	}
 	return nil
+}
+
+// onlyDates reports whether a phone-shaped match is nothing but ISO dates
+// (YYYY-MM-DD) set apart by white space, as in "2 nights from 2026-12-10".
+// Any other token, a digit run or a sign or bracket glued to a date
+// included, keeps the match a phone number.
+func onlyDates(m string) bool {
+	for _, tok := range scanSpace.Split(m, -1) {
+		if !scanDateToken.MatchString(tok) {
+			return false
+		}
+	}
+	return true
 }
 
 func stageWording(doc any) error {

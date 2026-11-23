@@ -276,6 +276,7 @@ def _record_strings(v: Any, path: str, out: list[tuple[str, str]]) -> None:
 _SCAN_EXEMPT = re.compile(r"([0-9a-f]{16,}|(deal|sale)-[0-9a-f]+|\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?|"
                           r"[a-z0-9-]+/[a-z0-9-]+/\d+\.\d+\.\d+)$")
 _SCAN_PHONE = re.compile(r"\+?\(?\d[\d\s().-]{6,}\d")
+_SCAN_DATE_TOKEN = re.compile(r"\(?\d{4}-\d{2}-\d{2}")
 _SCAN_NON_DIGIT = re.compile(r"\D")
 _SCAN_EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 _SCAN_WORDS = re.compile(r"[^a-z]+")
@@ -287,6 +288,14 @@ _BANNED_WORDS = frozenset({
 })
 
 
+def _only_dates(m: str) -> bool:
+    """Whether a phone-shaped match is nothing but ISO dates (YYYY-MM-DD) set
+    apart by white space, as in "2 nights from 2026-12-10". Any other token, a
+    digit run or a sign or bracket glued to a date included, keeps the match a
+    phone number."""
+    return all(_SCAN_DATE_TOKEN.fullmatch(t) for t in m.split())
+
+
 def _stage_personal_data(doc: Any, local_values: list[str]) -> None:
     """Refuses a raw phone number, email address or local-store value
     anywhere in the record, a member name included."""
@@ -296,6 +305,8 @@ def _stage_personal_data(doc: Any, local_values: list[str]) -> None:
         if _SCAN_EXEMPT.match(s):
             continue
         for m in _SCAN_PHONE.finditer(s):
+            if _only_dates(m.group()):
+                continue
             if len(_SCAN_NON_DIGIT.sub("", m.group())) >= 7:
                 raise StageError(STAGE_PERSONAL_DATA, f"raw phone number at {path}")
         if _SCAN_EMAIL.search(s):

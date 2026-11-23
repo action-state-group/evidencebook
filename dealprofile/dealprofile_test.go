@@ -182,3 +182,16 @@ func TestFoldCaseTakesBothCherokeeCasesToTheCapitals(t *testing.T) {
 	assert.Equal(t, "Ᏼ", foldCase.String("ᏼ"))
 	assert.Equal(t, "ss", foldCase.String("ß"), "other full folds are unchanged")
 }
+
+func TestDateInTextIsNotAPhoneNumber(t *testing.T) {
+	enc := func(text string) string {
+		_, _, err := Encode([]byte(`{"x-deal-v0":{"canonicalization":"jcs"},"body":{"text":"`+text+`"}}`), nil)
+		return stageOf(t, err)
+	}
+	for _, ok := range []string{"2 nights from 2026-12-10", "from 2026-12-10.", "(2026-12-10)", "2026-12-10 2026-12-12", "２０２６-１２-１０ stay"} {
+		assert.Equal(t, StageSchema, enc(ok), "a date is not a phone number: %q", ok)
+	}
+	for _, bad := range []string{"call 555-0100 on 2026-12-10", "+1 202 2026-12-10", "555 2026-12-10", "+1 202-2026-12-10", "12026-12-10", "2026-12-10 0100", "+2026-12-10"} {
+		assert.Equal(t, StagePersonalData, enc(bad), "a phone number beside a date is still refused: %q", bad)
+	}
+}
