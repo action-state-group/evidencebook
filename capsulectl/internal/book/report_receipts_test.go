@@ -122,6 +122,20 @@ func TestAReceiptWhoseDealSectionFailsIsRefused(t *testing.T) {
 	assert.Contains(t, out+err.Error(), "sealed_report_unverified")
 }
 
+// Without the deal plugin's verify (here a capsulectl that does not exist),
+// a carried receipt is refused and the refusal says --receipts needs the
+// deal plugin.
+func TestAReceiptIsRefusedWhenItsDealVerifyCannotRun(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("CAPSULECTL_BIN", filepath.Join(installedCapsulectl(t), "capsulectl"))
+	err := dealVerify(mustRead(t, dealReceipt))
+	require.NoError(t, err, "the real deal verify, through CAPSULECTL_BIN, calls the receipt VALID")
+	t.Setenv("CAPSULECTL_BIN", filepath.Join(t.TempDir(), "no-capsulectl"))
+	err = dealVerify(mustRead(t, dealReceipt))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--receipts needs the deal plugin installed")
+}
+
 func TestAHeldReceiptAndAnUncitedOneLeaveTheRestAlone(t *testing.T) {
 	page, output, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{
 		{"exchange_capsule_id": settlementExchange(t), "held": true},

@@ -2,6 +2,7 @@ package book
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
@@ -92,16 +94,19 @@ func readReceipts(path string) (*report.Receipts, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &report.Receipts{Module: module, Deals: deals, Gate: dealVerifyGate}, nil
+	return &report.Receipts{Module: module, Deals: deals, Gate: dealVerify}, nil
 }
 
-// dealVerifyGate is each carried receipt's own check: the deal plugin's
+// receiptVerifyTimeout bounds one receipt's `capsulectl deal verify`.
+const receiptVerifyTimeout = 2 * time.Minute
+
+// dealVerify is each carried receipt's own check: the deal plugin's
 // `capsulectl deal verify --bundle` must call it VALID (evidencebook#735).
 // capsule-cli's page gate reads no deal section since rc50 (#609), and this
 // plugin links no deal code, so it calls the deal plugin through the command
 // line, by the capsulectl that launched it (CAPSULECTL_BIN, else capsulectl
 // on PATH). Only --receipts needs the deal plugin installed.
-var dealVerifyGate = func(bundle []byte) error {
+func dealVerify(bundle []byte) error {
 	dir, err := os.MkdirTemp("", "capsulectl-book-receipt-")
 	if err != nil {
 		return err
@@ -115,7 +120,10 @@ var dealVerifyGate = func(bundle []byte) error {
 	if bin == "" {
 		bin = "capsulectl"
 	}
-	out, runErr := exec.Command(bin, "deal", "verify", "--bundle", path).Output()
+	// A verify that hangs must not hang the page build.
+	ctx, cancel := context.WithTimeout(context.Background(), receiptVerifyTimeout)
+	defer cancel()
+	out, runErr := exec.CommandContext(ctx, bin, "deal", "verify", "--bundle", path).Output()
 	var result struct {
 		Verdict      string `json:"verdict"`
 		ReaderClaims []struct {
