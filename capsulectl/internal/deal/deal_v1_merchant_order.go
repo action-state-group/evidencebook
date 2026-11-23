@@ -66,9 +66,10 @@ func normalOrigin(raw string) (string, error) {
 }
 
 // cardLike reports whether a reference is a card number: 13 to 19 digits,
-// spaces and hyphens set aside, that pass the Luhn check. No card data goes
-// in a payment reference (Sherlock2, evidencebook#771; Settlement Records
-// -01's no raw account numbers).
+// spaces and hyphens set aside, that start with a card network's prefix and
+// pass the card checksum (Luhn). The checksum alone passes one digit string
+// in ten, so an honest long order number would too often look like a card
+// (Sherlock2, evidencebook#771 text review).
 func cardLike(ref string) bool {
 	var digits []byte
 	for i := 0; i < len(ref); i++ {
@@ -80,7 +81,7 @@ func cardLike(ref string) bool {
 			return false
 		}
 	}
-	if len(digits) < 13 || len(digits) > 19 {
+	if len(digits) < 13 || len(digits) > 19 || !cardPrefix(string(digits)) {
 		return false
 	}
 	sum := 0
@@ -97,10 +98,27 @@ func cardLike(ref string) bool {
 	return sum%10 == 0
 }
 
+// cardPrefix reports whether digits start with a card network's prefix:
+// Visa 4; Mastercard 51-55 and 2221-2720; American Express 34 and 37;
+// Discover 6011, 644-649 and 65; JCB 3528-3589; Diners Club 300-305, 36 and
+// 38.
+func cardPrefix(d string) bool {
+	in := func(n, lo, hi int) bool {
+		v := 0
+		for i := 0; i < n; i++ {
+			v = v*10 + int(d[i]-'0')
+		}
+		return v >= lo && v <= hi
+	}
+	return d[0] == '4' || in(2, 51, 55) || in(4, 2221, 2720) || in(2, 34, 34) || in(2, 37, 37) ||
+		in(4, 6011, 6011) || in(3, 644, 649) || in(2, 65, 65) || in(4, 3528, 3589) ||
+		in(3, 300, 305) || in(2, 36, 36) || in(2, 38, 38)
+}
+
 // refuseCardData refuses a payment reference that is a card number.
 func refuseCardData(what, ref string) error {
 	if cardLike(ref) {
-		return cli.InputError(what + " looks like a card number (its digits pass the card checksum): no card data goes in a payment reference. Give the merchant's order number, or the rail's own reference")
+		return cli.InputError(what + " looks like a card number (a card network's prefix and the card checksum): no card data goes in a payment reference. Give the rail's own reference; or, when the merchant's order number is what looks like a card, record the payment with no reference: the pay check says \"payment_ref_after_payment\": true, and deal settle --status settled takes --no-payment-ref")
 	}
 	return nil
 }
@@ -110,13 +128,14 @@ func refuseCardData(what, ref string) error {
 const (
 	noteRefAfterPayment = "payment reference recorded after payment: the checkout showed no reference before paying, so the merchant's order number was recorded once paid, and the payment was not bound to it beforehand"
 	noteOneSided        = "the other side keeps no signed records of its own, so this record is one-sided: it holds your side only"
-	notePrivateType     = "the payment's reference is x-deal-v1's own merchant order number (" + merchantOrderType + "), which a generic verifier does not join, so the two sides' legs are not matched against each other"
+	notePrivateType     = "the payment's reference is the merchant's order number, in a type private to x-deal-v1 (" + merchantOrderType + "), which a generic verifier does not join, so the two sides' legs are not matched against each other"
+	noteNoRef           = "no payment reference recorded: the merchant's order number was left out, so nothing in the record ties the payment to the order"
 )
 
 // v1PaymentRowNotes are the notes for a deal's payment rows, by row id:
 // one-sided when the other side runs no layer; recorded after payment when a
 // settled payment under the merchant order type rested on a pay check with
-// no payment_ref; the private type when the payment check read its legs
+// no payment_ref, or no reference when it settled with none; the private type when the payment check read its legs
 // unjoined under that type. It reads the deal's own sends and events and
 // writes nothing.
 func (s *dealSession) v1PaymentRowNotes(ctx context.Context, d *v1Deal, rows []string, payments map[string]xdealv1.PaymentResult) (map[string][]string, error) {
@@ -163,34 +182,41 @@ func (s *dealSession) v1PaymentRowNotes(ctx context.Context, d *v1Deal, rows []s
 			return nil, err
 		}
 	}
-	if after {
-		notes = append(notes, noteRefAfterPayment)
-	}
 	// Either side's own legs say whether the payment is under the merchant
 	// order: a payee writes no send, so its payee leg is read (#772 review).
-	if !merchant {
-		book, err := s.ownBookV1(ctx, d)
+	// A settled leg under it with no value was recorded with --no-payment-ref.
+	noRef := false
+	book, err := s.ownBookV1(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	for i, r := range book {
+		if _, ok := settleOf(r); !ok {
+			continue
+		}
+		raw, err := s.ownSettleMember(ctx, d, i+1)
 		if err != nil {
 			return nil, err
 		}
-		for i, r := range book {
-			if _, ok := settleOf(r); !ok {
-				continue
-			}
-			raw, err := s.ownSettleMember(ctx, d, i+1)
-			if err != nil {
-				return nil, err
-			}
-			var m struct {
-				PaymentRef struct {
-					Type string `json:"type"`
-				} `json:"payment_ref"`
-			}
-			if json.Unmarshal(raw, &m) == nil && m.PaymentRef.Type == merchantOrderType {
-				merchant = true
-				break
+		var m struct {
+			Status     string `json:"status"`
+			PaymentRef struct {
+				Type  string `json:"type"`
+				Value string `json:"value"`
+			} `json:"payment_ref"`
+		}
+		if json.Unmarshal(raw, &m) == nil && m.PaymentRef.Type == merchantOrderType {
+			merchant = true
+			if m.Status == legSettled && m.PaymentRef.Value == "" {
+				noRef = true
 			}
 		}
+	}
+	switch {
+	case noRef:
+		notes = append(notes, noteNoRef)
+	case after:
+		notes = append(notes, noteRefAfterPayment)
 	}
 	out := map[string][]string{}
 	for _, id := range rows {

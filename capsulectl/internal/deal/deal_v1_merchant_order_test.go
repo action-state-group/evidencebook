@@ -125,12 +125,53 @@ func TestNoCardDataInAReference(t *testing.T) {
 	for _, card := range []string{"4111111111111111", "4111 1111 1111 1111", "4111-1111-1111-1111", "5555555555554444", "378282246310005"} {
 		assert.True(t, cardLike(card), card)
 	}
-	for _, ok := range []string{v1LnHash, "A-1234", "4111111111111112", "123456", "ORDER 4111"} {
+	// A checksum-valid number with no card network's prefix is an order
+	// number, not a card (Sherlock2's text review).
+	for _, ok := range []string{v1LnHash, "A-1234", "4111111111111112", "123456", "ORDER 4111", "1002003004005005", "70001234567892"} {
 		assert.False(t, cardLike(ok), ok)
+	}
+	for _, card := range []string{"2223003122003222", "6011111111111117", "3530111333300000", "30569309025904", "6445644564456445"} {
+		assert.True(t, cardLike(card), "a network's prefix and the checksum: %s", card)
 	}
 	dealID := noLayerAgreed(t)
 	out := v1Err(t, "check", "--deal", dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"4111 1111 1111 1111"`)))
 	assert.Contains(t, out, "looks like a card number", "refused at deal check, before anything is sealed")
+	assert.Contains(t, out, "--no-payment-ref", "the refusal names the way through")
+}
+
+// The way through for an order number that looks like a card: the pay check
+// says payment_ref_after_payment, and --status settled takes --no-payment-ref.
+// The leg carries no reference, the row says so, and the book verifies. The
+// flag goes nowhere else (Sherlock2's text review).
+func TestAPaymentWithNoReferenceIsRecordedHonestly(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "x.json")
+	dealID := noLayerAgreed(t)
+	check := merchantPayCheck(t, dealID, `,"payment_ref_after_payment":true`)
+	assert.Contains(t, v1Err(t, "settle", "--deal", dealID, "--check", check, "--sent", "--no-payment-ref", "--payment-ref-type", merchantOrderType, "--payment-ref-origin", shop), "--no-payment-ref goes only with --status settled")
+	dealRun(t, "settle", "--deal", dealID, "--check", check, "--sent", "--payment-ref-type", merchantOrderType, "--payment-ref-origin", shop)
+	assert.Contains(t, v1Err(t, "settle", "--deal", dealID, "--check", check, "--status", "settled", "--no-payment-ref", "--payment-ref", "A-1", "--out", out), "without --payment-ref")
+	assert.Contains(t, v1Err(t, "settle", "--deal", dealID, "--check", check, "--status", "failed", "--no-payment-ref", "--out", out), "--no-payment-ref goes only with --status settled")
+	file := filepath.Join(t.TempDir(), "paid.json")
+	dealRun(t, "settle", "--deal", dealID, "--check", check, "--status", "settled", "--no-payment-ref", "--out", file)
+	assert.Equal(t, "", legRef(t, file)["value"])
+	assert.Equal(t, "settled", settlementOf(t, file)["status"])
+	notes := rowNotes(t, dealID)
+	assert.Contains(t, notes, noteNoRef)
+	assert.NotContains(t, notes, noteRefAfterPayment, "no order number was recorded after paying either")
+	tickCovering(t)
+	bundle := filepath.Join(t.TempDir(), "b.json")
+	dealRun(t, "report", "--deal", dealID, "--bundle", bundle)
+	verified, err := verifyBundleOutput(t, bundle)
+	require.NoError(t, err)
+	assert.Equal(t, "VALID", verified["verdict"], "%v", verified)
+
+	// Bound before paying: the flag is refused.
+	other := noLayerAgreed(t)
+	bound := merchantPayCheck(t, other, `,"payment_ref":"A-7"`)
+	dealRun(t, "settle", "--deal", other, "--check", bound, "--sent", "--payment-ref-type", merchantOrderType, "--payment-ref-origin", shop)
+	assert.Contains(t, v1Err(t, "settle", "--deal", other, "--check", bound, "--status", "settled", "--no-payment-ref", "--out", out), "--no-payment-ref goes only with --status settled")
+	// A payee leg: refused.
+	assert.Contains(t, v1Err(t, "settle", "--deal", other, "--row", "paid_as_agreed", "--status", "settled", "--received", "100", "--receive-fee", "0", "--no-payment-ref", "--out", out), "--no-payment-ref goes only")
 }
 
 // Condition 5: exactly one x- type is accepted; a payee leg never takes an

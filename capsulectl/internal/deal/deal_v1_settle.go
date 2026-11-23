@@ -529,7 +529,7 @@ func (s *dealSession) checkRecord(ctx context.Context, dealID, digest string) (*
 // settleIn is what `deal settle` reads from its flags.
 type settleIn struct {
 	dealID, check, status, row, reverses, supersedes, out string
-	sent                                                  bool
+	sent, noRef                                           bool
 	ref                                                   paymentRefFlags
 	routingFee, received, receiveFee                      int64
 	hasRoutingFee, hasReceived, hasReceiveFee             bool
@@ -571,7 +571,9 @@ payment_ref is that number and the payment is bound to it. When it did not,
 the pay check said payment_ref_after_payment, --sent takes no --payment-ref,
 and --status settled takes the order number (a failed checkout may leave it
 out); the report then says the reference was recorded after payment. No
-reference may be a card number.
+reference may be a card number: when the order number looks like one,
+--status settled takes --no-payment-ref and the report says no reference was
+recorded.
 
 What you received is a payee leg: --received and --receive-fee (0 when none was
 taken) in minor units, --status pending, settled or failed, and the payment's
@@ -602,6 +604,7 @@ func dealSettleCommand() *cobra.Command {
 			in.supersedes, _ = f.GetString("supersedes")
 			in.out, _ = f.GetString("out")
 			in.sent, _ = f.GetBool("sent")
+			in.noRef, _ = f.GetBool("no-payment-ref")
 			in.ref.Type, _ = f.GetString("payment-ref-type")
 			in.ref.Value, _ = f.GetString("payment-ref")
 			in.ref.Network, _ = f.GetString("payment-ref-network")
@@ -633,6 +636,8 @@ func dealSettleCommand() *cobra.Command {
 			switch {
 			case in.sent && !payer:
 				return cli.InputError("--sent goes with --check: the check the payment rests on")
+			case in.noRef && (!payer || in.sent):
+				return cli.InputError("--no-payment-ref goes only with --status settled on a card checkout whose order number came after paying")
 			case in.sent && (in.status != "" || in.out != ""):
 				return cli.InputError("--sent seals no leg and writes no file: run it before the handoff, then --status when the rail answers")
 			case payer && !in.sent && in.status != legSettled && in.status != legFailed:
@@ -665,6 +670,7 @@ func dealSettleCommand() *cobra.Command {
 	f.String("payment-ref-type", "", "The rail's reference type, such as ln.payment_hash or x402.transaction")
 	f.String("payment-ref", "", "The payment's reference on the rail")
 	f.String("payment-ref-network", "", "The network, for x402.transaction")
+	f.Bool("no-payment-ref", false, "With --status settled on a card checkout whose order number came after paying: record the payment with no reference (an order number that looks like a card number)")
 	f.String("payment-ref-origin", "", "The checkout's origin (scheme and host, such as https://shop.example), for "+merchantOrderType+", the merchant's order number on a card checkout")
 	f.String("payment-ref-method", "", "The method, for mpp.reference")
 	f.String("payment-ref-debtor-agent", "", "The debtor agent, for iso20022.end_to_end_id")
@@ -1147,6 +1153,9 @@ func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]a
 	if in.ref.Type != "" && in.ref.Type != send.RefType {
 		return nil, cli.InputError("the payment was sent under " + send.RefType + ", and --payment-ref-type is " + in.ref.Type)
 	}
+	if in.noRef && (cb.Action != "pay" || send.RefType != merchantOrderType || send.Ref != "" || in.ref.Value != "" || in.status != legSettled) {
+		return nil, cli.InputError("--no-payment-ref goes only with --status settled on a card checkout whose order number came after paying (" + merchantOrderType + "), and without --payment-ref")
+	}
 	for name, flag := range map[string]string{"network": in.ref.Network, "method": in.ref.Method, "debtor_agent": in.ref.DebtorAgent, "origin": in.ref.Origin} {
 		if name == "origin" && flag != "" {
 			if send.RefType != merchantOrderType {
@@ -1171,6 +1180,9 @@ func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]a
 	case equal && in.ref.Value != "" && in.ref.Value != send.Ref:
 		return nil, cli.InputError("on " + send.RefType + " the leg's reference is the one the payment was sent under (" + send.Ref + "), and --payment-ref differs")
 	case equal:
+	case in.noRef:
+		// No reference at all: the order number looks like a card number
+		// (Sherlock2, evidencebook#771); the report says so.
 	case send.RefType == merchantOrderType && in.ref.Value != "":
 		// The order number recorded after paying (evidencebook#771).
 		if err := refuseCardData("--payment-ref", in.ref.Value); err != nil {
@@ -1180,7 +1192,7 @@ func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]a
 	case send.RefType == merchantOrderType && in.status == legFailed:
 		// A checkout that failed may leave no order number: the leg carries "".
 	case send.RefType == merchantOrderType:
-		return nil, cli.InputError("--payment-ref is required: the merchant's order number, which the checkout shows once paid (a failed checkout may leave it out with --status failed)")
+		return nil, cli.InputError("--payment-ref is required: the merchant's order number, which the checkout shows once paid (a failed checkout may leave it out with --status failed; one that looks like a card number is left out with --no-payment-ref)")
 	case in.ref.Value != "":
 		bound["value"] = in.ref.Value
 	case cb.Action == "pay" || send.RefType == "x402.transaction":
