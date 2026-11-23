@@ -5,7 +5,8 @@ import (
 )
 
 // verifyV1Report is the x-deal-v1 report rule the core's `verify --bundle`
-// runs through cli.SetDealV1ReportVerifier (evidencebook-deal#233): the
+// runs in the plugin's own deal-format reader (evidencebook#735; it once ran
+// through capsule-cli's SetDealV1ReportVerifier, evidencebook-deal#233): the
 // core checks a v1 report's neutral part and cannot import EvidenceBook, so
 // without this a passing report reads report_rule_not_checked. report is the
 // report pair and ext the bundle's x-deal-v1 extension, both as

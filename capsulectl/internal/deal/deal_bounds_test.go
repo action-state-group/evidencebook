@@ -153,7 +153,7 @@ func ownReportAndChain(t *testing.T, dealID string) (map[string]any, string) {
 	t.Helper()
 	var own map[string]any
 	require.NoError(t, json.Unmarshal([]byte(dealOwnBundle(t, dealID)), &own))
-	report, reportID, _ := cli.DealSealedReport(own)
+	report, reportID, _ := DealSealedReport(own)
 	require.NotNil(t, report)
 	disclosures, _ := own["disclosures"].(map[string]any)
 	rest := map[string]any{}

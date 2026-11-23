@@ -1179,7 +1179,7 @@ func dealInitCommand() *cobra.Command {
 		}
 		witness := "not_configured"
 		if noWitness, _ := c.Flags().GetBool("no-witness"); !noWitness {
-			p.Checkpoint.Endpoint, p.Checkpoint.PublicKey = cli.DealDefaultWitness, cli.DealDefaultWitnessKey
+			p.Checkpoint.Endpoint, p.Checkpoint.PublicKey = DealDefaultWitness, DealDefaultWitnessKey
 			witness = "scheduled"
 		}
 		if err = cli.SaveProfile(p, false); err != nil {
@@ -1251,12 +1251,12 @@ func dealInitCommand() *cobra.Command {
 			out["kept_keys_note"] = "each kept key now exists in the file it came from and again as a seed copied into --dir, re-encoded as a hex seed (listed above, one line per copy): the source stays yours to keep or delete, so secure or remove it once the earlier home is retired. A peer that knows the key id sees a new log from it that starts empty; stop the earlier home from sealing and checkpointing first, or it and this profile answer under one key over two different histories"
 		}
 		if witness == "scheduled" {
-			out["witness_endpoint"], out["witness_sees"] = cli.DealDefaultWitness, dealWitnessSees
+			out["witness_endpoint"], out["witness_sees"] = DealDefaultWitness, dealWitnessSees
 			cadence := "its cadence"
-			if cfg, err := p.DealCadence(); err == nil {
-				cadence = "every " + cli.ShortDuration(cfg.Interval)
+			if cfg, err := dealCadenceOf(p); err == nil {
+				cadence = "every " + ShortDuration(cfg.Interval)
 				if cfg.Jitter > 0 {
-					cadence += ", give or take " + cli.ShortDuration(cfg.Jitter)
+					cadence += ", give or take " + ShortDuration(cfg.Jitter)
 				}
 			}
 			out["next"] = "set up the checkpoint cadence: schedule `capsulectl --profile " + name + " cll checkpoint cadence --wait-up-to 5m` every 5 minutes. Each run is a poll: it waits for a tick due within its 5 minutes and publishes it on time, and a run with none due cuts no tick, only retrying any delivery still pending. The witness hears from this profile once per tick (" + cadence + ")"
@@ -3014,7 +3014,7 @@ func dealReportCommand() *cobra.Command {
 				now := cli.DealClock()
 				lifecycle := buildDealLifecycle(events, now)
 				composed := ""
-				if signed, _, form := cli.DealSealedReport(b); form == "standalone" {
+				if signed, _, form := DealSealedReport(b); form == "standalone" {
 					// The lifecycle is the one the report signed, as of its
 					// checkpoint, even when the bundle is an earlier one
 					// (--from-bundle); where the deal stands now is the

@@ -14,7 +14,7 @@ import (
 // The skill's consent text and its scheduling instruction state the cadence a
 // new profile really has: the host package's default, read here, not copied.
 func TestSkillCadenceWordsMatchTheProfileDefault(t *testing.T) {
-	cfg, err := cli.Profile{}.DealCadence()
+	cfg, err := dealCadenceOf(cli.Profile{})
 	require.NoError(t, err)
 	require.Zero(t, cfg.Interval%60e9, "the default interval is whole minutes")
 	minutes := int(cfg.Interval.Minutes())

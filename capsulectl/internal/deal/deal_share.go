@@ -1631,7 +1631,7 @@ func dealVerifyCommand(htmlPath string) string {
 // served as the answer to an evidence request (deal_evidence.go) also names
 // that request's digest, and page is then the served artifact's bytes.
 func (s *dealSession) recordShare(ctx context.Context, dealID string, b map[string]interface{}, audience, recipient string, events []sealedEvent, page []byte, requestDigest string) (map[string]any, error) {
-	record, err := cli.DisclosureRecord(b)
+	record, err := dealDisclosureRecord(b)
 	if err != nil {
 		return nil, err
 	}

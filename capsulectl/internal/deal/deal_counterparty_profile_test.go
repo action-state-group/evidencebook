@@ -593,7 +593,7 @@ func TestASaleThreadCheckNamingAPayeeSealsAWithheldCompanion(t *testing.T) {
 // sharedSteps is the steps a shared copy's sealed report lists.
 func sharedSteps(t *testing.T, b map[string]any) []map[string]any {
 	t.Helper()
-	if report, _, _ := cli.DealSealedReport(b); report != nil {
+	if report, _, _ := DealSealedReport(b); report != nil {
 		if steps, ok := report["steps"].([]any); ok {
 			out := make([]map[string]any, len(steps))
 			for i, s := range steps {

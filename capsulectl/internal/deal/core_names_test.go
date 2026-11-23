@@ -13,10 +13,10 @@ import (
 // scripts/check-neutral-deps.sh). This plugin depends on both, so it holds
 // each such name to the profile's, the one source (evidencebook#93).
 func TestCoreDealNamesAreTheProfiles(t *testing.T) {
-	assert.Equal(t, dealprofile.Profile, cli.DealProfile)
-	assert.Equal(t, dealprofile.ReportActionID, cli.DealReportActionID)
-	assert.Equal(t, dealprofile.ReportPointer, cli.DealReportPointer)
-	assert.Equal(t, dealprofile.ReportExtension, cli.DealReportExtension)
+	assert.Equal(t, dealprofile.Profile, DealProfile)
+	assert.Equal(t, dealprofile.ReportActionID, DealReportActionID)
+	assert.Equal(t, dealprofile.ReportPointer, DealReportPointer)
+	assert.Equal(t, dealprofile.ReportExtension, DealReportExtension)
 	assert.Equal(t, dealprofile.TypeTaskAuthority, cli.TypeTaskAuthority)
 	assert.Equal(t, dealprofile.MaterialityModePredicate, cli.MaterialityModePredicate)
 	assert.Equal(t, dealprofile.MaterialityModeNone, cli.MaterialityModeNone)

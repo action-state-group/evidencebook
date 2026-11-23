@@ -133,7 +133,7 @@ func dealProducedByLine(b map[string]interface{}) string {
 }
 
 func dealAssuranceRung(b map[string]interface{}) map[string]any {
-	cadence := cli.CadenceChainOf(b)
+	cadence := CadenceChainOf(b)
 	state, _ := cadence["state"].(string)
 	cp, _ := b["checkpoint"].(map[string]interface{})
 	witnesses, _ := cp["witnesses"].([]interface{})
@@ -191,8 +191,8 @@ func dealAssuranceRung(b map[string]interface{}) map[string]any {
 	// this device only until a later tick covers them.
 	// (An earlier checkpoint that already held every step, with only sealed
 	// reports after it, witnesses them all.)
-	k, _ := cli.JSONUint(cadence["steps_witnessed"])
-	n, _ := cli.JSONUint(cadence["steps"])
+	k, _ := JSONUint(cadence["steps_witnessed"])
+	n, _ := JSONUint(cadence["steps"])
 	if cadence["extent"] == "part" && k < n {
 		out["rung"] = "witnessed_in_part"
 		out["steps_witnessed"], out["steps"] = k, n

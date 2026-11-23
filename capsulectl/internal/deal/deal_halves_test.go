@@ -345,7 +345,7 @@ func TestCheck4RefusesAGapAfterTheClose(t *testing.T) {
 		require.NoError(t, err)
 		half := copyHalves(peer.bundle)[digest]
 		checkpoint := peer.bundle["checkpoint"].(map[string]interface{})
-		size, err := cli.JSONUint(checkpoint["mmr_size"])
+		size, err := JSONUint(checkpoint["mmr_size"])
 		require.NoError(t, err)
 		leaves := mmrLeafCount(size)
 		require.Greater(t, leaves, half.header.Seq, "the copy holds a report after the close")
@@ -790,7 +790,7 @@ func TestCheck4BindsSeqsToTheVerifiedMembership(t *testing.T) {
 		require.NoError(t, err)
 		half := copyHalves(peer.bundle)[digest]
 		checkpoint := peer.bundle["checkpoint"].(map[string]interface{})
-		size, err := cli.JSONUint(checkpoint["mmr_size"])
+		size, err := JSONUint(checkpoint["mmr_size"])
 		require.NoError(t, err)
 		leaves := mmrLeafCount(size)
 		require.NoError(t, lastStep(peer.bundle, half, leaves))

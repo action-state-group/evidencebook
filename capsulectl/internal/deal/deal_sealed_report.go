@@ -106,11 +106,11 @@ func holdsEntry(entries []cll.Entry, capsuleID string) bool {
 }
 
 // dealReportOf is the deal text a report bundle carries: the input of its
-// sealed report, in the log or standalone (cli.DealSealedReport); for a
+// sealed report, in the log or standalone (DealSealedReport); for a
 // bundle written before reports were sealed, the extension itself; nil when
 // the pointer names nothing the copy carries.
 func dealReportOf(b map[string]interface{}) map[string]interface{} {
-	report, _, _ := cli.DealSealedReport(b)
+	report, _, _ := DealSealedReport(b)
 	return report
 }
 
@@ -127,7 +127,7 @@ func (s *dealSession) dealStandaloneReport(dealID, audience, referee string, ext
 	}
 	// The report is signed by the key that signed the deal's last step, or
 	// a copy made now would not verify (DealReportEntry check 2).
-	switch last := cli.DealLastStepKey(b); {
+	switch last := DealLastStepKey(b); {
 	case last == "":
 		return "", nil, cli.Hint(cli.ErrConflict, "the copy's last step does not verify, so no report can be bound to it")
 	case last != hex.EncodeToString(s.key.Public().(ed25519.PublicKey)):
@@ -173,7 +173,7 @@ func checkProducedReport(b map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	if err = cli.CheckDealStandaloneReport(decoded); err != nil {
+	if err = CheckDealStandaloneReport(decoded); err != nil {
 		return cli.Hint(cli.ErrConflict, "the copy's report does not verify against its own checkpoint, so no copy is written: "+err.Error())
 	}
 	return nil
@@ -192,7 +192,7 @@ func dealBoundCheckpoint(b map[string]interface{}) (*dealprofile.Checkpoint, err
 	cert, _ := b["completeness_certificate"].(map[string]interface{})
 	logID, _ := cert["log_id"].(string)
 	root, _ := cp["root"].(string)
-	size, err := cli.JSONUint(cp["mmr_size"])
+	size, err := JSONUint(cp["mmr_size"])
 	if err != nil || logID == "" || root == "" {
 		return nil, errors.Join(cli.ErrConflict, err)
 	}

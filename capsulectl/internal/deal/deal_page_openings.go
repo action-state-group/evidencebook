@@ -49,7 +49,7 @@ func dealPageOpenings(b map[string]interface{}) (map[string]interface{}, error) 
 		in, _ := d["agent_input"].(map[string]interface{})
 		return in
 	}
-	report, _, _ := cli.DealSealedReport(bundle)
+	report, _, _ := DealSealedReport(bundle)
 	out := map[string]interface{}{"asked": false, "representations": []interface{}{}}
 	if report == nil {
 		return out, nil

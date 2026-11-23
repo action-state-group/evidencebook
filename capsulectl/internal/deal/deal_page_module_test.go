@@ -152,7 +152,7 @@ func TestADealPageWhoseWordsDoNotMatchIsNotWritten(t *testing.T) {
 		return b
 	}
 	report := func(b map[string]interface{}) map[string]interface{} {
-		r, _, _ := cli.DealSealedReport(b)
+		r, _, _ := DealSealedReport(b)
 		require.NotNil(t, r)
 		return r
 	}

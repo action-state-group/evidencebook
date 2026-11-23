@@ -29,14 +29,14 @@ func dealHistoryCommand() *cobra.Command {
 			return cli.InputError("--deal (one per picked deal, ids as `deal list` prints them) and --out are required")
 		}
 		switch audience {
-		case cli.DealAudienceHistory, cli.DealAudienceKeep:
+		case DealAudienceHistory, cli.DealAudienceKeep:
 		case cli.DealAudienceCounterparty, cli.DealAudienceAdjudicator:
 			return cli.InputError("--audience " + audience + " is a copy of one deal for someone in it (`deal report --share`); a History may be sent to anyone, so its copies are --audience history (the default), or keep for your own file")
 		default:
 			return cli.InputError("--audience must be history (the default: every record's payload withheld) or keep (your own copy, every private value in it: never one to send)")
 		}
 		switch {
-		case audience == cli.DealAudienceHistory && recipient == "":
+		case audience == DealAudienceHistory && recipient == "":
 			return cli.InputError("deal history needs --to: who the History is for, as sealed in its selection record")
 		case audience == cli.DealAudienceKeep && recipient != "":
 			return cli.InputError("--to names who a History is for; --audience keep is your own copy, never one to send")
@@ -84,7 +84,7 @@ func dealHistoryCommand() *cobra.Command {
 	}}
 	cmd.Flags().StringArray("deal", nil, "A picked deal id from `deal list` (repeat for each deal)")
 	cmd.Flags().String("out", "", "New file for the History")
-	cmd.Flags().String("audience", cli.DealAudienceHistory, "Which copy of each deal: history (default: every record's payload withheld, for anyone) or keep (your own copy, never one to send)")
+	cmd.Flags().String("audience", DealAudienceHistory, "Which copy of each deal: history (default: every record's payload withheld, for anyone) or keep (your own copy, never one to send)")
 	cmd.Flags().String("to", "", "Who the History is for, as sealed in its selection record (required, except with --audience keep)")
 	return cmd
 }
@@ -133,14 +133,14 @@ func (s *dealSession) dealHistory(ctx context.Context, ids []string, audience, r
 			return nil, nil, err
 		}
 		deals[id] = value
-		selection = append(selection, map[string]interface{}{"deal_id": id, "bundle_digest": cli.JCSDigest(value), "steps_after_checkpoint": after})
+		selection = append(selection, map[string]interface{}{"deal_id": id, "bundle_digest": JCSDigest(value), "steps_after_checkpoint": after})
 		summary = append(summary, map[string]any{"deal_id": id, "steps_shown": shown, "steps_after_checkpoint": after})
 	}
 	b, recordID, err := s.historyBundle(ctx, audience, recipient, selection)
 	if err != nil {
 		return nil, nil, err
 	}
-	b["extensions"] = map[string]interface{}{cli.HistorySelectionExtension: map[string]interface{}{
+	b["extensions"] = map[string]interface{}{HistorySelectionExtension: map[string]interface{}{
 		"selection_record": recordID, "selection": selection, "deals": deals,
 	}}
 	return b, summary, nil
@@ -159,7 +159,7 @@ func (s *dealSession) historyBundle(ctx context.Context, audience, recipient str
 		return nil, "", err
 	}
 	record := map[string]interface{}{
-		"type": "history_selection", "profile": cli.HistorySelectionExtension, "audience": audience,
+		"type": "history_selection", "profile": HistorySelectionExtension, "audience": audience,
 		"nonce": hex.EncodeToString(nonce), "selection": selection,
 	}
 	if recipient != "" {
@@ -180,13 +180,13 @@ func (s *dealSession) historyBundle(ctx context.Context, audience, recipient str
 	request := cli.Request{
 		Version: "capsule-seal-request/v1",
 		Capsule: emit.Input{
-			ActionID: cli.HistoryActionID, ActionType: emit.ActionTypeFYI, Operator: s.p.Name, Developer: "capsulectl-deal",
+			ActionID: HistoryActionID, ActionType: emit.ActionTypeFYI, Operator: s.p.Name, Developer: "capsulectl-deal",
 			Timestamp: cli.DealClock().UTC().Truncate(time.Second),
 		},
 		Payload: payload,
 	}
 	s.dp = s.p
-	s.dp.LogID = cli.HistoryLogPrefix + hex.EncodeToString(nonce)
+	s.dp.LogID = HistoryLogPrefix + hex.EncodeToString(nonce)
 	if s.t, err = openOwnedTarget(ctx, s.dp, cli.UseInitialization, s); err != nil {
 		return nil, "", err
 	}
@@ -289,7 +289,7 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 	if len(covered) == 0 {
 		return nil, 0, 0, cli.InputError("deal " + dealID + " has no step under its latest checkpoint")
 	}
-	if audience == cli.DealAudienceHistory {
+	if audience == DealAudienceHistory {
 		// u597 (evidencebook-deal#218): no shared copy of a deal that holds the
 		// holder's own outcome note, however its payloads are withheld.
 		if holdsOutcomeNote(events) {
@@ -309,7 +309,7 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 		if err != nil {
 			return nil, 0, 0, err
 		}
-		extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, dealprofile.Profile: map[string]interface{}{"audience": cli.DealAudienceHistory, "deal_id": dealID}}
+		extensions := map[string]interface{}{DealCadenceExtension: cadence, dealprofile.Profile: map[string]interface{}{"audience": DealAudienceHistory, "deal_id": dealID}}
 		if dealRole(covered) == dealRoleSeller {
 			extensions[dealSellerExtension] = map[string]interface{}{}
 		}
@@ -379,7 +379,7 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 			ext = map[string]interface{}{dealprofile.ReportPointer: id}
 		}
 	}
-	extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, dealprofile.Profile: ext}
+	extensions := map[string]interface{}{DealCadenceExtension: cadence, dealprofile.Profile: ext}
 	if standalone != nil {
 		extensions[dealprofile.ReportExtension] = standalone
 	}

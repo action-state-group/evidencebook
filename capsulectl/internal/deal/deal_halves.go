@@ -231,7 +231,7 @@ func admitPeerHalf(dealID string, peer dealPeerCopy, digest string, openings map
 	// 3. Under the copy's verified checkpoint, at the position the copy's
 	// verified membership gives it.
 	checkpoint, _ := peer.bundle["checkpoint"].(map[string]interface{})
-	size, _ := cli.JSONUint(checkpoint["mmr_size"])
+	size, _ := JSONUint(checkpoint["mmr_size"])
 	leaves := mmrLeafCount(size)
 	if !boundSeq(peer.bundle, half.recordID, half.header) || half.header.Seq < 1 || half.header.Seq > leaves {
 		return dealHalf{}, cli.InputError("record " + half.recordID + " is not under the copy's checkpoint")
@@ -307,7 +307,7 @@ func boundSeq(bundle map[string]interface{}, id string, header evidencebook.Head
 	memberships, _ := certificate["memberships"].(map[string]interface{})
 	membership, _ := memberships[id].(map[string]interface{})
 	coordinates, _ := membership["log_coordinates"].(map[string]interface{})
-	seq, err := cli.JSONUint(coordinates["seq"])
+	seq, err := JSONUint(coordinates["seq"])
 	return err == nil && seq == header.Seq
 }
 

@@ -77,12 +77,12 @@ func TestASaleBundleSealsTheReportsThenTheCutThenTheCheckpoint(t *testing.T) {
 	require.Len(t, heads, 2)
 	for i, id := range []string{a, b} {
 		tb := threads[id].(map[string]any)
-		last := cli.LastRecordDigest(tb)
+		last := LastRecordDigest(tb)
 		assert.Equal(t, dealprofile.ReportActionID, actionIDOf(t, tb, last), "%s: the head is the report the bundle step sealed", id)
 		e := entries[i].(map[string]any)
 		head := e["head"].(map[string]any)
 		assert.Equal(t, last, head["record_digest"], id)
-		assert.True(t, cli.SaleOpensTo(head, last, heads[i].(map[string]any)["head_commitment"].(string)), id)
+		assert.True(t, SaleOpensTo(head, last, heads[i].(map[string]any)["head_commitment"].(string)), id)
 	}
 	verdict, findings := verifySale(t, bundle)
 	assert.Equal(t, "VALID", verdict)
@@ -129,7 +129,7 @@ func TestEachSaleBundleCutsAgainAndRefusesAThreadCutShort(t *testing.T) {
 	assert.Len(t, saleBodies(t, second, "sale_cut"), 2)
 	_, firstThreads := saleSection(first)
 	_, secondThreads := saleSection(second)
-	assert.NotEqual(t, cli.LastRecordDigest(firstThreads[a].(map[string]any)), cli.LastRecordDigest(secondThreads[a].(map[string]any)))
+	assert.NotEqual(t, LastRecordDigest(firstThreads[a].(map[string]any)), LastRecordDigest(secondThreads[a].(map[string]any)))
 
 	secondThreads[a] = firstThreads[a]
 	verdict, findings := verifySale(t, second)
@@ -154,7 +154,7 @@ func TestTheSalesLogMakesOpenedCheckable(t *testing.T) {
 		"B listed never_opened, though its opening is sealed": {func(x map[string]any) {
 			entries, threads := saleSection(x)
 			e := entries[1].(map[string]any)
-			e["member"] = cli.SaleThreadNeverOpened
+			e["member"] = SaleThreadNeverOpened
 			delete(e, "opened")
 			delete(e, "head")
 			delete(threads, b)
@@ -192,7 +192,7 @@ func hideB(x map[string]any) {
 	entries, threads := saleSection(x)
 	e := entries[1].(map[string]any)
 	delete(threads, e["thread_id"].(string))
-	e["member"] = cli.SaleThreadNeverOpened
+	e["member"] = SaleThreadNeverOpened
 	delete(e, "opened")
 	delete(e, "head")
 }
@@ -237,7 +237,7 @@ func TestASaleBundleSealsAnOpeningACrashLeftOut(t *testing.T) {
 	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", "sale_cut"}, saleRecordTypes(exportedSale(t, saleID)))
 	entries, _ := saleSection(bundle)
 	require.Len(t, entries, 1)
-	assert.Equal(t, cli.SaleThreadPresent, entries[0].(map[string]any)["member"])
+	assert.Equal(t, SaleThreadPresent, entries[0].(map[string]any)["member"])
 }
 
 // A copy made before sales recorded openings and cuts reads INCOMPLETE,
@@ -336,7 +336,7 @@ func withholdLatestCut(t *testing.T, x map[string]any) {
 	for cid, d := range disclosures {
 		in, _ := d.(map[string]any)["agent_input"].(map[string]any)
 		if blk, _ := in[dealprofile.Profile].(map[string]any); blk["record_type"] == "sale_cut" {
-			if seq := cli.RecordSeq(blk); seq > best {
+			if seq := RecordSeq(blk); seq > best {
 				best, id = seq, cid
 			}
 		}

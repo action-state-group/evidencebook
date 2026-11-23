@@ -173,7 +173,7 @@ func TestCheck4RefusesALaterStepCorrelatedToAnotherDeal(t *testing.T) {
 		require.NoError(t, err)
 		half := copyHalves(peer.bundle)[digest]
 		checkpoint := peer.bundle["checkpoint"].(map[string]interface{})
-		size, err := cli.JSONUint(checkpoint["mmr_size"])
+		size, err := JSONUint(checkpoint["mmr_size"])
 		require.NoError(t, err)
 		leaves := mmrLeafCount(size)
 		require.NoError(t, lastStep(peer.bundle, half, leaves), "the later evidence of the new kind confirms the close")

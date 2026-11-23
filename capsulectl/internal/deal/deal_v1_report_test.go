@@ -9,13 +9,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
-	evidencebook "github.com/action-state-group/evidencebook"
-	"github.com/action-state-group/evidencebook/dealprofile"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
+	evidencebook "github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
@@ -310,9 +311,9 @@ func v1BundleOf(t *testing.T, file string) map[string]interface{} {
 	require.NoError(t, err)
 	// TestMain installs the profile's report rule (InstallDealHooks), so the
 	// producer's own check before writing ran it too.
-	entry := cli.DealReportEntry(value, aacbundle.VerificationResult{})
+	entry := DealReportEntry(value, aacbundle.VerificationResult{})
 	assert.Equal(t, "pass", entry["status"], entry)
-	require.NoError(t, cli.CheckDealStandaloneReport(value))
+	require.NoError(t, CheckDealStandaloneReport(value))
 	exts := value["extensions"].(map[string]interface{})
 	carried := exts[dealprofile.ReportExtension].(map[string]interface{})
 	report, err := json.Marshal(carried)

@@ -134,8 +134,15 @@ func verifyWithDirectory(t *testing.T, path, directory string) (map[string]inter
 	return result, err
 }
 
+// bundleWitnesses is a verify result's witness claim: the deal reader's
+// cadence claim (reader_witnesses) when the bundle carries a cadence chain,
+// which rc47's core reported in place of the direct one, and otherwise the
+// core's own (evidencebook#735).
 func bundleWitnesses(result map[string]interface{}) (string, []interface{}) {
-	w := result["witnesses"].(map[string]interface{})
+	w, ok := result["reader_witnesses"].(map[string]interface{})
+	if !ok {
+		w = result["witnesses"].(map[string]interface{})
+	}
 	return w["status"].(string), w["findings"].([]interface{})
 }
 
@@ -177,7 +184,7 @@ func invoke(t *testing.T, input string, args ...string) (string, error) {
 // process. TestMain has named the process as the deal plugin (see
 // nameProcessAsDealPlugin), so the core runs `bundle --deal` here.
 func testCommand() *cobra.Command {
-	return cli.NewCommandWith(DealGroup())
+	return WithDealVerify(cli.NewCommandWith(DealGroup()))
 }
 
 // nameProcessAsDealPlugin makes the core treat this process as the

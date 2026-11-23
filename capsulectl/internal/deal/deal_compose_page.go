@@ -47,10 +47,10 @@ func keepCopyOf(path, dealID string, composition map[string]interface{}) (map[st
 	if err != nil {
 		return nil, cli.InputError("--keep is not a bundle: " + err.Error())
 	}
-	if verdict, _ := cli.BundleVerdict(keep, nil); verdict != "VALID" {
+	if verdict, _ := dealBundleVerdict(keep); verdict != "VALID" {
 		return nil, cli.InputError("--keep: the keep bundle verifies " + verdict + ", not VALID; the page is not written")
 	}
-	report, _, _ := cli.DealSealedReport(keep)
+	report, _, _ := DealSealedReport(keep)
 	if audience, _ := report["audience"].(string); audience != cli.DealAudienceKeep {
 		return nil, cli.InputError("--keep must be your own copy (`deal report --bundle`, audience keep); a shared copy is not your private half")
 	}
@@ -70,7 +70,7 @@ func keepCopyOf(path, dealID string, composition map[string]interface{}) (map[st
 // countersign and words). The page gate is the same as every page's: the
 // composition must verify VALID.
 func composedPageHTML(composition, keep map[string]interface{}, verifyCommand string, w cli.Wording) (string, error) {
-	if err := cli.PageGate(composition); err != nil {
+	if err := dealCopyPageGate(composition); err != nil {
 		return "", err
 	}
 	return composedPage(composition, keep, verifyCommand, w)

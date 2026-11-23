@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	evidencebook "github.com/action-state-group/evidencebook"
 	"maps"
 	"os"
 	"path/filepath"
@@ -18,6 +17,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	evidencebook "github.com/action-state-group/evidencebook"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -291,8 +292,8 @@ func v1ReportError(dealID string, p cli.Profile, err error) error {
 	switch {
 	case strings.Contains(msg, "has no checkpoint at its size"):
 		every := "about every 5m"
-		if cfg, cerr := p.DealCadence(); cerr == nil {
-			every = "about every " + cli.ShortDuration(cfg.Interval)
+		if cfg, cerr := dealCadenceOf(p); cerr == nil {
+			every = "about every " + ShortDuration(cfg.Interval)
 		}
 		return cli.InputError("your deal book of " + dealID + " has records after its last checkpoint, and a report rests on a checkpoint: the next cadence tick covers it (" + every + "; deal tick runs one once it is due), then run the command again")
 	case strings.Contains(msg, "after as_of"):

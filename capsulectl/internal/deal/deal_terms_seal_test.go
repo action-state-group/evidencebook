@@ -485,7 +485,7 @@ func TestASecondResultIsPartlyWitnessed(t *testing.T) {
 	require.NoError(t, err, out)
 	var b map[string]any
 	require.NoError(t, json.Unmarshal(mustRead(t, path), &b))
-	chain := b["extensions"].(map[string]any)[cli.DealCadenceExtension].(map[string]any)
+	chain := b["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any)
 	assert.Equal(t, "part", chain["extent"], "the witnessed tick holds the results book's earlier checkpoint")
 	assert.Equal(t, "scheduled", chain["rest"].(map[string]any)["state"], "the rest waits for the next tick")
 }

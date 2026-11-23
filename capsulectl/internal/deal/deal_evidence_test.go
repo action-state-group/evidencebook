@@ -783,7 +783,7 @@ func checkPrivateHalfPage(t *testing.T, id string, composer, other dealParty, me
 	keepPath := filepath.Join(dir, "keep.json")
 	dealRun(t, "report", "--deal", id, "--bundle", keepPath)
 	keep := exactBundle(t, string(mustRead(t, keepPath)))
-	report, _, _ := cli.DealSealedReport(keep)
+	report, _, _ := DealSealedReport(keep)
 	asked := report["asked_opening"].(map[string]any)["text"].(string)
 	require.NotEmpty(t, asked)
 

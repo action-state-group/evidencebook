@@ -52,10 +52,10 @@ type fileCopy struct {
 // as the file discloses it (standalone, or on the log), or nil.
 func sealedReportPayload(b map[string]interface{}) []byte {
 	exts, _ := b["extensions"].(map[string]interface{})
-	deal, _ := exts[cli.DealProfile].(map[string]interface{})
-	id, _ := deal[cli.DealReportPointer].(string)
+	deal, _ := exts[DealProfile].(map[string]interface{})
+	id, _ := deal[DealReportPointer].(string)
 	var input map[string]interface{}
-	if x, ok := exts[cli.DealReportExtension].(map[string]interface{}); ok {
+	if x, ok := exts[DealReportExtension].(map[string]interface{}); ok {
 		input, _ = x["agent_input"].(map[string]interface{})
 	} else {
 		disclosures, _ := b["disclosures"].(map[string]interface{})
@@ -121,7 +121,7 @@ func admitFileCopy(raw []byte, keys []partyKeys) (copyOf fileCopy, ok bool, err 
 	if err != nil || bundle["bundle_kind"] != "evidence-bundle/v2" {
 		return fileCopy{}, false, cli.InputError("a --copy is not an evidence-bundle/v2 deal copy")
 	}
-	if verdict, _ := cli.BundleVerdict(bundle, nil); verdict != "VALID" {
+	if verdict, _ := dealBundleVerdict(bundle); verdict != "VALID" {
 		return fileCopy{}, false, cli.InputError("a --copy verifies " + verdict + ", not VALID")
 	}
 	_, statement := cli.CheckpointClaim(bundle)
