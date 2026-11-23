@@ -67,11 +67,11 @@ func TestADeclineNeedsAnOfferSentToYourKey(t *testing.T) {
 	assert.Contains(t, v1Err(t, "offer", "decline", h.offer, "--out", filepath.Join(t.TempDir(), "d.json")), "withdraw it with `deal offer cancel`")
 
 	open := offeredTo(t, func(string) string { return v1OfferInput }) // to: null
-	assert.Contains(t, v1Err(t, "offer", "decline", open.offer, "--out", filepath.Join(t.TempDir(), "d.json")), "not sent to your key")
+	assert.Contains(t, v1Err(t, "offer", "decline", open.offer, "--out", filepath.Join(t.TempDir(), "d.json")), "open to anyone")
 
 	other := newV1Side(t)
 	elsewhere := offeredTo(t, func(string) string { return offerTo(other.party.signer) })
-	assert.Contains(t, v1Err(t, "offer", "decline", elsewhere.offer, "--out", filepath.Join(t.TempDir(), "d.json")), "not sent to your key")
+	assert.Contains(t, v1Err(t, "offer", "decline", elsewhere.offer, "--out", filepath.Join(t.TempDir(), "d.json")), "sent to another key")
 
 	agreed := offeredTo(t, offerTo)
 	dealRun(t, "agree", agreed.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json"))
@@ -91,9 +91,10 @@ func TestAStoppedDeclineBlocksAnAgreementAndFinishes(t *testing.T) {
 	require.NoError(t, err)
 	_, err = openWritableDB(t).Exec(`UPDATE deal_versions SET state='offer_received' WHERE deal_id=?`, h.dealID)
 	require.NoError(t, err)
-	assert.Contains(t, v1Err(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json")), "you began to decline this offer")
+	assert.Contains(t, v1Err(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json")), "run `deal offer decline` again to finish it")
 	again := filepath.Join(t.TempDir(), "d2.json")
-	dealRun(t, "offer", "decline", h.offer, "--reason", "other", "--out", again)
+	_, stderr := invokeSplit(t, "--profile", "deal", "deal", "offer", "decline", h.offer, "--reason", "other", "--out", again)
+	assert.Contains(t, stderr, "already sealed with reason none; it is written again unchanged")
 	firstBytes, err := os.ReadFile(first)
 	require.NoError(t, err)
 	againBytes, err := os.ReadFile(again)
@@ -108,7 +109,7 @@ func TestAStoppedDeclineBlocksAnAgreementAndFinishes(t *testing.T) {
 	require.NoError(t, err)
 	_, err = openWritableDB(t).Exec(`UPDATE deal_versions SET state='offer_received' WHERE deal_id=?`, j.dealID)
 	require.NoError(t, err)
-	assert.Contains(t, v1Err(t, "agree", j.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json")), "you began to decline this offer")
+	assert.Contains(t, v1Err(t, "agree", j.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json")), "run `deal offer decline` again to finish it")
 	repeated := filepath.Join(t.TempDir(), "j2.json")
 	dealRun(t, "offer", "decline", j.offer, "--out", repeated)
 	_, err = xdealv1.VerifySent(readPair(t, repeated), nil)
@@ -176,4 +177,56 @@ func TestASaleToSeveralBuyersDeclinesTheOthers(t *testing.T) {
 		dealRun(t, "receive", f)
 		assert.Equal(t, "declined", v1DealState(t, b.dealID))
 	}
+}
+
+// An agreeing run that stopped before its book held a record sealed no
+// agreement: the offer can still be declined. One whose book holds the
+// agreement cannot, and nothing is sealed.
+func TestAStoppedAgreeingRunDoesNotBlockADecline(t *testing.T) {
+	h := offeredTo(t, offerTo)
+	_, err := openWritableDB(t).Exec(`UPDATE deal_versions SET state='agreeing', own_log_id='deal/11111111111111111111111111111111' WHERE deal_id=?`, h.dealID)
+	require.NoError(t, err)
+	file := filepath.Join(t.TempDir(), "d.json")
+	dealRun(t, "offer", "decline", h.offer, "--out", file)
+	_, err = xdealv1.VerifySent(readPair(t, file), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "declined", v1DealState(t, h.dealID))
+
+	a := offeredTo(t, offerTo)
+	dealRun(t, "agree", a.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json"))
+	// The agreement is in the book, but the state says agreeing.
+	_, err = openWritableDB(t).Exec(`UPDATE deal_versions SET state='agreeing' WHERE deal_id=?`, a.dealID)
+	require.NoError(t, err)
+	_, err = openWritableDB(t).Exec(`UPDATE deal_v1 SET own_agreement_id='' WHERE deal_id=?`, a.dealID)
+	require.NoError(t, err)
+	assert.Contains(t, v1Err(t, "offer", "decline", a.offer, "--out", filepath.Join(t.TempDir(), "d2.json")), "you agreed to this offer")
+	var n int
+	require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_sent WHERE deal_id=? AND kind=?`, a.dealID, xdealv1.KindDecline).Scan(&n))
+	assert.Zero(t, n, "nothing sealed")
+	assert.Equal(t, "agreeing", v1DealState(t, a.dealID), "the state is unchanged")
+}
+
+// A run that stopped between superseding a decline row and storing its
+// repeat still blocks an agreement: any decline row of the deal does.
+func TestASupersededDeclineStillBlocksAnAgreement(t *testing.T) {
+	h := offeredTo(t, offerTo)
+	dealRun(t, "offer", "decline", h.offer, "--out", filepath.Join(t.TempDir(), "d.json"))
+	_, err := openWritableDB(t).Exec(`UPDATE deal_sent SET state=?, pair=NULL, written=0, request_digest=request_digest||':superseded:1' WHERE kind=?`, sentSealing, xdealv1.KindDecline)
+	require.NoError(t, err)
+	_, err = openWritableDB(t).Exec(`UPDATE deal_versions SET state='offer_received' WHERE deal_id=?`, h.dealID)
+	require.NoError(t, err)
+	assert.Contains(t, v1Err(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json")), "run `deal offer decline` again to finish it")
+}
+
+// A decline resumed after the deal moved on (the offer's cancellation
+// received) never overwrites that state.
+func TestAResumedDeclineKeepsALaterState(t *testing.T) {
+	h := offeredTo(t, offerTo)
+	dealRun(t, "offer", "decline", h.offer, "--out", filepath.Join(t.TempDir(), "d.json"))
+	_, err := openWritableDB(t).Exec(`UPDATE deal_sent SET state=?, written=0 WHERE kind=?`, sentSealed, xdealv1.KindDecline)
+	require.NoError(t, err)
+	_, err = openWritableDB(t).Exec(`UPDATE deal_versions SET state='cancelled' WHERE deal_id=?`, h.dealID)
+	require.NoError(t, err)
+	dealRun(t, "offer", "decline", h.offer, "--out", filepath.Join(t.TempDir(), "d2.json"))
+	assert.Equal(t, "cancelled", v1DealState(t, h.dealID))
 }

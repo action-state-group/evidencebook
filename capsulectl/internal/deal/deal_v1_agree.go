@@ -150,10 +150,10 @@ Needs the deal store in the new layout (deal set-version x-deal-v1
 				}
 				// A decline of this offer under way, stopped before its file or
 				// its state, and an agreement exclude each other.
-				if pending, err := s.pendingDecline(ctx, offerDigest); err != nil {
+				if pending, err := s.pendingDecline(ctx, dealID); err != nil {
 					return err
 				} else if pending {
-					return cli.InputError("you began to decline this offer (`deal offer decline`): a declined offer has no deal to agree to")
+					return cli.InputError("you began to decline this offer and it did not finish: run `deal offer decline` again to finish it. A declined offer has no deal to agree to.")
 				}
 				// An agreement already sealed is written again, never sealed twice.
 				if d.OwnLogID != "" {

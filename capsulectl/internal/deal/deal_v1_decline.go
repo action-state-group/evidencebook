@@ -2,6 +2,8 @@ package deal
 
 import (
 	"context"
+	"fmt"
+	"slices"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
@@ -23,11 +25,10 @@ func dealOfferDeclineCommand() *cobra.Command {
 		Short: "Decline an offer sent to you, before you agree to it, and write the file to send back",
 		Long: `Decline an x-deal-v1 offer that was sent to your key (OFFER_DIGEST is the
 digest 'deal receive' printed): seal a decline in your journal and write the
-Capsule that carries it whole to --out (standard output with none), for the
-offer's sender. --reason says why: not_selected (another offer was chosen) or
+file to send back to the offer's sender to --out (standard output with none). --reason says why: not_selected (another offer was chosen) or
 other; it is optional. An offer is declined once, and not after you agreed to it.
 
-This is not 'deal decline', which declines a held evidence request.`,
+To decline a held evidence request, use 'deal decline'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			offer := args[0]
@@ -58,8 +59,11 @@ This is not 'deal decline', which declines a held evidence request.`,
 				if !ok {
 					return cli.InputError("the record " + offer + " is not an offer")
 				}
-				if prop.To.V == nil || *prop.To.V != s.ownKeyID() {
-					return cli.InputError("this offer was not sent to your key, so you cannot decline it: a decline is signed by the key the offer names in `to`")
+				if prop.To.V == nil {
+					return cli.InputError("this offer is open to anyone, so there is nothing to decline: just don't agree to it")
+				}
+				if *prop.To.V != s.ownKeyID() {
+					return cli.InputError("this offer was sent to another key, so you cannot decline it: only the key it was sent to can sign its decline")
 				}
 				dealID := held.Record.Block.DealID
 				d, err := s.v1DealOf(ctx, dealID)
@@ -70,10 +74,12 @@ This is not 'deal decline', which declines a held evidence request.`,
 					return cli.InputError("deal " + dealID + " is not an x-deal-v1 deal this profile holds")
 				}
 				// An agreement of yours and a decline exclude each other: once
-				// you agreed (or began to), no decline is sealed or written,
-				// not even a stopped one resumed.
-				if d.State == "agreeing" || d.State == "agreed" || d.OwnAgreementID != "" {
-					return cli.InputError("you agreed to this offer, so you cannot decline it")
+				// you agreed, no decline is sealed or written, not even a
+				// stopped one resumed. An agreeing run that stopped before its
+				// book holds a record sealed nothing: it is no agreement.
+				open, err := s.declinableState(ctx, d)
+				if err != nil {
+					return err
 				}
 				op, err := s.findSentOp(ctx, request)
 				if err != nil {
@@ -81,6 +87,17 @@ This is not 'deal decline', which declines a held evidence request.`,
 				}
 				if op != nil && op.state == sentWritten {
 					return cli.InputError("this offer is already declined: `deal offer decline` writes one decline per offer")
+				}
+				if op != nil && op.pair == nil && d.State != open {
+					// Nothing of it left the shelf, and the deal moved on (a
+					// cancellation received): it is not sealed now.
+					inJournal, err := s.journalHolds(ctx, op.recordDigest)
+					if err != nil {
+						return err
+					}
+					if !inJournal {
+						return cli.InputError("this offer is " + d.State + ": there is nothing to decline")
+					}
 				}
 				if op != nil && op.pair == nil {
 					// A decline the journal holds but whose file was never made
@@ -102,10 +119,21 @@ This is not 'deal decline', which declines a held evidence request.`,
 				)
 				if op != nil {
 					// A stopped decline resumes with its own record, whatever
-					// --reason says now.
+					// --reason says now, and says so when that differs.
 					payload, digest = op.payload, op.recordDigest
+					if stored, err := xdealv1.Decode(payload); err == nil && reason != "" {
+						if ag, ok := agreeOf(stored); ok && ag.Reason != reason {
+							was := ag.Reason
+							if was == "" {
+								was = "none"
+							}
+							if _, err := fmt.Fprintln(c.ErrOrStderr(), "this decline was already sealed with reason "+was+"; it is written again unchanged"); err != nil {
+								return err
+							}
+						}
+					}
 				} else {
-					if d.State != "offer_received" {
+					if d.State != open {
 						return cli.InputError("this offer is " + d.State + ": there is nothing to decline")
 					}
 					rec := xdealv1.Record{
@@ -126,7 +154,7 @@ This is not 'deal decline', which declines a held evidence request.`,
 				// The deal's state before the file, as cancel does: a run that
 				// stops before the file is made leaves the operation unwritten,
 				// and its re-run writes the file.
-				if _, err = s.db.ExecContext(ctx, `UPDATE deal_versions SET state='declined' WHERE deal_id=?`, dealID); err != nil {
+				if _, err = s.db.ExecContext(ctx, `UPDATE deal_versions SET state='declined' WHERE deal_id=? AND state IN ('offer_received','agreeing','declined')`, dealID); err != nil {
 					return err
 				}
 				if err = s.writePair(ctx, c, out, digest, request, pair); err != nil {
@@ -144,9 +172,35 @@ This is not 'deal decline', which declines a held evidence request.`,
 	return cmd
 }
 
-// pendingDecline says a decline of offer is stored and not yet written, which
-// an agreement must not overtake.
-func (s *dealSession) pendingDecline(ctx context.Context, offer string) (bool, error) {
-	op, err := s.findSentOp(ctx, declineRequest(offer))
-	return op != nil, err
+// pendingDecline says a decline of the deal was begun: any decline row of
+// it, under its request key or one superseded (a run can stop between
+// superseding a row and storing its repeat), which an agreement must not
+// overtake.
+func (s *dealSession) pendingDecline(ctx context.Context, dealID string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM deal_sent WHERE deal_id=? AND kind=?`, dealID, xdealv1.KindDecline).Scan(&n)
+	return n > 0, err
+}
+
+// declinableState is the state a deal can be declined from: offer_received,
+// or agreeing when that run stopped before the book held a record (it sealed
+// nothing). An agreement of this profile, or a book that holds one, refuses.
+func (s *dealSession) declinableState(ctx context.Context, d *v1Deal) (string, error) {
+	agreed := cli.InputError("you agreed to this offer, so you cannot decline it")
+	switch {
+	case d.OwnAgreementID != "" || d.State == "agreed":
+		return "", agreed
+	case d.State != "agreeing":
+		return "offer_received", nil
+	}
+	if d.OwnLogID != "" {
+		books, err := s.shelf.Books(ctx)
+		if err != nil {
+			return "", err
+		}
+		if slices.Contains(books, d.OwnLogID) {
+			return "", agreed
+		}
+	}
+	return "agreeing", nil
 }
