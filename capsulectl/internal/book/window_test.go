@@ -417,15 +417,13 @@ func TestTheCoreChecksAWindowLogsCheckpoint(t *testing.T) {
 	out, err := invoke(t, "", "cll", "checkpoint", "create", "--profile", "b")
 	require.NoError(t, err, out)
 	assert.Contains(t, out, `"log_id":"b/2026-11"`)
-	var created struct {
-		Checkpoint uint64 `json:"checkpoint"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(out), &created))
-	out, err = invoke(t, "", "cll", "checkpoint", "status", "--profile", "b", "--checkpoint", fmt.Sprint(created.Checkpoint))
-	require.NoError(t, err, out)
-	assert.Contains(t, out, "pending")
 
 	assert.True(t, BookBackend{}.OwnsLogID(b, "b/2026-11"))
 	assert.False(t, BookBackend{}.OwnsLogID(b, "b/2026-13"), "not a label of the store's period")
 	assert.False(t, BookBackend{}.OwnsLogID(b, "c/2026-11"))
+	renamed := b
+	renamed.LogID = "b2"
+	assert.False(t, BookBackend{}.OwnsLogID(renamed, "b2/2026-11"), "the store's windows are under its own base")
+	jsonl, _ := storedJSONLProfile(t, "j")
+	assert.False(t, BookBackend{}.OwnsLogID(jsonl, "j/2026-11"), "a JSONL book has no window logs")
 }

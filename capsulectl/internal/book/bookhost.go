@@ -40,7 +40,7 @@ func (BookBackend) OwnsLogID(p cli.Profile, logID string) bool {
 		return false
 	}
 	policy, err := evidencebook.ReadShelfWindow(context.Background(), shelfFile(p))
-	if err != nil || policy == nil {
+	if err != nil || policy == nil || policy.Base != p.LogID {
 		return false
 	}
 	_, err = policy.Period.ParseWindow(label)

@@ -876,7 +876,11 @@ func initBookFiles(ctx context.Context, p cli.Profile) error {
 		if err != nil {
 			return err
 		}
-		if !reproduced && refuseRetiredLog(p) == nil {
+		retired, err := scanRetiredLog(p)
+		if err != nil {
+			return err
+		}
+		if !reproduced && len(retired.entries) == 0 && retired.checkpoint == nil {
 			if err := initWindowedStore(ctx, p, defaultWindow); err != nil {
 				return err
 			}

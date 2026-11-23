@@ -410,7 +410,11 @@ func answeredRecords(ctx context.Context, opened openedBook) ([]evidencebook.Rec
 // pre-book cll.jsonl still holds entries: they move into a JSONL book with
 // `book migrate`, which a windowed store does not take.
 func refuseRetiredLog(p cli.Profile) error {
-	if retired, err := scanRetiredLog(p); err == nil && (len(retired.entries) > 0 || retired.checkpoint != nil) {
+	retired, err := scanRetiredLog(p)
+	if err != nil {
+		return err
+	}
+	if len(retired.entries) > 0 || retired.checkpoint != nil {
 		return cli.Hint(cli.ErrInput, "this profile's cll.jsonl holds entries not yet in a book: run `store init` and `book migrate --log-id <new-log-id>` (a JSONL book); a windowed store does not take them")
 	}
 	return nil
