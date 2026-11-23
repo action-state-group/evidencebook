@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
@@ -862,6 +863,11 @@ func completeLines(path string) ([][]byte, error) {
 func initBookFiles(ctx context.Context, p cli.Profile) error {
 	dir := filepath.Join(p.Connection.Database, "book")
 	path := filepath.Join(dir, "log.jsonl")
+	// A windowed store (`book window init`, evidencebook#689) is created
+	// with its window; store init leaves it as it is.
+	if windowed, err := isWindowedStore(p); err != nil || windowed {
+		return err
+	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		if err = os.MkdirAll(dir, 0o700); err != nil {
 			return err
@@ -878,6 +884,11 @@ func initBookFiles(ctx context.Context, p cli.Profile) error {
 
 // listBookFiles is `cll list` on a jsonl profile.
 func listBookFiles(ctx context.Context, p cli.Profile, after, through uint64, limit int, all bool) ([]bookEntry, uint64, error) {
+	if windowed, err := isWindowedStore(p); err != nil {
+		return nil, 0, err
+	} else if windowed {
+		return listWindowedBook(ctx, p, after, through, limit, all)
+	}
 	records, err := readBookFiles(p)
 	if err != nil {
 		return nil, 0, err
@@ -929,6 +940,9 @@ func (s bookWitnessStore) load() ([]cll.WitnessState, error) {
 func (s bookWitnessStore) save(states []cll.WitnessState) error {
 	raw, err := json.Marshal(states)
 	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
 	_, statErr := os.Stat(s.path)
@@ -1012,16 +1026,36 @@ func checkpointBook(ctx context.Context, p cli.Profile, book *evidencebook.Book,
 	if err != nil {
 		return nil, err
 	}
-	record, err := cli.VerifyCheckpoint(p, cp.Statement)
+	// A window book's checkpoint names the window's log id, under the
+	// profile's keys.
+	record, err := cli.VerifyCheckpoint(windowProfile(p, cp.LogID), cp.Statement)
+	if err != nil {
+		return nil, err
+	}
+	witness, err := witnessStoreOf(p, cp)
 	if err != nil {
 		return nil, err
 	}
 	if service != "" {
-		if err = newBookWitnessStore(p).seed(service, record.MMRSize, cp.Statement, time.Now()); err != nil {
+		if err = witness.seed(service, record.MMRSize, cp.Statement, time.Now()); err != nil {
 			return nil, err
 		}
 	}
-	return map[string]any{"checkpoint": record.MMRSize, "indexed_sequence": cp.Entries, "statement": cp.Statement, "log_id": p.LogID}, nil
+	return map[string]any{"checkpoint": record.MMRSize, "indexed_sequence": cp.Entries, "statement": cp.Statement, "log_id": cp.LogID}, nil
+}
+
+// witnessStoreOf is the witness store that holds a checkpoint's deliveries:
+// the profile's, or on a windowed store its window's.
+func witnessStoreOf(p cli.Profile, cp evidencebook.Checkpoint) (bookWitnessStore, error) {
+	windowed, err := isWindowedStore(p)
+	if err != nil || !windowed {
+		return newBookWitnessStore(p), err
+	}
+	label, ok := strings.CutPrefix(cp.LogID, p.LogID+"/")
+	if !ok {
+		return bookWitnessStore{}, fmt.Errorf("%w: checkpoint of log %q is not a window of %q", evidencebook.ErrCorrupt, cp.LogID, p.LogID)
+	}
+	return windowWitnessStore(p, label), nil
 }
 
 // bookBundle builds a jsonl profile's Evidence Bundle from its book. root is

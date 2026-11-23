@@ -57,8 +57,14 @@ func reproductionAt() (time.Time, bool, error) {
 // export a record's sealed capsule and envelope for `verify` (exportRecord);
 // nothing else reads it directly.
 type openedBook struct {
-	book  *evidencebook.Book
-	store *evidencebook.FileStore
+	book *evidencebook.Book
+	// store reads a record as sealed, for exportRecord and the Result walk.
+	store recordStore
+	// shelf is the windowed store the book is the current window of
+	// (evidencebook#689); nil for a JSONL book.
+	shelf *evidencebook.Shelf
+	// window is the current window, when shelf is set.
+	window evidencebook.Window
 	// originals is the profile's artifact store, which holds every
 	// published capsule and every record's originals.
 	originals cli.ArtifactStore
@@ -83,7 +89,12 @@ func (o openedBook) refuseDisplacedClose() error {
 	return nil
 }
 
-func (o openedBook) release() error { return o.book.Release() }
+func (o openedBook) release() error {
+	if o.shelf != nil {
+		return o.shelf.Release()
+	}
+	return o.book.Release()
+}
 
 // openBook is the whole signing path of the book verbs. Records are signed
 // with the profile's signing key, which must be one of the profile's own
@@ -167,6 +178,11 @@ func openBookKeyed(ctx context.Context, p cli.Profile, create bool, artifacts cl
 	signer, err := evidencebook.NewEd25519Signer(recordKey)
 	if err != nil {
 		return openedBook{}, err
+	}
+	if windowed, err := isWindowedStore(p); err != nil {
+		return openedBook{}, err
+	} else if windowed {
+		return openWindowedBook(ctx, p, signer, checkpointKey, artifacts, ephemeral)
 	}
 	// The log is opened first: it takes an exclusive lock that a second
 	// process cannot, and the record store repairs a torn final line when it
@@ -786,6 +802,9 @@ func reconcileCommand() *cobra.Command {
 		if e = opened.refuseDisplacedClose(); e != nil {
 			return e
 		}
+		if e = opened.periodInWindow(a.period.start, a.period.end); e != nil {
+			return e
+		}
 		in, e := reconcileInput(c.Context(), opened.book, a.period, a.counterparty, a.peer, true)
 		if e != nil {
 			return e
@@ -965,6 +984,9 @@ func closeCommand() *cobra.Command {
 		if e = opened.refuseDisplacedClose(); e != nil {
 			return e
 		}
+		if e = opened.periodInWindow(a.period.start, a.period.end); e != nil {
+			return e
+		}
 		book := opened.book
 		result := closeResult{Period: a.period.key, Counterparty: a.counterparty}
 		closes, e := priorCloses(c.Context(), book, a.counterparty)
@@ -1124,7 +1146,7 @@ func closeBundleRecords(ctx context.Context, book *evidencebook.Book, counterpar
 // capsule, its producer envelope, and the canonical header it commits as
 // its payload. It is verified under the profile's trusted keys before it is
 // written, the same self-check `seal` applies.
-func exportRecord(ctx context.Context, store *evidencebook.FileStore, p cli.Profile, recordID, path string) error {
+func exportRecord(ctx context.Context, store recordStore, p cli.Profile, recordID, path string) error {
 	stored, err := store.GetRecord(ctx, recordID)
 	if err != nil {
 		return err
@@ -1293,14 +1315,20 @@ func respondCommand() *cobra.Command {
 		// The Terms Packs the holder opted in to serving by digest
 		// (book/derivations/*.json). A file that does not read stops every
 		// answer: a pack the holder meant to serve is never silently unserved.
-		if _, e = registerDerivations(opened.book, p); e != nil {
+		if _, e = registerDerivations(opened, p); e != nil {
 			return e
 		}
 		// The operator running respond is the transport: --requester is the
 		// identity they authenticated the request's sender as, and the only
 		// input to the book's relationship gate. Empty, only public
 		// subjects are answered.
-		reply, record, e := opened.book.Respond(c.Context(), evidencebook.Message{Octets: in.Request, MediaType: evidencebook.MediaTypeJSON},
+		respond := opened.book.Respond
+		if opened.shelf != nil {
+			// A windowed store answers from the window the request pins and
+			// records the answer in the current one (evidencebook#689 §4).
+			respond = opened.shelf.Respond
+		}
+		reply, record, e := respond(c.Context(), evidencebook.Message{Octets: in.Request, MediaType: evidencebook.MediaTypeJSON},
 			evidencebook.RespondOptions{AuthenticatedRequester: in.Requester, Policy: policy, ConductPacks: conduct})
 		if e != nil {
 			return bookError(e)

@@ -377,7 +377,7 @@ func answeredEntries(c *cobra.Command, p cli.Profile) ([]answeredEntry, error) {
 		return nil, err
 	}
 	defer func() { _ = opened.release() }()
-	records, err := opened.book.Query(c.Context(), evidencebook.Filter{RecordType: evidencebook.RecordTypeRequestAnswered})
+	records, err := answeredRecords(c.Context(), opened)
 	if err != nil {
 		return nil, bookError(err)
 	}

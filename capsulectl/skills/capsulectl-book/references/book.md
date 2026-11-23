@@ -140,6 +140,37 @@ anything); a Result sealed before a later failure is reported as
 `result_record_id`. A Result citing a private conduct pack is sealed for the
 owner and never bundled.
 
+## Split a store by time window, and report over a range of windows
+
+A report's proofs are bounded by the book it draws from. A holder that splits
+its store by window (evidencebook#689) keeps one book per calendar period in
+UTC, fixed when the store is created:
+
+```sh
+capsulectl book window init --profile NAME --period month   # instead of store init; prints the window
+capsulectl book window roll --profile NAME                  # close ended windows
+capsulectl book window chain --profile NAME --from 2026-01 --to 2026-12 --out chain.json
+capsulectl book window publish --profile NAME               # each closed window's final checkpoint to the witness
+```
+
+The requester asks each window with `expected_pin` set to that window's final
+checkpoint digest (SHA-256 of `final_checkpoint` in the chain), records each
+answer with `book request --response`, then:
+
+```sh
+capsulectl book report derive --profile NAME --chain chain.json --response R1 --response R2 ... --pack DIGEST --result RESULT.json --out bundle.json
+capsulectl book report coverage --bundle bundle.json --holder-checkpoint-key HEX
+capsulectl book report build --bundle bundle.json --card CARD --holder-checkpoint-key HEX --out report.html
+```
+
+Every gap is named (`window 2026-03 has no answer`, `chain breaks at 2026-04`),
+and no bundle or page is written over one. The holder's key must be obtained
+independently of the bundle. Without witness receipts a chain shows continuity
+only as the holder signed it, and no check shows that an answer holds every row
+of its window. On a windowed store, `close` and `reconcile` take a period inside
+the current window, and a requester derives over answers recorded in its
+current window.
+
 ## Render a report
 
 ```sh

@@ -202,31 +202,36 @@ What it shows and what it does not:
 
 ## 6. capsulectl-book
 
-**The store.** `store init` on a new book profile creates `book/shelf.db`, a windowed
-`OpenSQLiteShelf` with `Base` = the profile's `log_id`, `--window` defaulting to `month` and
-`Since` the current period's start, and prints `window: month (calendar months, UTC), fixed for
-this store`. `--window none` keeps today's one JSONL book; an existing JSONL book is not
-converted by this item. The help says windows are calendar periods in UTC and cannot change
-later.
+**The store.** `capsulectl book window init --period <p>` (default `month`) creates a new book
+profile's store as `book/shelf.db`, a windowed `OpenSQLiteShelf` with `Base` = the profile's
+`log_id` and `Since` the current period's start, and prints `window: month (calendar months,
+UTC), fixed for this store`; the help says windows are calendar periods in UTC and cannot change
+later. `store init` still creates one JSONL book, and leaves a windowed store as it is. The month
+default for `store init` itself waits for capsule-cli#622: the core's `cll checkpoint
+status|publish` and `cll proof verify` require a checkpoint's log id to equal the profile's
+`log_id`, and a window book's is `<log_id>/<label>`; evidencebook#805 flips the default once the
+core accepts the backend's declared window logs. An existing JSONL book is not converted by this
+item (evidencebook#808).
 
-**What changes inside.** `openedBook.store` becomes an interface over FileStore and the shelf's
-store (`--capsule-out` exports through it); `noBookError` looks for `book/shelf.db` or
-`book/log.jsonl`; the log-id check at `book.go:224-227` compares with the window's log id;
-`checkpointBook` writes the window's log id and keeps witness state per log id (`booklog.go:
-910-911, 1020-1024`); the monotonic clock floors at the latest record across the shelf; the
-retired-entries check applies to JSONL books only.
+**What changes inside.** `openedBook` carries the shelf and the current window; its record
+store is an interface (a window book's records are read as sealed); the clock floors at the
+newest window's last record before the shelf rolls; witness state is kept per window log
+(`book/witness/<label>.json`), and `book window roll` and `publish` queue each closed window's
+final checkpoint for the profile's witness; a reproduced scratch book stays JSONL.
 
 **Verbs.**
 
 | Verb | On a windowed store |
 |---|---|
-| writes (`record`, `seal`, `publish`, `policy change`, `disclose`, `staple`, `backfill`, `request --sent`) | the current window |
-| core `cll`, `bundle`, `publish` (capsule-cli's `LogBackend`, `bookhost.go:14-39`) | the current window; capsule-cli is not changed |
-| `bundle`, `cll list`, `report`, `doctor` in this plugin | `--window <label>`, default current |
-| `respond` | `Shelf.Respond` (§4) |
-| `close`, `reconcile` | a period inside the current window; a period in an earlier window is refused with a hint, since its Close would link records in another book (follow-up issue) |
+| writes (`publish`, `seal`, `policy change`, `disclose`, `staple`, `backfill`, `request`) and the core's `cll checkpoint create`, `bundle` (capsule-cli's `LogBackend`) | the current window |
+| core `cll list` | the newest window |
+| `respond` | `Shelf.Respond` (§4) with the profile's packs registered on the shelf |
+| `close`, `reconcile` | a period inside the current window; a period in an earlier window is refused with a hint (evidencebook#807) |
 | `migrate` | refused (JSONL books only) |
-| new: `book window list`, `book window roll`, `book window chain --from --to --out`, `book report derive --chain <file> --response <id>...`, `book report coverage --bundle` (prints `VerifyReportCoverage`'s lines) | |
+| `book window list`, `roll`, `chain --from --to --out`, `publish` | new |
+| `book report derive --chain <file> --response <id>...` | seals the chain and one Result over every window's answer; writes the bundle only when its coverage has no finding |
+| `book report coverage --bundle --holder-checkpoint-key` | prints `VerifyReportCoverage`'s range, windows and findings; exits non-zero on any finding |
+| `book report build --holder-checkpoint-key [--witness-directory]` | for a report over windows: `report.Build` checks the coverage itself (`report.View.Coverage`, evidencebook#806) and states the range in a banner, or writes no page and names every gap; no permalink |
 
 ## 7. Owner, doors, ports, PRs
 
@@ -236,11 +241,14 @@ retired-entries check applies to JSONL books only.
   `window_open`, `window_close`, `window_chain` and the `window_chain/v1` document. Sherlock2
   confirmed the shapes are engineering's and that none of the open points is a door for Steven
   (§8).
-- Not in this item, each a follow-up issue: a Close over an earlier window's period; converting
-  an existing JSONL book; the facts migration of a windowed shelf. Rust and Python: "Frozen
+- Not in this item, each a follow-up issue: a Close over an earlier window's period (#807);
+  converting an existing JSONL book (#808); the month default for `store init` after
+  capsule-cli#622 (#805); windows on a capsulectl-deal shelf (#797); the facts migration of a
+  windowed shelf. Rust and Python: "Frozen
   port: ..." issues per Ethan's 2026-11-22 language decision; the Mesh plugin does not call
   this.
-- PRs: (1) root package §1-§5 with tests; (2) capsulectl-book §6. Lane tau2-otel-1123
+- PRs: (1) root package §1-§5 (#800); (2) the `report` module's coverage banner (#806); (3)
+  capsulectl-book §6. Lane tau2-otel-1123
   (evidencebook-skills#219) moves to `Shelf.Current`, `Roll` and `WindowChain` after (1).
 
 ## 8. Sherlock2's answer (the what)

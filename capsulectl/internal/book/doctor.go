@@ -66,7 +66,7 @@ func doctorCommand() *cobra.Command {
 			return e
 		}
 		defer func() { err = errors.Join(err, opened.release()) }()
-		packs, e := registerDerivations(opened.book, p)
+		packs, e := registerDerivations(opened, p)
 		if e != nil {
 			return e
 		}
