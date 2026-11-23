@@ -214,6 +214,37 @@ func TestAdjudicatorTakesThePartiesBooksAfterItsRuling(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, rd, st.Names.Ruling.Digest, "the seller entered this ruling")
 
+	// The buyer's agreement and its proof are taken too: either party the
+	// ruling names.
+	od, err := Digest(h.offer)
+	require.NoError(t, err)
+	buyerAgreement := func(p *party) Record {
+		ab := fxAgreement(&Ref{Type: RecordRef, DigestAlg: DigestAlg, Digest: od}, ref('e'), ref('f'), SideOfferer, RoleBuyer, h.seller.key())
+		ab.CheckpointKey, ab.ShelfLogID = p.checkpointKey(), testCadenceLog
+		adj := fxAdjudicator
+		adj.KeyID = adjudicator.key()
+		ab.Adjudicator = Some(adj)
+		bb := journalBlock(TypeAgree, "2026-11-01T10:00:00Z", true)
+		bb.Seq, bb.Seen = 1, Some(h.agreementID)
+		return Record{Block: bb, Body: ab}
+	}
+	buyerID, buyerPair := h.buyer.seal("deal/b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0", buyerAgreement(h.buyer))
+	buyerProof := h.buyer.stamp(buyerID)
+	res = adjudicator.receive(buyerPair, &buyerProof)
+	require.NotNil(t, res.Record)
+	assert.True(t, res.Record.Stored)
+	assert.True(t, res.Proof.Accepted, "refused: %v", res.Proof.Refused)
+
+	// A third key's agreement of the same deal, naming the same adjudicator,
+	// is no party's: refused, and so is its proof.
+	intruder := newParty(t, "intruder")
+	intruderID, intruderPair := intruder.seal("deal/c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0", buyerAgreement(intruder))
+	intruderProof := intruder.stamp(intruderID)
+	_, err = adjudicator.receiveRaw(intruderPair, nil)
+	assert.ErrorIs(t, err, evidencebook.ErrRefused, "a key the ruling does not name")
+	_, err = adjudicator.receiveRaw(intruderPair, &intruderProof)
+	assert.ErrorIs(t, err, evidencebook.ErrRefused)
+
 	// Another adjudicator, which ruled on nothing, takes none of it.
 	stranger := newAdjudicator(t, "another adjudicator")
 	_, err = stranger.receiveRaw(h.agreementPair, nil)
