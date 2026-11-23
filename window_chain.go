@@ -220,6 +220,10 @@ func VerifyWindowChain(chain WindowChain, opts VerifyChainOptions) ([]VerifiedWi
 	if first.Start.Before(since) {
 		fail(chain.From, "window %s is before the chain began (%s)", chain.From, chain.Since)
 	}
+	if last.Start.Before(first.Start) {
+		fail("", "the chain's range %s..%s is empty", chain.From, chain.To)
+		return nil, findings
+	}
 	var verified []VerifiedWindow
 	var prior *VerifiedWindow
 	expected := first

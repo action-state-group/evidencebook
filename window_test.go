@@ -528,9 +528,9 @@ func TestShelfRespondRoutesByPin(t *testing.T) {
 	require.NoError(t, err)
 	recorded, err := r.requester.RecordResponse(ctx, sent.RecordID, reply.Message, r.keys)
 	require.NoError(t, err)
-	tree, _, err := readWindowAnswer(recorded.Header, reply.Message.Octets)
+	answer, err := readWindowAnswer(recorded.Header, reply.Message.Octets)
 	require.NoError(t, err)
-	assert.Equal(t, "acme/2027-01", tree.LogID)
+	assert.Equal(t, "acme/2027-01", answer.tree.LogID)
 
 	// A pin no window issued is refused as any book refuses it.
 	sent, err = r.requester.Request(ctx, EvidenceRequest{
@@ -568,4 +568,155 @@ func TestShelfRespondRoutesAHalfPinToTheBookCitingIt(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, book)
 	assert.Equal(t, "acme/2026-10", book.id)
+}
+
+func TestAPastWindowAnswersUnderThePolicyInForceNow(t *testing.T) {
+	ctx := context.Background()
+	r := newWindowReport(t)
+	oct, _, err := r.holder.WindowBook(ctx, "2026-10")
+	require.NoError(t, err)
+	final, err := oct.Checkpoint(ctx)
+	require.NoError(t, err)
+	// October held no policy; January, the window open now, adopts one
+	// that limits unsigned askers to three a week.
+	jan, _, err := r.holder.Current(ctx)
+	require.NoError(t, err)
+	_, _, err = jan.AdoptPolicy(ctx, HolderPerson)
+	require.NoError(t, err)
+	ask := func() string {
+		req := EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("x"))}, Coverage: Coverage{ExpectedPin: anchorDigest(final)}}
+		decided := ""
+		reply, _, err := r.holder.Respond(ctx, jsonRequest(t, req), RespondOptions{Policy: DefaultSharePolicy(), OnRefusal: func(_, d, _ string) { decided = d }})
+		require.NoError(t, err)
+		require.NotNil(t, reply.Refusal)
+		return decided
+	}
+	for i := range 3 {
+		assert.Equal(t, ReasonNotAuthorized, ask(), "ask %d", i+1)
+	}
+	assert.NotEqual(t, ReasonNotAuthorized, ask(), "January's limit decides an answer from October")
+}
+
+func TestOnlyACheckpointCommitsAnIndexRootOutsideTheWindow(t *testing.T) {
+	ctx := context.Background()
+	f := newWindowFixture(t)
+	shelf := f.open(t)
+	oct, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	setClock(f.clock, utc(2026, 11, 1))
+	_, err = oct.Append(ctx, Entry{RecordType: RecordTypeIndexRoot, EpistemicType: DerivedMetric, Statement: json.RawMessage(`{}`)})
+	assert.ErrorIs(t, err, ErrWindowClosed)
+}
+
+func TestAnEmptyChainRangeIsAFinding(t *testing.T) {
+	ctx := context.Background()
+	r := newWindowReport(t)
+	chain, err := r.holder.WindowChain(ctx, "2026-10", "2026-10", WindowChainOptions{})
+	require.NoError(t, err)
+	chain.From, chain.To, chain.Windows = "2026-12", "2026-10", nil
+	verified, findings := VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
+	assert.Empty(t, verified)
+	require.NotEmpty(t, findings)
+	assert.Equal(t, "the chain's range 2026-12..2026-10 is empty", findings[0].Text)
+	_, err = r.requester.RecordWindowChain(ctx, chain, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
+	assert.ErrorIs(t, err, ErrInvalid)
+}
+
+func TestCoverageNamesForeignDuplicateAndMixedAnswers(t *testing.T) {
+	ctx := context.Background()
+	r := newWindowReport(t)
+	chain, err := r.holder.WindowChain(ctx, "2026-10", "2026-11", WindowChainOptions{})
+	require.NoError(t, err)
+	payload, err := canonicalJSON(chain)
+	require.NoError(t, err)
+	body, err := canonicalJSON(WindowChainStatement{RecordVersion: WindowChainRecordVersion, Base: "acme", Period: WindowMonth, From: "2026-10", To: "2026-11", ChainDigest: digestBytes(payload)})
+	require.NoError(t, err)
+	verified, _ := VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
+	key := r.keys.Checkpoint
+	_, findings, err := coverage(Header{Statement: body}, payload, []windowAnswer{
+		{key: key, tree: verified[0].Final, derivation: r.pack},
+		{key: key, tree: verified[1].Final, derivation: r.pack},
+		{key: key, tree: verified[1].Final, derivation: digestBytes([]byte("another pack"))},
+		{key: key, tree: WindowTree{LogID: "elsewhere/2026-11", Entries: 3, Root: "00"}, derivation: r.pack},
+	}, VerifyChainOptions{CheckpointKey: key})
+	require.NoError(t, err)
+	var texts []string
+	for _, f := range findings {
+		texts = append(texts, f.Text)
+	}
+	assert.Contains(t, texts, "window 2026-11 has 2 answers")
+	assert.Contains(t, texts, "an answer anchored in log elsewhere/2026-11 is outside the chain's windows")
+	assert.Contains(t, texts, fmt.Sprintf("an answer at acme/2026-11 answers derivation %s, not %s as the others", digestBytes([]byte("another pack")), r.pack))
+
+	_, _, err = coverage(Header{Statement: body}, append([]byte(" "), payload...), nil, VerifyChainOptions{CheckpointKey: key})
+	assert.ErrorIs(t, err, ErrInvalid, "a payload that is not the chain the record names")
+}
+
+func TestAChainNamesAPreviousTreeOtherThanItsNeighbours(t *testing.T) {
+	ctx := context.Background()
+	r := newWindowReport(t)
+	chain, err := r.holder.WindowChain(ctx, "2026-10", "2026-11", WindowChainOptions{})
+	require.NoError(t, err)
+	// A second shelf under the same base, keys and start, with other
+	// records in October: its November names its own October.
+	other := newShelfFixture(t)
+	other.cfg.Signer, other.cfg.CheckpointKey = r.f.cfg.Signer, r.f.cfg.CheckpointKey
+	other.cfg.Window = monthly("acme", utc(2026, 10, 1))
+	forked := other.open(t)
+	oct, _, err := forked.Current(ctx)
+	require.NoError(t, err)
+	mustAppend(t, oct, observation("deal", "another"))
+	setClock(other.clock, utc(2026, 12, 2))
+	_, err = forked.Roll(ctx)
+	require.NoError(t, err)
+	theirs, err := forked.WindowChain(ctx, "2026-11", "2026-11", WindowChainOptions{})
+	require.NoError(t, err)
+	joined := chain
+	joined.Windows = []ChainWindow{chain.Windows[0], theirs.Windows[0]}
+	_, findings := VerifyWindowChain(joined, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
+	require.NotEmpty(t, findings)
+	assert.Equal(t, "chain breaks at 2026-11: its open record names a previous tree other than window 2026-10's final tree", findings[0].Text)
+}
+
+func TestAWindowWhoseOpenRecordACrashLostGetsIt(t *testing.T) {
+	ctx := context.Background()
+	f := newWindowFixture(t)
+	shelf := f.open(t)
+	_, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	setClock(f.clock, utc(2026, 11, 3))
+	_, err = shelf.Roll(ctx)
+	require.NoError(t, err)
+	// November closes and December's row is written, then the process
+	// stops before December's book gets its open record.
+	setClock(f.clock, utc(2026, 12, 3))
+	shelf.mu.Lock()
+	rows, err := shelf.windowRowsLocked(ctx)
+	require.NoError(t, err)
+	_, err = shelf.closeWindowLocked(ctx, rows[1])
+	require.NoError(t, err)
+	_, err = shelf.db.Exec(`INSERT INTO shelf_window_books (label, log_id, start, state) VALUES ('2026-12', 'acme/2026-12', '2026-12-01T00:00:00Z', 'open')`)
+	require.NoError(t, err)
+	shelf.mu.Unlock()
+	require.NoError(t, shelf.Release())
+
+	shelf = f.open(t)
+	dec, w, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "2026-12", w.Label)
+	first := dec.logLocked()[0]
+	require.Equal(t, RecordTypeWindowOpen, first.Header.RecordType)
+	var open WindowOpenStatement
+	require.NoError(t, json.Unmarshal(first.Header.Statement, &open))
+	windows, err := shelf.Windows(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, windows[1].Final, open.Previous)
+}
+
+func TestAPolicyNotStartedYetSaysSo(t *testing.T) {
+	f := newShelfFixture(t)
+	f.cfg.Window = monthly("acme", utc(2027, 1, 1))
+	_, _, err := f.open(t).Current(context.Background())
+	require.ErrorIs(t, err, ErrClockBehind)
+	assert.Contains(t, err.Error(), "the window policy starts at 2027-01-01T00:00:00Z")
 }

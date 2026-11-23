@@ -84,7 +84,7 @@ type bookWindow struct {
 // a window book takes its open record only first and only from the shelf,
 // its close record only from the shelf, and every other record only inside
 // its window and before its close.
-func (w *bookWindow) admits(recordType string, seq uint64, at time.Time) error {
+func (w *bookWindow) admits(recordType string, seq uint64, at time.Time, checkpointing bool) error {
 	if w == nil {
 		if isWindowRecord(recordType) {
 			return fmt.Errorf("%w: a %s record belongs to a window book, which a windowed shelf writes", ErrInvalid, recordType)
@@ -107,11 +107,14 @@ func (w *bookWindow) admits(recordType string, seq uint64, at time.Time) error {
 		return nil
 	case RecordTypeIndexRoot:
 		// A checkpoint's index roots carry their real commit time: the
-		// checkpoint that closes a window commits them after its end.
+		// checkpoint that closes a window commits them after its end. Only
+		// the book's own checkpoint commits one outside the window.
 		if seq == 1 {
 			return fmt.Errorf("%w: window %s's book begins with its open record", ErrInvalid, w.Label)
 		}
-		return nil
+		if checkpointing {
+			return nil
+		}
 	}
 	if seq == 1 {
 		return fmt.Errorf("%w: window %s's book begins with its open record", ErrInvalid, w.Label)
@@ -268,6 +271,9 @@ func (s *Shelf) currentLocked(ctx context.Context) (*Book, Window, error) {
 		return nil, Window{}, err
 	}
 	now := s.now()
+	if now.Before(s.cfg.Window.Since) {
+		return nil, Window{}, fmt.Errorf("%w: the window policy starts at %s; the clock reads %s", ErrClockBehind, windowTime(s.cfg.Window.Since), now.UTC().Format(time.RFC3339))
+	}
 	if now.Before(latest.Start) {
 		return nil, Window{}, fmt.Errorf("%w: the clock reads %s, before window %s began (%s)", ErrClockBehind, now.UTC().Format(time.RFC3339), latest.Label, windowTime(latest.Start))
 	}

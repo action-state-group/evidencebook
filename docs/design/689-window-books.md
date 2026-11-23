@@ -97,9 +97,8 @@ A windowed shelf has exactly one writable book: the newest open window's.
 - **Recovery** on open: a close record without the final checkpoint gets it (step 3 is
   idempotent); a closed window whose next window has no book gets it; a next book with no open
   record gets one. Each step is checked against `shelf_window_books`.
-- **Clearing.** Steven's clearing ruling (ops `proprietary` [muse-share-bound-history]
-  DECISION, 2026-10-28 22:43 PT, Buzz 054513b2 event a01109dd) has a clear start a new stream
-  under a new log id; truncating the old log stays a consistency failure. A clear is a new
+- **Clearing.** Steven's ruling on clearing a history (2026-10-28) has a clear start a new
+  stream under a new log id; truncating the old log stays a consistency failure. A clear is a new
   shelf file with a new `Base` and `Since`. A verifier never joins two chains: a range that
   crosses from one to the other fails coverage with "chain breaks at <label>: a new chain
   began", never passes. The one key still links the two, as EB -03 says of clearing.

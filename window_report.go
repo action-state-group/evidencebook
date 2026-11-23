@@ -80,23 +80,25 @@ type WindowInputs struct {
 }
 
 // windowAnswer is what one response record holds for a report over
-// windows: its inputs, the holder's checkpoint key and the anchor tree.
+// windows: its inputs, the holder's checkpoint key, the anchor tree and the
+// derivation it answers.
 type windowAnswer struct {
-	inputs DerivedInputs
-	key    string
-	tree   WindowTree
+	inputs     DerivedInputs
+	key        string
+	tree       WindowTree
+	derivation string
 }
 
 // readWindowAnswer reads a response's statement and reply: the anchor's
 // signed checkpoint in its verification material, under the key the
 // response pinned, and the proofs of its rows there.
-func readWindowAnswer(header Header, reply []byte) (WindowTree, string, error) {
+func readWindowAnswer(header Header, reply []byte) (windowAnswer, error) {
 	var statement ResponseStatement
 	if err := json.Unmarshal(header.Statement, &statement); err != nil {
-		return WindowTree{}, "", fmt.Errorf("%w: response statement: %v", ErrCorrupt, err)
+		return windowAnswer{}, fmt.Errorf("%w: response statement: %v", ErrCorrupt, err)
 	}
 	if statement.Outcome != OutcomeArtifact || slices.Contains(statement.NotChecked, "anchor_inclusion") {
-		return WindowTree{}, "", fmt.Errorf("%w: the response is not an answer whose proofs verified", ErrInvalid)
+		return windowAnswer{}, fmt.Errorf("%w: the response is not an answer whose proofs verified", ErrInvalid)
 	}
 	var envelope *Envelope
 	for _, mediaType := range []string{MediaTypeJSON, MediaTypeCBOR} {
@@ -106,26 +108,26 @@ func readWindowAnswer(header Header, reply []byte) (WindowTree, string, error) {
 		}
 	}
 	if envelope == nil {
-		return WindowTree{}, "", fmt.Errorf("%w: the response holds no envelope", ErrInvalid)
+		return windowAnswer{}, fmt.Errorf("%w: the response holds no envelope", ErrInvalid)
 	}
 	if envelope.Anchor.Digest != statement.Anchor {
-		return WindowTree{}, "", fmt.Errorf("%w: the reply's anchor is not the one the response recorded", ErrInvalid)
+		return windowAnswer{}, fmt.Errorf("%w: the reply's anchor is not the one the response recorded", ErrInvalid)
 	}
 	decoded, err := evidencerequest.DecodeJSON(envelope.Artifact)
 	artifact, ok := decoded.(map[string]any)
 	if err != nil || !ok {
-		return WindowTree{}, "", fmt.Errorf("%w: the artifact is not a JSON object", ErrInvalid)
+		return windowAnswer{}, fmt.Errorf("%w: the artifact is not a JSON object", ErrInvalid)
 	}
 	rows, _ := artifact["records"].([]any)
 	item, err := verifySetInclusion(*envelope, rows, statement.Anchor, statement.CheckpointKey)
 	if err != nil {
-		return WindowTree{}, "", err
+		return windowAnswer{}, err
 	}
 	cp, err := readSignedCheckpoint(item, statement.CheckpointKey)
 	if err != nil {
-		return WindowTree{}, "", err
+		return windowAnswer{}, err
 	}
-	return WindowTree{LogID: cp.LogID, Entries: cp.Entries, Root: cp.Root}, statement.CheckpointKey, nil
+	return windowAnswer{key: statement.CheckpointKey, tree: WindowTree{LogID: cp.LogID, Entries: cp.Entries, Root: cp.Root}, derivation: envelope.Derivation}, nil
 }
 
 // ReportFromWindows seals the Evidence Result evaluate returns over a
@@ -162,11 +164,12 @@ func (b *Book) ReportFromWindows(ctx context.Context, chainRecordID string, resp
 		if err != nil {
 			return Report{}, err
 		}
-		tree, key, err := readWindowAnswer(record.Header, reply)
+		answer, err := readWindowAnswer(record.Header, reply)
 		if err != nil {
 			return Report{}, fmt.Errorf("response %s: %w", id, err)
 		}
-		answers[i] = windowAnswer{inputs: inputs, key: key, tree: tree}
+		answer.inputs = inputs
+		answers[i] = answer
 	}
 	chainRecord, err := b.Get(ctx, chainRecordID)
 	if err != nil {
@@ -276,6 +279,9 @@ func coverage(chainHeader Header, payload []byte, answers []windowAnswer, opts V
 		if a.key != opts.CheckpointKey {
 			findings = append(findings, ChainFinding{Text: fmt.Sprintf("an answer at %s is under another holder checkpoint key than the others", a.tree.LogID)})
 		}
+		if a.derivation != answers[0].derivation {
+			findings = append(findings, ChainFinding{Text: fmt.Sprintf("an answer at %s answers derivation %s, not %s as the others", a.tree.LogID, a.derivation, answers[0].derivation)})
+		}
 	}
 	verified, chainFindings := VerifyWindowChain(chain, opts)
 	findings = append(findings, chainFindings...)
@@ -348,10 +354,13 @@ func checkWindowsResult(result []byte, responses []string, chain string) (string
 // states, the windows its chain proved, and every finding. A report covers
 // its range only when Findings is empty.
 type ReportCoverage struct {
-	From     string           `json:"from"`
-	To       string           `json:"to"`
-	Windows  []VerifiedWindow `json:"windows"`
-	Findings []ChainFinding   `json:"findings"`
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Derivation is the pack the answers answer, the first answer's when
+	// they differ (a finding then says so).
+	Derivation string           `json:"derivation,omitempty"`
+	Windows    []VerifiedWindow `json:"windows"`
+	Findings   []ChainFinding   `json:"findings"`
 }
 
 // CoverageOptions are what a verifier of a report's coverage brings: the
@@ -408,11 +417,11 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 			if err != nil {
 				return ReportCoverage{}, err
 			}
-			tree, key, err := readWindowAnswer(*r.Header, reply)
+			answer, err := readWindowAnswer(*r.Header, reply)
 			if err != nil {
 				return ReportCoverage{}, fmt.Errorf("answer %s: %w", target, err)
 			}
-			answers = append(answers, windowAnswer{key: key, tree: tree})
+			answers = append(answers, answer)
 		}
 	}
 	if chainHeader == nil {
@@ -427,7 +436,7 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 	if len(answers) == 0 {
 		out.Findings = append(out.Findings, ChainFinding{Text: "the Result cites no answer"})
 	} else {
-		chainOpts.CheckpointKey = answers[0].key
+		chainOpts.CheckpointKey, out.Derivation = answers[0].key, answers[0].derivation
 	}
 	windows, findings, err := coverage(*chainHeader, chainPayload, answers, chainOpts)
 	if err != nil {

@@ -315,6 +315,9 @@ func (b *Book) respondInto(ctx context.Context, request Message, opts RespondOpt
 	b.answering.RLock()
 	defer b.answering.RUnlock()
 	a := answer{book: b, ctx: ctx, request: request, opts: opts, own: own, digest: digestBytes(request.Octets)}
+	if into != b {
+		a.policyFrom = into
+	}
 	reply, err := a.run()
 	if err != nil || !a.seal {
 		if err == nil {
@@ -371,6 +374,10 @@ type answer struct {
 	decided string
 	// sentReason is the reason of the refusal the answer signed, "" if none.
 	sentReason string
+	// policyFrom is the book whose disclosure policy decides the answer when
+	// it is not book: on a windowed shelf, the window open now, which holds
+	// the policy in force (evidencebook#689 §4).
+	policyFrom *Book
 }
 
 // limitReason is the reason a request asking for profile is refused for a
@@ -525,7 +532,13 @@ func (a *answer) run() (Reply, error) {
 	// switches it governs, whatever the caller passed.
 	b.mu.Unlock()
 	// log is a snapshot, so the scan for the policy holds no lock.
-	held, hasPolicy, err := policyInForce(log)
+	policyLog := log
+	if a.policyFrom != nil {
+		a.policyFrom.mu.Lock()
+		policyLog = a.policyFrom.logLocked()
+		a.policyFrom.mu.Unlock()
+	}
+	held, hasPolicy, err := policyInForce(policyLog)
 	if err != nil {
 		return Reply{}, err
 	}

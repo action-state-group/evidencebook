@@ -528,7 +528,7 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	}
 	seq := uint64(len(b.log)) + 1
 	committedAt := b.now().UTC().Truncate(time.Microsecond)
-	if err := b.window.admits(entry.RecordType, seq, committedAt); err != nil {
+	if err := b.window.admits(entry.RecordType, seq, committedAt, b.checkpointing); err != nil {
 		return Record{}, err
 	}
 	header := Header{
