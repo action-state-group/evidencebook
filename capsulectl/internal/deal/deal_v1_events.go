@@ -74,7 +74,7 @@ func v1NoteRefusal(kind, dealID string) error {
 	case noteKindRuling:
 		return cli.InputError(head + "has no x-deal-v1 form; a ruling is the adjudicator's own record, in its case book")
 	case "acceptance", "platform_approval":
-		return cli.InputError(head + "has no x-deal-v1 form; a sale is recorded with `deal sale ...`")
+		return cli.InputError(head + "has no x-deal-v1 form; on x-deal-v1 a sale is an agreed offer (`deal agree`), and the other buyers' offers are declined with `deal offer decline`")
 	}
 	return cli.InputError(head + "has no x-deal-v1 form and is not recorded on this deal")
 }
