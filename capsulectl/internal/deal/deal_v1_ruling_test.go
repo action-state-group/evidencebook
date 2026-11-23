@@ -157,6 +157,35 @@ func TestARulingRefusals(t *testing.T) {
 	// rule.
 	h.seller.act(t)
 	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy)...), "checkpoints with its record key")
+	// Switching that profile's checkpoint key to its record key afterwards
+	// does not help: its store checkpointed with the old key, so the ruling
+	// is refused before anything is sealed, with the way that works
+	// (evidencebook#814).
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	p.Checkpoint.Signing = p.Signing
+	require.NoError(t, cli.SaveProfile(p, true))
+	// A stamp that failed on the key leaves an unfinished tick last; the
+	// refusal still reads the newest finished one.
+	withSession(t, func(s *dealSession) {
+		var last int64
+		var leaves string
+		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT tick, leaves FROM cadence_ticks ORDER BY tick DESC LIMIT 1`).Scan(&last, &leaves))
+		_, err := s.db.ExecContext(t.Context(), `INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', ?)`,
+			last+1, cli.DealClock().UTC().Format(time.RFC3339), cli.DealClock().UTC().Add(time.Hour).Format(time.RFC3339), leaves)
+		require.NoError(t, err)
+	})
+	msg := v1Err(t, append(base, "--copy", buyerCopy)...)
+	assert.Contains(t, msg, "checkpointed with another key")
+	assert.Contains(t, msg, "deal init --dir NEWDIR --signing-key-file KEY --checkpoint-key-file KEY")
+	assert.Contains(t, msg, "switching its checkpoint key back")
+	withSession(t, func(s *dealSession) {
+		books, err := s.shelf.Books(t.Context())
+		require.NoError(t, err)
+		for _, b := range books {
+			assert.False(t, strings.HasPrefix(b, "case/"), "no case book was opened: %s", b)
+		}
+	})
 }
 
 // A party challenges a ruling it holds: a dispute of kind challenge naming

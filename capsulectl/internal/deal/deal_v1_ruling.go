@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
@@ -135,8 +136,14 @@ read.
 
 Your rulings of a deal go in one case book, whose place both parties compute,
 and a ruling counts only from that log. Your profile must checkpoint with your
-record key (capsulectl profile update --checkpoint-signing-key-file, with the
-key file you sign records with), since the agreement names you by that key.
+record key, since the agreement names you by that key, and a profile's
+checkpoint key is set when the profile is made. Make the adjudicator's profile
+with one key for both:
+  capsulectl --profile NAME deal init --dir DIR --signing-key-file KEY --checkpoint-key-file KEY
+KEY is the key file you sign records with, so the key id your agreements name
+stays. A profile that has checkpointed with another key cannot switch to it: make
+a new one, with another name and --dir, leave the old store as it is, and seal
+nothing more with it (one key, one live store).
 
 Run again with the same flags, it writes the same ruling and seals nothing new.
 A second final ruling on a row that differs from the first is refused.`,
@@ -168,6 +175,12 @@ A second final ruling on a row that differs from the first is refused.`,
 	return cmd
 }
 
+// adjudicatorKeyAdvice is how an adjudicator's profile comes to checkpoint
+// with its record key: made so, before its first checkpoint.
+const adjudicatorKeyAdvice = "An adjudicator checkpoints with its record key, since the agreement names it by that key, and a profile's checkpoint key is set when the profile is made: " +
+	"make a new adjudicator profile, with another name and --dir, using the key file you sign records with for both, so the key id your agreements name stays: `capsulectl --profile NEW deal init --dir NEWDIR --signing-key-file KEY --checkpoint-key-file KEY`. " +
+	"Leave this profile's store as it is, and seal nothing more with it (one key, one live store)"
+
 // rule checks the inputs, seals the ruling once, stamps it and writes the push.
 func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags) error {
 	cad, err := s.requireMigrated(ctx)
@@ -180,8 +193,33 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 		return err
 	}
 	if !bytes.Equal(ckey.Public().(ed25519.PublicKey), s.key.Public().(ed25519.PublicKey)) {
-		return cli.InputError("an adjudicator checkpoints with its record key, since the agreement names it by that key: `capsulectl profile update --profile " + s.p.Name +
-			" --checkpoint-signing-key-file <the key file you sign records with> --checkpoint-trusted-key " + me + "`")
+		return cli.InputError(adjudicatorKeyAdvice)
+	}
+	// A profile whose store has stamped with another key cannot stamp with
+	// this one (CLL refuses its stored checkpoints as corrupt): refuse before
+	// sealing, with the way out (evidencebook#814). The newest finished tick
+	// says which key: a stamp that failed on the key leaves an unfinished one
+	// last.
+	last, ok, err := cad.Last(ctx)
+	if err != nil {
+		return err
+	}
+	for n := last.N; ok && n >= 1; n-- {
+		tick, err := cad.Get(ctx, n)
+		if err != nil {
+			return err
+		}
+		if tick.CheckpointSize == 0 {
+			continue
+		}
+		record, err := checkpoint.ParseRecord(tick.Checkpoint)
+		if err != nil {
+			return err
+		}
+		if record.KeyID != me {
+			return cli.InputError("this profile's store checkpointed with another key, so it cannot stamp a ruling with your record key; switching its checkpoint key back to the earlier one makes the store readable again. " + adjudicatorKeyAdvice)
+		}
+		break
 	}
 	raw, err := os.ReadFile(f.dispute)
 	if err != nil {
