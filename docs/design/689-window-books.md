@@ -293,3 +293,77 @@ The default window is **month** for a new report-side store; existing books stay
   `book window roll` and `chain`; a two-window `report derive` and the plugin's coverage verb;
   witness state per log id; core `bundle` and `cll list` on the current window; `close` on the
   previous month refused with its hint.
+
+## 10. Grace: a Close over an earlier window (#807)
+
+Sherlock2 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=ee4e11316e8261b53e5abda85dcb7c0ffae445d837819e9ae9ba25cd48b430df&thread=cdfa9aef3d12815598c3ea6602a65a5e6cfafb54e3270ca6a50c7bce506bba85):
+engineering's call, option (a): a grace period after a window ends during which its book still
+takes a close/v1 Close for a period inside it; default 7 days; fixed and printed at creation;
+the verifier, not only the writer, names any other late record; a window still in grace is named;
+acknowledgements and rebuttals are never cut off (they go in the current window). Rejected: a
+Close in the current window linking the earlier book (an Evidence Bundle over two logs, a spec
+door); no monthly Close at all (fails the what); late Closes named only in the `window_close`
+statement (not bound to the final tree).
+
+**Policy.** `WindowPolicy.Grace` (zero: no grace, as before), non-negative and shorter than the
+period's shortest length (day 24 h, week 7 d, month 28 d, quarter 89 d, year 365 d). It is
+written with the window in `shelf_window.grace` (seconds) when the store is created, compared on
+every reopen, and read as 0 from a store created before the column (an idempotent `ALTER TABLE`
+on open, the `migrateShelfReceipts` pattern). A store with a grace above 0 is shelf version 4,
+so a build that knows only version 3 refuses it rather than closing its windows early; a store
+with grace 0 stays version 3. capsulectl's default: 7 days for month, quarter and year windows,
+1 day for week, none for day.
+
+**Roll.** A window's row is `open`, `grace` or `closed`. When the clock passes a window's end the
+shelf takes a **boundary checkpoint** of it (stored as `boundary_entries`, `boundary_root`),
+marks it `grace` and opens the next window, whose open record's `previous` names that boundary
+tree. When the clock passes `End + Grace` the shelf closes the window (close record, final
+checkpoint) as before. Every roll closes every `grace` row whose grace has ended, oldest first,
+then opens windows up to the clock; several windows can be in grace only if the grace exceeds a
+period, which the policy refuses. Recovery: a row is `grace` only after its boundary checkpoint
+is stored; a next window's open record is written from the stored boundary, never from `final_*`.
+With grace 0 the boundary checkpoint is the final one and the chain is as in §5.
+
+**Admission.** In grace a window book takes only a close/v1 Close (read with `ReadClose`, its
+period inside the window, a superseding Close included; a legacy body is refused) and the index
+roots its own checkpoints commit; at or after `End + Grace` it takes nothing, rolled or not. An
+acknowledgement or rebuttal goes in the current window at any time, as do a Close sealed after
+the grace and `reconcile` (which adds no record).
+
+**Chain v2.** Each window entry also carries the boundary checkpoint (with receipts when the host
+has them), a CLL consistency proof from the boundary tree to the final tree, and the **tail**:
+every leaf after the boundary up to the close record, each with its inclusion proof under the
+final checkpoint. `VerifyWindowChain` checks the next window's `previous` against the boundary
+tree, the consistency proof, that the tail is contiguous from the boundary's last leaf + 1 to
+the close record, and that every tail record is a close/v1 for a period inside the window or a
+strictly decoded `index_root`; any other record is a named finding (`window 2026-10 holds a
+late <type> record at <seq>`), as is a missing leaf. The boundary is positional, so a backdated
+`committed_at` cannot hide a record. With witnesses named, the boundary and final checkpoints
+must each carry a verifying receipt. `WindowChainVersion` becomes 2; a version 1 chain (grace 0)
+still verifies.
+
+**Naming a window in grace.** `Shelf.WindowChain` over a range that includes a window in grace
+returns `ErrInGrace` naming it and when it closes ("window 2026-10 is in grace until
+2026-11-08T00:00:00Z; no final checkpoint yet"); `book window chain`, `report derive --chain`
+and `report coverage` print it. A pin on a window-in-grace checkpoint is answered from that book
+(its answer is not at the final tree, so a report over windows cannot use it until the grace
+ends).
+
+**capsulectl.** `store init` and `book window init --grace <duration>` fix the grace with the
+window; the notice and help state it ("window: month (calendar months, UTC), closes 7 days after
+it ends, fixed for this store"); `book window list` shows each window's close time; `book close`
+over a period inside a window in grace seals the Close in that window; `book window roll` and
+`publish` queue the boundary and final checkpoints for the witness (`witness/<label>.json`).
+
+**Tests.** Policy: grace written, compared, refused when not shorter than the period, a version 3
+file without the column reads 0, version 4 for grace above 0. Roll: boundary then grace then
+close; a clock jump across several windows; crashes after the next row before the boundary
+checkpoint, between the boundary and the next open record, and at each close step. Admission:
+an in-window Close admitted in grace; refused: an ordinary record, a Close outside the window, a
+legacy Close, any record at `End + Grace` without a roll. Chain tamper: an ordinary late record,
+a backdated ordinary record after the boundary, an omitted tail leaf, a rewritten prefix (the
+consistency proof fails), a boundary without receipts under witnesses, a malformed `index_root`;
+an honest chain with late Closes and index roots verifies; a v1 chain verifies. Respond and
+report: a pin on a window in grace; `ErrInGrace` from chain and derive. capsulectl: the notice and
+help, `book close` last month in grace and after it, acknowledgements in the current window,
+`book window list`, an old store opening with grace 0.
