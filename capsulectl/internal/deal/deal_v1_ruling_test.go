@@ -157,6 +157,24 @@ func TestARulingRefusals(t *testing.T) {
 	// rule.
 	h.seller.act(t)
 	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy)...), "checkpoints with its record key")
+	// Switching that profile's checkpoint key to its record key afterwards
+	// does not help: its store checkpointed with the old key, so the ruling
+	// is refused before anything is sealed, with the way that works
+	// (evidencebook#814).
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	p.Checkpoint.Signing = p.Signing
+	require.NoError(t, cli.SaveProfile(p, true))
+	msg := v1Err(t, append(base, "--copy", buyerCopy)...)
+	assert.Contains(t, msg, "checkpointed with another key")
+	assert.Contains(t, msg, "deal init --dir DIR --signing-key-file KEY --checkpoint-key-file KEY")
+	withSession(t, func(s *dealSession) {
+		books, err := s.shelf.Books(t.Context())
+		require.NoError(t, err)
+		for _, b := range books {
+			assert.False(t, strings.HasPrefix(b, "case/"), "no case book was opened: %s", b)
+		}
+	})
 }
 
 // A party challenges a ruling it holds: a dispute of kind challenge naming
