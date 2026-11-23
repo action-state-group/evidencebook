@@ -82,6 +82,7 @@ func TestAFailedCheckoutLeavesNoOrderNumber(t *testing.T) {
 	acts := v1ActEvents(t, dealID)
 	require.Len(t, acts, 1)
 	assert.Nil(t, acts[0].Event.Act.AmountMinor, "the spend is released")
+	assert.Contains(t, v1Err(t, "settle", "--deal", dealID, "--check", check, "--sent", "--payment-ref-type", merchantOrderType, "--payment-ref-origin", shop), "is used", "the failed checkout used up its check")
 }
 
 // Condition 3: the origin's normal form.
@@ -220,6 +221,23 @@ func TestBothSidesLegsUnderTheMerchantOrderReadUnjoined(t *testing.T) {
 	assert.Empty(t, res.Check)
 	assert.Equal(t, xdealv1.ReasonUnjoined, res.Reason, "%+v", res)
 	assert.Empty(t, res.Excluded, "no leg is excluded")
+
+	// Each side's own settlement and report say why the pair is unjoined:
+	// the seller, who wrote no send, from its payee leg (#772 review).
+	h.buyer.act(t)
+	dealRun(t, "receive", payee)
+	for _, side := range []v1Side{h.buyer, h.seller} {
+		side.act(t)
+		notes := rowNotes(t, h.dealID)
+		assert.Contains(t, notes, notePrivateType)
+		report := dealRun(t, "report", "--deal", h.dealID)
+		raw, _ := json.Marshal(report["row_notes"])
+		assert.Contains(t, string(raw), "a generic verifier does not join")
+	}
+	// An origin on a Lightning payment's --status is refused plainly.
+	h2, check2 := buyerCheckedFor(t, paymentOffer, 6000, v1LnHash)
+	dealRun(t, "settle", "--deal", h2.dealID, "--check", check2, "--sent", "--payment-ref-type", "ln.payment_hash")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h2.dealID, "--check", check2, "--status", "settled", "--payment-ref-origin", shop, "--out", filepath.Join(t.TempDir(), "x.json")), "goes with "+merchantOrderType+" only")
 }
 
 // The send-time recheck (#718/#723) holds in the after-paying mode: a

@@ -465,7 +465,9 @@ the journal lacks it.
      `nonce`), as v0 does on its untyped path (`deal.go:2470`). The library refuses an act whose
      verdict has no approval (`authorization.go:104`).
    - `payment_ref` is the reference fixed before paying: a Lightning payment hash, an ACP order
-     id, or the x402 authorization nonce. A pay check without it is refused, because the payer
+     id, the x402 authorization nonce, or the merchant's order number when a card checkout shows
+     it. A pay check without it is refused, unless its input says the checkout shows no
+     reference before paying (`payment_ref_after_payment`, evidencebook#771), because the payer
      leg's check is "the passing journal check that recorded the payment reference" (design note
      461, settle's `check`). A reference the rail learns only afterwards, such as an on-chain
      transaction hash, goes on the payer leg (Sherlock2, on #699).
@@ -531,7 +533,7 @@ the journal lacks it.
   next run with the same digest. After a restart the check reads the same plain values.
 - **Refusals.**
   - A check before any intent.
-  - A pay check with no `payment_ref`.
+  - A pay check with no `payment_ref` and no `payment_ref_after_payment` (evidencebook#771).
   - A `user` approval answering a verdict with no `--shown-card` (a `confirm_limits` approval is
     sealed without one).
   - An input `party_role` that disagrees with the deal's side.
@@ -610,7 +612,9 @@ and on §12's local event list.
      enforces the fee.
    - **`payment_ref`** is flat: AAC's qualifiers sit at the top level, and each type's qualifiers
      are required, exactly. The type comes from `--payment-ref-type`, one of
-     `settlement.PaymentRefTypes`, and its qualifiers from flags:
+     `settlement.PaymentRefTypes` or x-deal-v1's own `x-deal-v1.merchant_order` (evidencebook#771),
+     and its qualifiers from flags:
+     - `--payment-ref-origin` for `x-deal-v1.merchant_order`, the checkout origin in normal form;
      - `--payment-ref-network` for `x402.transaction`;
      - `--payment-ref-method` for `mpp.reference`;
      - `--payment-ref-debtor-agent` for `iso20022.end_to_end_id`.
@@ -618,7 +622,10 @@ and on §12's local event list.
    - **A payment's payer leg.** On `ln.payment_hash`, `bolt12.invoice_payment_hash`, `acp.order_id`
      and `ucp.order_id`, its value defaults to its `pay` check's `payment_ref` and must equal it.
      On `x402.transaction`, and every other type, `--payment-ref` is required: the leg joins its
-     check by digest, and the check keeps the authorization nonce.
+     check by digest, and the check keeps the authorization nonce. `x-deal-v1.merchant_order`
+     binds like `acp.order_id` when its pay check recorded the order number, and takes it at
+     `--status` when the check recorded none (a failed checkout may leave it out,
+     evidencebook#771).
    - **The x402 help** says: "on x402, the link from the transaction to the checked nonce is the
      payer's claim unless a verifier reads the transaction's `AuthorizationUsed` nonce on chain".
    - **Refunds and payee legs.** A refund's legs and every payee leg take `--payment-ref` (the

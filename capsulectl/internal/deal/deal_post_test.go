@@ -363,6 +363,9 @@ func TestASalesLogTakesOnlyAPostsSteps(t *testing.T) {
 	refused("posting goes with a post check", "check", "--deal", thread, "--input", writeJSON(t, `{"action":"post","posting":`+postingJSON(listingText, "marketplace.example")+`}`))
 	refused("listing only", "check", "--deal", saleID, "--input", writeJSON(t, `{"action":"post","amount_minor":5,"posting":`+postingJSON(listingText, "marketplace.example")+`}`))
 	refused("listing only", "check", "--deal", saleID, "--input", writeJSON(t, `{"action":"post","listing_classes":["price"],"posting":`+postingJSON(listingText, "marketplace.example")+`}`))
+	// A post check never takes a payment reference, nor seals the after-paying flag (#772 review).
+	refused("listing only", "check", "--deal", saleID, "--input", writeJSON(t, `{"action":"post","payment_ref":"A-1","posting":`+postingJSON(listingText, "marketplace.example")+`}`))
+	refused("listing only", "check", "--deal", saleID, "--input", writeJSON(t, `{"action":"post","payment_ref_after_payment":true,"posting":`+postingJSON(listingText, "marketplace.example")+`}`))
 	refused("listing only", "check", "--deal", saleID, "--input", writeJSON(t, `{"action":"post","counterparty_class":"shop_preauth","posting":`+postingJSON(listingText, "marketplace.example")+`}`))
 	refused("posting.platform", "check", "--deal", saleID, "--input", writeJSON(t, `{"action":"post","posting":`+postingJSON(listingText, "not a site")+`}`))
 	refused("not a representation class", "check", "--deal", saleID, "--input", writeJSON(t, `{"action":"post","posting":`+postingJSON(listingText, "marketplace.example", "colour")+`}`))

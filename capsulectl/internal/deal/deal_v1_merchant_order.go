@@ -165,6 +165,32 @@ func (s *dealSession) v1PaymentRowNotes(ctx context.Context, d *v1Deal, rows []s
 	if after {
 		notes = append(notes, noteRefAfterPayment)
 	}
+	// Either side's own legs say whether the payment is under the merchant
+	// order: a payee writes no send, so its payee leg is read (#772 review).
+	if !merchant {
+		book, err := s.ownBookV1(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		for i, r := range book {
+			if _, ok := settleOf(r); !ok {
+				continue
+			}
+			raw, err := s.ownSettleMember(ctx, d, i+1)
+			if err != nil {
+				return nil, err
+			}
+			var m struct {
+				PaymentRef struct {
+					Type string `json:"type"`
+				} `json:"payment_ref"`
+			}
+			if json.Unmarshal(raw, &m) == nil && m.PaymentRef.Type == merchantOrderType {
+				merchant = true
+				break
+			}
+		}
+	}
 	out := map[string][]string{}
 	for _, id := range rows {
 		row := append([]string(nil), notes...)

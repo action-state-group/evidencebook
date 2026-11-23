@@ -563,6 +563,16 @@ the leg carries the transaction (--payment-ref, with --payment-ref-network);
 the link from the transaction to the checked nonce is the payer's claim unless
 a verifier reads the transaction's AuthorizationUsed nonce on chain.
 
+A card checkout has no rail reference: its payment is under x-deal-v1's own
+x-deal-v1.merchant_order, the merchant's order number, with
+--payment-ref-origin, the checkout's origin (such as https://shop.example).
+When the checkout showed the order number before paying, the pay check's
+payment_ref is that number and the payment is bound to it. When it did not,
+the pay check said payment_ref_after_payment, --sent takes no --payment-ref,
+and --status settled takes the order number (a failed checkout may leave it
+out); the report then says the reference was recorded after payment. No
+reference may be a card number.
+
 What you received is a payee leg: --received and --receive-fee (0 when none was
 taken) in minor units, --status pending, settled or failed, and the payment's
 reference. A later observation of it names the earlier one with --supersedes.
@@ -1139,6 +1149,9 @@ func answeredRef(in settleIn, cb *xdealv1.CheckBody, send *v1Send) (map[string]a
 	}
 	for name, flag := range map[string]string{"network": in.ref.Network, "method": in.ref.Method, "debtor_agent": in.ref.DebtorAgent, "origin": in.ref.Origin} {
 		if name == "origin" && flag != "" {
+			if send.RefType != merchantOrderType {
+				return nil, cli.InputError("--payment-ref-origin goes with " + merchantOrderType + " only, and this payment was sent under " + send.RefType)
+			}
 			n, err := normalOrigin(flag)
 			if err != nil {
 				return nil, err

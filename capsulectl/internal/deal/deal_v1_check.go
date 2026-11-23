@@ -58,8 +58,11 @@ func (s *dealSession) useV1Check(ctx context.Context, dealID string) ([]sealedEv
 }
 
 // v1CheckInput refuses what a v1 check cannot take: a pay check without its
-// payment reference, a payment reference on any other check, and an offer
-// check (offers on a v1 deal are `deal offer`; a seller's sale flow is B3).
+// payment reference (unless the input says the checkout shows none before
+// paying, payment_ref_after_payment, which is cleared here and never
+// sealed), a payment reference on any other check, a reference that is a
+// card number, and an offer check (offers on a v1 deal are `deal offer`).
+// It trims the reference, as shown (evidencebook#771).
 func v1CheckInput(snap *dealSnapshot) error {
 	// The reference is taken as shown, trimmed, and never card data
 	// (evidencebook#771), before anything is sealed.
