@@ -60,6 +60,7 @@ package	kind	symbol	feature	rust	python
 .	func	VerifyStampProof	shelf	ported	ported
 .	func	VerifyWindowChain	window-books	frozen #798	frozen #799
 .	func	VerifyWitnessReceipt	shelf	frozen #774	frozen #775
+.	func	VerifyWitnessReceiptTime	shelf	frozen #774	frozen #775
 .	type	A2AOptions	a2a-mcp-carriage	frozen #627	frozen #140
 .	type	A2ARequest	a2a-mcp-carriage	frozen #627	frozen #140
 .	type	A2AResponse	a2a-mcp-carriage	frozen #627	frozen #140

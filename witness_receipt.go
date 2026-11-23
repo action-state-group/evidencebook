@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"context"
+	"time"
 
 	aacwitness "github.com/action-state-group/agent-action-capsule/go/witness"
 )
@@ -16,16 +17,30 @@ import (
 // the key id of the directory row it verified under (never one the receipt
 // carries). An error means the statement itself does not verify.
 func VerifyWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aacwitness.Directory) (WitnessCheck, string, error) {
+	check, keyID, _, _, err := VerifyWitnessReceiptTime(statement, receipt, directory)
+	return check, keyID, err
+}
+
+// VerifyWitnessReceiptTime is VerifyWitnessReceipt with the receipt's
+// registration time: the iat of its protected CWT claims, when the receipt
+// verified and carries one. ok is false otherwise; a receipt with no iat
+// gives no time, never a guessed one. A reader takes the earliest such time,
+// among receipts from the witnesses an agreement names, as the time of the
+// stamp the statement belongs to (x-deal-v1's ruling, evidencebook#819).
+func VerifyWitnessReceiptTime(statement []byte, receipt WitnessReceipt, directory aacwitness.Directory) (check WitnessCheck, keyID string, at time.Time, ok bool, err error) {
 	// As Cadence.Witnessed: the witness's URL without a trailing slash, and
 	// a receipt with all three parts.
 	for len(receipt.TSURL) > 0 && receipt.TSURL[len(receipt.TSURL)-1] == '/' {
 		receipt.TSURL = receipt.TSURL[:len(receipt.TSURL)-1]
 	}
 	if receipt.TSURL == "" || receipt.EntryHash == "" || len(receipt.Receipt) == 0 {
-		return WitnessCheck{State: WitnessInvalid, Reason: "a receipt needs its receipt, its entry hash and its witness's URL"}, "", nil
+		return WitnessCheck{State: WitnessInvalid, Reason: "a receipt needs its receipt, its entry hash and its witness's URL"}, "", time.Time{}, false, nil
 	}
 	check, v, err := verifyWitnessReceipt(statement, receipt, directory)
-	return check, v.keyID, err
+	if err != nil || check.State != WitnessVerified || v.registeredAt == nil {
+		return check, v.keyID, time.Time{}, false, err
+	}
+	return check, v.keyID, time.Unix(*v.registeredAt, 0).UTC(), true, nil
 }
 
 // Receipts are the witness receipts this shelf holds for a signed cadence

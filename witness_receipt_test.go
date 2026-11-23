@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 // Receipts gives the receipts Witnessed kept for a checkpoint, none for a
@@ -58,5 +59,29 @@ func TestVerifyWitnessReceipt(t *testing.T) {
 	check, keyID, err = VerifyWitnessReceipt(tick.Checkpoint, WitnessReceipt{TSURL: testWitnessURL, Receipt: []byte("r")}, dir)
 	if err != nil || check.State != WitnessInvalid || keyID != "" {
 		t.Fatalf("no entry hash: %+v %q %v", check, keyID, err)
+	}
+}
+
+// VerifyWitnessReceiptTime gives a verified receipt's registration time, and
+// none for a receipt without one or one that does not verify.
+func TestVerifyWitnessReceiptTime(t *testing.T) {
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	dir := testWitnesses(t)
+	tick := mustTick(t, c, tickTime)
+	iat := tickTime.Add(5 * time.Minute).Truncate(time.Second)
+	check, keyID, at, ok, err := VerifyWitnessReceiptTime(tick.Checkpoint, receiptAt(t, tick.Checkpoint, testWitnessURL, iat), dir)
+	if err != nil || check.State != WitnessVerified || keyID == "" || !ok || !at.Equal(iat) {
+		t.Fatalf("a receipt with a time: %+v %q %v %v %v", check, keyID, at, ok, err)
+	}
+	check, keyID, _, ok, err = VerifyWitnessReceiptTime(tick.Checkpoint, receiptFor(t, tick.Checkpoint, testWitnessURL), dir)
+	if err != nil || check.State != WitnessVerified || keyID == "" || ok {
+		t.Fatalf("a receipt with no time verifies and gives none: %+v %q %v %v", check, keyID, ok, err)
+	}
+	other := receiptAt(t, tick.Checkpoint, testWitnessURL, iat)
+	later := mustTick(t, c, tickTime.Add(time.Hour))
+	other.Receipt = receiptAt(t, later.Checkpoint, testWitnessURL, iat).Receipt
+	if check, _, _, ok, err := VerifyWitnessReceiptTime(tick.Checkpoint, other, dir); err != nil || check.State == WitnessVerified || ok {
+		t.Fatalf("a receipt for another statement gives no time: %+v %v %v", check, ok, err)
 	}
 }
