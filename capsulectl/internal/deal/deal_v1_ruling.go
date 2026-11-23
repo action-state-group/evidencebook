@@ -123,8 +123,8 @@ func dealRulingCommand() *cobra.Command {
 		Short: "As a deal's adjudicator, seal your ruling on a disputed row and write the file both parties take",
 		Long: `As the adjudicator an x-deal-v1 agreement names, seal your ruling on one row
 of a deal, stamp it (a new stamp when none covers it yet), and write the file to
-send to both parties (--out, or standard output with none). Each party takes it with deal receive, which enters it in their
-deal book.
+send to both parties (--out, or standard output with none). Each party takes it
+with deal receive, which enters it in their deal book.
 
 The ruling is your decision; this command records it. It is checked against
 the dispute you were sent (--dispute, the file deal dispute wrote) and one or

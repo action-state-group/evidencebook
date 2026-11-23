@@ -31,7 +31,8 @@ here, so it counts toward the deal), and whether two different records came
 for one place (it does not say which is right). It seals nothing and appends
 nothing to a book of yours, except that a ruling of one of your deals is entered
 in your deal book by a statement naming it. --out then writes that statement as
-the file to send to the other side, so it can count your later records.
+the file to send to the other side, so the other side holds it and counts your
+later records.
 
 Needs the deal store in the new layout (deal set-version x-deal-v1 --migrate).`,
 		Args: cobra.ExactArgs(1),

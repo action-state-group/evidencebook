@@ -156,6 +156,7 @@ with you; only their SHA-256 is sealed, so send the file to the adjudicator
 yourself. A challenge changes no row's status: the first final ruling still
 applies and is never replaced; the adjudicator may issue a later ruling that is
 not final. It takes no --row, --forum or --withdraw.
+
 Run again with the same --out, a command rewrites the same file and seals
 nothing new. An --out file that already exists is refused for a new dispute
 or withdrawal. Needs your agreement (deal agree) and an x-deal-v1 deal.`,

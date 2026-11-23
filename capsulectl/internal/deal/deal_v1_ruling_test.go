@@ -140,8 +140,11 @@ func TestARulingRefusals(t *testing.T) {
 	other := filepath.Join(t.TempDir(), "other.json")
 	require.NoError(t, os.WriteFile(other, []byte(`{"record":{}}`), 0o600))
 	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy, "--value", "not_met", "--out", other)...), "holds another record")
-	again := dealRun(t, append(base, "--copy", buyerCopy, "--out", filepath.Join(t.TempDir(), "r2.json"))...)
-	assert.Equal(t, false, again["sealed"], "only the first ruling was sealed")
+	// The refused ruling was not sealed: run with a new --out, it is sealed
+	// now, as the case book's second ruling.
+	notMet := dealRun(t, append(base, "--copy", buyerCopy, "--value", "not_met", "--out", filepath.Join(t.TempDir(), "r2.json"))...)
+	assert.Equal(t, true, notMet["sealed"], "the refused run sealed nothing")
+	assert.Equal(t, float64(2), notMet["seq"])
 
 	// The seller's profile checkpoints with a key of its own, so it cannot
 	// rule.
