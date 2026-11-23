@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.0.26 (2026-11-22)
+## 0.0.26 (2026-11-23)
 
 Every pull request merged since 0.0.25 that changed the crate:
 
