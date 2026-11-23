@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/action-state-group/evidencebook"
 	htmlstd "html"
 	"io"
 	"regexp"
@@ -39,14 +40,20 @@ func markDiagnostic(html string) (string, error) {
 }
 
 // markCoverage puts the coverage banner of a report over windows ahead of
-// the viewer's mount point, in the shell's own banner classes.
-func markCoverage(page string, c Coverage) (string, error) {
+// the viewer's mount point, in the shell's own banner classes. witnessed is
+// set when every window's final checkpoint carried a receipt that verified
+// under the witness directory the build was given.
+func markCoverage(page string, c evidencebook.ReportCoverage, witnessed bool) (string, error) {
 	if strings.Count(page, appElement) != 1 {
 		return "", fmt.Errorf("the page shell has no single %s to mark with its coverage", appElement)
 	}
-	windows := plural(c.Windows, "window", "windows")
-	banner := fmt.Sprintf(`<div class="aac-banner" data-state="verified" role="status"><strong>Covers %s to %s.</strong> Each of the %d %s has its answer from the holder's book for that window, and the windows link with no gap. Without witness receipts the windows' continuity is as the holder signed it; no check shows that an answer holds every row of its window.</div>`,
-		htmlstd.EscapeString(c.From), htmlstd.EscapeString(c.To), c.Windows, windows)
+	windows := plural(len(c.Windows), "window", "windows")
+	continuity := "Without witness receipts the windows' continuity is as the holder signed it; no check shows that an answer holds every row of its window."
+	if witnessed {
+		continuity = "Each window's final checkpoint carries a witness receipt that verified when this page was built; no check shows that an answer holds every row of its window."
+	}
+	banner := fmt.Sprintf(`<div class="aac-banner" data-state="verified" role="status"><strong>Covers %s to %s.</strong> Each of the %d %s has its answer from the holder's book for that window, and the windows link with no gap, as checked from this page's bundle when it was built. %s</div>`,
+		htmlstd.EscapeString(c.From), htmlstd.EscapeString(c.To), len(c.Windows), windows, continuity)
 	return strings.Replace(page, appElement, banner+appElement, 1), nil
 }
 

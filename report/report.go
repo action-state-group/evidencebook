@@ -181,25 +181,29 @@ type View struct {
 	// diagnostic page carries none.
 	Receipts *Receipts
 	// Coverage, for a report over a range of a holder's time windows
-	// (evidencebook#689), is the range its caller's coverage check found
-	// every window of answered. The page states it in a banner above the
-	// report, with what the check does not show. A range with any gap is
-	// never given here: its caller builds no page for it. A diagnostic page
-	// carries none. Like Wording, it lives in the page, not in the bundle,
-	// so a page built with one gets no permalink.
+	// (evidencebook#689), has Build check from the bundle alone that the
+	// windows link, tile the range the Result's window chain states, and
+	// each has its answer, under the holder's checkpoint key the caller
+	// obtained. A range with any gap is refused, every gap named, and no page
+	// is rendered; a covered range is stated in a banner above the report,
+	// with what the check does not show. A diagnostic page carries none.
+	// Like Wording, the banner lives in the page, not in the bundle, so a
+	// page built with one gets no permalink.
 	Coverage *Coverage
 }
 
-// Coverage is the range a report over windows covers: its first and last
-// window labels and the number of windows, each answered.
+// Coverage is what checking a report over windows needs that the bundle
+// does not carry: the holder's checkpoint key, obtained independently, and
+// the witness directory when the agreement names witnesses (every window's
+// final checkpoint must then carry a receipt that verifies under it).
 type Coverage struct {
-	From, To string
-	Windows  int
+	HolderCheckpointKey string
+	Witnesses           []evidencebook.WitnessRow
 }
 
 func (c Coverage) check() error {
-	if c.From == "" || c.To == "" || c.Windows < 1 {
-		return refusal("coverage names its first and last window and at least one window")
+	if c.HolderCheckpointKey == "" {
+		return refusal("coverage needs the holder's checkpoint key, obtained independently of the bundle")
 	}
 	return nil
 }
@@ -282,6 +286,9 @@ type Page struct {
 	// meant to carry one reads it here: an id that is not a deal's is
 	// otherwise indistinguishable from a deal the caller handed nothing for.
 	IgnoredReceipts []string
+	// Coverage is what Build's check of a report over windows found, when
+	// View.Coverage asked for it: the range and the windows proved.
+	Coverage *evidencebook.ReportCoverage
 
 	bundle map[string]interface{}
 	// failure is what kept a diagnostic page's bundle from VALID, with the
@@ -473,6 +480,22 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if view.Contract != nil {
 		page.ContractRef, page.ContractSHA256, page.Tiers = contract.ref, view.Contract.SHA256, tiers
 	}
+	if view.Coverage != nil {
+		// Checked here, from the bundle the page embeds, as the verdict is:
+		// the banner is never the caller's word.
+		coverage, err := evidencebook.VerifyReportCoverage(bundle, evidencebook.CoverageOptions{CheckpointKey: view.Coverage.HolderCheckpointKey, Witnesses: view.Coverage.Witnesses})
+		if err != nil {
+			return nil, refusal("coverage: " + err.Error())
+		}
+		if len(coverage.Findings) > 0 {
+			texts := make([]string, len(coverage.Findings))
+			for i, f := range coverage.Findings {
+				texts[i] = f.Text
+			}
+			return nil, refusal("the report does not cover its range, so no page was rendered: " + strings.Join(texts, "; "))
+		}
+		page.Coverage = &coverage
+	}
 	// The bundle is judged as `verify --bundle` reads it from a file.
 	if reread, err := json.Marshal(value); err == nil {
 		if judged, err := cli.DecodeBundleJSON(reread); err == nil {
@@ -528,8 +551,8 @@ func Build(bundle []byte, view View) (*Page, error) {
 		if html, err = markDiagnostic(html); err != nil {
 			return nil, err
 		}
-	} else if view.Coverage != nil {
-		if html, err = markCoverage(html, *view.Coverage); err != nil {
+	} else if page.Coverage != nil {
+		if html, err = markCoverage(html, *page.Coverage, len(view.Coverage.Witnesses) > 0); err != nil {
 			return nil, err
 		}
 	}
