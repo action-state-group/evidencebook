@@ -235,6 +235,7 @@ fn a_definition_has_the_go_identifier() {
                 recipient: def.recipient.clone(),
                 forms: forms(&def.forms).unwrap(),
                 fields: def.fields.clone().unwrap(),
+                ..Default::default()
             })
             .unwrap();
         assert_eq!(id, def.id, "{}", def.name);
@@ -263,6 +264,7 @@ fn a_definition_go_refuses_is_refused_for_the_same_reason() {
                 recipient: def.recipient.clone(),
                 forms,
                 fields: def.fields.clone().unwrap_or_default(),
+                ..Default::default()
             })
             .expect_err(&def.name);
         let want = match def.name.as_str() {
@@ -303,6 +305,7 @@ fn reregister(v: &Vectors, derivations: &mut Derivations) {
             recipient: r.recipient.clone(),
             forms: forms(&r.forms).unwrap(),
             fields: r.fields.clone(),
+            ..Default::default()
         });
         match r.outcome.as_str() {
             "registered" => assert_eq!(got.as_ref(), Ok(first), "{}", r.name),
@@ -330,6 +333,7 @@ fn registering_a_document_again_never_changes_it() {
             recipient: recipient.map(Into::into),
             forms,
             fields: fields.iter().map(|f| f.to_string()).collect(),
+            ..Default::default()
         };
     let id = derivations
         .register(def(Some("alice"), vec![SubjectKind::Correlation], &["seq"]))
@@ -386,6 +390,7 @@ fn every_case_is_the_go_answer_byte_for_byte() {
                 recipient: def.recipient.clone(),
                 forms: forms(&def.forms).unwrap(),
                 fields: def.fields.clone().unwrap(),
+                ..Default::default()
             })
             .unwrap();
     }
@@ -518,6 +523,7 @@ fn registering_a_derivation_leaves_the_underived_artifact() {
                 recipient: def.recipient.clone(),
                 forms: forms(&def.forms).unwrap(),
                 fields: def.fields.clone().unwrap(),
+                ..Default::default()
             })
             .unwrap();
     }
@@ -551,6 +557,7 @@ fn a_derivation_needs_its_registry_and_its_headers() {
             recipient: def.recipient.clone(),
             forms: forms(&def.forms).unwrap(),
             fields: def.fields.clone().unwrap(),
+            ..Default::default()
         })
         .unwrap();
     let case = v

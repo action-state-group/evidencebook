@@ -1563,3 +1563,71 @@ mod history_card_2 {
         );
     }
 }
+
+/// A Terms Pack served with proofs carries the checkpoint, a proof per record
+/// and, since the second checkpoint extends the first, a consistency proof:
+/// rows + 2 verification entries, which count against the answer's item cap
+/// as the records do (Go `buildArtifact`).
+#[test]
+fn a_pack_with_proofs_counts_its_material_against_the_item_cap() {
+    use evidencebook::derivation::DerivationDefinition;
+    use evidencebook::request::SubjectKind;
+    let (mut b, _) = book();
+    let served = |b: &mut Mem, proofs: bool, cap: usize| {
+        let mut derivations = Derivations::new();
+        let id = derivations
+            .register(DerivationDefinition {
+                document: format!(r#"{{"pack":"cap","proofs":{proofs}}}"#).into_bytes(),
+                recipients: vec!["alice".into()],
+                forms: vec![SubjectKind::Range],
+                fields: vec!["record_type".into()],
+                proofs,
+                ..Default::default()
+            })
+            .unwrap();
+        let signer = key("responder");
+        let policy = ResponderPolicy {
+            refusal_policy: RefusalPolicy::Specific,
+            max_answer_items: cap,
+            ..Default::default()
+        };
+        let responder = Responder {
+            signer: &signer,
+            derivations: &derivations,
+            policy: &policy,
+            standard_history: None,
+        };
+        let request = serde_json::to_vec(&json!({
+            "subject": {"range": [0, 1]}, "derivation": id,
+            "coverage": {"expected_pin": b.pin(1)}, "nonce": "n"}))
+        .unwrap();
+        let opts = RespondOptions {
+            authenticated_requester: Some("alice"),
+            policy: SharePolicy::default(),
+        };
+        let (octets, _) = respond(b, &responder, &request, Binding::Json, &opts).unwrap();
+        parse_reply(&octets, Binding::Json).unwrap()
+    };
+    // Two rows and no proofs: the cap is the rows alone.
+    let Reply::Envelope(env) = served(&mut b, false, 2) else {
+        panic!("two rows under a cap of two");
+    };
+    assert!(env.verification.is_empty());
+    // With proofs: rows + 2 over the cap is refused for a limit, rows + 2 under
+    // it is answered with the material.
+    for cap in [2, 3] {
+        assert_eq!(
+            reason(&served(&mut b, true, cap)),
+            Reason::PolicyDeclined,
+            "cap {cap}"
+        );
+    }
+    let Reply::Envelope(env) = served(&mut b, true, 4) else {
+        panic!("rows + 2 under a cap of four");
+    };
+    assert_eq!(
+        env.verification.len(),
+        4,
+        "checkpoint, two proofs, consistency"
+    );
+}

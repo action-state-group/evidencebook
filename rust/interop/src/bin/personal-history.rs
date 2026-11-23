@@ -147,6 +147,7 @@ fn main() {
                 recipient: Some(RECIPIENT.into()),
                 forms: vec![SubjectKind::Correlation],
                 fields: reads.iter().map(|s| s.to_string()).collect(),
+                ..Default::default()
             })
             .expect("register")
     };

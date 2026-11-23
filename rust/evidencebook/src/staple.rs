@@ -440,7 +440,7 @@ pub fn check_history_card_2(artifact: &[u8], anchor: &str) -> Result<(), StapleE
 
 /// Whether `proof` (consistency-proof octets, deterministic CBOR) shows
 /// `next`'s commitment extends `prev`'s.
-fn consistency_holds(
+pub(crate) fn consistency_holds(
     prev: &DecodedCheckpointCose,
     next: &DecodedCheckpointCose,
     proof: &[u8],
