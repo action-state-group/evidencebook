@@ -9,6 +9,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
+	"github.com/action-state-group/evidencebook"
 )
 
 // ReceiptModuleID is the module a page opens a plain deal receipt with
@@ -139,6 +140,7 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 type moduleManifest struct {
 	ID       string `json:"id"`
 	Requires struct {
+		BundleKind string `json:"bundle_kind"`
 		Extensions struct {
 			Required []string `json:"required"`
 		} `json:"extensions"`
@@ -149,9 +151,12 @@ type moduleManifest struct {
 	} `json:"forbids"`
 }
 
-// accepts says whether the module's manifest takes a bundle with these
-// extension blocks and root profiles (profilesOf).
-func (m moduleManifest) accepts(extensions map[string]interface{}, profiles map[string]bool) bool {
+// accepts says whether the module's manifest takes a bundle of this kind with
+// these extension blocks and root profiles (profilesOf).
+func (m moduleManifest) accepts(bundleKind string, extensions map[string]interface{}, profiles map[string]bool) bool {
+	if m.Requires.BundleKind != "" && m.Requires.BundleKind != bundleKind {
+		return false
+	}
 	for _, profile := range m.Forbids.Profiles {
 		if profiles[profile] {
 			return false
@@ -183,7 +188,8 @@ func checkReceiptBundle(r Receipt, cited map[string]bool, module moduleManifest)
 		return refusef("receipts: the receipt bundle of deal %q does not pass the page gate, so it is not carried: %s", r.Deal, cli.SafeError(err))
 	}
 	extensions, _ := value["extensions"].(map[string]interface{})
-	if !module.accepts(extensions, profilesOf(value)) {
+	kind, _ := value["bundle_kind"].(string)
+	if !module.accepts(kind, extensions, profilesOf(value)) {
 		return refusef("receipts: the receipt bundle of deal %q is not one the %s module draws (its extensions do not meet the module's requires and forbids)", r.Deal, module.ID)
 	}
 	root, _ := value["root"].(string)
@@ -195,24 +201,29 @@ func checkReceiptBundle(r Receipt, cited map[string]bool, module moduleManifest)
 
 // profilesOf are the profiles a bundle's root declares, as the viewer's
 // module resolution reads them: "spec_version:<v>" from the root's disclosed
-// agent_input, and "result_version:<v>" when that input is, or in book form
-// its record header's statement is, an Evidence Result.
+// agent_input, and "result_version:evidence-result-v0" when the root carries a
+// Result by the same rule the report's own root gate applies
+// (resultCandidates: payload form in agent_output or agent_input, or book form
+// in an evidence_result header), so the two never disagree on what a Result
+// root is.
 func profilesOf(bundle map[string]interface{}) map[string]bool {
 	profiles := make(map[string]bool)
 	root, _ := bundle["root"].(string)
 	disclosures, _ := bundle["disclosures"].(map[string]interface{})
 	members, _ := disclosures[root].(map[string]interface{})
-	input, _ := members["agent_input"].(map[string]interface{})
-	if version, ok := input["spec_version"].(string); ok {
-		profiles["spec_version:"+version] = true
-	}
-	if version, ok := input["result_version"].(string); ok {
-		profiles["result_version:"+version] = true
-	}
-	if statement, ok := input["statement"].(map[string]interface{}); ok {
-		if version, ok := statement["result_version"].(string); ok {
-			profiles["result_version:"+version] = true
+	if input, ok := members["agent_input"].(map[string]interface{}); ok {
+		if version, ok := input["spec_version"].(string); ok {
+			profiles["spec_version:"+version] = true
 		}
+	}
+	inline := false
+	for _, raw := range asSlice(bundle["records"]) {
+		if record, ok := raw.(map[string]interface{}); ok && record["capsule_id"] == root {
+			_, inline = record[evidencebook.RecordHeaderMember]
+		}
+	}
+	if len(resultCandidates(root, members, inline)) > 0 {
+		profiles["result_version:"+cli.ResultVersion] = true
 	}
 	return profiles
 }
