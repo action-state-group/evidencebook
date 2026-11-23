@@ -68,6 +68,14 @@ Any checkout or agreed buy: a retail order, a marketplace buy, a
 subscription, an in-app purchase. The user is the buyer here; when the
 seller makes the offer, the two sides swap in steps 2 to 6.
 
+**Two shapes.** When the other side runs this tool too (another agent, a
+marketplace seller who keeps records), the deal is between two books and the
+files go back and forth (steps 2 to 6 as written). When it does not (a shop's
+website, a merchant that keeps no records of its own), the deal has your book
+only: your offer names no key, you agree to it yourself, and nothing goes to
+the other side (the "No layer on the other side" notes in steps 2, 3 and 6).
+A retail checkout is almost always the second shape.
+
 1. **Find what they asked for.** Search and show options. Nothing is sealed
    yet: the deal starts with the offer.
 2. **The offer.** Write the offer's members to a file (the role, the other
@@ -78,13 +86,16 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    capsulectl --profile deal deal offer --input offer.json --out offer.sent.json
    ```
 
+   **No layer on the other side:** put `"to": null` in the offer. It stays
+   with you; there is nothing to send, and `deal offer` says so.
+
    The user sends `offer.sent.json` to the seller. A counter-offer is `deal
    offer --counter-to OFFER --input ...`; withdrawing your own offer before
    the deal starts is `deal offer cancel OFFER --out FILE`, and declining one
    sent to you is `deal offer decline OFFER --out FILE`. Each writes the file
    to send.
 3. **The other side keeps it.** On the seller's side, `deal receive
-   offer.sent.json`. Every file the other side sends later (its agreement,
+   offer.sent.json` (no layer on the other side: skip this step). Every file the other side sends later (its agreement,
    statements, payment legs, a dispute) is kept the same way, with `deal
    receive FILE`: what you have not received does not count for you.
 4. **Admission, on each side.** Each side runs its admission pack on the
@@ -130,6 +141,14 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    that checkpoint's proof. Neither side's first act is sealed until it holds
    the other's: an act run too early is refused and says to run it again
    once the file arrives. Running `deal agree` again rewrites the same file.
+
+   **No layer on the other side:** run `deal agree OFFER --out
+   agreement.json` on your own offer right after steps 4 and 5. It seals at
+   once, with no file from the other side; the file is your own copy. Your
+   first act then goes ahead without the other side's checkpoint proof, and
+   its output marks it (`first_act_gate`: `counterparty_no_layer`). The
+   payment check cannot match legs the other side never writes, so `deal
+   settlement` and `deal report` say the record is one-sided.
 7. **Final review:** Before you type any of the user's own details into the
    checkout (name, email, delivery address, phone), follow "Disclosure"
    below for them, on this deal. Then fill the checkout up to the last screen
@@ -140,7 +159,9 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    payee and the rail, so a change since the opening shows), and
    `payment_ref`, the reference fixed before paying that the payment will be
    made under (a Lightning payment hash, an ACP order id, the x402
-   authorization nonce). On a card or a wallet, `authorized_max_minor` is
+   authorization nonce, or on a card checkout the merchant's order number
+   when the checkout shows it; when it shows none before you pay,
+   `"payment_ref_after_payment": true` instead, step 9). On a card or a wallet, `authorized_max_minor` is
    the largest amount the payment may be authorized for, as the checkout or
    wallet shows it (a hold larger than the total included), never just the
    total:
@@ -185,7 +206,27 @@ seller makes the offer, the two sides swap in steps 2 to 6.
    names. On every type but `ln.payment_hash`, `bolt12.invoice_payment_hash`,
    `acp.order_id` and `ucp.order_id`, the second call also takes
    `--payment-ref`, the rail's own reference as it comes back; on x402 give
-   `--payment-ref-network NETWORK` on both calls. While
+   `--payment-ref-network NETWORK` on both calls.
+
+   **A card checkout on a website** has no rail reference: the payment is
+   under the merchant's order number, `x-deal-v1.merchant_order`, with
+   `--payment-ref-origin`, the checkout's origin (`https://shop.example`;
+   scheme and host only). When the checkout shows the order number before
+   you pay, that number is the pay check's `payment_ref` (step 7), and the
+   two calls are:
+
+   ```sh
+   capsulectl --profile deal deal settle --deal ID --sent --check CHECK_ID \
+     --payment-ref-type x-deal-v1.merchant_order --payment-ref-origin https://shop.example
+   capsulectl --profile deal deal settle --deal ID --check CHECK_ID --status settled --out payer-leg.json
+   ```
+
+   When it shows none before you pay, the pay check says
+   `"payment_ref_after_payment": true` instead of `payment_ref`; `--sent` is
+   the same, and `--status settled` adds `--payment-ref ORDER_NUMBER` once
+   the confirmation shows it (a failed checkout may leave it out). The
+   report then says the reference was recorded after payment. Never put a
+   card number, or any part of one, in a reference: it is refused. While
    the rail still says pending, run nothing more for this payment. The user
    sends `payer-leg.json` to the other side.
 10. **How it went.** Each side states how its rows went:
@@ -704,14 +745,14 @@ without `--json` prints lines). `--help` on each gives every flag.
 | Command | What it does |
 |---|---|
 | `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates the profile: its store, signing and checkpoint seeds (mode 0600) and its cadence log. Prints `public_key`, the key the other side names in an offer's `to`. |
-| `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). |
+| `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). An offer with `"to": null` is to a party that keeps no records: nothing to send. |
 | `deal offer cancel OFFER --out FILE` / `deal offer decline OFFER --out FILE` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
 | `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof) and says whether it counts yet. Seals nothing. |
 | `deal admit --deal ID --input FILE` | Seals capsule-engine's admission decision (`capsule-engine admission evaluate --admit FILE`) for the deal; only `"admits_deal": true` is accepted. |
 | `deal note --deal ID --kind intent --input FILE [--opening FILE]` | Seals what the user asked; the deal's first intent carries `--opening`. Other kinds on x-deal-v1: `searched`, `options`, `recommended`, `chose`, `couldnt`, `message`, `claim`, `evidence`, `change`, `disclosure`, and `approval` (`--check CHECK_ID --choice OPTION --said WORDS --shown-card FILE`). |
-| `deal agree OFFER --out FILE [--intent DIGEST]` | Seals your agreement as the first record of your deal book and writes the file to send. The side the offer was sent to agrees first; the offerer agrees once it holds that agreement. |
+| `deal agree OFFER --out FILE [--intent DIGEST]` | Seals your agreement as the first record of your deal book and writes the file to send. The side the offer was sent to agrees first; the offerer agrees once it holds that agreement. On your own offer to no key, you agree alone, at once. |
 | `deal check --deal ID --input FILE` | The final review: seals the snapshot, compares it with what was asked and agreed, and returns `proceed`, or a `pause` or `deny` with its card. A pay check carries `payment_ref`. |
-| `deal settle --deal ID --sent --check CHECK_ID --payment-ref-type TYPE` | Before the handoff to the rail: checks the payment and counts it as in flight. Seals no leg. |
+| `deal settle --deal ID --sent --check CHECK_ID --payment-ref-type TYPE` | Before the handoff to the rail: checks the payment and counts it as in flight. Seals no leg. A card checkout is `--payment-ref-type x-deal-v1.merchant_order --payment-ref-origin ORIGIN`. |
 | `deal settle --deal ID --check CHECK_ID --status settled\|failed --out FILE` | When the rail answers: seals your payer leg and writes the file to send. |
 | `deal settle --deal ID --received N --receive-fee N --status S --payment-ref-type T --payment-ref R [--payment-ref-network N] --out FILE` | What you received: your payee leg (`--payment-ref-network` on x402). `--reverses LEG` makes a leg a refund of a leg of your own book; `--supersedes LEG` replaces an earlier observation. |
 | `deal perform --deal ID --act ACT --check CHECK_ID --observed HOW --out FILE` | An act other than a payment (a delivery), on a passing commit check. |
@@ -741,12 +782,6 @@ in the chat. The pass lists each consequential action with no deal record
 anything is unrecorded. Show the user the `summary` and the `unrecorded` list
 as they are. It can list what is missing from the records it read; it cannot
 prove that nothing else happened.
-
-**On x-deal-v1 deals it does not yet read the deal's records**
-(evidencebook#758): an action on an x-deal-v1 deal is listed as
-`unrecorded` even when the deal holds it. Until that is fixed, check each
-listed action against `deal list` and `deal report` before telling the user
-it is missing, and say that the daily check covers x-deal-v0 deals only.
 
 ## Try it: the demo (2 minutes, no real money)
 

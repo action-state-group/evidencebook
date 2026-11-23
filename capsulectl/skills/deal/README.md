@@ -64,14 +64,14 @@ without `--json` prints lines). `--help` on each gives every flag.
 | Command | What it does |
 |---|---|
 | `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates the profile: its store, signing and checkpoint seeds (mode 0600) and its cadence log. Prints `public_key`, the key the other side names in an offer's `to`. |
-| `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). |
+| `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). An offer with `"to": null` is to a party that keeps no records: nothing to send. |
 | `deal offer cancel OFFER --out FILE` / `deal offer decline OFFER --out FILE` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
 | `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof) and says whether it counts yet. Seals nothing. |
 | `deal admit --deal ID --input FILE` | Seals capsule-engine's admission decision (`capsule-engine admission evaluate --admit FILE`) for the deal; only `"admits_deal": true` is accepted. |
 | `deal note --deal ID --kind intent --input FILE [--opening FILE]` | Seals what the user asked; the deal's first intent carries `--opening`. Other kinds on x-deal-v1: `searched`, `options`, `recommended`, `chose`, `couldnt`, `message`, `claim`, `evidence`, `change`, `disclosure`, and `approval` (`--check CHECK_ID --choice OPTION --said WORDS --shown-card FILE`). |
-| `deal agree OFFER --out FILE [--intent DIGEST]` | Seals your agreement as the first record of your deal book and writes the file to send. The side the offer was sent to agrees first; the offerer agrees once it holds that agreement. |
+| `deal agree OFFER --out FILE [--intent DIGEST]` | Seals your agreement as the first record of your deal book and writes the file to send. The side the offer was sent to agrees first; the offerer agrees once it holds that agreement. On your own offer to no key, you agree alone, at once. |
 | `deal check --deal ID --input FILE` | The final review: seals the snapshot, compares it with what was asked and agreed, and returns `proceed`, or a `pause` or `deny` with its card. A pay check carries `payment_ref`. |
-| `deal settle --deal ID --sent --check CHECK_ID --payment-ref-type TYPE` | Before the handoff to the rail: checks the payment and counts it as in flight. Seals no leg. |
+| `deal settle --deal ID --sent --check CHECK_ID --payment-ref-type TYPE` | Before the handoff to the rail: checks the payment and counts it as in flight. Seals no leg. A card checkout is `--payment-ref-type x-deal-v1.merchant_order --payment-ref-origin ORIGIN`. |
 | `deal settle --deal ID --check CHECK_ID --status settled\|failed --out FILE` | When the rail answers: seals your payer leg and writes the file to send. |
 | `deal settle --deal ID --received N --receive-fee N --status S --payment-ref-type T --payment-ref R [--payment-ref-network N] --out FILE` | What you received: your payee leg (`--payment-ref-network` on x402). `--reverses LEG` makes a leg a refund of a leg of your own book; `--supersedes LEG` replaces an earlier observation. |
 | `deal perform --deal ID --act ACT --check CHECK_ID --observed HOW --out FILE` | An act other than a payment (a delivery), on a passing commit check. |
