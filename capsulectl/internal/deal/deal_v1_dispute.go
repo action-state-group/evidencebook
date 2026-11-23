@@ -23,8 +23,8 @@ import (
 // a card's disputes raised and received all read the same record (xdealv1
 // DisputeBody; the card's count is the reader's, evidencebook#274). A dispute
 // is never gated by the first-act rule (u610, u611): only a first perform or
-// payer settle is. A challenge of a ruling is not here: it needs the ruling
-// the adjudicator sends back.
+// payer settle is. --challenge seals a dispute of kind challenge naming a
+// ruling the holder holds (runChallenge).
 
 // disputeOf is a dispute record of the holder's own book.
 func disputeOf(r xdealv1.Record) (*xdealv1.DisputeBody, bool) {
@@ -136,7 +136,7 @@ func writePush(c *cobra.Command, pair []byte, out string, result map[string]any)
 func dealDisputeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dispute",
-		Short: "Dispute a row of an x-deal-v1 deal, or take the dispute back, and write the file to send",
+		Short: "Dispute a row of an x-deal-v1 deal, take the dispute back, or challenge a ruling, and write the file to send",
 		Long: `Dispute a row of an x-deal-v1 deal: seal a dispute record in your deal book
 and write the file to send to --out (standard output with none). The other
 side counts it with deal receive, and the same record is what a row's status
@@ -148,6 +148,15 @@ only one. An agreement with no adjudicator names no forum, so it allows no
 dispute. The dispute cites your own statements on the row that exist now.
 
 --withdraw takes back your open dispute on the row, in the same file form.
+
+--challenge RULING --grounds FILE challenges a ruling of the deal you hold
+(deal receive took the adjudicator's file): it seals a dispute of kind
+challenge naming the ruling and the SHA-256 of your grounds. The grounds stay
+with you; only their SHA-256 is sealed, so send the file to the adjudicator
+yourself. A challenge changes no row's status: the first final ruling still
+applies and is never replaced; the adjudicator may issue a later ruling that is
+not final. It takes no --row, --forum or --withdraw.
+
 Run again with the same --out, a command rewrites the same file and seals
 nothing new. An --out file that already exists is refused for a new dispute
 or withdrawal. Needs your agreement (deal agree) and an x-deal-v1 deal.`,
@@ -158,8 +167,13 @@ or withdrawal. Needs your agreement (deal agree) and an x-deal-v1 deal.`,
 			forum, _ := c.Flags().GetString("forum")
 			out, _ := c.Flags().GetString("out")
 			withdraw, _ := c.Flags().GetBool("withdraw")
+			challenge, _ := c.Flags().GetString("challenge")
+			grounds, _ := c.Flags().GetString("grounds")
 			if !cli.DealIDPattern.MatchString(dealID) {
 				return cli.InputError("--deal must be a deal id as printed by `deal offer`: deal- followed by 16 hex characters")
+			}
+			if challenge != "" || grounds != "" {
+				return runChallenge(c, dealID, strings.TrimSpace(challenge), grounds, out, row != "" || forum != "" || withdraw)
 			}
 			row = strings.TrimSpace(row)
 			if row == "" {
@@ -264,6 +278,8 @@ or withdrawal. Needs your agreement (deal agree) and an x-deal-v1 deal.`,
 	cmd.Flags().String("row", "", "The row to dispute, as the offer names it (required)")
 	cmd.Flags().String("forum", "", "The forum, one of the agreement's forums (default: the only one)")
 	cmd.Flags().Bool("withdraw", false, "Take back your open dispute on the row")
+	cmd.Flags().String("challenge", "", "Challenge a ruling you hold, by the digest deal receive printed (with --grounds)")
+	cmd.Flags().String("grounds", "", "With --challenge: a file of your grounds; it stays with you, and only its SHA-256 is sealed")
 	cmd.Flags().String("out", "", "Where to write the file to send (default: standard output)")
 	return cmd
 }

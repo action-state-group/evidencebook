@@ -1,11 +1,13 @@
 package deal
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -27,7 +29,10 @@ It says in plain words what it did: which records are kept, whether one is
 still missing before a counted one ("counted" means every record before it is
 here, so it counts toward the deal), and whether two different records came
 for one place (it does not say which is right). It seals nothing and appends
-nothing to a book of yours.
+nothing to a book of yours, except that a ruling of one of your deals is entered
+in your deal book by a statement naming it. --out then writes that statement as
+the file to send to the other side, so the other side holds it and counts your
+later records.
 
 Needs the deal store in the new layout (deal set-version x-deal-v1 --migrate).`,
 		Args: cobra.ExactArgs(1),
@@ -63,6 +68,7 @@ Needs the deal store in the new layout (deal set-version x-deal-v1 --migrate).`,
 			})
 		},
 	}
+	cmd.Flags().String("out", "", "With a ruling: write the statement your book seals to name it, the file to send to the other side")
 	return cmd
 }
 
@@ -141,6 +147,13 @@ func (s *dealSession) receiveV1(ctx context.Context, c *cobra.Command, push v1Pu
 	out := map[string]any{}
 	if info != nil {
 		out["record_type"], out["deal_id"] = info.kind, info.dealID
+		// A ruling's record digest is what a statement names it by and what
+		// deal dispute --challenge takes.
+		if info.book != nil && info.kind == xdealv1.TypeRuling {
+			if d, err := xdealv1.Digest(info.book.Record); err == nil {
+				out["ruling"] = d
+			}
+		}
 	}
 	if res.Record != nil {
 		out["record"] = recordWords(res.Record)
@@ -162,7 +175,61 @@ func (s *dealSession) receiveV1(ctx context.Context, c *cobra.Command, push v1Pu
 		_ = cli.Output(c, out)
 		return rerr
 	}
+	if path, _ := c.Flags().GetString("out"); path != "" {
+		if info == nil || info.kind != xdealv1.TypeRuling {
+			return cli.InputError("--out goes with a ruling: it writes the statement that names it")
+		}
+		if err := s.writeNaming(ctx, c, info, path, out); err != nil {
+			return err
+		}
+	}
 	return cli.Output(c, out)
+}
+
+// writeNaming writes the statement this holder's book holds naming the
+// received ruling, as the file to send to the other side: without it the
+// other side holds a gap at that place and counts none of the holder's
+// later records.
+func (s *dealSession) writeNaming(ctx context.Context, c *cobra.Command, info *receivedInfo, path string, out map[string]any) error {
+	ruling, err := xdealv1.Digest(info.book.Record)
+	if err != nil {
+		return err
+	}
+	d, err := s.v1DealOf(ctx, info.dealID)
+	if err != nil {
+		return err
+	}
+	if d == nil || d.OwnAgreementID == "" {
+		return cli.InputError("deal " + info.dealID + " has no book of yours, so the ruling is entered in none")
+	}
+	book, err := s.ownBookV1(ctx, d)
+	if err != nil {
+		return err
+	}
+	for i := len(book) - 1; i >= 0; i-- {
+		st, ok := book[i].Body.(*xdealv1.StatementBody)
+		if !ok || st.Names == nil || st.Names.Ruling == nil || st.Names.Ruling.Digest != ruling {
+			continue
+		}
+		pair, err := s.bookPairAt(ctx, d, i+1)
+		if err != nil {
+			return err
+		}
+		data, err := json.Marshal(v1Push{Record: pair})
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+		if err := cli.AtomicFile(path, data, false); err != nil {
+			prev, rerr := os.ReadFile(path)
+			if rerr != nil || !bytes.Equal(prev, data) {
+				return err
+			}
+		}
+		out["naming_statement"], out["file"] = i+1, path
+		return nil
+	}
+	return cli.InputError("your book holds no statement naming this ruling yet; run deal receive on it again")
 }
 
 // refuseOwnDeal refuses a record that claims a deal this profile made the
