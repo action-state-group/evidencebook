@@ -13,8 +13,9 @@ import (
 )
 
 // receiptEntry is one entry of the --receipts file: the exchange capsule a
-// node served the receipt by, and either the receipt bundle or held:true when
-// the holder's share policy keeps it off the page. The bundle is the JSON the
+// node served the receipt by, and either the receipt bundle, held:true when
+// the holder's share policy keeps it off the page, or not_closed:true when the
+// deal had not closed when the page was built. The bundle is the JSON the
 // node served, written in the file as an object (kept byte for byte, the
 // whitespace between its members included) or as a JSON string holding that
 // text.
@@ -22,6 +23,9 @@ type receiptEntry struct {
 	Exchange string          `json:"exchange_capsule_id"`
 	Receipt  json.RawMessage `json:"receipt"`
 	Held     bool            `json:"held"`
+	// NotClosed says the deal had not closed when the page was built, so it
+	// has no receipt yet.
+	NotClosed bool `json:"not_closed"`
 }
 
 // readReceipts reads --receipts, a JSON list of receiptEntry, into the
@@ -39,7 +43,7 @@ func readReceipts(path string) (*report.Receipts, error) {
 	if err != nil {
 		return nil, err
 	}
-	const shape = "--receipts must be a JSON list of {\"exchange_capsule_id\", \"receipt\" | \"held\": true}: "
+	const shape = "--receipts must be a JSON list of {\"exchange_capsule_id\", \"receipt\" | \"held\": true | \"not_closed\": true}: "
 	if !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) {
 		return nil, cli.InputError(shape + "it is not a list")
 	}
@@ -69,7 +73,7 @@ func readReceipts(path string) (*report.Receipts, error) {
 		if e.Exchange == "" {
 			return nil, cli.InputError("--receipts: an entry has no exchange_capsule_id")
 		}
-		deals[i] = report.Receipt{Exchange: e.Exchange, Held: e.Held}
+		deals[i] = report.Receipt{Exchange: e.Exchange, Held: e.Held, NotClosed: e.NotClosed}
 		if len(e.Receipt) == 0 || bytes.Equal(e.Receipt, []byte("null")) {
 			continue
 		}
@@ -88,7 +92,7 @@ func readReceipts(path string) (*report.Receipts, error) {
 }
 
 // entryKeysOnce refuses a JSON object that is not an object, names a key
-// other than the three an entry has (spelled exactly: Go's decoder would fold
+// other than the four an entry has (spelled exactly: Go's decoder would fold
 // "Held" or a Unicode look-alike of a letter onto a field, and read the last
 // of two such keys) or names one of them twice.
 func entryKeysOnce(item json.RawMessage) error {
@@ -104,9 +108,9 @@ func entryKeysOnce(item json.RawMessage) error {
 		}
 		key, _ := token.(string)
 		switch key {
-		case "exchange_capsule_id", "receipt", "held":
+		case "exchange_capsule_id", "receipt", "held", "not_closed":
 		default:
-			return errors.New("the key " + strconv.Quote(key) + " is not one of exchange_capsule_id, receipt and held, spelled exactly")
+			return errors.New("the key " + strconv.Quote(key) + " is not one of exchange_capsule_id, receipt, held and not_closed, spelled exactly")
 		}
 		if seen[key] {
 			return errors.New("the key " + strconv.Quote(key) + " is written twice")
