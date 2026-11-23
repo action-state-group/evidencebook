@@ -277,11 +277,27 @@ func TestACardCheckoutsSharedCopyIsWritten(t *testing.T) {
 	raw, err := os.ReadFile(bundle)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "https://kettle.example", "the reference travels whole")
-	withSession(t, func(s *dealSession) {
-		d, err := s.v1DealOf(t.Context(), dealID)
-		require.NoError(t, err)
-		origins, err := s.v1MerchantOrigins(t.Context(), d)
-		require.NoError(t, err)
-		assert.Equal(t, []string{"https://kettle.example"}, origins)
-	})
+	assert.Equal(t, []string{"https://kettle.example"}, copyMerchantOrigins(raw), "the origin comes from the copy's own legs")
+}
+
+// The allowance takes out only the exact origin: any other form of the
+// merchant's details (the bare domain, an email) still refuses the copy, for
+// either audience, and a copy with no merchant order leg gets no allowance
+// (#772 review).
+func TestTheOriginAllowanceHidesNothingElse(t *testing.T) {
+	events := []sealedEvent{{Event: dealEvent{Kind: "open", Open: &dealOpen{Who: dealWho{Name: "Kettle Shop", Domain: "kettle.example", Email: "shop@kettle.example"}}}}}
+	leg := `{"payment_ref":{"type":"x-deal-v1.merchant_order","value":"K-12","origin":"https://kettle.example"}}`
+	for _, audience := range []string{"counterparty", "adjudicator"} {
+		origins := copyMerchantOrigins([]byte(leg))
+		require.Equal(t, []string{"https://kettle.example"}, origins)
+		assert.NoError(t, dealShareGate([]byte(leg), events, audience, origins...), audience)
+		for _, more := range []string{`"note":"see kettle.example"`, `"note":"mail shop@kettle.example"`, `"note":"Kettle Shop"`} {
+			copy := `{"leg":` + leg + `,` + more + `}`
+			assert.ErrorContains(t, dealShareGate([]byte(copy), events, audience, copyMerchantOrigins([]byte(copy))...), "private value", "%s: %s", audience, more)
+		}
+	}
+	noLeg := `{"note":"https://kettle.example"}`
+	assert.Empty(t, copyMerchantOrigins([]byte(noLeg)), "an origin outside a merchant order reference is not allowed")
+	assert.ErrorContains(t, dealShareGate([]byte(noLeg), events, "counterparty", copyMerchantOrigins([]byte(noLeg))...), "private value")
+	assert.Empty(t, copyMerchantOrigins([]byte(`{"payment_ref":{"type":"x-deal-v1.merchant_order","origin":"https://Kettle.Example/x"}}`)), "only an origin in normal form")
 }

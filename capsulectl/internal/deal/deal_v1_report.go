@@ -249,11 +249,7 @@ func runV1Report(c *cobra.Command) (err error) {
 			// A card checkout's merchant order reference carries the
 			// merchant's origin in a leg that travels whole: the merchant's
 			// own identity, allowed in the copy (evidencebook#771).
-			origins, err := s.v1MerchantOrigins(ctx, d)
-			if err != nil {
-				return err
-			}
-			if err := v1ShareGate(file, events, share, origins...); err != nil {
+			if err := v1ShareGate(file, events, share, copyMerchantOrigins(file)...); err != nil {
 				return err
 			}
 			record = func() error {
