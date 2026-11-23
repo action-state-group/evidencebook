@@ -70,6 +70,9 @@ type openedBook struct {
 	originals cli.ArtifactStore
 	// lastCommit is the committed_at of the book's last record.
 	lastCommit time.Time
+	// inGrace marks a book forPeriod chose: an earlier window in its grace,
+	// which takes only a Close for a period inside it (evidencebook#807).
+	inGrace bool
 }
 
 // refuseDisplacedClose keeps a Close from being sealed over times that
@@ -1111,7 +1114,18 @@ func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *cl
 	if err != nil {
 		return err
 	}
-	bundle, err := opened.book.Bundle(c.Context(), evidencebook.BundleRequest{Root: sealed.RecordID, Include: include, WithholdPayloads: true, ProducerKey: key.Public().(ed25519.PublicKey), ConductPacks: conduct})
+	request := evidencebook.BundleRequest{Root: sealed.RecordID, Include: include, WithholdPayloads: true, ProducerKey: key.Public().(ed25519.PublicKey), ConductPacks: conduct}
+	if opened.inGrace {
+		// A window in its grace takes no disclosure record, only Closes: the
+		// bundle is anchored at a checkpoint of that window and records no
+		// disclosure.
+		anchor, err := opened.book.Checkpoint(c.Context())
+		if err != nil {
+			return bookError(err)
+		}
+		request.At, request.DisclosureRecordedElsewhere = &anchor, true
+	}
+	bundle, err := opened.book.Bundle(c.Context(), request)
 	if err != nil {
 		return bookError(err)
 	}

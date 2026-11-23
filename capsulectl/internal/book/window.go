@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -70,7 +71,7 @@ func defaultGrace(period evidencebook.WindowPeriod) time.Duration {
 func parseGrace(raw string) (time.Duration, error) {
 	if days, ok := strings.CutSuffix(raw, "d"); ok {
 		n, err := strconv.Atoi(days)
-		if err != nil || n < 0 {
+		if err != nil || n < 0 || n > int(math.MaxInt64/int64(24*time.Hour)) {
 			return 0, cli.InputError("--grace " + raw + ": whole days (7d) or a duration (36h)")
 		}
 		return time.Duration(n) * 24 * time.Hour, nil
@@ -220,12 +221,14 @@ func initWindowedStore(ctx context.Context, p cli.Profile, period evidencebook.W
 		return err
 	}
 	policy := &evidencebook.WindowPolicy{Period: period, Base: p.LogID, Since: period.WindowAt(bookNow()).Start, Grace: grace}
+	_, statErr := os.Stat(shelfFile(p))
+	absent := errors.Is(statErr, os.ErrNotExist)
 	shelf, err := evidencebook.OpenSQLiteShelf(ctx, windowedConfig(p, signer, scratchKey, noOriginals{profile: p.Name}, bookNow, policy))
 	if err != nil {
-		// The shelf validates its policy after creating its file, and both
-		// callers create a store only where none exists: a refused policy
-		// leaves no store behind.
-		if errors.Is(err, evidencebook.ErrInvalid) {
+		// The shelf validates its policy after creating its file
+		// (evidencebook#827): a refused policy leaves no store behind, and
+		// a file that was there before this call is never removed.
+		if absent && errors.Is(err, evidencebook.ErrInvalid) {
 			for _, suffix := range []string{"", "-wal", "-shm", ".lock"} {
 				if e := os.Remove(shelfFile(p) + suffix); e != nil && !errors.Is(e, os.ErrNotExist) {
 					err = errors.Join(err, e)
@@ -326,7 +329,7 @@ func (o openedBook) forPeriod(ctx context.Context, start, end time.Time) (opened
 		if err != nil {
 			return openedBook{}, err
 		}
-		o.book, o.store, o.window = book, sealedStore{book}, window
+		o.book, o.store, o.window, o.inGrace = book, sealedStore{book}, window, true
 		return o, nil
 	}
 	return openedBook{}, cli.Hint(cli.ErrInput, fmt.Sprintf("this store is split by window, and the period [%s, %s) is neither inside the current window %s [%s, %s) nor inside an earlier window in its grace: a Close covers the records of one window and is sealed in it, and an earlier window takes one only until it closes (`book window list` shows each window's closes_at)", start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339), o.window.Label, o.window.Start.Format(time.RFC3339), o.window.End.Format(time.RFC3339)))

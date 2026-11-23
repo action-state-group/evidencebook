@@ -295,9 +295,15 @@ func TestAClosedOverLastMonthIsSealedInItsWindowDuringTheGrace(t *testing.T) {
 	assert.Equal(t, time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC), windows.Windows[0].ClosesAt)
 	assert.Equal(t, time.Date(2026, 11, 8, 0, 0, 0, 0, time.UTC), windows.Windows[1].ClosesAt)
 
-	// September, in its grace, takes the Close over its month.
-	out, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "month", "--date", "2026-09-01")
+	// September, in its grace, takes the Close over its month, and its
+	// bundle anchors at September's checkpoint without a disclosure record.
+	bundlePath := filepath.Join(t.TempDir(), "close-bundle.json")
+	out, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "month", "--date", "2026-09-01", "--bundle-out", bundlePath)
 	require.NoError(t, err, out)
+	held0, err := os.ReadFile(bundlePath)
+	require.NoError(t, err)
+	_, err = evidencebook.VerifyBundle(held0)
+	require.NoError(t, err)
 	assert.Contains(t, out, `"window":"2026-09"`)
 	var closed closeResult
 	require.NoError(t, json.Unmarshal([]byte(out), &closed), out)
@@ -309,13 +315,33 @@ func TestAClosedOverLastMonthIsSealedInItsWindowDuringTheGrace(t *testing.T) {
 	found := false
 	for _, r := range held.Records {
 		found = found || r.RecordID == closed.RecordID
+		assert.NotEqual(t, evidencebook.RecordTypeDisclosure, r.Header.RecordType, "September took no disclosure")
 	}
 	assert.True(t, found, "the Close is in September's book")
+	// The exchange appended on 2 October is in October's book.
+	shelf, err = windowedShelfForReading(t.Context(), b)
+	require.NoError(t, err)
+	october, err := shelf.Records(t.Context(), "b/2026-10")
+	require.NoError(t, err)
+	require.NoError(t, shelf.Release())
+	exchanges := 0
+	for _, r := range october.Records {
+		if r.Header.Correlation != nil && r.Header.Correlation.ExchangeID == "x2" {
+			exchanges++
+		}
+	}
+	assert.Positive(t, exchanges, "the October exchange is in October's book")
 
 	// September has no final checkpoint yet, so no chain covers it.
 	_, err = invoke(t, "", "book", "window", "chain", "--profile", "b", "--from", "2026-09", "--to", "2026-09", "--out", filepath.Join(t.TempDir(), "chain.json"))
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, err.Error(), "window 2026-09 is in grace until 2026-10-08T00:00:00Z")
+
+	// --since-last in grace reaches back to the last Close in September's
+	// own book.
+	out, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "day", "--date", "2026-09-30", "--since-last")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, `"window":"2026-09"`)
 
 	// A period across two windows, or before the store began, is refused.
 	_, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "month", "--date", "2026-08-01")
@@ -362,6 +388,7 @@ func TestWindowInitFixesTheGrace(t *testing.T) {
 		{"day", "1d", "shorter than"},
 		{"month", "soon", "whole days (7d) or a duration (36h)"},
 		{"month", "-1h", "whole days (7d) or a duration (36h)"},
+		{"month", "200000d", "whole days (7d) or a duration (36h)"},
 		{"none", "1d", "not --period none"},
 	} {
 		p, _ := bookProfile(t, "bad"+c.period+strings.TrimPrefix(c.grace, "-"))
@@ -404,7 +431,34 @@ func TestARollQueuesEachFinalCheckpointForTheWitness(t *testing.T) {
 	require.NoError(t, err)
 	states, err := windowWitnessStore(b, "2026-10").load()
 	require.NoError(t, err)
-	assert.Len(t, states, 2)
+	require.Len(t, states, 2)
+	// The first is the boundary November's open record names; the second
+	// October's final checkpoint.
+	opened, err := openBook(t.Context(), b, false)
+	require.NoError(t, err)
+	previous, err := previousTree(t.Context(), opened.shelf, "2026-11")
+	require.NoError(t, err)
+	octBook, _, err := opened.shelf.WindowBook(t.Context(), "2026-10")
+	require.NoError(t, err)
+	final, err := octBook.Checkpoint(t.Context())
+	require.NoError(t, err)
+	all, err := octBook.Checkpoints(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, opened.release())
+	var boundary []byte
+	for _, cp := range all {
+		if cp.Entries == previous.Entries && cp.Root == previous.Root {
+			boundary = cp.Statement
+		}
+	}
+	require.NotNil(t, boundary)
+	queued := map[string]bool{}
+	for _, st := range states {
+		queued[string(st.Checkpoint)] = true
+	}
+	assert.True(t, queued[string(boundary)], "the boundary checkpoint is queued")
+	assert.True(t, queued[string(final.Statement)], "the final checkpoint is queued")
+	assert.Less(t, previous.Entries, final.Entries)
 	// The core's checkpoint of the current window keeps its own delivery.
 	out, err := invoke(t, "", "cll", "checkpoint", "create", "--profile", "b")
 	require.NoError(t, err, out)

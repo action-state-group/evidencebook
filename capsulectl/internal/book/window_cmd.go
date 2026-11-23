@@ -20,7 +20,7 @@ import (
 // `capsulectl book window`: a book store split into one book per time window
 // (evidencebook#689). The window is fixed when the store is created.
 
-const windowHelp = "Windows are calendar periods in UTC (a month runs from the 1st 00:00 UTC to the next 1st). A store's window is fixed when it is created and can never change: records are never moved between windows."
+const windowHelp = "Windows are calendar periods in UTC (a month runs from the 1st 00:00 UTC to the next 1st). A window's grace is how long after it ends it still takes a Close over a period inside it, then closes (default 7 days for month, quarter and year, 1 day for week, none for day). A store's window and grace are fixed when it is created and can never change: records are never moved between windows."
 
 type windowInitResult struct {
 	Profile string                    `json:"profile"`
@@ -98,8 +98,8 @@ func windowCommands() *cobra.Command {
 			return cli.Output(c, windowInitResult{Profile: p.Name, Period: "none", Notice: "no window: one book for this store's whole history, fixed for this store"})
 		}
 		if err := initWindowedStore(c.Context(), p, period, grace); err != nil {
-			if errors.Is(err, evidencebook.ErrInvalid) {
-				return cli.InputError("--grace " + graceRaw + ": " + err.Error())
+			if graceRaw != "" && errors.Is(err, evidencebook.ErrInvalid) {
+				return cli.InputError("--grace " + graceRaw + ": a " + string(period) + " window's grace is shorter than the period")
 			}
 			return err
 		}
