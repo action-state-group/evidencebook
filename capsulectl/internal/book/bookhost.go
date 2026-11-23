@@ -3,10 +3,12 @@ package book
 import (
 	"context"
 	"crypto/ed25519"
+	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-emit/go/artifact"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
+	"github.com/action-state-group/evidencebook"
 )
 
 // BookBackend is the evidence book behind every book profile in the
@@ -26,6 +28,23 @@ func (BookBackend) Open(ctx context.Context, p cli.Profile, artifacts cli.Artifa
 		return nil, err
 	}
 	return &bookLog{opened: opened, profile: p}, nil
+}
+
+// OwnsLogID reports whether logID is one of the profile's logs besides its
+// log_id: a window log "<log_id>/<label>" of its windowed store
+// (capsule-cli's LogIDOwner, which the core asks only for ids of that form).
+// Any read error is false, which keeps the core's refusal.
+func (BookBackend) OwnsLogID(p cli.Profile, logID string) bool {
+	label, ok := strings.CutPrefix(logID, p.LogID+"/")
+	if !ok {
+		return false
+	}
+	policy, err := evidencebook.ReadShelfWindow(context.Background(), shelfFile(p))
+	if err != nil || policy == nil {
+		return false
+	}
+	_, err = policy.Period.ParseWindow(label)
+	return err == nil
 }
 
 // List is `cll list` on a book profile.

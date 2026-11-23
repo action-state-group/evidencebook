@@ -863,11 +863,34 @@ func completeLines(path string) ([][]byte, error) {
 func initBookFiles(ctx context.Context, p cli.Profile) error {
 	dir := filepath.Join(p.Connection.Database, "book")
 	path := filepath.Join(dir, "log.jsonl")
-	// A windowed store (`book window init`, evidencebook#689) is created
-	// with its window; store init leaves it as it is.
+	// A windowed store (evidencebook#689) is created with its window; store
+	// init leaves it as it is.
 	if windowed, err := isWindowedStore(p); err != nil || windowed {
 		return err
 	}
+	// A new store is split by month windows (evidencebook#805), except a
+	// reproduced scratch book and a profile whose pre-book cll.jsonl still
+	// holds entries, which move into a JSONL book with `book migrate`.
+	if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
+		_, reproduced, err := reproductionAt()
+		if err != nil {
+			return err
+		}
+		if !reproduced && refuseRetiredLog(p) == nil {
+			if err := initWindowedStore(ctx, p, defaultWindow); err != nil {
+				return err
+			}
+			fmt.Fprintln(noticeOut, "capsulectl: "+windowNotice(defaultWindow))
+			return nil
+		}
+	}
+	return initJSONLBook(ctx, p)
+}
+
+// initJSONLBook creates, or checks, a profile's one JSONL book.
+func initJSONLBook(ctx context.Context, p cli.Profile) error {
+	dir := filepath.Join(p.Connection.Database, "book")
+	path := filepath.Join(dir, "log.jsonl")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		if err = os.MkdirAll(dir, 0o700); err != nil {
 			return err

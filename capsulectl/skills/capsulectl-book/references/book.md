@@ -142,12 +142,14 @@ owner and never bundled.
 
 ## Split a store by time window, and report over a range of windows
 
-A report's proofs are bounded by the book it draws from. A holder that splits
-its store by window (evidencebook#689) keeps one book per calendar period in
-UTC, fixed when the store is created:
+A report's proofs are bounded by the book it draws from. A new book store is
+split by window (evidencebook#689): one book per calendar month in UTC, fixed
+when the store is created, which `store init` prints. To fix another window,
+or one JSONL book (`--period none`), create the store with `book window init`
+instead:
 
 ```sh
-capsulectl book window init --profile NAME --period month   # instead of store init; prints the window
+capsulectl book window init --profile NAME --period year    # instead of store init; prints the window
 capsulectl book window roll --profile NAME                  # close ended windows
 capsulectl book window chain --profile NAME --from 2026-01 --to 2026-12 --out chain.json
 capsulectl book window publish --profile NAME               # each closed window's final checkpoint to the witness
