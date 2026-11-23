@@ -31,8 +31,9 @@ import (
 //     code, card, phone or email in any local text), in every form a page
 //     could carry it: as is, any case, digits only, with separators removed,
 //     JSON- and HTML-escaped, base64 (all four alphabets), hex, URL-escaped.
-//  2. Generic patterns: a Luhn-valid card number, and a code word (code,
-//     OTP, PIN, passcode) followed by a number.
+//  2. Generic patterns: a card number (a card network's prefix and the Luhn
+//     checksum), and a code word (code, OTP, PIN, passcode) followed by a
+//     number.
 //
 // The gate reads a page's text and data, never its code (dealGateText): the
 // markup outside <script> and <style>, the bundle, and the page's data, but
@@ -1022,10 +1023,14 @@ func gateCardRun(page []byte, start, end int) (int, int, bool) {
 // whole run, or a 13-19 digit window anchored at its start or its end (a card
 // number followed or preceded by a code or a date). Only the two ends are
 // tried, not every window, so a long run is not read as a card number by
-// chance from its middle.
+// chance from its middle. A window is a card number when it starts with a
+// card network's prefix and passes the checksum, as cardLike reads a payment
+// reference: the checksum alone passes one digit string in ten, so an honest
+// long order number would too often be refused (evidencebook#787, #772).
 func gateCardWindows(digits string) bool {
+	card := func(w string) bool { return cardPrefix(w) && luhn(w) }
 	for n := 13; n <= 19 && n <= len(digits); n++ {
-		if luhn(digits[:n]) || luhn(digits[len(digits)-n:]) {
+		if card(digits[:n]) || card(digits[len(digits)-n:]) {
 			return true
 		}
 	}
