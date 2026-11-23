@@ -226,7 +226,7 @@ func TestTheRealShareGateReadsAV1DealsPlainValues(t *testing.T) {
 	assert.Equal(t, "Kettle Shop", gotEvents[0].Event.Open.Who.Name)
 	written, err := os.ReadFile(file)
 	require.NoError(t, err)
-	assert.Equal(t, written, gotBytes, "the gate read the exact bytes written")
+	assert.Equal(t, scrubPaymentRefs(written), gotBytes, "the gate read the bytes written, payment references blanked")
 }
 
 // An adjudicator's copy goes only to a deal whose agreement chose one.

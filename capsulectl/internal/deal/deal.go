@@ -2290,10 +2290,10 @@ func dealCheckCommand() *cobra.Command {
 				return s.checkPost(ctx, c, dealID, events, snap, staleAfter)
 			}
 			if s.v1 {
-				if err := v1CheckInput(snap); err != nil {
+				if err := v1CheckInput(&snap); err != nil {
 					return err
 				}
-			} else if snap.PaymentRef != "" {
+			} else if snap.PaymentRef != "" || snap.PaymentRefAfterPayment {
 				return cli.InputError("payment_ref goes on an x-deal-v1 deal's pay check; this deal is an x-deal-v0 deal")
 			}
 			if dealFinallyClosed(events) {

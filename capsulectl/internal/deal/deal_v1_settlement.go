@@ -38,13 +38,17 @@ type v1SettlementRow struct {
 	// (v1NotRunNotes).
 	NotRun     string `json:"not_run,omitempty"`
 	NotRunNote string `json:"not_run_note,omitempty"`
+	// Notes say what a reader must know about the row's payment record:
+	// one-sided, reference recorded after payment, the private reference
+	// type (v1PaymentRowNotes, evidencebook#771).
+	Notes []string `json:"notes,omitempty"`
 }
 
 // v1NotRunNotes say why a payment check was not run and what the user can
 // do (Sherlock2, #736). not_recomputed needs none: the row's verdict says it.
 var v1NotRunNotes = map[string]string{
 	xdealv1.NotRunNoOfferPair:   "this store holds the offer but not its signed copy, so the payment check cannot run here; receive the offer file again (deal receive) to keep it",
-	xdealv1.NotRunNoAcceptorKey: "your agreement names no key for the other side (it keeps no signed records of its own), so the payment check cannot run on this deal",
+	xdealv1.NotRunNoAcceptorKey: "your agreement names no key for the other side: it keeps no signed records of its own, so this record is one-sided and the payment check, which matches both sides' legs, cannot run on this deal",
 }
 
 // v1SettlementFlags are v0's flags that a v1 deal does not take.
@@ -87,10 +91,21 @@ func runV1Settlement(c *cobra.Command) (err error) {
 	if err != nil {
 		return v1ReportError(dealID, p, err)
 	}
+	var ids []string
+	for _, r := range snap.Report.Rows {
+		if _, ok := snap.Payments[r.ID]; ok || snap.PaymentsNotRun[r.ID] != "" {
+			ids = append(ids, r.ID)
+		}
+	}
+	notes, err := s.v1PaymentRowNotes(ctx, d, ids, snap.Payments)
+	if err != nil {
+		return err
+	}
 	rows := []v1SettlementRow{}
 	for _, r := range snap.Report.Rows {
 		row := v1SettlementRow{ID: r.ID, ReportCheck: r.Check, NotRun: snap.PaymentsNotRun[r.ID]}
 		row.NotRunNote = v1NotRunNotes[row.NotRun]
+		row.Notes = notes[r.ID]
 		if res, ok := snap.Payments[r.ID]; ok {
 			res := res
 			row.Payment = &res

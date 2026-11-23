@@ -202,6 +202,19 @@ func runV1Report(c *cobra.Command) (err error) {
 	// evidencebook#729), no v1 act carries one, so every act is one PROFILE
 	// §8 says must not be relied on: the report says so beside settled.
 	result := map[string]any{"deal_id": dealID, "report": snap.Report, "settled_note": personSignatureNote}
+	// The payment rows' notes sit beside the report, keyed by row id, so the
+	// printed report stays the payload that is sealed (evidencebook#771).
+	var ids []string
+	for _, r := range snap.Report.Rows {
+		if _, ok := snap.Payments[r.ID]; ok || snap.PaymentsNotRun[r.ID] != "" {
+			ids = append(ids, r.ID)
+		}
+	}
+	if notes, err := s.v1PaymentRowNotes(ctx, d, ids, snap.Payments); err != nil {
+		return err
+	} else if len(notes) > 0 {
+		result["row_notes"] = notes
+	}
 	if out != "" {
 		pair, digest, err := s.sealV1Report(p, snap.Report, at)
 		if err != nil {
@@ -233,7 +246,11 @@ func runV1Report(c *cobra.Command) (err error) {
 			if err != nil {
 				return err
 			}
-			if err := v1ShareGate(file, events, share); err != nil {
+			// A leg's payment reference (and a merchant order's origin)
+			// travels whole with the leg, so the gate scans the copy with
+			// them blanked by structure (evidencebook#771); the file
+			// written is the copy as it is.
+			if err := v1ShareGate(scrubPaymentRefs(file), events, share); err != nil {
 				return err
 			}
 			record = func() error {

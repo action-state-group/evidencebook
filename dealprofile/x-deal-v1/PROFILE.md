@@ -238,6 +238,22 @@ pack's tiers.
 **`check`.** v0's `body_check`, plus `payment_ref` and `nonce`. Without `payment_ref` and `nonce`
 the body MUST be valid under v0's closed `body_check`.
 
+**The merchant order reference.** A pay check's `payment_ref` is the reference the payment will be
+made under. A card checkout on a website has no rail reference of its own, so this profile defines
+one private payment-ref type, `x-deal-v1.merchant_order` (Settlement Records -01: a type named
+`x-` is private and never registered; Sherlock2, evidencebook#771):
+- its `value` is the merchant's order number as shown, trimmed, and its `origin` is the checkout's
+  origin, the scheme and the host lowercased with the host in punycode and nothing else, so two
+  spellings of one merchant are one reference;
+- it carries no card data at all: no card number, last four digits, brand or expiry;
+- when the checkout shows the order number before paying, the pay check's `payment_ref` is that
+  number and binds the payment as any reference fixed before paying does;
+- when it does not, the pay check carries no `payment_ref`, the payer leg carries the order number
+  once paid, and a reader is told the reference was recorded after payment. A checkout that failed
+  and left no order number has a payer leg whose `value` is `""`;
+- a generic verifier does not recognize the type and reads a pair of legs under it as `unjoined`
+  (Settlement Records -01), so such a pair is not matched against each other.
+
 **A journal record whose digest leaves the holder carries its own secret** (u528: the admission
 decision, and what the person checked, stay in the person's own book). A journal record whose
 digest leaves the holder MUST carry a member of its own that nobody else can guess. A secret in a
