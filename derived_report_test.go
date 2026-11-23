@@ -471,3 +471,63 @@ func TestSetInclusionRefusesAMalformedRecordSet(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalid, artifact)
 	}
 }
+
+// A settlement-shaped report (evidencebook#764): a Result whose claim ids are
+// <deal>::<row>, as the inference-deals pack's are, each claim citing the
+// holder's response record (here the deal's exchange capsule, the id a node
+// serves a receipt by), and the receipt bundle rooted at it.
+// ReportFromDerivation makes every claim cite exactly the response record, so
+// bundle.json names one deal (d1) and shared-bundle.json two (d1 and d2) that
+// cite the same capsule: the case a receipt cannot be mapped to one deal.
+// report/receipts_test.go builds pages from these files;
+// EB_WRITE_SETTLEMENT_RECEIPTS_FIXTURE=1 rewrites them.
+func TestSettlementReceiptsFixture(t *testing.T) {
+	ctx := context.Background()
+	f := newPackFixture(t, true)
+	recorded, _ := f.record(t, "requester-1")
+	inputs, err := f.requester.DerivedInputs(ctx, recorded.RecordID)
+	require.NoError(t, err)
+	dealsOf := func(deals ...string) func(DerivedInputs) (json.RawMessage, error) {
+		return func(inputs DerivedInputs) (json.RawMessage, error) {
+			evidence := []any{map[string]any{"digest": inputs.Response, "digest_alg": "SHA-256"}}
+			var claims []any
+			met := []any{}
+			for _, deal := range deals {
+				id := deal + "::has-observation"
+				claims = append(claims, map[string]any{
+					"id": id, "contract_ref": packContract, "requirement_ref": "has-observation", "tier": "recomputed", "grade": "self-attested",
+					"sufficiency": "SATISFIED", "verdict": "met", "evidence": evidence, "proofs": []any{},
+					"presentation": map[string]any{"kind": "disclosure", "status": "SATISFIED", "evidence": evidence},
+				})
+				met = append(met, id)
+			}
+			return json.Marshal(map[string]any{
+				"result_version": "evidence-result-v0", "generated_at": "2026-11-22T00:00:00Z", "claims": claims,
+				"aggregate": map[string]any{"buckets": map[string]any{"met": met, "not_met": []any{}, "not_evaluable": []any{}}, "coverage": map[string]any{"evaluated_population": len(deals), "excluded_not_applicable": 0, "unknown_count": 0}},
+			})
+		}
+	}
+	built := map[string][]byte{}
+	one, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, dealsOf("d1"), ReportOptions{Derivation: f.id})
+	require.NoError(t, err)
+	built["bundle.json"] = one.Bundle.JSON
+	two, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, dealsOf("d1", "d2"), ReportOptions{Derivation: f.id})
+	require.NoError(t, err)
+	built["shared-bundle.json"] = two.Bundle.JSON
+	receipt, err := f.requester.Bundle(ctx, BundleRequest{Root: inputs.Response})
+	require.NoError(t, err)
+	built["receipt.json"] = receipt.JSON
+	dir := filepath.Join("report", "testdata", "settlement-receipts")
+	if os.Getenv("EB_WRITE_SETTLEMENT_RECEIPTS_FIXTURE") != "" {
+		require.NoError(t, os.RemoveAll(dir))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		for name, data := range built {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, name), data, 0o644))
+		}
+	}
+	for name, data := range built {
+		committed, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+		assert.Equal(t, string(committed), string(data), "%s differs from what the producer builds", filepath.Join(dir, name))
+	}
+}

@@ -173,6 +173,13 @@ type View struct {
 	// and is never sealed. A bundle that verifies is refused: a diagnostic
 	// page is never a way to mark a good report.
 	Diagnostic bool
+	// Receipts are the deal receipts a settlement report carries, each deal's
+	// receipt bundle or the mark that the holder's share policy keeps it off
+	// the page (capsule-viewer#228). Nil carries none, and the page is then
+	// the page built without the field. Like Wording, they live in the page,
+	// not in the bundle, so a page built with them gets no permalink, and a
+	// diagnostic page carries none.
+	Receipts *Receipts
 }
 
 // Wording is an aac.wording-pack/v0 wording pack as distributed: its exact
@@ -253,7 +260,7 @@ type Page struct {
 	failure error
 	// worded is set when the page carries a wording layer; contracted when
 	// it carries a contract.
-	worded, contracted, charted bool
+	worded, contracted, charted, receipted bool
 }
 
 // Build verifies bundle, a held and disclosed Evidence Bundle (JSON) whose
@@ -322,6 +329,15 @@ func Build(bundle []byte, view View) (*Page, error) {
 	checked, err := cli.CheckResult(root.document, "")
 	if err != nil {
 		return nil, refusef("root %s carries a Result that cannot be rendered: %s", root.id, cli.SafeError(err))
+	}
+	var receipts checkedReceipts
+	if view.Receipts != nil {
+		if view.Diagnostic {
+			return nil, refusal("receipts: a diagnostic page carries none")
+		}
+		if receipts, err = checkReceipts(view.Receipts, checked.Claims); err != nil {
+			return nil, err
+		}
 	}
 	var tiers map[string]string
 	if view.Contract != nil {
@@ -414,7 +430,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 		Root: root.id, Form: root.form, Member: root.member, Card: view.Card, Draft: view.Draft,
 		Claims: len(checked.Claims), UnsupportedClaims: unsupportedClaims(value, checked.Claims), ContractRefs: checked.Contracts,
 		Diagnostic: diagnostic, DiagnosticReasons: reasons,
-		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0,
+		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0, receipted: view.Receipts != nil,
 	}
 	if view.Contract != nil {
 		page.ContractRef, page.ContractSHA256, page.Tiers = contract.ref, view.Contract.SHA256, tiers
@@ -456,6 +472,13 @@ func Build(bundle []byte, view View) (*Page, error) {
 		options.Contract = &emitter.Contract{Text: view.Contract.Text, SHA256: view.Contract.SHA256}
 	}
 	options.Charts = charts
+	if view.Receipts != nil {
+		options.Modules = []emitter.Module{view.Receipts.Module}
+		options.Receipts, options.ReceiptsWithheld = receipts.texts, receipts.withheld
+		if options.ReceiptsWithheld == nil {
+			options.ReceiptsWithheld = []string{}
+		}
+	}
 	if diagnostic {
 		options.Title = DiagnosticTitle
 	}
@@ -509,6 +532,9 @@ func (p *Page) Permalink(base string) (string, error) {
 	}
 	if p.contracted {
 		return "", refusal("a page with a contract gets no permalink: the permalink carries the bundle alone, and the viewer would draw every tier undecided")
+	}
+	if p.receipted {
+		return "", refusal("a page with receipts gets no permalink: the permalink carries the bundle alone, and the viewer would draw no receipt")
 	}
 	fragment, err := aacbundle.EncodeFragment(p.bundle)
 	if err != nil {
