@@ -195,19 +195,31 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 	if !bytes.Equal(ckey.Public().(ed25519.PublicKey), s.key.Public().(ed25519.PublicKey)) {
 		return cli.InputError(adjudicatorKeyAdvice)
 	}
-	// A profile whose store already checkpointed with another key cannot stamp
-	// with this one (CLL refuses its stored checkpoints as corrupt): refuse
-	// before sealing, with the way out (evidencebook#814).
-	if last, ok, err := cad.Last(ctx); err != nil {
+	// A profile whose store has stamped with another key cannot stamp with
+	// this one (CLL refuses its stored checkpoints as corrupt): refuse before
+	// sealing, with the way out (evidencebook#814). The newest finished tick
+	// says which key: a stamp that failed on the key leaves an unfinished one
+	// last.
+	last, ok, err := cad.Last(ctx)
+	if err != nil {
 		return err
-	} else if ok && last.CheckpointSize > 0 {
-		record, err := checkpoint.ParseRecord(last.Checkpoint)
+	}
+	for n := last.N; ok && n >= 1; n-- {
+		tick, err := cad.Get(ctx, n)
+		if err != nil {
+			return err
+		}
+		if tick.CheckpointSize == 0 {
+			continue
+		}
+		record, err := checkpoint.ParseRecord(tick.Checkpoint)
 		if err != nil {
 			return err
 		}
 		if record.KeyID != me {
 			return cli.InputError("this profile's store checkpointed with another key, so it cannot stamp a ruling with your record key; switching its checkpoint key back to the earlier one makes the store usable again. " + adjudicatorKeyAdvice)
 		}
+		break
 	}
 	raw, err := os.ReadFile(f.dispute)
 	if err != nil {

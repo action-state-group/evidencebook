@@ -165,6 +165,16 @@ func TestARulingRefusals(t *testing.T) {
 	require.NoError(t, err)
 	p.Checkpoint.Signing = p.Signing
 	require.NoError(t, cli.SaveProfile(p, true))
+	// A stamp that failed on the key leaves an unfinished tick last; the
+	// refusal still reads the newest finished one.
+	withSession(t, func(s *dealSession) {
+		var last int64
+		var leaves string
+		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT tick, leaves FROM cadence_ticks ORDER BY tick DESC LIMIT 1`).Scan(&last, &leaves))
+		_, err := s.db.ExecContext(t.Context(), `INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', ?)`,
+			last+1, cli.DealClock().UTC().Format(time.RFC3339), cli.DealClock().UTC().Add(time.Hour).Format(time.RFC3339), leaves)
+		require.NoError(t, err)
+	})
 	msg := v1Err(t, append(base, "--copy", buyerCopy)...)
 	assert.Contains(t, msg, "checkpointed with another key")
 	assert.Contains(t, msg, "deal init --dir NEWDIR --signing-key-file KEY --checkpoint-key-file KEY")
