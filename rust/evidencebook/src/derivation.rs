@@ -436,7 +436,7 @@ pub(crate) fn decode_syntax(document: &[u8]) -> Result<Value, DerivationError> {
 }
 
 /// [`decode_syntax`] for a document whose values are read back as they are
-/// (a holder's answer): a number the model cannot hold, an infinite one such
+/// (a holder's answer): a number JSON values cannot hold, an infinite one such
 /// as `1e400` or an integer of more than 18 digits, is refused instead of
 /// becoming `null` or a rounded float.
 pub(crate) fn decode_syntax_exact(document: &[u8]) -> Result<Value, DerivationError> {
