@@ -110,8 +110,9 @@ A consequential record (any action except `other`) counts as recorded when
 a step of a deal in the profile accounts for it:
 
 1. an act: on an x-deal-v0 deal a `deal note --kind act` step; on an
-   x-deal-v1 deal a payment from `deal settle --sent` on (not one whose send
-   failed, which moved no money) or a `deal perform`, but never money coming
+   x-deal-v1 deal a payment or a refund the user paid, from `deal settle
+   --sent` on (not one whose send failed, which moved no money), or a `deal
+   perform`, but never money coming
    in, such as a refund received; or else
 2. a `deal check` step made before it,
 

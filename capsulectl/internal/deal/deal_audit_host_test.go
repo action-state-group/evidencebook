@@ -422,6 +422,7 @@ func TestV1CoverEventsDropsMoneyInAndFailedSends(t *testing.T) {
 		ev("open", nil),
 		ev("act", &dealAct{Action: "pay", AmountMinor: &amount, Direction: "out"}),
 		ev("act", &dealAct{Action: "pay"}),                                           // a failed send
+		ev("act", &dealAct{Action: "cancel"}),                                        // a failed refund send
 		ev("act", &dealAct{Action: "cancel", AmountMinor: &amount, Direction: "in"}), // a refund received
 		ev("act", &dealAct{Action: "commit", Description: "deliver"}),                // a perform
 	}
@@ -430,5 +431,35 @@ func TestV1CoverEventsDropsMoneyInAndFailedSends(t *testing.T) {
 	assert.Equal(t, "open", out[0].Event.Kind)
 	assert.Equal(t, "pay", out[1].Event.Act.Action)
 	assert.Equal(t, "commit", out[2].Event.Act.Action)
-	assert.Len(t, in, 5, "the input is not changed")
+	assert.Len(t, in, 6, "the input is not changed")
+}
+
+// The audit reads a v1 deal's events as stored: a step whose journal record
+// a dead run left pending stays pending (v1Events, which other commands use,
+// would append it and clear the payload).
+func TestAuditHostLeavesAPendingV1RecordPending(t *testing.T) {
+	h := openedV1(t)
+	withSession(t, func(s *dealSession) {
+		events, err := s.v1Events(t.Context(), h.dealID)
+		require.NoError(t, err)
+		ev := dealEvent{Kind: "message", Message: &dealMessage{From: "counterparty", Channel: "web", Text: "It ships Monday."}}
+		p, err := s.prepareV1(h.dealID, events, ev, false)
+		require.NoError(t, err)
+		_, err = s.db.ExecContext(t.Context(), `INSERT INTO deal_v1_events (deal_id, n, kind, local, record_digest, payload) VALUES (?, ?, ?, ?, ?, ?)`,
+			h.dealID, p.se.Event.N, p.se.Event.Kind, string(p.local), p.se.Digest, p.payload)
+		require.NoError(t, err)
+	})
+	pending := func() int {
+		var n int
+		withSession(t, func(s *dealSession) {
+			require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT count(*) FROM deal_v1_events WHERE deal_id=? AND length(payload) > 0`, h.dealID).Scan(&n))
+		})
+		return n
+	}
+	require.Equal(t, 1, pending(), "a dead run left one record pending")
+	path := filepath.Join(t.TempDir(), "executions.jsonl")
+	require.NoError(t, os.WriteFile(path, []byte(`{"id":"c1","at":"2026-09-27T18:00:00Z","task":"t","tool":"x","action":"other","status":"succeeded"}`+"\n"), 0o600))
+	_, err := auditHostRun(t, "--executions", path)
+	require.NoError(t, err)
+	assert.Equal(t, 1, pending(), "the audit left it pending: it appends nothing")
 }

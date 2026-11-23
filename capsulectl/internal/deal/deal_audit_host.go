@@ -613,18 +613,26 @@ func (s *dealSession) allCoverSteps(ctx context.Context) (_ []*dealCoverStep, er
 }
 
 // v1CoverEvents drops the x-deal-v1 acts that account for no action of the
-// user's: a payment whose send failed (its act keeps the action pay with
-// the amount cleared, closeSend), which moved no money and would otherwise
-// cover a pay of any amount; and money coming in (a refund received, an
-// act cancel with direction in), which is the other side's act, not the
-// user's cancellation. A perform's act carries no amount and stays.
+// user's: a send that failed, a payment or a refund the user paid (its act
+// keeps its action with the amount cleared, closeSend), which moved no money
+// and would otherwise cover an action of any amount; and money coming in (a
+// refund received, an act cancel with direction in), which is the other
+// side's act, not the user's cancellation. A perform's act (commit) carries
+// no amount and stays.
 func v1CoverEvents(events []sealedEvent) []sealedEvent {
 	out := events[:0:0]
 	for _, se := range events {
-		if a := se.Event.Act; se.Event.Kind == "act" && a != nil && ((a.Action == "pay" && a.AmountMinor == nil) || a.Direction == "in") {
+		if a := se.Event.Act; se.Event.Kind == "act" && a != nil && (failedSend(a) || a.Direction == "in") {
 			continue
 		}
 		out = append(out, se)
 	}
 	return out
+}
+
+// failedSend reports whether a v1 act is a send closed failed: a payment or
+// a refund, whose act always carries the send's amount until closeSend clears
+// it on failure.
+func failedSend(a *dealAct) bool {
+	return (a.Action == "pay" || a.Action == "cancel") && a.AmountMinor == nil
 }
