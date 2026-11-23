@@ -32,6 +32,10 @@ command after a failure finds the offer it left and writes the file again; it
 never seals the same offer twice. Once it has succeeded, running it again
 writes a new offer under a new deal id.
 
+An offer whose to is null is to a party that keeps no records of its own (a
+shop that runs no deal tool, say): it stays with you, there is nothing to
+send, and you agree to it yourself (deal agree).
+
 x-deal-v1 is the default. A profile set to the legacy x-deal-v0 needs
 'deal set-version x-deal-v1' first, and a deal store in an older layout
 needs 'deal set-version x-deal-v1 --migrate' once.`,
@@ -111,7 +115,11 @@ needs 'deal set-version x-deal-v1 --migrate' once.`,
 				if out == "" {
 					return nil
 				}
-				return cli.Output(c, map[string]any{"deal_id": dealID, "offer": digest, "file": out})
+				res := map[string]any{"deal_id": dealID, "offer": digest, "file": out}
+				if body.To.V == nil {
+					res["note"] = "this offer names no key: it is to a party that keeps no records of its own, so there is nothing to send. It stays with you; agree to it yourself with `deal agree` once your admission decision and intent are sealed"
+				}
+				return cli.Output(c, res)
 			})
 		},
 	}
