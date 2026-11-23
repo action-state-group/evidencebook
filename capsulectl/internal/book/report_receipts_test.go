@@ -153,7 +153,9 @@ func TestReceiptsFlagRefusals(t *testing.T) {
 	refused("bundle.json", text(`{"exchange_capsule_id":"x","held":true}`), "it is not a list")
 	// A field written twice cannot turn a held receipt into a carried one.
 	refused("bundle.json", text(`[{"exchange_capsule_id":"`+settlementExchange(t)+`","held":true,"held":false,"receipt":`+string(good)+`}]`), `the key "held" is written twice`)
-	refused("bundle.json", text(`[{"exchange_capsule_id":"x","Held":true,"held":false}]`), "is written twice")
+	refused("bundle.json", text(`[{"exchange_capsule_id":"x","Held":true,"held":false}]`), `the key "Held" is not one of`)
+	// Go folds a long s (U+017F) onto s, so these two keys would both fill exchange_capsule_id.
+	refused("bundle.json", text(`[{"exchange_capsule_id":"A","exchange_cap\u017fule_id":"B","held":true}]`), "is not one of")
 	refused("bundle.json", text(`[{"exchange_capsule_id":"a","exchange_capsule_id":"b","held":true}]`), "is written twice")
 	refused("bundle.json", text(`[null]`), "it is not an object")
 	refused("bundle.json", receiptsFile(t, []map[string]any{entry, entry}), `deal "d1" has more than one receipt`)

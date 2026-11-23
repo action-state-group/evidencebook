@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
@@ -56,8 +55,8 @@ func readReceipts(path string) (*report.Receipts, error) {
 	deals := make([]report.Receipt, len(items))
 	for i, item := range items {
 		// An entry decides whether a receipt is carried or held, so a field
-		// written twice (or twice by case, which Go's decoder folds) is
-		// refused rather than read as its last value.
+		// written twice, or under a spelling Go's decoder would fold onto a
+		// field, is refused rather than read as its last value.
 		if err := entryKeysOnce(item); err != nil {
 			return nil, cli.InputError(shape + "entry " + strconv.Itoa(i) + ": " + err.Error())
 		}
@@ -88,8 +87,10 @@ func readReceipts(path string) (*report.Receipts, error) {
 	return &report.Receipts{Module: module, Deals: deals}, nil
 }
 
-// entryKeysOnce refuses a JSON object that is not an object or names a key
-// twice, ignoring case.
+// entryKeysOnce refuses a JSON object that is not an object, names a key
+// other than the three an entry has (spelled exactly: Go's decoder would fold
+// "Held" or a Unicode look-alike of a letter onto a field, and read the last
+// of two such keys) or names one of them twice.
 func entryKeysOnce(item json.RawMessage) error {
 	d := json.NewDecoder(bytes.NewReader(item))
 	if token, err := d.Token(); err != nil || token != json.Delim('{') {
@@ -102,11 +103,15 @@ func entryKeysOnce(item json.RawMessage) error {
 			return err
 		}
 		key, _ := token.(string)
-		folded := strings.ToLower(key)
-		if seen[folded] {
+		switch key {
+		case "exchange_capsule_id", "receipt", "held":
+		default:
+			return errors.New("the key " + strconv.Quote(key) + " is not one of exchange_capsule_id, receipt and held, spelled exactly")
+		}
+		if seen[key] {
 			return errors.New("the key " + strconv.Quote(key) + " is written twice")
 		}
-		seen[folded] = true
+		seen[key] = true
 		var skip json.RawMessage
 		if err := d.Decode(&skip); err != nil {
 			return err
