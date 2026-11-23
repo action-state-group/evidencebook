@@ -31,9 +31,31 @@ func dealFixture(t *testing.T) string {
 	// Most tests run without a witness; the witness tests configure one. They
 	// run under the neutral example predicate, which reproduces what the
 	// check paused on before predicates; the materiality tests set their own.
+	legacyInit(t)
 	out, err := invoke(t, "", "deal", "init", "--profile", "deal", "--dir", dir, "--no-witness", "--materiality", neutralMateriality)
 	require.NoError(t, err, out)
+	legacyV0(t)
 	return dir
+}
+
+// legacyInit makes the next `deal init` leave its store in the old layout,
+// as every store before #626's flip was: the x-deal-v0 suite tests that
+// layout, and the v1 tests move it themselves (set-version --migrate).
+func legacyInit(t *testing.T) {
+	t.Helper()
+	initMigratesStore = false
+	t.Cleanup(func() { initMigratesStore = true })
+}
+
+// legacyV0 sets the profile "deal" to the legacy x-deal-v0, which the
+// x-deal-v0 suite writes: x-deal-v1 is the default (#626).
+func legacyV0(t *testing.T) {
+	t.Helper()
+	// The setting file alone, as `deal set-version x-deal-v0` writes it,
+	// without opening the store (a read-only store test stays untouched).
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	require.NoError(t, putDealVersionSetting(p, dealVersionV0))
 }
 
 // dealTestEnv points the profiles at configHome, with no check URL and the

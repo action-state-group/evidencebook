@@ -374,7 +374,7 @@ func shCardCommand() *cobra.Command {
 			return cli.InputError("--out is required")
 		}
 		if derivation != standardhistory.Derivation && derivation != standardhistory.Derivation3 && derivation != standardhistory.Derivation4 {
-			return cli.InputError("--derivation is " + standardhistory.Derivation + " (the default, for x-deal-v0 deals), " + standardhistory.Derivation3 + " or " + standardhistory.Derivation4 + " (for x-deal-v1 deals; /4 counts a deal with no witnessed time)")
+			return cli.InputError("--derivation is " + standardhistory.Derivation3 + " (the default) or " + standardhistory.Derivation4 + " for x-deal-v1 deals (/4 counts a deal with no witnessed time), or " + standardhistory.Derivation + " for x-deal-v0 deals")
 		}
 		p, err := cli.Selected(c)
 		if err != nil {
@@ -386,6 +386,15 @@ func shCardCommand() *cobra.Command {
 		}
 		defer func() { err = errors.Join(err, s.close()) }()
 		b, err := s.standardHistoryBundle(c.Context(), shared, derivation)
+		if err != nil {
+			if !c.Flags().Changed("derivation") && errors.Is(err, errNotMigratedForCard) {
+				// The default card counts x-deal-v1 deals, which this store's
+				// older layout cannot hold: say both ways on.
+				return cli.InputError("the History card counts x-deal-v1 deals by default (" + standardhistory.Derivation3 + "), and this deal store is in an older layout that holds none: give --derivation " + standardhistory.Derivation + " for a card of your x-deal-v0 deals, or move the store once with `deal set-version x-deal-v1 --migrate`")
+			}
+			return err
+		}
+		note, err := s.v0CardNote(c.Context(), derivation)
 		if err != nil {
 			return err
 		}
@@ -404,10 +413,14 @@ func shCardCommand() *cobra.Command {
 		if err = cli.AtomicFile(out, encoded, false); err != nil {
 			return err
 		}
-		return cli.Output(c, map[string]any{"out": out, "shared": shared})
+		result := map[string]any{"out": out, "shared": shared, "derivation": derivation}
+		if note != "" {
+			result["note"] = note
+		}
+		return cli.Output(c, result)
 	}}
 	cmd.Flags().String("out", "", "New file for the bundle")
-	cmd.Flags().String("derivation", standardhistory.Derivation, "standard_history/1 counts x-deal-v0 deals; standard_history/3 and /4 count x-deal-v1 deals from the shelf's book facts (/4 also counts a deal with no witnessed time)")
+	cmd.Flags().String("derivation", standardhistory.Derivation3, "standard_history/3 (the default) and /4 count x-deal-v1 deals from the shelf's book facts (/4 also counts a deal with no witnessed time); standard_history/1 counts x-deal-v0 deals")
 	cmd.Flags().Bool("shared", false, "The copy to send: the card, its policy and its anchor, without the deal entries it counts (your own copy has them)")
 	return cmd
 }
@@ -770,4 +783,23 @@ func citesTwoHalves(result []byte) bool {
 		}
 	}
 	return len(digests) >= 2
+}
+
+// v0CardNote is the line beside a card that counts x-deal-v1 deals when the
+// store holds any x-deal-v0 deal (Steven u536): those are counted only on
+// standard_history/1, asked for by name.
+func (s *dealSession) v0CardNote(ctx context.Context, derivation string) (string, error) {
+	if derivation == standardhistory.Derivation {
+		return "", nil
+	}
+	logs, err := s.dealLogs(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, l := range logs {
+		if len(l.events) > 0 && l.events[0].Event.Kind == "open" {
+			return "this card counts your x-deal-v1 deals; your x-deal-v0 deals are counted on --derivation " + standardhistory.Derivation, nil
+		}
+	}
+	return "", nil
 }

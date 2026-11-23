@@ -214,6 +214,7 @@ func TestAV1ListMixedAndRange(t *testing.T) {
 	newV1Side(t)
 	res := dealRun(t, "offer", "--input", writeJSON(t, v1OfferInput), "--out", filepath.Join(t.TempDir(), "o.json"))
 	v1ID := res["deal_id"].(string)
+	legacyV0(t) // a v0 deal beside it, under the legacy setting
 	v0ID := openJetSki(t)
 	deals, _ := v1List(t)
 	assert.Contains(t, deals, v1ID)

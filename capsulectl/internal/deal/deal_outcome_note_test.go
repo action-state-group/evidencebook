@@ -28,7 +28,7 @@ func TestAnOutcomeNoteMakesTheCardCountTheDealDidNotHold(t *testing.T) {
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	own := filepath.Join(t.TempDir(), "own.json")
-	dealRun(t, "standard-history", "card", "--out", own)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 	deals := shBlock(t, readBundle(t, own))["deals"].([]any)
 	require.Len(t, deals, 1)
 	assert.Equal(t, "did_not_hold", deals[0].(map[string]any)["outcome"])

@@ -945,7 +945,7 @@ func (s *dealSession) milestone(ctx context.Context) (map[string]any, error) {
 }
 
 func dealCommands() *cobra.Command {
-	deal := &cobra.Command{Use: "deal", Short: "Seal a deal's baseline and check every point of no return against it", Long: "Seal a deal's baseline and check every point of no return against it.\n\n`deal close` and `deal terms-result` are for x-deal-v0 deals; an x-deal-v1 deal (deal set-version x-deal-v1) has neither."}
+	deal := &cobra.Command{Use: "deal", Short: "Seal a deal's baseline and check every point of no return against it", Long: "Seal a deal's baseline and check every point of no return against it.\n\nNew deals are x-deal-v1, which start with `deal offer`. `deal open`, `deal sale new`, `deal close` and `deal terms-result` are for x-deal-v0 deals, the legacy version (`deal set-version x-deal-v0`)."}
 	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand(), dealAdmitCommand(), dealAgreeCommand(), dealReceiveCommand(), dealDisputeCommand(), dealPerformCommand(), dealStatementCommand(), dealSettleCommand(), dealNodeCommands())
 	// A deal profile's copies: asked for, answered, composed.
 	deal.AddCommand(dealEvidenceCommands()...)
@@ -1229,6 +1229,13 @@ func dealInitCommand() *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("deal profile %s and its store were created, but putting the store on its shelf failed; run `capsulectl --profile %s deal tick` to finish: %w", name, name, err)
 		}
+		// A new store starts in the layout x-deal-v1 deals (the default)
+		// need: it holds nothing, so the move has nothing to carry.
+		if initMigratesStore {
+			if err := migrateNewStoreFn(c.Context(), p); err != nil {
+				return fmt.Errorf("deal profile %s and its store were created, but putting the store in the layout x-deal-v1 deals need failed; run `capsulectl --profile %s deal set-version x-deal-v1 --migrate` to finish: %w", name, name, err)
+			}
+		}
 		out := map[string]any{
 			"profile": name, "store": p.Connection.Database, "public_key": public, "witness": witness, "cadence_log": p.LogID,
 			"guarantee": "tamper-evident against ourselves and the agent, not non-repudiation: the signing seed is on this machine",
@@ -1265,7 +1272,10 @@ func dealInitCommand() *cobra.Command {
 }
 
 func dealOpenCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "open", Short: "Seal the baseline: the user's verbatim words, who, terms, claims and recourse", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "open", Short: "Seal the baseline of an x-deal-v0 deal (the legacy version): the user's verbatim words, who, terms, claims and recourse; x-deal-v1 deals start with `deal offer`", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		if err := requireLegacyV0(c, "`deal open` starts an x-deal-v0 deal"); err != nil {
+			return err
+		}
 		path, _ := c.Flags().GetString("input")
 		raw, err := cli.ReadInput(path)
 		if err != nil {

@@ -45,6 +45,10 @@ if [[ -n "$profile_dir" ]]; then
 fi
 
 deal init --dir "$work/store" --materiality "$materiality" >/dev/null
+# This demo walks an x-deal-v0 deal, the legacy version: x-deal-v1 is the
+# default, so the demo profile sets x-deal-v0 first (evidencebook#626; the
+# demo moves to x-deal-v1 with B6).
+deal set-version x-deal-v0 >/dev/null
 id=$(deal open --input "$demo/01-open.json" | jq -r .deal_id)
 deal note --deal "$id" --kind message --input "$demo/02-message-quote.json" >/dev/null
 deal note --deal "$id" --kind message --input "$demo/03-message-switch.json" >/dev/null

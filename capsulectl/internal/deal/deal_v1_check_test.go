@@ -238,6 +238,7 @@ func TestAV1DisclosureCountsInTheCrossDealMemory(t *testing.T) {
 		require.NoError(t, err)
 	}
 	dealRun(t, "note", "--deal", h.dealID, "--kind", "disclosure", "--input", writeJSON(t, `{"channel":"web","fields":[{"class":"email","value":"buyer@example.com"}]}`))
+	legacyV0(t) // a v0 deal beside the v1 one, under the legacy setting
 	second := dealRun(t, "open", "--input", writeJSON(t, v0BuyerOpen))["deal_id"].(string)
 	again := dealRun(t, "check", "--deal", second, "--input", writeJSON(t, `{"action":"share_contact","disclosing_to":"counterparty","disclosing":["email","address"]}`))
 	require.Equal(t, "pause", again["verdict"], "%v", again)

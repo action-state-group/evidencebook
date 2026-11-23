@@ -23,7 +23,10 @@ func dealSaleCommands() *cobra.Command {
 }
 
 func dealSaleNewCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "new", Short: "Seal a sale: what is for sale, the seller's request and its one task authority", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "new", Short: "Seal an x-deal-v0 sale (the legacy version): what is for sale, the seller's request and its one task authority; on x-deal-v1 each buyer sends you an offer", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		if err := requireLegacyV0(c, "`deal sale new` starts an x-deal-v0 sale"); err != nil {
+			return err
+		}
 		path, _ := c.Flags().GetString("input")
 		raw, err := cli.ReadInput(path)
 		if err != nil {

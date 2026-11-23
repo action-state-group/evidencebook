@@ -164,7 +164,7 @@ func TestAgreeWithNoAdmissionDecisionNamesDealAdmit(t *testing.T) {
 
 func TestDealAdmitNeedsTheNewLayout(t *testing.T) {
 	dealFixture(t)
-	assert.Contains(t, v1Err(t, "admit", "--deal", "deal-0123456789abcdef", "--input", engineOutput(t, "GO", true, nil)), "not yet in the layout")
+	assert.Contains(t, v1Err(t, "admit", "--deal", "deal-0123456789abcdef", "--input", engineOutput(t, "GO", true, nil)), "older layout")
 }
 
 // TestDealAdmitReadsTheRealEnginesOutput runs `deal admit` on capsule-engine's

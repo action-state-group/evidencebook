@@ -120,7 +120,7 @@ func TestAV1VerbRefusesUntilTheProfileAndStoreAreOnV1(t *testing.T) {
 	// Declared but not moved is impossible through the verb; the setting file alone leaves the store old.
 	require.NoError(t, putDealVersionSetting(v1Profile(t), dealVersionV1))
 	msg := v1Err(t, "offer", "--input", in, "--out", out)
-	assert.Contains(t, msg, "not yet in the layout x-deal-v1 deals need")
+	assert.Contains(t, msg, "older layout, and x-deal-v1 deals (the default) need the new one")
 	assert.Contains(t, msg, "deal set-version --help")
 	_, err := os.Stat(out)
 	assert.True(t, os.IsNotExist(err))
@@ -304,16 +304,17 @@ func TestAV0DealStillCountsOnAMigratedStore(t *testing.T) {
 	*now = now.Add(48 * time.Hour)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	own := filepath.Join(t.TempDir(), "own.json")
-	dealRun(t, "standard-history", "card", "--out", own)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
 	deals := shBlock(t, readBundle(t, own))["deals"].([]any)
 	require.Len(t, deals, 1)
-	// A deal opened after the move is v0 too, and counts.
+	// A deal opened after the move under the legacy setting is v0 too, and counts.
+	legacyV0(t)
 	id2 := retailDeal(t)
 	dealRun(t, "close", "--deal", id2, "--input", writeJSON(t, `{"status":"not_received","reason":"not_delivered"}`))
 	*now = now.Add(48 * time.Hour)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	own2 := filepath.Join(t.TempDir(), "own2.json")
-	dealRun(t, "standard-history", "card", "--out", own2)
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own2)
 	assert.Len(t, shBlock(t, readBundle(t, own2))["deals"].([]any), 2)
 }
 

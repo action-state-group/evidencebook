@@ -78,7 +78,7 @@ func TestANodeStillAnswersTheCardWithANotedDeal(t *testing.T) {
 	require.NoError(t, reply.Envelope.Verify())
 
 	shared := filepath.Join(t.TempDir(), "shared.json")
-	dealRun(t, "standard-history", "card", "--out", shared, "--shared")
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", shared, "--shared")
 	raw, err := os.ReadFile(shared)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "dispute_lost")
