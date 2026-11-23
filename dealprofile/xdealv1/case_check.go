@@ -93,6 +93,15 @@ func readCaseCopy(c CaseCopy, adjudicatorKey string) (caseCopy, error) {
 	return caseCopy{role: ag.Role, key: first.KeyID, last: read.Report.RestsOn.Own.Last, agreement: first.Record, ag: ag}, nil
 }
 
+// namesCounterparty reports whether ag, when it names a counterparty key,
+// names key; an agreement with no layered counterparty names none.
+func namesCounterparty(ag AgreeBody, key string) bool {
+	if ag.CounterpartyLayer == nil || !*ag.CounterpartyLayer || ag.CounterpartyKey.V == nil {
+		return true
+	}
+	return *ag.CounterpartyKey.V == key
+}
+
 // CheckCase reads a dispute (its book pair) and one or both parties'
 // adjudicator copies as a case for the adjudicator whose key id is
 // adjudicatorKey:
@@ -100,7 +109,9 @@ func readCaseCopy(c CaseCopy, adjudicatorKey string) (caseCopy, error) {
 //     and is signed by a party of the copies' deal;
 //   - each copy passes VerifyReportBundle, is an adjudicator copy, and its
 //     agreement names adjudicatorKey;
-//   - the copies are of one deal and one offer, one per side;
+//   - the copies are of one deal and one offer, one per side, and with two,
+//     each agreement names the other copy's signer as its counterparty and
+//     both name the same adjudicator terms and forums;
 //   - with one copy, the other side's key is that agreement's
 //     counterparty_key, and a copy whose agreement names none is refused;
 //   - the dispute is read against its own agreement (CheckDispute) when the
@@ -130,11 +141,21 @@ func CheckCase(dispute []byte, copies []CaseCopy, adjudicatorKey string) (Case, 
 			return Case{}, caseErr("a copy is of deal %s, the dispute of deal %s", cc.agreement.Block.DealID, dread.Record.Block.DealID)
 		}
 		if len(cs) > 0 {
-			if cc.ag.Offer.Digest != cs[0].ag.Offer.Digest {
+			o := cs[0]
+			if cc.ag.Offer.Digest != o.ag.Offer.Digest {
 				return Case{}, caseErr("the two copies answer different offers")
 			}
-			if cc.role == cs[0].role {
+			if cc.role == o.role {
 				return Case{}, caseErr("both copies are the %s's: a case takes one copy per side", cc.role)
+			}
+			// Each side's agreement names the other's key: a copy under a key
+			// the other agreement does not name is not of this deal.
+			if !namesCounterparty(cc.ag, o.key) || !namesCounterparty(o.ag, cc.key) {
+				return Case{}, caseErr("the two copies' agreements do not name each other's keys")
+			}
+			if !sameAdjudicator(cc.ag.Adjudicator, o.ag.Adjudicator) ||
+				!slices.Equal(sortedCopy(cc.ag.Forums), sortedCopy(o.ag.Forums)) {
+				return Case{}, caseErr("the two copies' agreements name different adjudicator terms or forums")
 			}
 		}
 		cs = append(cs, cc)
@@ -172,7 +193,14 @@ func CheckCase(dispute []byte, copies []CaseCopy, adjudicatorKey string) (Case, 
 			checked = true
 		}
 	}
+	// The ruling is read against the disputing side's agreement when its copy
+	// is given; the two agreements agree on the adjudicator and forums anyway.
 	first := cs[0]
+	for _, cc := range cs {
+		if cc.key == dread.KeyID {
+			first = cc
+		}
+	}
 	if !checked && !slices.Contains(first.ag.Forums, d.Forum) {
 		return Case{}, caseErr("the dispute's forum %s is not one the agreement accepts", d.Forum)
 	}
@@ -186,8 +214,8 @@ func CheckCase(dispute []byte, copies []CaseCopy, adjudicatorKey string) (Case, 
 
 // CheckCaseRecord reads a later record of an open case: a withdrawal or a
 // challenge, which verifies, is of the case's deal, and is signed by one of
-// its parties; a challenge names a ruling whose record digest is among
-// rulings, the case book's.
+// its parties; a withdrawal is of the case's row, and a challenge names a
+// ruling whose record digest is among rulings, the case book's.
 func CheckCaseRecord(record []byte, c Case, rulings []string) (BookRead, error) {
 	read, err := VerifyBook(record)
 	if err != nil {
@@ -201,6 +229,8 @@ func CheckCaseRecord(record []byte, c Case, rulings []string) (BookRead, error) 
 		return BookRead{}, caseErr("the record is of deal %s, the case of deal %s", read.Record.Block.DealID, c.DealID)
 	case read.KeyID != c.Keys.Buyer && read.KeyID != c.Keys.Seller:
 		return BookRead{}, caseErr("the record is signed by neither party of the case")
+	case d.Kind == KindWithdrawal && d.Row != c.Row:
+		return BookRead{}, caseErr("the withdrawal is of row %s, the case of row %s", d.Row, c.Row)
 	case d.Kind == KindChallenge && (d.Ruling == nil || !slices.Contains(rulings, d.Ruling.Digest)):
 		return BookRead{}, caseErr("the challenge names a ruling this case book does not hold")
 	}
@@ -231,8 +261,9 @@ type SealedRuling struct {
 	Existing bool
 }
 
-// ErrRulingConflict refuses a final ruling on a row the case book already
-// holds a different final ruling on: the first final ruling applies.
+// ErrRulingConflict refuses a ruling on a row the case book already holds
+// a different final ruling on: the first final ruling applies, and its
+// adjudicator never replaces it; a challenge of it records disagreement.
 var ErrRulingConflict = errors.New("xdealv1: the case book already holds a different final ruling on this row")
 
 // sealTries is how many times SealRuling rebuilds a ruling whose place was
@@ -241,14 +272,25 @@ const sealTries = 8
 
 // SealRuling seals body in the case book of c on shelf, at time at, once: a
 // ruling of the deal with the same body already there is returned as it is
-// (Existing), and a final ruling on a row the book already holds a
-// different final ruling on is refused (ErrRulingConflict). The ruling is
+// (Existing), and any other ruling on a row the book already holds a final
+// ruling on is refused (ErrRulingConflict). The body must be c's: its row,
+// keys, read and rules digest (Case.RulingOf builds one). The ruling is
 // checked (Check, CheckRuling against c.Agreement, the case-book placement)
 // before it is appended at the book's next place.
 func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body RulingBody, at time.Time) (SealedRuling, error) {
 	book, err := shelf.Open(ctx, c.LogID)
 	if err != nil {
 		return SealedRuling{}, err
+	}
+	switch {
+	case body.Row != c.Row:
+		return SealedRuling{}, caseErr("the ruling is on row %s, the case on row %s", body.Row, c.Row)
+	case body.Keys != c.Keys:
+		return SealedRuling{}, caseErr("the ruling names other keys than the case's parties")
+	case !sameRead(body.Read, c.Read):
+		return SealedRuling{}, caseErr("the ruling's read is not what the case read")
+	case body.RulesDigest != c.RulesDigest:
+		return SealedRuling{}, caseErr("the ruling names other rules than the agreement's")
 	}
 	wantBody, err := bodyBytes(body)
 	if err != nil {
@@ -286,7 +328,7 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 			if bytes.Equal(got, wantBody) {
 				return sealedAt(ctx, book, r, rec, uint64(i+1), bookID, true)
 			}
-			if body.Final && rb.Final && rb.Row == body.Row {
+			if rb.Final && rb.Row == body.Row {
 				return SealedRuling{}, ErrRulingConflict
 			}
 		}
@@ -307,9 +349,6 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 		if err := CheckRuling(rec, c.Agreement); err != nil {
 			return SealedRuling{}, err
 		}
-		if PlacementOf(rec) != PlacementCaseBook {
-			return SealedRuling{}, fmt.Errorf("xdealv1: a ruling is sealed in a case book")
-		}
 		entry, err := BookEntry(rec, prevID)
 		if err != nil {
 			return SealedRuling{}, err
@@ -327,6 +366,14 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 		return sealedAt(ctx, book, stored, rec, size+1, bookID, false)
 	}
 	return SealedRuling{}, fmt.Errorf("%w: the case book kept changing while the ruling was sealed", evidencebook.ErrBusy)
+}
+
+// sameRead reports whether two reads name the same records.
+func sameRead(a, b RulingRead) bool {
+	eq := func(x, y Null[string]) bool {
+		return (x.V == nil) == (y.V == nil) && (x.V == nil || *x.V == *y.V)
+	}
+	return eq(a.Buyer, b.Buyer) && eq(a.Seller, b.Seller)
 }
 
 // sealedAt is the SealedRuling of a case book record.

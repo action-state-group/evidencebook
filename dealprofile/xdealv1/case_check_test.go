@@ -79,6 +79,10 @@ func TestCheckCase(t *testing.T) {
 	_, err = CheckCase(h.agreementPair, []CaseCopy{buyerCopy}, adjudicator.key())
 	assert.ErrorContains(t, err, "not a dispute")
 
+	other := buyerCopy
+	_, err = CheckCase(dispute, []CaseCopy{other, other}, adjudicator.key())
+	assert.ErrorContains(t, err, "both copies")
+
 	// A keep copy is not an adjudicator copy.
 	_, keepPair, keepX := holderBundle(t, h.buyer, "buyer", caseBuyerLog, keepCopy(h.buyer.now.Format(time.RFC3339)))
 	_, err = CheckCase(dispute, []CaseCopy{{Report: keepPair, Extension: extJSON(t, keepX)}}, adjudicator.key())
@@ -122,13 +126,100 @@ func TestSealRuling(t *testing.T) {
 	_, err = SealRuling(ctx, adjudicator.shelf, c, c.RulingOf(ValueMet, NullOf[string](), nil, true, ""), at)
 	assert.ErrorIs(t, err, ErrRulingConflict)
 
-	later, err := SealRuling(ctx, adjudicator.shelf, c, c.RulingOf(ValueMet, NullOf[string](), nil, false, ""), at)
+	// After a final ruling the row takes no other ruling, final or not: the
+	// first final ruling applies and is never replaced.
+	_, err = SealRuling(ctx, adjudicator.shelf, c, c.RulingOf(ValueMet, NullOf[string](), nil, false, ""), at)
+	assert.ErrorIs(t, err, ErrRulingConflict)
+
+	// A body that is not the case's is refused before anything is sealed.
+	other := c.RulingOf(ValueMet, NullOf[string](), nil, false, "")
+	other.Row = "delivered"
+	_, err = SealRuling(ctx, adjudicator.shelf, c, other, at)
+	assert.ErrorContains(t, err, "the case on row as_described")
+	other = c.RulingOf(ValueMet, NullOf[string](), nil, false, "")
+	other.Keys.Seller = adjudicator.key()
+	_, err = SealRuling(ctx, adjudicator.shelf, c, other, at)
+	assert.ErrorContains(t, err, "other keys")
+	other = c.RulingOf(ValueMet, NullOf[string](), nil, false, "")
+	other.Read.Seller = Some("someone else's record")
+	_, err = SealRuling(ctx, adjudicator.shelf, c, other, at)
+	assert.ErrorContains(t, err, "read")
+	other = c.RulingOf(ValueMet, NullOf[string](), nil, false, "")
+	other.RulesDigest = hx('7')
+	_, err = SealRuling(ctx, adjudicator.shelf, c, other, at)
+	assert.ErrorContains(t, err, "other rules")
+}
+
+// Before any final ruling, a non-final ruling is sealed, and a later one
+// follows it; a forum the agreement does not accept is refused.
+func TestSealRulingNonFinal(t *testing.T) {
+	ctx := context.Background()
+	_, adjudicator, dispute, buyerCopy := caseFixture(t)
+	c, err := CheckCase(dispute, []CaseCopy{buyerCopy}, adjudicator.key())
+	require.NoError(t, err)
+	at := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	first, err := SealRuling(ctx, adjudicator.shelf, c, c.RulingOf(ValueNotMet, Some(RoleSeller), nil, false, ""), at)
+	require.NoError(t, err)
+	_, err = SealRuling(ctx, adjudicator.shelf, c, c.RulingOf(ValueMet, NullOf[string](), nil, false, "external:elsewhere"), at)
+	assert.ErrorContains(t, err, "not one the agreement accepts")
+	later, err := SealRuling(ctx, adjudicator.shelf, c, c.RulingOf(ValueMet, NullOf[string](), nil, true, ""), at)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2), later.Seq)
 	assert.Equal(t, first.RecordID, later.BookID)
+}
 
-	_, err = SealRuling(ctx, adjudicator.shelf, c, c.RulingOf(ValueMet, NullOf[string](), nil, false, "court:elsewhere"), at)
-	assert.Error(t, err, "a forum the agreement does not accept")
+// sellerCopy has the seller of caseFixture hold the buyer's agreement with
+// its stamp proof and write its adjudicator copy.
+func sellerCopy(t *testing.T, h *handshake) CaseCopy {
+	t.Helper()
+	buyerBook := mustOpen(t, h.buyer, caseBuyerLog)
+	agreementPair := bookPairAt(t, buyerBook, 1)
+	proof := h.buyer.stamp(readBack(t, buyerBook, 1).RecordID)
+	od, err := Digest(h.offer)
+	require.NoError(t, err)
+	_, err = h.seller.shelf.Journal(context.Background()) // a report reads the offer's journal
+	require.NoError(t, err)
+	h.seller.recUseStatus(map[string][]byte{od: h.offerPair})
+	h.seller.receive(agreementPair, &proof)
+	_, err = h.seller.recStampTick()
+	require.NoError(t, err)
+	_, pair, x := holderBundle(t, h.seller, "seller", h.sellerLog, copyAt(h.seller.now.Format(time.RFC3339), dealprofile.AudienceAdjudicator))
+	return CaseCopy{Report: pair, Extension: extJSON(t, x)}
+}
+
+// Both sides' copies make a case read from both books, whichever order they
+// come in; a copy under a key the other agreement does not name is refused.
+func TestCheckCaseTwoCopies(t *testing.T) {
+	h, adjudicator, dispute, buyerCopy := caseFixture(t)
+	seller := sellerCopy(t, h)
+	c, err := CheckCase(dispute, []CaseCopy{buyerCopy, seller}, adjudicator.key())
+	require.NoError(t, err)
+	require.NotNil(t, c.Read.Buyer.V)
+	require.NotNil(t, c.Read.Seller.V)
+	assert.Equal(t, RulingKeys{Buyer: h.buyer.key(), Seller: h.seller.key()}, c.Keys)
+	reversed, err := CheckCase(dispute, []CaseCopy{seller, buyerCopy}, adjudicator.key())
+	require.NoError(t, err)
+	assert.Equal(t, c, reversed, "the order of the copies does not matter")
+
+	// The seller's copy alone: the dispute is the buyer's, so only its forum
+	// is read against the seller's agreement.
+	alone, err := CheckCase(dispute, []CaseCopy{seller}, adjudicator.key())
+	require.NoError(t, err)
+	assert.Nil(t, alone.Read.Buyer.V)
+	assert.Equal(t, h.buyer.key(), alone.Keys.Buyer)
+
+}
+
+// Two copies must name each other: an agreement that names a layered
+// counterparty names exactly the other copy's signer, and one with no layer
+// names none to compare (CheckCase's cross-check).
+func TestNamesCounterparty(t *testing.T) {
+	yes := true
+	no := false
+	named := AgreeBody{CounterpartyLayer: &yes, CounterpartyKey: Some("seller-key")}
+	assert.True(t, namesCounterparty(named, "seller-key"))
+	assert.False(t, namesCounterparty(named, "stranger-key"), "a copy under a key the other agreement does not name")
+	assert.True(t, namesCounterparty(AgreeBody{CounterpartyLayer: &no, CounterpartyKey: NullOf[string]()}, "any"))
 }
 
 // CheckCaseRecord takes a party's withdrawal and a challenge of a ruling the
@@ -173,6 +264,32 @@ func TestCheckCaseRecord(t *testing.T) {
 
 	_, err = CheckCaseRecord(dispute, c, nil)
 	assert.ErrorContains(t, err, "neither a withdrawal nor a challenge")
+
+	// A withdrawal of the case's row is taken; one of another row is not.
+	prevDigest, seq := "", int64(3)
+	if r, err := VerifyBook(pair); assert.NoError(t, err) {
+		prevDigest, _ = Digest(r.Record)
+	}
+	withdrawal := func(row string) []byte {
+		b := read.Record.Block
+		seq++
+		b.Seq = seq
+		prev := RefTo(prevDigest)
+		b.Prev = &prev
+		rec := Record{Block: b, Body: &DisputeBody{Kind: KindWithdrawal, Row: row}}
+		_, wp := h.buyer.seal(caseBuyerLog, rec)
+		prevDigest, _ = Digest(rec)
+		return wp
+	}
+	_, err = CheckCaseRecord(withdrawal("as_described"), c, nil)
+	require.NoError(t, err)
+	_, err = CheckCaseRecord(withdrawal("delivered"), c, nil)
+	assert.ErrorContains(t, err, "the withdrawal is of row delivered")
+
+	other := c
+	other.DealID = "deal-ffffffffffffffff"
+	_, err = CheckCaseRecord(pair, other, []string{sealed.Digest})
+	assert.ErrorContains(t, err, "the case of deal deal-ffffffffffffffff")
 }
 
 func mustOpen(t *testing.T, p *party, logID string) *evidencebook.Book {
