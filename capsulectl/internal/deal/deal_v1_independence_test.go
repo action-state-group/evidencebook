@@ -14,6 +14,7 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/controllerbinding"
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -209,4 +210,68 @@ func TestARulingByAPartysOwnKeyIsLabeledWithNoStampedTime(t *testing.T) {
 	got := dealRun(t, "receive", ruling)
 	assert.Equal(t, stampedAtUnknown, got["stamped_at"])
 	assert.Equal(t, xdealv1.NotIndependentSharedOperator, got["independence"])
+}
+
+// A stamp covers a ruling by the book's entry count, never by its MMR size:
+// at two entries the MMR size is 3, so a stamp from before the third ruling
+// must not time it, on either side (#822 review).
+func TestARulingIsTimedOnlyByAStampThatCoversIt(t *testing.T) {
+	public, wkey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	keyID := hex.EncodeToString(public)
+	endpoint, _ := countingWitness(t)
+	adj := newAdjudicatorSide(t)
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	p.Checkpoint.Endpoint, p.Checkpoint.PublicKey = endpoint, keyID
+	require.NoError(t, cli.SaveProfile(p, true))
+	h := agreedBoth(t, func(k string) string {
+		o := strings.Replace(disputeOffer(k, "auto:twin"), `"key_id": "adjudicator-key"`, `"key_id": "`+adj.party.signer+`"`, 1)
+		return strings.Replace(o, `"witnesses": []`, `"witnesses": [{"key_id": "`+keyID+`"}]`, 1)
+	})
+	h.buyer.act(t)
+	dispute := filepath.Join(t.TempDir(), "dispute.json")
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
+	buyerCopy := adjudicatorCopy(t, h.buyer, h.dealID)
+
+	adj.act(t)
+	rule := func(value string, final bool) string {
+		out := filepath.Join(t.TempDir(), value+".json")
+		args := []string{"ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", value, "--against", "none",
+			"--dispute", dispute, "--copy", buyerCopy, "--out", out}
+		if final {
+			args = append(args, "--final")
+		}
+		dealRun(t, args...)
+		return out
+	}
+	rule("met", false)
+	second := rule("not_met", false)
+	// The named witness registers the stamp at two entries; the second
+	// ruling's file, written again, carries that stamp and its receipt.
+	witnessLastStamp(t, endpoint, wkey, cli.DealClock().Add(time.Minute).UTC().Truncate(time.Second))
+	dealRun(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "not_met", "--against", "none",
+		"--dispute", dispute, "--copy", buyerCopy, "--out", second)
+	var early v1Push
+	require.NoError(t, json.Unmarshal(mustRead(t, second), &early))
+	require.Len(t, early.WitnessReceipts, 1)
+	v, err := evidencebook.VerifyStampProof(*early.StampProof)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), v.BookCheckpoint.Entries)
+	require.Equal(t, uint64(3), v.BookCheckpoint.TreeSize, "two entries are an MMR of size 3")
+
+	third := rule("met", true)
+	var push v1Push
+	require.NoError(t, json.Unmarshal(mustRead(t, third), &push))
+	got, err := evidencebook.VerifyStampProof(*push.StampProof)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, got.BookCheckpoint.Entries, uint64(3), "the third ruling's file carries a stamp that covers it")
+	read, err := xdealv1.VerifyBook(push.Record)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), read.Seq)
+	// The third ruling with the earlier stamp's proof and receipt: no time.
+	forged := push
+	forged.StampProof, forged.WitnessReceipts = early.StampProof, early.WitnessReceipts
+	ag := &xdealv1.AgreeBody{Adjudicator: xdealv1.Some(xdealv1.Adjudicator{KeyID: adj.party.signer}), Witnesses: []xdealv1.Witness{{KeyID: keyID}}}
+	assert.True(t, rulingStampedAt(forged, ag, &read).IsZero(), "a stamp from before the ruling, whose MMR size equals its position")
 }

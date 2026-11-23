@@ -328,7 +328,7 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 func (s *dealSession) caseProof(ctx context.Context, cad *evidencebook.Cadence, sealed xdealv1.SealedRuling) (evidencebook.StampProof, error) {
 	covers := func(p evidencebook.StampProof) bool {
 		v, err := evidencebook.VerifyStampProof(p)
-		return err == nil && v.BookCheckpoint.TreeSize >= sealed.Seq
+		return err == nil && v.BookCheckpoint.Covers(sealed.Seq)
 	}
 	proof, err := cad.StampProof(ctx, sealed.BookID, 0, evidencebook.AudienceCounterparty)
 	if err == nil && covers(proof) {
@@ -411,7 +411,7 @@ func earliestCaseProof(ctx context.Context, cad *evidencebook.Cadence, sealed xd
 		if err != nil {
 			return evidencebook.StampProof{}, nil, err
 		}
-		if v.BookCheckpoint.TreeSize < sealed.Seq {
+		if !v.BookCheckpoint.Covers(sealed.Seq) {
 			break
 		}
 		oldest = p

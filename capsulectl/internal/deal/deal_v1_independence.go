@@ -92,7 +92,7 @@ func rulingStampedAt(push v1Push, ag *xdealv1.AgreeBody, ruling *xdealv1.BookRea
 	// at a size that covers the ruling: a proof of an older stamp, or of
 	// another log, would let the adjudicator choose an earlier time.
 	v, err := evidencebook.VerifyStampProof(*push.StampProof)
-	if err != nil || !strings.EqualFold(v.KeyID, ag.Adjudicator.V.KeyID) || v.Fact.LogID != ruling.LogID || v.BookCheckpoint.TreeSize < ruling.Seq {
+	if err != nil || !strings.EqualFold(v.KeyID, ag.Adjudicator.V.KeyID) || v.Fact.LogID != ruling.LogID || !v.BookCheckpoint.Covers(ruling.Seq) {
 		return time.Time{}
 	}
 	named := make([]string, 0, len(ag.Witnesses))
