@@ -60,7 +60,7 @@ func (s *dealSession) independence(ctx context.Context, info *receivedInfo, push
 	if !ok {
 		return nil
 	}
-	at := rulingStampedAt(push, ag)
+	at := rulingStampedAt(push, ag, info.book)
 	if at.IsZero() {
 		out["stamped_at"] = stampedAtUnknown
 	} else {
@@ -81,9 +81,17 @@ func (s *dealSession) independence(ctx context.Context, info *receivedInfo, push
 
 // rulingStampedAt is the earliest registration time among the push's
 // receipts that verify for its stamp's shelf checkpoint under a witness key
-// the agreement names; zero when there is none.
-func rulingStampedAt(push v1Push, ag *xdealv1.AgreeBody) time.Time {
-	if push.StampProof == nil || len(ag.Witnesses) == 0 {
+// the agreement names, when the stamp proof covers the ruling; zero
+// otherwise.
+func rulingStampedAt(push v1Push, ag *xdealv1.AgreeBody, ruling *xdealv1.BookRead) time.Time {
+	if push.StampProof == nil || len(ag.Witnesses) == 0 || ag.Adjudicator.V == nil {
+		return time.Time{}
+	}
+	// The proof must be the adjudicator's stamp of this ruling's case book
+	// at a size that covers the ruling: a proof of an older stamp, or of
+	// another log, would let the adjudicator choose an earlier time.
+	v, err := evidencebook.VerifyStampProof(*push.StampProof)
+	if err != nil || !strings.EqualFold(v.KeyID, ag.Adjudicator.V.KeyID) || v.Fact.LogID != ruling.LogID || v.BookCheckpoint.TreeSize < ruling.Seq {
 		return time.Time{}
 	}
 	named := make([]string, 0, len(ag.Witnesses))

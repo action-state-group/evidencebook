@@ -286,10 +286,11 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 	if err != nil {
 		return err
 	}
-	// The receipts the shelf holds for the stamp time the ruling for a
-	// party (#819); a later run, once the witness's receipt is back, writes
-	// the file again with it.
-	receipts, err := cad.Receipts(ctx, proof.ShelfCheckpoint)
+	// The file carries the earliest stamp that covers the ruling, with the
+	// receipts the shelf holds for it, which time the ruling for a party
+	// (#819). A later run, once the witness's receipt is back, writes the
+	// file again with it, and never moves to a later stamp.
+	proof, receipts, err := earliestCaseProof(ctx, cad, sealed, proof)
 	if err != nil {
 		return err
 	}
@@ -376,4 +377,56 @@ func sameRulingFile(out, logID string, body xdealv1.RulingBody) error {
 		return refuse
 	}
 	return nil
+}
+
+// earliestCaseProof is the stamp proof the ruling's file carries: of the
+// stamps that cover the ruling, the oldest one the shelf holds a witness
+// receipt for, else the oldest one, with its receipts. newest is caseProof's,
+// which covers the ruling. A stamp before the ruling, or one that is not a
+// finished stamp, is passed over; the walk stops at the first stamp that no
+// longer covers it, since older ones cover less.
+func earliestCaseProof(ctx context.Context, cad *evidencebook.Cadence, sealed xdealv1.SealedRuling, newest evidencebook.StampProof) (evidencebook.StampProof, []evidencebook.WitnessReceipt, error) {
+	oldest, oldestReceipted := newest, (*evidencebook.StampProof)(nil)
+	var receipted []evidencebook.WitnessReceipt
+	last, ok, err := cad.Last(ctx)
+	if err != nil {
+		return evidencebook.StampProof{}, nil, err
+	}
+	for n := last.N; ok && n >= 1; n-- {
+		tick, err := cad.Get(ctx, n)
+		if err != nil {
+			return evidencebook.StampProof{}, nil, err
+		}
+		if tick.CheckpointSize == 0 || tick.Leaves.Stamp == nil {
+			continue
+		}
+		p, err := cad.StampProof(ctx, sealed.BookID, n, evidencebook.AudienceCounterparty)
+		if errors.Is(err, evidencebook.ErrNotFound) {
+			break
+		}
+		if err != nil {
+			return evidencebook.StampProof{}, nil, err
+		}
+		v, err := evidencebook.VerifyStampProof(p)
+		if err != nil {
+			return evidencebook.StampProof{}, nil, err
+		}
+		if v.BookCheckpoint.TreeSize < sealed.Seq {
+			break
+		}
+		oldest = p
+		rs, err := cad.Receipts(ctx, p.ShelfCheckpoint)
+		if err != nil {
+			return evidencebook.StampProof{}, nil, err
+		}
+		if len(rs) > 0 {
+			q := p
+			oldestReceipted, receipted = &q, rs
+		}
+	}
+	if oldestReceipted != nil {
+		return *oldestReceipted, receipted, nil
+	}
+	rs, err := cad.Receipts(ctx, oldest.ShelfCheckpoint)
+	return oldest, rs, err
 }

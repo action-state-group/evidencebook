@@ -119,10 +119,33 @@ func TestARulingIsLabeledNotIndependentByABinding(t *testing.T) {
 	adj.act(t)
 	iat := cli.DealClock().Add(time.Minute).UTC().Truncate(time.Second)
 	witnessLastStamp(t, endpoint, wkey, iat)
+	// A later stamp, which no witness registered, comes before the run
+	// again: the file keeps the earlier, registered stamp.
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	assert.Equal(t, false, dealRun(t, args...)["sealed"])
 	var push v1Push
 	require.NoError(t, json.Unmarshal(mustRead(t, ruling), &push))
 	require.Len(t, push.WitnessReceipts, 1)
+
+	// The time counts only from a proof of this ruling's case book, by the
+	// adjudicator, at a size that covers the ruling.
+	read, err := xdealv1.VerifyBook(push.Record)
+	require.NoError(t, err)
+	ag := &xdealv1.AgreeBody{Adjudicator: xdealv1.Some(xdealv1.Adjudicator{KeyID: adj.party.signer}), Witnesses: []xdealv1.Witness{{KeyID: keyID}}}
+	assert.Equal(t, iat, rulingStampedAt(push, ag, &read))
+	later := read
+	later.Seq = read.Seq + 1
+	assert.True(t, rulingStampedAt(push, ag, &later).IsZero(), "a stamp from before the ruling")
+	other := read
+	other.LogID = "case/" + strings.Repeat("0", 32)
+	assert.True(t, rulingStampedAt(push, ag, &other).IsZero(), "a stamp of another log")
+	notAdj := *ag
+	notAdj.Adjudicator = xdealv1.Some(xdealv1.Adjudicator{KeyID: strings.Repeat("ab", 32)})
+	assert.True(t, rulingStampedAt(push, &notAdj, &read).IsZero(), "a stamp by another key")
+	unnamed := *ag
+	unnamed.Witnesses = []xdealv1.Witness{{KeyID: strings.Repeat("cd", 32)}}
+	assert.True(t, rulingStampedAt(push, &unnamed, &read).IsZero(), "a receipt from a witness the agreement does not name")
 
 	// The buyer brings a binding between the adjudicator's key and its own.
 	binding, record := bindingFile(t, adjKey, buyerKey)
