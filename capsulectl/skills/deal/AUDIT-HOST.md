@@ -107,9 +107,13 @@ host's approval history was not available.
 ## Matching
 
 A consequential record (any action except `other`) counts as recorded when
-a sealed step of a deal in the profile accounts for it:
+a step of a deal in the profile accounts for it:
 
-1. a `deal note --kind act` step, or else
+1. an act: on an x-deal-v0 deal a `deal note --kind act` step; on an
+   x-deal-v1 deal a payment or a refund the user paid, from `deal settle
+   --sent` on (not one whose send failed, which moved no money), or a `deal
+   perform`, but never money coming
+   in, such as a refund received; or else
 2. a `deal check` step made before it,
 
 with the same action, and the same amount, currency and merchant domain
@@ -117,8 +121,9 @@ wherever both sides carry one. A `ceiling` amount covers a step for that
 amount or less. When the record names a `deal_id`, the step
 must be in that deal. Otherwise an act must be within `--window` of the
 record, and a check within `--window` before it. Each step accounts for one
-action. Every deal is verified as `deal report` verifies it before its steps
-are used.
+action. Every x-deal-v0 deal is verified as `deal report` verifies it before
+its steps are used. An x-deal-v1 deal's steps are read from its local records
+as stored, writing nothing; `deal report` is what verifies its book.
 
 A `failed` record is listed under `failed_attempts`, not as unrecorded: a
 failed attempt can still have had an effect, so it is shown for review. An

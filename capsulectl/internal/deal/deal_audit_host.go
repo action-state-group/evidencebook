@@ -567,8 +567,9 @@ func dealReconcileAlias() *cobra.Command {
 
 const dealReconcileDeprecation = "warning: `deal reconcile` is now `deal audit-host`; the old name is removed in the next release"
 
-// allCoverSteps reads every deal in the store, verifying each as `deal report`
-// does, and returns the steps that can account for an executed action.
+// allCoverSteps reads every deal in the store and returns the steps that can
+// account for an executed action: an x-deal-v0 deal verified as `deal report`
+// verifies it, an x-deal-v1 deal's local events as stored.
 func (s *dealSession) allCoverSteps(ctx context.Context) (_ []*dealCoverStep, err error) {
 	ids, err := s.index.dealIDs(ctx)
 	if err != nil {
@@ -590,5 +591,48 @@ func (s *dealSession) allCoverSteps(ctx context.Context) (_ []*dealCoverStep, er
 		}
 		steps = append(steps, dealCoverSteps(id, events)...)
 	}
+	// An x-deal-v1 deal's steps are its local events, read as stored and not
+	// verified (deal report verifies them): a payment from `deal settle
+	// --sent` on is an act, a check carries its snapshot's amount and
+	// merchant (evidencebook#758). A deal with no event yet (an offer only)
+	// holds no step.
+	v1, err := s.v1DealIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range v1 {
+		events, _, _, err := s.v1StoredEvents(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if events = v1CoverEvents(events); len(events) > 0 {
+			steps = append(steps, dealCoverSteps(id, events)...)
+		}
+	}
 	return steps, nil
+}
+
+// v1CoverEvents drops the x-deal-v1 acts that account for no action of the
+// user's: a send that failed, a payment or a refund the user paid (its act
+// keeps its action with the amount cleared, closeSend), which moved no money
+// and would otherwise cover an action of any amount; and money coming in (a
+// refund received, an act cancel with direction in), which is the other
+// side's act, not the user's cancellation. A perform's act (commit) carries
+// no amount and stays.
+func v1CoverEvents(events []sealedEvent) []sealedEvent {
+	out := events[:0:0]
+	for _, se := range events {
+		if a := se.Event.Act; se.Event.Kind == "act" && a != nil && (failedSend(a) || a.Direction == "in") {
+			continue
+		}
+		out = append(out, se)
+	}
+	return out
+}
+
+// failedSend reports whether a v1 act is a send closed failed: a payment or
+// a refund, whose act always carries the send's amount until closeSend clears
+// it on failure.
+func failedSend(a *dealAct) bool {
+	return (a.Action == "pay" || a.Action == "cancel") && a.AmountMinor == nil
 }

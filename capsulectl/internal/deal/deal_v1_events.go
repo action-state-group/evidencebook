@@ -82,34 +82,8 @@ func v1NoteRefusal(kind, dealID string) error {
 // v1Events reads a v1 deal's local event list in order, sealing any record a
 // stopped run stored but did not seal.
 func (s *dealSession) v1Events(ctx context.Context, dealID string) ([]sealedEvent, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT n, local, record_digest, payload FROM deal_v1_events WHERE deal_id=? ORDER BY n`, dealID)
+	out, pending, pendingDigests, err := s.v1StoredEvents(ctx, dealID)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []sealedEvent
-	var pending [][]byte
-	var pendingDigests []string
-	for rows.Next() {
-		var (
-			n       int64
-			local   string
-			digest  string
-			payload []byte
-		)
-		if err := rows.Scan(&n, &local, &digest, &payload); err != nil {
-			return nil, err
-		}
-		var ev dealEvent
-		if err := json.Unmarshal([]byte(local), &ev); err != nil {
-			return nil, fmt.Errorf("%w: deal %s's local event %d: %v", evidencebook.ErrCorrupt, dealID, n, err)
-		}
-		out = append(out, sealedEvent{CapsuleID: v1EventID(dealID, n), Digest: digest, Sequence: uint64(n), Event: ev})
-		if len(payload) > 0 {
-			pending, pendingDigests = append(pending, payload), append(pendingDigests, digest)
-		}
-	}
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	for i, payload := range pending {
@@ -127,6 +101,40 @@ func (s *dealSession) v1Events(ctx context.Context, dealID string) ([]sealedEven
 		}
 	}
 	return out, nil
+}
+
+// v1StoredEvents reads a v1 deal's local event list in order, as stored,
+// writing nothing, with the journal payloads still pending an append (and
+// their digests), which v1Events appends.
+func (s *dealSession) v1StoredEvents(ctx context.Context, dealID string) (out []sealedEvent, pending [][]byte, pendingDigests []string, err error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT n, local, record_digest, payload FROM deal_v1_events WHERE deal_id=? ORDER BY n`, dealID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			n       int64
+			local   string
+			digest  string
+			payload []byte
+		)
+		if err := rows.Scan(&n, &local, &digest, &payload); err != nil {
+			return nil, nil, nil, err
+		}
+		var ev dealEvent
+		if err := json.Unmarshal([]byte(local), &ev); err != nil {
+			return nil, nil, nil, fmt.Errorf("%w: deal %s's local event %d: %v", evidencebook.ErrCorrupt, dealID, n, err)
+		}
+		out = append(out, sealedEvent{CapsuleID: v1EventID(dealID, n), Digest: digest, Sequence: uint64(n), Event: ev})
+		if len(payload) > 0 {
+			pending, pendingDigests = append(pending, payload), append(pendingDigests, digest)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+	return out, pending, pendingDigests, nil
 }
 
 // v1EventID is a local event's id, which the v0 record builder uses to find

@@ -318,3 +318,150 @@ func TestDealMetadataListsEveryDealSubcommand(t *testing.T) {
 	}
 	assert.ElementsMatch(t, DealMetadata.Subcommands, names)
 }
+
+// An x-deal-v1 deal's own records account for the host's actions on it
+// (evidencebook#758): a settled payment covers the host's pay record, by deal
+// id or by amount, currency, merchant and time; a pay it does not hold stays
+// unrecorded. Beside a v0 deal in the same store, each covers its own.
+func TestAuditHostReadsAV1Deal(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+
+	run := func(lines ...string) map[string]any {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "executions.jsonl")
+		require.NoError(t, os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600))
+		result, _ := auditHostRun(t, "--executions", path, "--from", "2026-09-27T00:00:00Z", "--to", "2026-09-28T00:00:00Z")
+		return result
+	}
+	unrecorded := func(result map[string]any) []string {
+		var ids []string
+		for _, u := range result["unrecorded"].([]any) {
+			ids = append(ids, u.(map[string]any)["id"].(string))
+		}
+		return ids
+	}
+	pay := func(id, extra string) string {
+		return `{"id":"` + id + `","at":"2026-09-27T18:00:00Z","task":"t","tool":"make_payment","action":"pay","currency":"USD","status":"succeeded"` + extra + `}`
+	}
+
+	db, err := os.ReadFile(v1Profile(t).Connection.Database)
+	require.NoError(t, err)
+	byID := run(pay("c1", `,"amount_minor":4500,"deal_id":"`+h.dealID+`"`))
+	assert.Empty(t, unrecorded(byID), "the v1 deal's payment covers the host's pay by deal id: %v", byID)
+	recorded := byID["recorded"].([]any)
+	require.Len(t, recorded, 1)
+	assert.Equal(t, "act", recorded[0].(map[string]any)["matched_by"], "the payment's act covers it, before the check")
+	after, err := os.ReadFile(v1Profile(t).Connection.Database)
+	require.NoError(t, err)
+	assert.Equal(t, db, after, "the audit writes nothing to the store")
+	byMatch := run(pay("c1", `,"amount_minor":4500,"merchant_domain":"kettle.example"`))
+	assert.Empty(t, unrecorded(byMatch), "and by amount, currency, merchant and time: %v", byMatch)
+	other := run(pay("c1", `,"amount_minor":999,"deal_id":"`+h.dealID+`"`))
+	assert.Equal(t, []string{"c1"}, unrecorded(other), "a pay the deal does not hold stays unrecorded")
+
+	// A v0 deal beside it, its payment noted as an act: the profile set to
+	// the legacy version, as for a counterparty that runs only x-deal-v0.
+	legacyV0(t)
+	v0 := openJetSki(t)
+	dealRun(t, "note", "--deal", v0, "--kind", "act", "--input", writeJSON(t, `{"action":"pay","amount_minor":20000,"payee":"M. Torres","rail":"zelle","reference":"z1"}`))
+	mixed := run(
+		pay("c1", `,"amount_minor":4500,"deal_id":"`+h.dealID+`"`),
+		pay("c2", `,"amount_minor":20000,"deal_id":"`+v0+`"`),
+		pay("c3", `,"amount_minor":4500,"deal_id":"`+v0+`"`),
+	)
+	assert.Equal(t, []string{"c3"}, unrecorded(mixed), "each deal covers its own action, and only its own: %v", mixed)
+}
+
+// A failed v1 payment moved no money, so it covers no pay: after a failed
+// send and a settled retry, a second charge of the same amount stays
+// unrecorded (#760 review). The pay check of the failed send stays a step,
+// used once.
+func TestAuditHostAFailedV1PaymentCoversNothing(t *testing.T) {
+	h, first := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", first, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", first, "--status", "failed", "--out", filepath.Join(t.TempDir(), "failed.json"))
+	retry := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("cd", 32)+`"`)))
+	require.Equal(t, "pass", retry["verdict"], "%v", retry)
+	second := retry["check_id"].(string)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", second, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", second, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+
+	path := filepath.Join(t.TempDir(), "executions.jsonl")
+	line := func(id string) string {
+		return `{"id":"` + id + `","at":"2026-09-27T18:00:00Z","task":"t","tool":"make_payment","action":"pay","amount_minor":4500,"currency":"USD","deal_id":"` + h.dealID + `","status":"succeeded"}`
+	}
+	require.NoError(t, os.WriteFile(path, []byte(line("c1")+"\n"+line("c2")+"\n"+line("c3")+"\n"), 0o600))
+	result, _ := auditHostRun(t, "--executions", path, "--from", "2026-09-27T00:00:00Z", "--to", "2026-09-28T00:00:00Z")
+	var by []string
+	for _, r := range result["recorded"].([]any) {
+		by = append(by, r.(map[string]any)["matched_by"].(string))
+	}
+	// One settled act and the two pay checks: three steps, and no failed act.
+	assert.ElementsMatch(t, []string{"act", "check", "check"}, by, "%v", result)
+	withSession(t, func(s *dealSession) {
+		steps, err := s.allCoverSteps(t.Context())
+		require.NoError(t, err)
+		acts := 0
+		for _, st := range steps {
+			if st.kind == "act" {
+				acts++
+				require.NotNil(t, st.amount, "no act without an amount covers a pay")
+			}
+		}
+		assert.Equal(t, 1, acts, "the failed send's act is not a step")
+	})
+}
+
+// Money coming in is the other side's act: a refund received (act cancel,
+// direction in) is no step, so it never covers the user's own cancel. A
+// perform's act, which carries no amount, stays a step.
+func TestV1CoverEventsDropsMoneyInAndFailedSends(t *testing.T) {
+	amount := int64(4500)
+	ev := func(kind string, a *dealAct) sealedEvent { return sealedEvent{Event: dealEvent{Kind: kind, Act: a}} }
+	in := []sealedEvent{
+		ev("open", nil),
+		ev("act", &dealAct{Action: "pay", AmountMinor: &amount, Direction: "out"}),
+		ev("act", &dealAct{Action: "pay"}),                                           // a failed send
+		ev("act", &dealAct{Action: "cancel"}),                                        // a failed refund send
+		ev("act", &dealAct{Action: "cancel", AmountMinor: &amount, Direction: "in"}), // a refund received
+		ev("act", &dealAct{Action: "commit", Description: "deliver"}),                // a perform
+	}
+	out := v1CoverEvents(in)
+	require.Len(t, out, 3)
+	assert.Equal(t, "open", out[0].Event.Kind)
+	assert.Equal(t, "pay", out[1].Event.Act.Action)
+	assert.Equal(t, "commit", out[2].Event.Act.Action)
+	assert.Len(t, in, 6, "the input is not changed")
+}
+
+// The audit reads a v1 deal's events as stored: a step whose journal record
+// a dead run left pending stays pending (v1Events, which other commands use,
+// would append it and clear the payload).
+func TestAuditHostLeavesAPendingV1RecordPending(t *testing.T) {
+	h := openedV1(t)
+	withSession(t, func(s *dealSession) {
+		events, err := s.v1Events(t.Context(), h.dealID)
+		require.NoError(t, err)
+		ev := dealEvent{Kind: "message", Message: &dealMessage{From: "counterparty", Channel: "web", Text: "It ships Monday."}}
+		p, err := s.prepareV1(h.dealID, events, ev, false)
+		require.NoError(t, err)
+		_, err = s.db.ExecContext(t.Context(), `INSERT INTO deal_v1_events (deal_id, n, kind, local, record_digest, payload) VALUES (?, ?, ?, ?, ?, ?)`,
+			h.dealID, p.se.Event.N, p.se.Event.Kind, string(p.local), p.se.Digest, p.payload)
+		require.NoError(t, err)
+	})
+	pending := func() int {
+		var n int
+		withSession(t, func(s *dealSession) {
+			require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT count(*) FROM deal_v1_events WHERE deal_id=? AND length(payload) > 0`, h.dealID).Scan(&n))
+		})
+		return n
+	}
+	require.Equal(t, 1, pending(), "a dead run left one record pending")
+	path := filepath.Join(t.TempDir(), "executions.jsonl")
+	require.NoError(t, os.WriteFile(path, []byte(`{"id":"c1","at":"2026-09-27T18:00:00Z","task":"t","tool":"x","action":"other","status":"succeeded"}`+"\n"), 0o600))
+	_, err := auditHostRun(t, "--executions", path)
+	require.NoError(t, err)
+	assert.Equal(t, 1, pending(), "the audit left it pending: it appends nothing")
+}
