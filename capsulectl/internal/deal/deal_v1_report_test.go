@@ -460,4 +460,22 @@ func TestAV1ShareTakesTheDealsOwnIDOut(t *testing.T) {
 	assert.NoError(t, dealShareGate(page, nil, cli.DealAudienceAdjudicator, dealID))
 	leaked := []byte(`<!doctype html><script>window.__BUNDLE__ = {"deal_id":"` + dealID + `","line":"Paid with 4111 1111 1111 1111"};</script>`)
 	assert.ErrorContains(t, dealShareGate(leaked, nil, cli.DealAudienceCounterparty, dealID), "card number", "a card beside the id")
+
+	// A bundle carries a record's payload as base64, and the gate reads the
+	// decoded text too: the id is taken out there as well, and a card number
+	// in the same payload is still refused.
+	encode := func(s string) []byte {
+		return []byte(`{"payload":"` + base64.StdEncoding.EncodeToString([]byte(s)) + `"}`)
+	}
+	payload := `{"canonicalization":"jcs","deal_id":"` + dealID + `","prev":{}}`
+	assert.ErrorContains(t, dealShareGate(encode(payload), nil, cli.DealAudienceCounterparty), "card number", "without the id")
+	assert.NoError(t, dealShareGate(encode(payload), nil, cli.DealAudienceCounterparty, dealID))
+	assert.ErrorContains(t, dealShareGate(encode(`{"deal_id":"`+dealID+`","note":"card 4111111111111111"}`), nil, cli.DealAudienceCounterparty, dealID), "card number")
+
+	// A shelf log id an agreement names (deal-cadence/<16 hex>) is one of the
+	// deal's own ids too.
+	const shelfLog = "deal-cadence/9261641132323880"
+	agreement := []byte(`{"shelf_log_id":"` + shelfLog + `"}`)
+	assert.ErrorContains(t, dealShareGate(agreement, nil, cli.DealAudienceCounterparty, dealID), "card number", "without it")
+	assert.NoError(t, dealShareGate(agreement, nil, cli.DealAudienceCounterparty, dealID, shelfLog))
 }

@@ -55,7 +55,14 @@ func dealPageGate(page []byte, events []sealedEvent, allowed ...string) error {
 	// same text the scan reads: a zero-width space, a soft hyphen or a
 	// fullwidth or Arabic-Indic digit after an allowed id is then a digit or
 	// nothing, not a boundary, and the id stays glued to what follows it.
-	data = []byte(foldText(string(data)))
+	data = removeAllowed([]byte(foldText(string(data))), allowed)
+	secrets, words, placeWords := gateSecrets(events)
+	return gateCheck(data, secrets, words, placeWords, allowed, 0)
+}
+
+// removeAllowed takes each allowed value out of folded text as a whole
+// token, as written and as JSON-escaped.
+func removeAllowed(data []byte, allowed []string) []byte {
 	for _, a := range allowed {
 		if strings.TrimSpace(a) == "" {
 			continue
@@ -68,8 +75,7 @@ func dealPageGate(page []byte, events []sealedEvent, allowed ...string) error {
 			data = removeWholeToken(data, []byte(f))
 		}
 	}
-	secrets, words, placeWords := gateSecrets(events)
-	return gateCheck(data, secrets, words, placeWords, 0)
+	return data
 }
 
 // gateElement is one <script> or <style> element of a page, with its body.
@@ -207,7 +213,8 @@ func removeWholeToken(data, value []byte) []byte {
 }
 
 // gateCheck runs every check on data, then again on the text inside any
-// base64 or hex run of it that decodes to printable text (two levels deep):
+// base64 or hex run of it that decodes to printable text (two levels deep),
+// less the allowed values:
 // a value encoded after it was rewritten is still read. A digest, a
 // signature or a signed statement decodes to binary and is not text.
 //
@@ -219,11 +226,15 @@ func removeWholeToken(data, value []byte) []byte {
 // the page's fixed labels, so "side" is not found in an anomaly's "side" key
 // or "station" in "attestation". The whole place string stays a needle
 // everywhere.
-func gateCheck(data []byte, secrets, words, placeWords []string, depth int) error {
+func gateCheck(data []byte, secrets, words, placeWords, allowed []string, depth int) error {
 	if depth < 2 {
 		for _, run := range gateEncoded.FindAll([]byte(foldText(string(data))), -1) {
 			if inner, ok := gateDecode(string(run)); ok {
-				if err := gateCheck([]byte(inner), secrets, words, placeWords, depth+1); err != nil {
+				// The allowed values are taken out of decoded text too: a
+				// bundle carries a record's payload as base64, and the deal's
+				// own id inside it is not a card number (evidencebook#787).
+				inner = string(removeAllowed([]byte(foldText(inner)), allowed))
+				if err := gateCheck([]byte(inner), secrets, words, placeWords, allowed, depth+1); err != nil {
 					return err
 				}
 			}
