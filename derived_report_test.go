@@ -4,10 +4,12 @@ package evidencebook
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -87,7 +89,7 @@ func newPackFixture(t *testing.T, proofs bool) packFixture {
 
 func (f packFixture) ask(t *testing.T, requester string) (SentRequest, Reply) {
 	t.Helper()
-	sent, err := f.requester.Request(context.Background(), EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: f.id, Coverage: Coverage{ExpectedPin: f.pin}}, "book-a")
+	sent, err := f.requester.Request(context.Background(), EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: f.id, Coverage: Coverage{ExpectedPin: f.pin}, Nonce: "00000000000000000000000000000000"}, "book-a")
 	require.NoError(t, err)
 	reply, _, err := f.holder.Respond(context.Background(), sent.Message(), RespondOptions{AuthenticatedRequester: requester, Policy: DefaultSharePolicy()})
 	require.NoError(t, err)
@@ -124,7 +126,7 @@ func TestTermsPackReportEndToEnd(t *testing.T) {
 		assert.ElementsMatch(t, []string{"record_type", "committed_at"}, mapKeys(r.Fields), "only the declared fields travel")
 	}
 
-	report, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{})
+	report, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{Derivation: f.id})
 	require.NoError(t, err)
 	verified, err := VerifyBundle(report.Bundle.JSON)
 	require.NoError(t, err)
@@ -138,22 +140,60 @@ func TestTermsPackReportEndToEnd(t *testing.T) {
 	assert.True(t, slices.ContainsFunc(mapValues(verified.Payloads), func(p []byte) bool { return string(p) == string(reply) }), "the bundle carries the reply octets")
 
 	// The same Result is not sealed twice.
-	again, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{})
+	again, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{Derivation: f.id})
 	require.NoError(t, err)
 	assert.Equal(t, report.Result.RecordID, again.Result.RecordID)
 
-	if dir := os.Getenv("EB_WRITE_DERIVED_REPORT_FIXTURE"); dir != "" {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundle.json"), report.Bundle.JSON, 0o644))
+	// The report module renders the committed bundle, so the bundle this
+	// producer builds must be that file, byte for byte: a producer change that
+	// breaks rendering shows here. EB_WRITE_DERIVED_REPORT_FIXTURE=1 rewrites it.
+	fixture := filepath.Join("report", "testdata", "derived-report", "bundle.json")
+	if os.Getenv("EB_WRITE_DERIVED_REPORT_FIXTURE") != "" {
+		require.NoError(t, os.WriteFile(fixture, report.Bundle.JSON, 0o644))
 	}
+	committed, err := os.ReadFile(fixture)
+	require.NoError(t, err)
+	assert.Equal(t, string(committed), string(report.Bundle.JSON), "report/testdata/derived-report/bundle.json differs from what the producer builds")
+
+	// The Result's verdicts, one per row of the pack.
+	var result struct {
+		Claims []struct{ ID, Verdict string } `json:"claims"`
+	}
+	require.NoError(t, json.Unmarshal(report.Result.Header.Statement, &result))
+	verdicts := map[string]string{}
+	for _, c := range result.Claims {
+		verdicts[c.ID] = c.Verdict
+	}
+	assert.Equal(t, map[string]string{"has-observation": "met", "has-claim": "met", "has-ruling": "met", "has-exchange": "met", "all-committed": "met"}, verdicts)
 }
 
 func TestTermsPackWithoutProofsIsHolderWordOnly(t *testing.T) {
+	ctx := context.Background()
 	f := newPackFixture(t, false)
 	recorded, statement := f.record(t, "requester-1")
 	assert.Equal(t, []string{"anchor_inclusion"}, statement.NotChecked)
-	inputs, err := f.requester.DerivedInputs(context.Background(), recorded.RecordID)
+	inputs, err := f.requester.DerivedInputs(ctx, recorded.RecordID)
 	require.NoError(t, err)
 	assert.False(t, inputs.Proven)
+
+	// A report over such inputs is refused unless the caller says so, and
+	// then its page says so in its title: the two never look the same.
+	_, err = f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{Derivation: f.id})
+	assert.ErrorIs(t, err, ErrInvalid)
+	_, err = f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{Derivation: f.id, AllowUnproven: true})
+	assert.ErrorContains(t, err, UnprovenInputsTitle, "a Result without the title is refused")
+	titled := func(inputs DerivedInputs) (json.RawMessage, error) {
+		raw, err := evaluatePack(inputs)
+		require.NoError(t, err)
+		var doc map[string]any
+		require.NoError(t, json.Unmarshal(raw, &doc))
+		doc["view"] = map[string]any{"title": UnprovenInputsTitle + "Terms pack test", "spec_version": "presentation/v1", "producer_name": "requester"}
+		return json.Marshal(doc)
+	}
+	report, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, titled, ReportOptions{Derivation: f.id, AllowUnproven: true})
+	require.NoError(t, err)
+	_, err = VerifyBundle(report.Bundle.JSON)
+	require.NoError(t, err)
 }
 
 func TestTermsPackServingRefusals(t *testing.T) {
@@ -227,10 +267,10 @@ func TestReportFromDerivationRefusesAnUnsignableResult(t *testing.T) {
 		"not an Evidence Result":           func(DerivedInputs) (json.RawMessage, error) { return json.RawMessage(`{"claims":[]}`), nil },
 	}
 	for name, evaluate := range cases {
-		_, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluate, ReportOptions{})
+		_, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluate, ReportOptions{Derivation: f.id})
 		assert.ErrorIs(t, err, ErrInvalid, name)
 	}
-	_, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, func(DerivedInputs) (json.RawMessage, error) { return nil, os.ErrInvalid }, ReportOptions{})
+	_, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, func(DerivedInputs) (json.RawMessage, error) { return nil, os.ErrInvalid }, ReportOptions{Derivation: f.id})
 	assert.ErrorIs(t, err, os.ErrInvalid)
 	// Nothing was signed for any of them.
 	f.requester.mu.Lock()
@@ -255,4 +295,179 @@ func mapValues(m map[string][]byte) [][]byte {
 		values = append(values, v)
 	}
 	return values
+}
+
+func TestReportFromDerivationHoldsTheResultToTheGate(t *testing.T) {
+	ctx := context.Background()
+	f := newPackFixture(t, true)
+	recorded, _ := f.record(t, "requester-1")
+	edit := func(change func(doc map[string]any)) func(DerivedInputs) (json.RawMessage, error) {
+		return func(inputs DerivedInputs) (json.RawMessage, error) {
+			raw, err := evaluatePack(inputs)
+			require.NoError(t, err)
+			var doc map[string]any
+			require.NoError(t, json.Unmarshal(raw, &doc))
+			change(doc)
+			return json.Marshal(doc)
+		}
+	}
+	claims := func(doc map[string]any) []any { return doc["claims"].([]any) }
+	cases := map[string]func(DerivedInputs) (json.RawMessage, error){
+		"a claim cites only a contract and its evidence": func(inputs DerivedInputs) (json.RawMessage, error) {
+			return json.Marshal(map[string]any{"claims": []any{map[string]any{"contract_ref": packContract, "evidence": []any{map[string]any{"digest": inputs.Response}}}}})
+		},
+		"no generated_at": edit(func(doc map[string]any) { delete(doc, "generated_at") }),
+		"duplicate claim ids": edit(func(doc map[string]any) {
+			claims(doc)[1].(map[string]any)["id"] = claims(doc)[0].(map[string]any)["id"]
+		}),
+		"a claim in the wrong bucket": edit(func(doc map[string]any) {
+			doc["aggregate"].(map[string]any)["buckets"] = map[string]any{"met": []any{}, "not_met": []any{"has-observation"}, "not_evaluable": []any{}}
+		}),
+	}
+	for name, evaluate := range cases {
+		_, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluate, ReportOptions{Derivation: f.id})
+		assert.ErrorIs(t, err, ErrInvalid, name)
+	}
+	_, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{Derivation: digestBytes([]byte("another pack"))})
+	assert.ErrorIs(t, err, ErrInvalid, "a Result for one pack is never signed over another's answer")
+	_, err = f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{})
+	assert.ErrorIs(t, err, ErrInvalid, "the pack the evaluator runs must be named")
+	f.requester.mu.Lock()
+	log := f.requester.logLocked()
+	f.requester.mu.Unlock()
+	for _, r := range log {
+		assert.NotEqual(t, RecordTypeEvidenceResult, r.Header.RecordType, "nothing was signed")
+	}
+}
+
+func TestReportFromDerivationSealsOnceUnderConcurrency(t *testing.T) {
+	ctx := context.Background()
+	f := newPackFixture(t, true)
+	recorded, _ := f.record(t, "requester-1")
+	const callers = 8
+	ids := make([]string, callers)
+	errs := make([]error, callers)
+	var wg sync.WaitGroup
+	for i := range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			report, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{Derivation: f.id})
+			ids[i], errs[i] = report.Result.RecordID, err
+		}()
+	}
+	wg.Wait()
+	for i := range callers {
+		require.NoError(t, errs[i])
+		assert.Equal(t, ids[0], ids[i])
+	}
+	f.requester.mu.Lock()
+	log := f.requester.logLocked()
+	f.requester.mu.Unlock()
+	results := 0
+	for _, r := range log {
+		if r.Header.RecordType == RecordTypeEvidenceResult {
+			results++
+		}
+	}
+	assert.Equal(t, 1, results)
+}
+
+// An answer that verified under no key the requester pins is recorded as
+// received-and-failed, and is not inputs.
+func TestDerivedInputsRefusesARecordedFailedAnswer(t *testing.T) {
+	ctx := context.Background()
+	f := newPackFixture(t, true)
+	sent, reply := f.ask(t, "requester-1")
+	keys := responderKeys(f.holder, 1)
+	keys.Checkpoint = responderKeys(f.holder, 2).Checkpoint
+	recorded, err := f.requester.RecordResponse(ctx, sent.RecordID, reply.Message, keys)
+	require.NoError(t, err)
+	var statement ResponseStatement
+	require.NoError(t, json.Unmarshal(recorded.Header.Statement, &statement))
+	require.Equal(t, OutcomeArtifactFailed, statement.Outcome)
+	_, err = f.requester.DerivedInputs(ctx, recorded.RecordID)
+	assert.ErrorIs(t, err, ErrInvalid)
+	_, err = f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{Derivation: f.id})
+	assert.ErrorIs(t, err, ErrInvalid)
+}
+
+// A request that pins the requester's own exchange half is answered with
+// that digest as the envelope's anchor and the checkpoint in the artifact;
+// the proofs are checked under the checkpoint.
+func TestTermsPackOverAnExchangeHalfPin(t *testing.T) {
+	ctx := context.Background()
+	holder := newFixture(t, "book-h", 3).open(t)
+	half := digestBytes([]byte("a half many records cite"))
+	for range 2 {
+		mustAppend(t, holder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: half}}})
+	}
+	anchorPin(t, holder)
+	id, err := holder.RegisterDerivation(DerivationDefinition{Document: []byte(`{"pack":"half"}`), Recipients: []string{"requester-1"}, Proofs: true, Forms: []SubjectKind{SubjectExchange}, Fields: []string{"record_type"}})
+	require.NoError(t, err)
+	requester := newFixture(t, "requester", 31).open(t)
+	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectExchange, Digest: half}, Derivation: id, Coverage: Coverage{ExpectedPin: half}}, "book-h")
+	require.NoError(t, err)
+	reply, _, err := holder.Respond(ctx, sent.Message(), RespondOptions{AuthenticatedRequester: "requester-1", Policy: DefaultSharePolicy()})
+	require.NoError(t, err)
+	require.Nil(t, reply.Refusal, "refused: %+v", reply.Refusal)
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, reply.Message, responderKeys(holder, 3))
+	require.NoError(t, err)
+	var statement ResponseStatement
+	require.NoError(t, json.Unmarshal(recorded.Header.Statement, &statement))
+	require.Equal(t, OutcomeArtifact, statement.Outcome, statement.Failure)
+	inputs, err := requester.DerivedInputs(ctx, recorded.RecordID)
+	require.NoError(t, err)
+	assert.True(t, inputs.Proven)
+	assert.Len(t, inputs.Records, 2)
+	assert.NotEqual(t, half, inputs.Anchor, "the anchor is the checkpoint's, not the exchange half's")
+}
+
+// A holder refuses, for a limit, an answer whose proofs would pass the
+// requester's item cap: the checkpoint and a proof per record come on top of
+// the records.
+func TestTermsPackProofsCountAgainstTheItemLimit(t *testing.T) {
+	ctx := context.Background()
+	serve := func(limit int, proofs bool) (served int, refused bool) {
+		f := newFixture(t, "book-l", 5)
+		cfg := f.config(t)
+		cfg.Responder = ResponderPolicy{RefusalPolicy: RefusalPolicySpecific, MaxAnswerItems: limit}
+		book, err := Open(ctx, cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = book.Release() })
+		for range 3 {
+			mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent})
+		}
+		id, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{"pack":"limit"}`), Recipients: []string{"requester-1"}, Proofs: proofs, Forms: []SubjectKind{SubjectFullHistory}, Fields: []string{"record_type"}})
+		require.NoError(t, err)
+		reply, _, err := book.Respond(ctx, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: id, Coverage: Coverage{ExpectedPin: anchorPin(t, book)}}), RespondOptions{AuthenticatedRequester: "requester-1", Policy: DefaultSharePolicy()})
+		require.NoError(t, err)
+		if reply.Refusal != nil {
+			return 0, true
+		}
+		return len(artifactRecords(t, mustEnvelope(t, reply))), false
+	}
+	rows, refused := serve(1000, false)
+	require.False(t, refused)
+	require.Positive(t, rows)
+	_, refused = serve(rows, true)
+	assert.True(t, refused, "rows+2 verification entries over a limit of rows")
+	_, refused = serve(rows+1, true)
+	assert.True(t, refused, "rows+2 over rows+1")
+	served, refused := serve(rows+2, true)
+	assert.False(t, refused)
+	assert.Equal(t, rows, served)
+	_, refused = serve(rows, false)
+	assert.False(t, refused, "without proofs the limit is the rows alone")
+}
+
+// An artifact without a records list is not an empty set: with proofs
+// claimed, it is refused.
+func TestSetInclusionRefusesAMalformedRecordSet(t *testing.T) {
+	req := EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: digestBytes([]byte("pack"))}
+	for _, artifact := range []string{`{"anchor":"a"}`, `{"anchor":"a","records":null}`, `{"anchor":"a","records":{}}`} {
+		e := Envelope{Anchor: Anchor{Digest: "a"}, Artifact: []byte(artifact), Verification: []VerificationEntry{{Kind: KindCLLCheckpoint, Digest: "d"}}, VerificationContent: [][]byte{[]byte("d")}}
+		_, _, err := verifyAnchorInclusion(req, e, hex.EncodeToString(make([]byte, 32)))
+		assert.ErrorIs(t, err, ErrInvalid, artifact)
+	}
 }

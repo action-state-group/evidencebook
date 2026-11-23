@@ -123,25 +123,25 @@ func TestSetInclusionRefusesAlteredMaterial(t *testing.T) {
 	e := mustEnvelope(t, reply)
 	key := responderKeys(f.holder, 1).Checkpoint
 	rows := artifactRecordsAny(t, e)
-	_, err := verifySetInclusion(e, rows, key)
+	_, err := verifySetInclusion(e, rows, e.Anchor.Digest, key)
 	require.NoError(t, err, "the unaltered answer verifies")
 
 	first := slices.Index(proofKinds(e), KindCLLInclusionProof)
 	swapped := cloneEnvelope(e)
 	swapped.VerificationContent[first], swapped.VerificationContent[first+1] = swapped.VerificationContent[first+1], swapped.VerificationContent[first]
-	_, err = verifySetInclusion(swapped, rows, key)
+	_, err = verifySetInclusion(swapped, rows, e.Anchor.Digest, key)
 	assert.ErrorIs(t, err, ErrInvalid, "proofs of two other leaves")
 
 	dropped := cloneEnvelope(e)
 	dropped.Verification = slices.Delete(dropped.Verification, first, first+1)
 	dropped.VerificationContent = slices.Delete(dropped.VerificationContent, first, first+1)
-	_, err = verifySetInclusion(dropped, rows, key)
+	_, err = verifySetInclusion(dropped, rows, e.Anchor.Digest, key)
 	assert.ErrorIs(t, err, ErrInvalid, "one proof short")
 
-	_, err = verifySetInclusion(e, rows[:len(rows)-1], key)
+	_, err = verifySetInclusion(e, rows[:len(rows)-1], e.Anchor.Digest, key)
 	assert.ErrorIs(t, err, ErrInvalid, "a row the holder dropped from the answer leaves a proof with no row")
 
-	_, err = verifySetInclusion(e, rows, hex.EncodeToString(make([]byte, 32)))
+	_, err = verifySetInclusion(e, rows, e.Anchor.Digest, hex.EncodeToString(make([]byte, 32)))
 	assert.Error(t, err, "a checkpoint not signed under the pinned key")
 
 	forged := cloneEnvelope(e)
@@ -152,7 +152,7 @@ func TestSetInclusionRefusesAlteredMaterial(t *testing.T) {
 	}
 	row["digest"] = digestBytes([]byte("a record the holder never sealed"))
 	forgedRows[0] = row
-	_, err = verifySetInclusion(forged, forgedRows, key)
+	_, err = verifySetInclusion(forged, forgedRows, e.Anchor.Digest, key)
 	assert.Error(t, err, "a digest that is not at the leaf it names")
 }
 

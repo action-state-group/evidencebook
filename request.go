@@ -410,7 +410,10 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 	if anchor, _ := fields["anchor"].(string); !halfPin && anchor != e.Anchor.Digest {
 		return nil, nil, fmt.Errorf("%w: anchor_inclusion: the artifact names another anchor", ErrInvalid)
 	}
-	records, _ := fields["records"].([]any)
+	records, isList := fields["records"].([]any)
+	if req.Derivation != "" && len(e.Verification) > 0 && !isList {
+		return nil, nil, fmt.Errorf("%w: anchor_inclusion: the artifact holds no records list", ErrInvalid)
+	}
 	for i, item := range records {
 		entry, _ := item.(map[string]any)
 		digest, _ := entry["digest"].(string)
@@ -423,20 +426,28 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 		}
 	}
 	if req.Derivation != "" && len(e.Verification) > 0 {
-		anchor, err := verifySetInclusion(e, records, checkpointKey)
+		// A request pinning its own exchange half is answered with that
+		// half's digest as the envelope's anchor and the checkpoint's in the
+		// artifact (halfPin above): the checkpoint the proofs are under is
+		// the artifact's.
+		want := e.Anchor.Digest
+		if halfPin {
+			want, _ = fields["anchor"].(string)
+		}
+		anchor, err := verifySetInclusion(e, records, want, checkpointKey)
 		return nil, anchor, err
 	}
 	return []string{"anchor_inclusion"}, nil, nil
 }
 
 // verifySetInclusion is the anchor_inclusion procedure of §6.2.1 over a
-// record set (see cllSetMaterial): the checkpoint is the anchor and signed
+// record set (see cllSetMaterial): the checkpoint is anchor and signed
 // under the pinned key, and each record's digest is the entry at its
 // leaf_index under that checkpoint. The artifact's records and the proofs
 // are the same list in the same order, so a record cannot be added, dropped
 // or moved without a proof that fails. It returns the anchor's checkpoint
 // statement.
-func verifySetInclusion(e Envelope, records []any, checkpointKey string) ([]byte, error) {
+func verifySetInclusion(e Envelope, records []any, anchor, checkpointKey string) ([]byte, error) {
 	var checkpointItem, consistency []byte
 	var inclusions [][]byte
 	for i, entry := range e.Verification {
@@ -460,7 +471,7 @@ func verifySetInclusion(e Envelope, records []any, checkpointKey string) ([]byte
 	if checkpointItem == nil || len(inclusions) != len(records) {
 		return nil, fmt.Errorf("%w: anchor_inclusion: the checkpoint is absent or the proofs are not one per record", ErrInvalid)
 	}
-	if digestBytes(checkpointItem) != e.Anchor.Digest {
+	if digestBytes(checkpointItem) != anchor {
 		return nil, fmt.Errorf("%w: anchor_inclusion: the checkpoint is not the anchor", ErrInvalid)
 	}
 	cp, err := readSignedCheckpoint(checkpointItem, checkpointKey)

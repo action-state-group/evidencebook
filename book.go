@@ -109,6 +109,9 @@ type Book struct {
 	responder       ResponderPolicy
 	standardHistory *StandardHistorySource
 	derivations     map[string]derivationEntry
+	// reportMu serializes ReportFromDerivation's look-up and seal of a
+	// Result, which SealResult leaves to its caller (result_seal.go).
+	reportMu sync.Mutex
 	// released is set by Release; every write refuses with ErrReleased.
 	released bool
 }

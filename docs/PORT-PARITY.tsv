@@ -118,7 +118,7 @@ package	kind	symbol	feature	rust	python
 .	type	DealReconcile	deal-reconcile	frozen #631	frozen #630
 .	type	DealReconcileInput	deal-reconcile	frozen #631	frozen #630
 .	type	DealReconcileResult	deal-reconcile	frozen #631	frozen #630
-.	type	DerivationDefinition	root-misc	ported	ported
+.	type	DerivationDefinition	root-misc	needed-by-mesh #746	frozen #747
 .	type	DerivedInputs	derivation-report	needed-by-mesh #746	frozen #747
 .	type	DerivedRecord	derivation-report	needed-by-mesh #746	frozen #747
 .	type	DisclosurePolicy	disclosure-policy	frozen #633	frozen #632

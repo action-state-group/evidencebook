@@ -158,6 +158,13 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 			}
 		}
 		declared = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "records", "subject"}, entry: entry, paths: paths, list: "records"}
+		if def.def.Proofs && len(leaves)+2 > min(maxItems, MaxReplyItems) {
+			// The checkpoint, a proof per record and a consistency proof
+			// are verification entries, which a requester caps at the same
+			// number it caps the records (MaxReplyItems): refuse here, with
+			// the limit reason, what it would record as failed.
+			return builtArtifact{overLimit: true}, nil
+		}
 		if def.def.Proofs {
 			// The requester checks the anchor and each record's place under
 			// it from the material, not from the responder's word.

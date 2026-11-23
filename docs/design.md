@@ -497,8 +497,10 @@ not by validating produced headers against it.
   a registered derivation with `Proofs` set (a Terms Pack served by digest,
   #606) carries the anchor's checkpoint and one inclusion proof per record,
   in the existing kinds, and this requester checks them; the profile text is
-  agent-action-capsule#668. Each served record carries its body,
-  which hashes to its digest.
+  agent-action-capsule#668. Each served record carries its body, which
+  hashes to its digest, except in a projection of declared fields, whose
+  values the holder attests: the proofs then show the digests are in the log,
+  not that a value belongs to its record.
 - **Only a Checkpointed Local Log answers.** A book over another substrate
   refuses every profile request whose answer would need an anchor
   (`coverage_unsatisfiable`): the SCITT stub's receipts are held, never
