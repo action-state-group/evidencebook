@@ -398,8 +398,10 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 		return nil, anchor, err
 	}
 	// Record sets and registered derivations: the profile defines no material
-	// kind for them (P-13). Their bodies and their anchor member are checked;
-	// inclusion is not.
+	// kind for them (P-13). Their bodies and their anchor member are checked.
+	// A registered derivation's answer from this package also carries the
+	// anchor's checkpoint and one inclusion proof per record
+	// (cllSetMaterial), which are checked; without them inclusion is not.
 	artifact, err := evidencerequest.DecodeJSON(e.Artifact)
 	fields, ok := artifact.(map[string]any)
 	if err != nil || !ok {
@@ -408,7 +410,10 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 	if anchor, _ := fields["anchor"].(string); !halfPin && anchor != e.Anchor.Digest {
 		return nil, nil, fmt.Errorf("%w: anchor_inclusion: the artifact names another anchor", ErrInvalid)
 	}
-	records, _ := fields["records"].([]any)
+	records, isList := fields["records"].([]any)
+	if req.Derivation != "" && len(e.Verification) > 0 && !isList {
+		return nil, nil, fmt.Errorf("%w: anchor_inclusion: the artifact holds no records list", ErrInvalid)
+	}
 	for i, item := range records {
 		entry, _ := item.(map[string]any)
 		digest, _ := entry["digest"].(string)
@@ -420,7 +425,100 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 			}
 		}
 	}
+	if req.Derivation != "" && len(e.Verification) > 0 {
+		// A request pinning its own exchange half is answered with that
+		// half's digest as the envelope's anchor and the checkpoint's in the
+		// artifact (halfPin above): the checkpoint the proofs are under is
+		// the artifact's.
+		want := e.Anchor.Digest
+		if halfPin {
+			want, _ = fields["anchor"].(string)
+		}
+		anchor, err := verifySetInclusion(e, records, want, checkpointKey)
+		return nil, anchor, err
+	}
 	return []string{"anchor_inclusion"}, nil, nil
+}
+
+// verifySetInclusion is the anchor_inclusion procedure of §6.2.1 over a
+// record set (see cllSetMaterial): the checkpoint is anchor and signed
+// under the pinned key, and each record's digest is the entry at its
+// leaf_index under that checkpoint. The artifact's records and the proofs
+// are the same list in the same order, so a record cannot be added, dropped
+// or moved without a proof that fails. It returns the anchor's checkpoint
+// statement.
+func verifySetInclusion(e Envelope, records []any, anchor, checkpointKey string) ([]byte, error) {
+	var checkpointItem, consistency []byte
+	var inclusions [][]byte
+	for i, entry := range e.Verification {
+		switch entry.Kind {
+		case KindCLLCheckpoint:
+			if checkpointItem != nil {
+				return nil, fmt.Errorf("%w: anchor_inclusion: more than one checkpoint", ErrInvalid)
+			}
+			checkpointItem = e.VerificationContent[i]
+		case KindCLLInclusionProof:
+			inclusions = append(inclusions, e.VerificationContent[i])
+		case KindCLLConsistencyProof:
+			if consistency != nil {
+				return nil, fmt.Errorf("%w: anchor_inclusion: more than one consistency proof", ErrInvalid)
+			}
+			consistency = e.VerificationContent[i]
+		default:
+			return nil, fmt.Errorf("%w: anchor_inclusion: kind %q is not one this requester implements", ErrInvalid, entry.Kind)
+		}
+	}
+	if checkpointItem == nil || len(inclusions) != len(records) {
+		return nil, fmt.Errorf("%w: anchor_inclusion: the checkpoint is absent or the proofs are not one per record", ErrInvalid)
+	}
+	if digestBytes(checkpointItem) != anchor {
+		return nil, fmt.Errorf("%w: anchor_inclusion: the checkpoint is not the anchor", ErrInvalid)
+	}
+	cp, err := readSignedCheckpoint(checkpointItem, checkpointKey)
+	if err != nil {
+		return nil, fmt.Errorf("anchor_inclusion: %w", err)
+	}
+	if err := checkFreshnessCommitted(e, cp.Checkpoint); err != nil {
+		return nil, err
+	}
+	for i, item := range records {
+		entry, _ := item.(map[string]any)
+		digest, _ := entry["digest"].(string)
+		leaf, leafOK := evidencerequest.UintValue(entry["leaf_index"])
+		raw, hexErr := hex.DecodeString(digest)
+		if !leafOK || hexErr != nil {
+			return nil, fmt.Errorf("%w: anchor_inclusion: record %d names no leaf and digest", ErrInvalid, i)
+		}
+		if err := checkProofLeaf(inclusions[i], leaf); err != nil {
+			return nil, fmt.Errorf("%w: anchor_inclusion: record %d: %v", ErrInvalid, i, err)
+		}
+		if err := checkCLLInclusion(cp, raw, inclusions[i], nil); err != nil {
+			return nil, fmt.Errorf("anchor_inclusion: record %d: %w", i, err)
+		}
+	}
+	if consistency != nil {
+		if cp.prevSize == 0 {
+			return nil, fmt.Errorf("%w: anchor_inclusion: the checkpoint extends no earlier commitment", ErrInvalid)
+		}
+		if err := checkCLLConsistency(cp.prevCommitment, cp.commitment, consistency); err != nil {
+			return nil, fmt.Errorf("anchor_inclusion: %w", err)
+		}
+	}
+	return checkpointItem, nil
+}
+
+// checkProofLeaf requires an inclusion proof to be for the leaf the answer
+// names the record at.
+func checkProofLeaf(inclusion []byte, leaf uint64) error {
+	decoded, err := evidencerequest.DecodeCBOR(inclusion)
+	pair, ok := decoded.([]any)
+	if err != nil || !ok || len(pair) != 2 {
+		return fmt.Errorf("the inclusion proof is not [index, path]")
+	}
+	if index, ok := evidencerequest.UintValue(pair[0]); !ok || index != evidencerequest.MMRLeafIndex(leaf) {
+		return fmt.Errorf("the inclusion proof is not for leaf %d", leaf)
+	}
+	return nil
 }
 
 // checkFreshnessCommitted checks that the freshness an envelope states for

@@ -58,6 +58,10 @@ type builtArtifact struct {
 type declaredFields struct {
 	top   []string
 	entry []string
+	// paths, when set, are the declared field paths of a registered
+	// derivation: an entry member that holds only part of a header member
+	// must hold exactly the declared paths below it.
+	paths [][]string
 	// list is the member holding the entries; bodies are hex record octets
 	// in body (records) or none.
 	list string
@@ -146,7 +150,32 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 			return builtArtifact{}, err
 		}
 		head["derivation"], head["records"] = def.id, records
-		declared = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "records", "subject"}, entry: append([]string{"digest", "leaf_index"}, def.def.Fields...), list: "records"}
+		entry, paths := []string{"digest", "leaf_index"}, make([][]string, len(def.def.Fields))
+		for i, field := range def.def.Fields {
+			paths[i], _ = fieldPath(field)
+			if !slices.Contains(entry, paths[i][0]) {
+				entry = append(entry, paths[i][0])
+			}
+		}
+		declared = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "records", "subject"}, entry: entry, paths: paths, list: "records"}
+		if def.def.Proofs && len(leaves)+2 > min(maxItems, MaxReplyItems) {
+			// The checkpoint, a proof per record and a consistency proof
+			// are verification entries, which a requester caps at the same
+			// number it caps the records (MaxReplyItems): refuse here, with
+			// the limit reason, what it would record as failed.
+			return builtArtifact{overLimit: true}, nil
+		}
+		if def.def.Proofs {
+			// The requester checks the anchor and each record's place under
+			// it from the material, not from the responder's word.
+			prover, err := b.commitments.(cllMaterialSource).cllProver(ctx, anchor)
+			if err != nil {
+				return builtArtifact{}, err
+			}
+			if built.verification, built.material, err = cllSetMaterial(prover, leaves); err != nil {
+				return builtArtifact{}, err
+			}
+		}
 	case req.Subject.Kind == SubjectRecord:
 		id := view.log[leaves[0]].RecordID
 		stored, err := b.store.GetRecord(ctx, id)
@@ -290,6 +319,9 @@ func (v *bookView) disclosureClean(artifact []byte, declared *declaredFields) bo
 				return false
 			}
 		}
+		if declared.paths != nil && !withinPaths(entry, declared.paths, true) {
+			return false
+		}
 		if digest, ok := entry["digest"].(string); ok {
 			if !v.servableDigest(digest) {
 				return false
@@ -356,12 +388,81 @@ func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def
 			return nil, fmt.Errorf("%w: header of %s", ErrCorrupt, id)
 		}
 		entry := map[string]any{"digest": id, "leaf_index": leaf}
-		for _, name := range def.def.Fields {
-			if value, present := fields[name]; present {
-				entry[name] = value
+		for _, field := range def.def.Fields {
+			names, _ := fieldPath(field)
+			if value, present := lookupPath(fields, names); present {
+				setPath(entry, names, value)
 			}
 		}
 		records[i] = entry
 	}
 	return records, nil
+}
+
+// lookupPath reads the member names reach through nested objects, and
+// reports false when one is missing or a step is not an object.
+func lookupPath(object map[string]any, names []string) (any, bool) {
+	var value any = object
+	for _, name := range names {
+		inner, isMap := value.(map[string]any)
+		if !isMap {
+			return nil, false
+		}
+		var present bool
+		if value, present = inner[name]; !present {
+			return nil, false
+		}
+	}
+	return value, true
+}
+
+// setPath puts value at names inside object, creating the objects between.
+// The declared set holds no path that extends another, so no step meets a
+// value another path put there.
+func setPath(object map[string]any, names []string, value any) {
+	for _, name := range names[:len(names)-1] {
+		inner, isMap := object[name].(map[string]any)
+		if !isMap {
+			inner = map[string]any{}
+			object[name] = inner
+		}
+		object = inner
+	}
+	object[names[len(names)-1]] = value
+}
+
+// withinPaths reports whether every member of object is declared: a member
+// named by a whole declared path may hold anything, one named only as the
+// start of longer paths must be an object whose members are, in turn,
+// within the paths below it. At the top of an entry, digest and leaf_index
+// are the responder's own members, not the record's.
+func withinPaths(object map[string]any, paths [][]string, top bool) bool {
+	for name, value := range object {
+		if top && (name == "digest" || name == "leaf_index") {
+			continue
+		}
+		var below [][]string
+		whole := false
+		for _, path := range paths {
+			if path[0] != name {
+				continue
+			}
+			if len(path) == 1 {
+				whole = true
+			} else {
+				below = append(below, path[1:])
+			}
+		}
+		switch {
+		case whole:
+		case len(below) == 0:
+			return false
+		default:
+			inner, isMap := value.(map[string]any)
+			if !isMap || !withinPaths(inner, below, false) {
+				return false
+			}
+		}
+	}
+	return true
 }

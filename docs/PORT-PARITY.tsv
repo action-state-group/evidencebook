@@ -118,7 +118,9 @@ package	kind	symbol	feature	rust	python
 .	type	DealReconcile	deal-reconcile	frozen #631	frozen #630
 .	type	DealReconcileInput	deal-reconcile	frozen #631	frozen #630
 .	type	DealReconcileResult	deal-reconcile	frozen #631	frozen #630
-.	type	DerivationDefinition	root-misc	ported	ported
+.	type	DerivationDefinition	root-misc	needed-by-mesh #746	frozen #747
+.	type	DerivedInputs	derivation-report	needed-by-mesh #746	frozen #747
+.	type	DerivedRecord	derivation-report	needed-by-mesh #746	frozen #747
 .	type	DisclosurePolicy	disclosure-policy	frozen #633	frozen #632
 .	type	DisclosureStatement	evidence-bundle	ported	frozen #635
 .	type	DiscoveryIndex	indexes	ported	frozen #637
@@ -209,6 +211,8 @@ package	kind	symbol	feature	rust	python
 .	type	Refusal	request-reply-respond	ported	ported
 .	type	Registrar	substrates	frozen #650	frozen #649
 .	type	Reply	request-reply-respond	frozen #131	ported
+.	type	Report	derivation-report	needed-by-mesh #746	frozen #747
+.	type	ReportOptions	derivation-report	needed-by-mesh #746	frozen #747
 .	type	Reproduction	originals-and-stores	ported	frozen #639
 .	type	RequestLimiter	request-reply-respond	ported	ported
 .	type	RequestStatement	request-reply-respond	frozen #131	frozen #131

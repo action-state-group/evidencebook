@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -381,13 +382,17 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 	if opts.Policy.servesStandardHistory(b.standardHistory) {
 		served = append(served, "standard_history/1")
 	}
-	if registered := len(b.derivations); registered > 0 {
-		served = append(served, fmt.Sprintf("the %d registered here", registered))
+	registered := slices.Sorted(maps.Keys(b.derivations))
+	if len(registered) > 0 {
+		served = append(served, fmt.Sprintf("the %d registered here", len(registered)))
 	}
 	if len(served) > 1 {
 		served = []string{strings.Join(served[:len(served)-1], ", ") + " and " + served[len(served)-1]}
 	}
 	unsupported += "; every derivation other than " + served[0] + " is refused derivation_unsupported"
+	if len(registered) > 0 {
+		unsupported += "; the registered derivations served, by the digest of their definition: " + strings.Join(registered, ", ")
+	}
 	if !isCLL {
 		unsupported += "; this book's substrate is not a Checkpointed Local Log, so it serves no anchors and every request is refused"
 	}
@@ -441,7 +446,7 @@ func identifiedView(p SharePolicy, derivations map[string]derivationEntry, stand
 	}
 	granted := 0
 	for _, entry := range derivations {
-		if entry.def.Recipient != "" {
+		if len(entry.grants) > 0 {
 			granted++
 		}
 	}

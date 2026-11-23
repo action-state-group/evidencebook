@@ -452,9 +452,9 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 				// to (SH §3): any authenticated requester, whatever the
 				// tier; never a stranger.
 				return g.requester != ""
-			case req.Derivation != "" && g.derivations[req.Derivation].def.Recipient != "":
-				// The holder's grant to the one requester it names.
-				return g.requester == g.derivations[req.Derivation].def.Recipient
+			case req.Derivation != "" && len(g.derivations[req.Derivation].grants) > 0:
+				// The holder's grant to the requesters it names.
+				return g.requester != "" && slices.Contains(g.derivations[req.Derivation].grants, g.requester)
 			case req.Subject.Kind == SubjectRecord, req.Subject.Kind == SubjectExchange, req.Subject.Kind == SubjectCorrelation:
 				// A correlation subject matches its key exactly, never by
 				// prefix or range, so it names a deal's records the way

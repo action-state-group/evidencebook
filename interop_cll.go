@@ -116,6 +116,39 @@ func cllMaterial(prover *cllProver, seq uint64) ([]VerificationEntry, [][]byte, 
 	return entries, items, nil
 }
 
+// cllSetMaterial is the material for a set of records under the prover's
+// anchor: the anchor checkpoint once, the inclusion proof of each record at
+// its leaf, in the order of leaves, and, when the checkpoint extends an
+// earlier one, the proof that it does. It uses the kinds of §6.2.1 as they
+// are; the profile defines no material for a record set (P-13), so this is
+// how this book carries one until it does.
+func cllSetMaterial(prover *cllProver, leaves []uint64) ([]VerificationEntry, [][]byte, error) {
+	signed, err := checkpoint.ParseRecord(prover.at.Statement)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: anchor checkpoint: %v", ErrCorrupt, err)
+	}
+	items, kinds := [][]byte{prover.at.Statement}, []string{KindCLLCheckpoint}
+	for _, leaf := range leaves {
+		inclusion, err := prover.inclusionProof(leaf + 1)
+		if err != nil {
+			return nil, nil, err
+		}
+		items, kinds = append(items, inclusion), append(kinds, KindCLLInclusionProof)
+	}
+	if signed.PrevSize > 0 {
+		consistency, err := prover.consistencyProof(signed.PrevSize, signed.MMRSize)
+		if err != nil {
+			return nil, nil, err
+		}
+		items, kinds = append(items, consistency), append(kinds, KindCLLConsistencyProof)
+	}
+	entries := make([]VerificationEntry, len(items))
+	for i, item := range items {
+		entries[i] = VerificationEntry{Kind: kinds[i], Digest: digestBytes(item)}
+	}
+	return entries, items, nil
+}
+
 // signedCheckpoint is a CLL checkpoint read from its signed statement, with
 // the peak lists the anchor_inclusion procedure needs.
 type signedCheckpoint struct {
