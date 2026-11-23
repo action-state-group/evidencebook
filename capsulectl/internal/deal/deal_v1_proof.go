@@ -166,8 +166,14 @@ func (s *dealSession) checkpointProof(ctx context.Context, c *cobra.Command, dea
 		}
 	}
 	result := map[string]any{"deal_id": dealID, "file": out, "witness_receipts": len(best.receipts), "named_witness_receipts": best.named}
-	if best.named == 0 {
-		result["note"] = "no receipt from a witness your agreement names is held for this checkpoint yet: the file changes nothing, and the entry stays \"entered, not witnessed\""
+	// named counts under this holder's pinned witness; the adjudicator
+	// verifies under its own directory, so a held receipt that does not
+	// verify here may still count there.
+	switch {
+	case len(best.receipts) == 0:
+		result["note"] = "no witness receipt is held for this checkpoint yet: the file changes nothing, and the entry stays \"entered, not witnessed\""
+	case best.named == 0:
+		result["note"] = "no receipt held for this checkpoint verifies, under your pinned witness, as from a witness your agreement names: unless the adjudicator's witness directory verifies one, the entry stays \"entered, not witnessed\""
 	}
 	return cli.Output(c, result)
 }
