@@ -3,7 +3,9 @@
 Design note for [evidencebook#861](https://github.com/action-state-group/evidencebook/issues/861)
 and [ledger-cloud#40](https://github.com/action-state-group/ledger-cloud/issues/40) (the
 adjudicator's hosting and API). Written 2026-11-24 CST at evidencebook main `88691585` and
-ledger-cloud main `9e52270`. File references are to those commits.
+ledger-cloud main `9e52270`. File references are to those commits; `PROFILE.md` is
+`dealprofile/x-deal-v1/PROFILE.md`; bare `case_check.go`, `types.go` and `report.go` are in
+`dealprofile/xdealv1/`, and other bare `.go` paths are in the repository root.
 
 ## 0. The bar and who decides
 
@@ -86,7 +88,7 @@ other bundle and requests that too") becomes a check, not a second round trip:
 
 **The request.** An evidence request (AAC `evidencerequest.Request`, agent-action-capsule go
 v0.24.0, `evidencerequest/request.go:185-202`) with subject `{"correlation": "<deal_id>"}`
-(`SubjectCorrelation`, `request.go:52`) and a derivation token the x-deal-v1 profile defines for
+(`SubjectCorrelation`, AAC `evidencerequest/request.go:52`) and a derivation token the x-deal-v1 profile defines for
 "the deal's full adjudicator copy" (its exact token is fixed in PR 1 against the request draft's
 token rule). The request has no selective form: full disclosure is what the request asks, not a
 flag the party sets. The responder answers in full or refuses (`policy_declined`), and a refusal
@@ -98,7 +100,15 @@ Today's adjudicator copy (`deal report --share adjudicator --bundle`) carries th
 the records the rows rely on (`ReportBook`, `dealprofile/xdealv1/report_bundle.go:28-38`), with
 rows withheld and no counterparty prefix. The full answer holds:
 
-1. **The whole own deal book**, every record from seq 1 to the checkpoint, as book pairs.
+1. **The whole own deal book**, every record from seq 1 to the checkpoint, as book pairs. This is
+   the deal book only, not the journal: journal records stay out as today, except those the
+   relied-on records already cite. Two standing rulings hold unchanged: the private floor
+   (`intent.min_total_minor` and its openings, a journal member) never goes to an adjudicator
+   copy, which keeps the max only (u547, ops `company-oss/inbox.md:795`); and the claims a
+   seller's agent made without authority go on an adjudicator copy only by the seller's explicit
+   opt-in, default off, reading "not shared" when absent (u615, `company-oss/inbox.md:944`;
+   `--include-agent-claims`, `capsulectl/internal/deal/commands.go:76-84`). Full disclosure here
+   means the whole deal book and the held copy, not those.
 2. **The held copy**: the counted prefix of the other side's book the party holds (records
    stored past a gap are not counted and not sent), from the store (`Shelf.HeldByDeal`,
    `shelf_held.go:34`), and **every** stamp proof the party holds for that log
@@ -182,7 +192,10 @@ Two limits the ruling and its page state, not hide:
   silent side's receipts itself (the library verifies receipts handed to it,
   `witness_receipt.go:19-53`; it has no lookup of another party's checkpoint at a witness). The
   silent side's remedy is a `challenge` (PROFILE.md §5, `dispute` kind `challenge`) with its own
-  book, which the hosted service already takes (`POST /v1/cases/{case_log}/records`).
+  book, which the hosted service already takes (`POST /v1/cases/{case_log}/records`). When a
+  time the ruling turns on came from the holder's linking fact rather than the silent side's own
+  stamp, the ruling's page says so ("time from the other side's held proofs; not shown by the
+  silent side") and names the source that timed it.
 - **Nothing shows the silent side received the request.** The adjudicator holds no party address,
   so its request is published at the case, and a party that never disputed learns of the case
   from the dispute record the disputing side sends it. The adjudicator records its request in its
@@ -270,7 +283,7 @@ local URL, given to both parties' runbook; for B, the listed endpoint.
 ledger-cloud#36's API stays; the changes are additions. Parties push, as today: the adjudicator
 holds no party address, so its request is a signed document the parties fetch.
 
-| Route (`front.go:102-107`) | Today | Change |
+| Route (ledger-cloud `front/front.go:102-107`) | Today | Change |
 |---|---|---|
 | `POST /v1/cases` | the dispute and one or two adjudicator copies | unchanged; its 201 names the case's requests URL |
 | `POST /v1/cases/{case_log}/records` | a later withdrawal or challenge | unchanged; it is also the silent side's way to challenge (§3.1) |
@@ -314,10 +327,11 @@ Each PR is reviewed under the usual rules; none starts before Steven's ruling on
    is a challenge with its own book.
 3. **A fork.** When a side's own book and the copy the other side holds differ (§2.3), proposed:
    the branch the other side received governs, since the signer showed it to its counterparty,
-   and the ruling records `fork_at`.
+   the ruling records `fork_at`, and both branches are kept and shown, since a fork is itself
+   evidence.
 4. **The answer deadline.** How long a party has before its books count as "not shown to the
    adjudicator". Proposed: 7 days from the request, a service constant stated in the practice
-   statement, as the challenge window is (ledger-cloud#36).
+   statement, as the 30-day challenge window is (ledger-cloud `ledger_cloud/adjudicator/RUNBOOK.md:74`).
 5. **Hosting.** Option A (Steven's machine) now, B on his decision to deploy (§4.1).
 
 Engineering's doors, for Sherlock2's door confirmation (format shapes with no product meaning
