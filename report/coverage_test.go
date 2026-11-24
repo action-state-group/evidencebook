@@ -237,7 +237,7 @@ func TestTheCoverageBannerNamesEachPlacedDeal(t *testing.T) {
 		Deals: []evidencebook.DealCoverage{line("deal/a")}, Limit: evidencebook.ReportLimit}, false)
 	require.NoError(t, err)
 	assert.Contains(t, one, "The one deal placed in these windows has its answer too, over its whole book.")
-	assert.Contains(t, one, "<details><summary>The deal and what each answer covers</summary><ul><li>"+htmlstd.EscapeString(line("deal/a").Line)+"</li></ul></details>")
+	assert.Contains(t, one, "<details><summary>The deal and what its answer covers</summary><ul><li>"+htmlstd.EscapeString(line("deal/a").Line)+"</li></ul></details>")
 	assert.Equal(t, 1, strings.Count(one, htmlstd.EscapeString(evidencebook.ReportLimit)), "the limit once")
 	assert.Less(t, strings.Index(one, htmlstd.EscapeString(evidencebook.ReportLimit)), strings.Index(one, "<details>"), "the limit before the list")
 

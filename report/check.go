@@ -67,7 +67,7 @@ func markCoverage(page string, c evidencebook.ReportCoverage, witnessed bool) (s
 		for _, d := range c.Deals {
 			items.WriteString("<li>" + htmlstd.EscapeString(d.Line) + "</li>")
 		}
-		dealList = fmt.Sprintf(`<details><summary>%s and what each answer covers</summary><ul>%s</ul></details>`, plural(n, "The deal", "The "+fmt.Sprint(n)+" deals"), items.String())
+		dealList = fmt.Sprintf(`<details><summary>%s</summary><ul>%s</ul></details>`, plural(n, "The deal and what its answer covers", "The "+fmt.Sprint(n)+" deals and what each answer covers"), items.String())
 	}
 	// The report's limit, once, beside its coverage (Sherlock2 on #797).
 	limit := c.Limit
