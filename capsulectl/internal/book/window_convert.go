@@ -67,11 +67,15 @@ func windowConvertCommand() *cobra.Command {
 			if (c.Flags().Changed("period") && period != policy.Period) || (c.Flags().Changed("grace") && grace != policy.Grace) {
 				return cli.Hint(cli.ErrInput, "this profile is already converted, to "+windowNotice(policy.Period, policy.Grace)+": the window cannot change")
 			}
-			service, err := cli.ServiceID(p)
+			queued, err := predecessorQueued(c.Context(), p, policy)
 			if err != nil {
 				return err
 			}
-			return cli.Output(c, windowConvertResult{Profile: p.Name, Period: policy.Period, Since: policy.Since.Format(time.RFC3339), Grace: graceText(policy.Grace), Predecessor: policy.Predecessor, Witnessed: service != "", Already: true, Notice: "already converted: " + convertNotice(p, policy, service != "")})
+			notice := "already converted: " + convertNotice(p, policy, queued)
+			if service, err := cli.ServiceID(p); err == nil && service != "" && !queued {
+				notice += " A witness is named now: run `book window publish` to queue and deliver the predecessor's final checkpoint."
+			}
+			return cli.Output(c, windowConvertResult{Profile: p.Name, Period: policy.Period, Since: policy.Since.Format(time.RFC3339), Grace: graceText(policy.Grace), Predecessor: policy.Predecessor, Witnessed: queued, Already: true, Notice: notice})
 		}
 		if _, reproduced, _ := reproductionAt(); reproduced {
 			return cli.InputError(SourceDateEpochEnv + " is set: a reproduced scratch book is not converted")
@@ -83,7 +87,7 @@ func windowConvertCommand() *cobra.Command {
 			return noBookError(p)
 		}
 		if yes, _ := c.Flags().GetBool("yes"); !yes {
-			return cli.Hint(cli.ErrInput, "converting is one-way: the JSONL book is closed for good and continues in a store split by "+string(period)+" windows; its records never move and it stays at book/log.jsonl. Seal any Close over a period before now in the book first: after converting, such a Close is refused, and a period that spans the conversion closes in two parts. Run again with --yes to convert")
+			return cli.Hint(cli.ErrInput, "converting is one-way: the JSONL book is closed for good and continues in a store split by "+string(period)+" windows; its records never move and it stays at book/log.jsonl. After converting, no verb serves the book's records (a chain's predecessor entry and bundles made before carry them), and requests still open in it cannot be answered. A Close over a period that begins before the conversion is refused, so the period in progress at the conversion cannot be closed afterwards in either book: close the last whole period before converting, or convert at a period boundary. Run again with --yes to convert")
 		}
 		policy, witnessed, err := convertBook(c.Context(), p, period, grace)
 		if err != nil {
@@ -219,7 +223,7 @@ func convertNotice(p cli.Profile, policy *evidencebook.WindowPolicy, witnessed b
 	if witnessed {
 		witness = "the predecessor's final checkpoint is queued for the witness (book window publish delivers it)"
 	}
-	return fmt.Sprintf("converted: the JSONL book %s is closed at %d records and stays at book/log.jsonl; its records never move. %s; the first window %s starts at %s (partial). The same signing key continues; this is not a clear. No verb serves the old book's records now (a chain's predecessor entry and bundles made before carry them), requests open in it cannot be answered, a Close over a period before the conversion is refused, and capsulectl builds before window books must not write to this profile. %s",
+	return fmt.Sprintf("converted: the JSONL book %s is closed at %d records and stays at book/log.jsonl; its records never move. %s; the first window %s starts at %s (partial). The same signing key continues; this is not a clear. No verb serves the old book's records now (a chain's predecessor entry and bundles made before carry them), requests open in it cannot be answered, a Close over any period that begins before the conversion is refused, and capsulectl builds before window books must not write to this profile. %s",
 		policy.Predecessor.LogID, policy.Predecessor.Entries, windowNotice(policy.Period, policy.Grace), first.Label, policy.Since.Format(time.RFC3339), witness)
 }
 
@@ -283,4 +287,28 @@ func requeuePredecessor(ctx context.Context, p cli.Profile, policy *evidencebook
 	}
 	_, err = seedPredecessor(ctx, p, opened.book, policy)
 	return errors.Join(err, opened.release())
+}
+
+// predecessorQueued reports whether book/witness.json holds the predecessor
+// book's final checkpoint: what a rerun reports, not the profile's witness
+// as it reads now.
+func predecessorQueued(ctx context.Context, p cli.Profile, policy *evidencebook.WindowPolicy) (bool, error) {
+	states, err := newBookWitnessStore(p).load()
+	if err != nil || len(states) == 0 {
+		return false, err
+	}
+	opened, err := openBookKeyedAt(ctx, p, false, nil, true, true)
+	if err != nil {
+		return false, err
+	}
+	final, err := predecessorFinal(ctx, opened.book, policy.Predecessor)
+	if err = errors.Join(err, opened.release()); err != nil {
+		return false, err
+	}
+	for _, state := range states {
+		if string(state.Checkpoint) == string(final.Statement) {
+			return true, nil
+		}
+	}
+	return false, nil
 }

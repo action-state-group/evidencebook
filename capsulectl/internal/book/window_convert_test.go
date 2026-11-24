@@ -70,7 +70,7 @@ func TestConvertingAJSONLBookToWindows(t *testing.T) {
 	_, err = invoke(t, "", "close", "--profile", "b", "--counterparty", "a", "--period", "day", "--date", "2026-09-23")
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, err.Error(), "begins before this store's conversion")
-	assert.Contains(t, err.Error(), "closes in two parts")
+	assert.Contains(t, err.Error(), "no Close over this period can be sealed now")
 
 	// A chain from the first window carries the predecessor and verifies.
 	set(time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC))
