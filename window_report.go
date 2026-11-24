@@ -365,7 +365,7 @@ func coverageWithDeals(chainHeader Header, payload []byte, answers []windowAnswe
 			// on evidencebook#846).
 			if d.proved == nil || a.tree != *d.proved {
 				d.off = true
-				findings = append(findings, ChainFinding{Window: d.label, Text: fmt.Sprintf("deal %s of window %s is answered at a tree of %d records that is not the tree its window's chain proves", a.tree.LogID, d.label, a.tree.Entries)})
+				findings = append(findings, ChainFinding{Window: d.label, Text: fmt.Sprintf("%s of window %s is answered at a tree of %d records that is not the tree its window's chain proves", a.tree.LogID, d.label, a.tree.Entries)})
 			}
 			at := windowTime(a.issuedAt)
 			d.coverage = DealCoverage{LogID: a.tree.LogID, Window: d.label, Through: a.tree, ThroughAt: at,
@@ -398,9 +398,9 @@ func coverageWithDeals(chainHeader Header, payload []byte, answers []windowAnswe
 			logID := tree.LogID
 			switch n := deals[logID].answers; {
 			case n == 0:
-				findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("deal %s of window %s has no answer", logID, v.Label)})
+				findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("%s of window %s has no answer", logID, v.Label)})
 			case n > 1:
-				findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("deal %s of window %s has %d answers", logID, v.Label, n)})
+				findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("%s of window %s has %d answers", logID, v.Label, n)})
 			}
 		}
 	}

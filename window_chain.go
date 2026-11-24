@@ -841,12 +841,12 @@ func verifyChainDeals(cw ChainWindow, placed []WindowTree, label string, opts Ve
 		}
 		closed, err := readSignedCheckpoint(d.Closed, opts.CheckpointKey)
 		if err != nil || closed.LogID != tree.LogID || closed.Entries != tree.Entries || closed.Root != tree.Root {
-			fail(label, "deal %s of window %s: its checkpoint at the close is not the tree the close lists", tree.LogID, label)
+			fail(label, "%s of window %s: its checkpoint at the close is not the tree the close lists", tree.LogID, label)
 			continue
 		}
 		latest, err := readSignedCheckpoint(d.Latest, opts.CheckpointKey)
 		if err != nil || latest.LogID != tree.LogID {
-			fail(label, "deal %s of window %s: its latest checkpoint is not of its log under the holder's key", tree.LogID, label)
+			fail(label, "%s of window %s: its latest checkpoint is not of its log under the holder's key", tree.LogID, label)
 			continue
 		}
 		extends := latest.TreeSize == closed.TreeSize && latest.Root == closed.Root && len(d.Consistency) == 0
@@ -854,7 +854,7 @@ func verifyChainDeals(cw ChainWindow, placed []WindowTree, label string, opts Ve
 			extends = consistencySizes(d.Consistency, closed.TreeSize, latest.TreeSize) && checkCLLConsistency(closed.commitment, latest.commitment, d.Consistency) == nil
 		}
 		if !extends {
-			fail(label, "deal %s of window %s: its latest tree does not extend its tree at the close", tree.LogID, label)
+			fail(label, "%s of window %s: its latest tree does not extend its tree at the close", tree.LogID, label)
 			continue
 		}
 		proved[tree.LogID] = WindowTree{LogID: tree.LogID, Entries: latest.Entries, Root: latest.Root}

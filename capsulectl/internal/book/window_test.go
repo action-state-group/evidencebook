@@ -619,7 +619,7 @@ func TestReportCoveragePrintsEachDealsLine(t *testing.T) {
 		Deals: []evidencebook.DealCoverage{{LogID: "deal/a", Window: "2026-09", Line: "deal/a, placed in window 2026-09, is answered over its whole book"}}})
 	assert.True(t, printed.Covered)
 	assert.Equal(t, []string{"deal/a, placed in window 2026-09, is answered over its whole book"}, printed.Deals)
-	gap := coverageResult(evidencebook.ReportCoverage{Findings: []evidencebook.ChainFinding{{Window: "2026-09", Text: "deal deal/b of window 2026-09 has no answer"}}})
+	gap := coverageResult(evidencebook.ReportCoverage{Findings: []evidencebook.ChainFinding{{Window: "2026-09", Text: "deal/b of window 2026-09 has no answer"}}})
 	assert.False(t, gap.Covered)
-	assert.Equal(t, []string{"deal deal/b of window 2026-09 has no answer"}, gap.Findings)
+	assert.Equal(t, []string{"deal/b of window 2026-09 has no answer"}, gap.Findings)
 }

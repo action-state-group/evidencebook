@@ -159,8 +159,8 @@ what must a Terms Pack report over windows on a deal shelf cover?
   deals' own records; every printed coverage line states that limit.
 - (b) **The journal windows and each deal placed in them.** The requester also asks each deal
   book in a window's `placed` once, at its latest checkpoint; `VerifyReportCoverage` names a
-  placed deal with no answer (`deal <log id> of window 2026-11 has no answer`), or with an answer
-  at any tree but the one the chain proves for it ("deal X of window W is answered at a tree of n
+  placed deal with no answer (`<log id> of window 2026-11 has no answer`), or with an answer
+  at any tree but the one the chain proves for it ("<log id> of window W is answered at a tree of n
   records that is not the tree its window's chain proves"). The chain carries, per placed deal
   (`ChainWindow.Deals`), the deal's signed checkpoint at the close (the tree the close lists), its
   latest signed checkpoint when the chain is cut, and a CLL consistency proof between them, as a
