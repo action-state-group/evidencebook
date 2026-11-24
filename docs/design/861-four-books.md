@@ -149,7 +149,7 @@ functions keep their behavior; the vectors of PR 1 check both give one time.
 `rests_on.own.last` must be the record at that position of the full book, else it is fork
 evidence, §2.3). On the party's side, each copy sent to the adjudicator, the case-opening one
 included, is linked by an `answer` record in the party's journal (PROFILE.md §5, `ask`,
-`answer`), the party's own book for records that serve no counterparty; PR 3 makes sure the
+`answer`), the party's own book for records that serve no counterparty; PR 2 makes sure the
 case-opening copy gets one too.
 
 ### 2.3 Reading four sources into one case
@@ -229,12 +229,12 @@ adjudicator" (Sherlock2's string, ledger-cloud#35) and never as "refused".
 x-deal-v1 records are closed (PROFILE.md §1), so a party on a capsulectl-deal release before
 `sources` refuses a ruling that carries it on `deal receive` and cannot name it. That is a forced
 upgrade, stated as one: the hosted adjudicator writes `sources` only from the capsulectl-deal
-release that reads it (PR 3), and its RUNBOOK and its `/status.json` name that release as the
+release that reads it (PR 2), and its RUNBOOK and its `/status.json` name that release as the
 minimum a party needs.
 
 ### 3.3 Tests
 
-Vectors in `testdata/deal-v1/` (PR 1), read by Go, Rust and Python:
+Vectors in `testdata/deal-v1/` (PR 1), read by Go (Rust and Python are frozen, §5):
 
 - **Acceptance 5**: the buyer disputes a late delivery; the seller does not answer. Sources: B-own
   and S-held from the buyer. `sources` is
@@ -251,7 +251,7 @@ Vectors in `testdata/deal-v1/` (PR 1), read by Go, Rust and Python:
 - A seller proof left out: the `perform` time moves later, never earlier.
 - A reader before `sources` refuses a ruling that carries it (the closed-record rule).
 
-ledger-cloud's end-to-end run (PR 4) repeats acceptance 5 with two real capsulectl-deal parties.
+ledger-cloud's end-to-end run (PR 3) repeats acceptance 5 with two real capsulectl-deal parties.
 
 ## 4. Hosting and API (ledger-cloud#40)
 
@@ -303,17 +303,22 @@ Each PR is reviewed under the usual rules; none starts before Steven's ruling on
    `received`; the full-copy derivation token), `VerifyReportBundle`'s full-copy checks,
    `GatherCase`, `HandoverTimes` built from one book's facts, `CaseRecordTimes`, the full
    adjudicator copy in
-   `StatusProvider.ReportWithBook`, and the vectors of §3.3.
-2. **evidencebook, Rust and Python**: the same, as frozen ports against the vectors of 1 (the
-   pattern of evidencebook#774 and #775); the `deal-v1-diff` job compares them. Runs beside 3.
-3. **evidencebook, capsulectl-deal**: answering a fetched request in full (no selective flag), the
+   `StatusProvider.ReportWithBook`, and the vectors of §3.3. **Rust and Python: frozen, not
+   needed** (Go is full, Rust follows only what the Mesh plugin calls, Python is frozen;
+   `docs/PORT-PARITY.md:3-5`). The Mesh plugin calls no x-deal-v1 path: its only
+   `evidencebook::deal` uses are x-deal-v0's `encode` and `step_capsule`
+   (Mesh-LLM/capsules-plugin main `2b0577d`, `crates/evidence-plugin`, evidencebook `=0.0.24`
+   with feature `deal`, `Cargo.toml:189`). PR 1 files the frozen-port issues naming the new Go
+   entry points and vectors, adds their `frozen #N` rows to `PORT-PARITY.tsv`, and keeps the
+   `deal-v1-diff` job's inputs to what Go, Rust and Python already share.
+2. **evidencebook, capsulectl-deal**: answering a fetched request in full (no selective flag), the
    journal `answer` for every copy sent to the adjudicator, `deal ruling` over `GatherCase`, and
-   reading `sources` on `deal receive`; then a `capsulectl/v*` release, which 4 needs before it
+   reading `sources` on `deal receive`; then a `capsulectl/v*` release, which 3 needs before it
    writes `sources`.
-4. **ledger-cloud**: move the evidencebook pin; `GET .../requests`, the full answer on
+3. **ledger-cloud**: move the evidencebook pin; `GET .../requests`, the full answer on
    `POST .../books`, the operator's `request`, `absence` and `rule`; the minimum release on
    `/status.json`; the end-to-end run of acceptance 5; RUNBOOK's local run (option A).
-5. **Loop step 09** (evidencebook#830): the dispute, ruling and receive step on the new flow.
+4. **Loop step 09** (evidencebook#830): the dispute, ruling and receive step on the new flow.
 
 ## 6. Questions for Steven (the what)
 
