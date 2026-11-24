@@ -84,6 +84,13 @@ func windowCommands() *cobra.Command {
 		if err := refuseRetiredLog(p); err != nil {
 			return err
 		}
+		// A conversion interrupted before its store was made leaves its
+		// temporary files; with no store and no book they are litter.
+		for _, suffix := range []string{"", "-wal", "-shm", ".lock"} {
+			if err := os.Remove(shelfFile(p) + ".converting" + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 		for _, existing := range []string{shelfFile(p), filepath.Join(p.Connection.Database, "book", "log.jsonl")} {
 			if _, err := os.Stat(existing); err == nil {
 				return cli.Hint(cli.ErrInput, "this profile already has a book store ("+existing+"); a store's window is fixed when it is created")
@@ -138,6 +145,9 @@ func windowCommands() *cobra.Command {
 		if err = seedFinals(c.Context(), p, opened.shelf, windows); err != nil {
 			return err
 		}
+		if err = requeuePredecessor(c.Context(), p, opened.shelf.WindowPolicy()); err != nil {
+			return err
+		}
 		return cli.Output(c, windowListResult{Profile: p.Name, Period: opened.shelf.WindowPolicy().Period, Windows: windows})
 	}}
 
@@ -156,7 +166,13 @@ func windowCommands() *cobra.Command {
 			return err
 		}
 		defer func() { err = errors.Join(err, opened.release()) }()
-		document, err := opened.shelf.WindowChain(c.Context(), from, to, evidencebook.WindowChainOptions{Receipts: receiptsOf(p)})
+		chainOpts := evidencebook.WindowChainOptions{Receipts: receiptsOf(p)}
+		if policy := opened.shelf.WindowPolicy(); policy.Predecessor != nil && from == policy.Period.WindowAt(policy.Since).Label {
+			if chainOpts.Predecessor, err = predecessorEntry(c.Context(), p); err != nil {
+				return err
+			}
+		}
+		document, err := opened.shelf.WindowChain(c.Context(), from, to, chainOpts)
 		if err != nil {
 			return bookError(err)
 		}
@@ -209,10 +225,19 @@ func windowCommands() *cobra.Command {
 			}
 			results = append(results, windowPublishResult{Window: d.window.Label, LogID: d.window.LogID, Kind: d.kind, Size: size, State: witnessEntry(p, state)})
 		}
+		if policy := opened.shelf.WindowPolicy(); policy.Predecessor != nil {
+			// The predecessor book's final checkpoint, like a window's
+			// (evidencebook#808), from book/witness.json.
+			result, err := publishPredecessor(c.Context(), p, policy, service)
+			if err != nil {
+				return err
+			}
+			results = append([]windowPublishResult{result}, results...)
+		}
 		return cli.Output(c, results)
 	}}
 
-	group.AddCommand(initCmd, list, roll, chain, publish)
+	group.AddCommand(initCmd, list, roll, chain, publish, windowConvertCommand())
 	return group
 }
 
@@ -367,11 +392,13 @@ func seedFinals(ctx context.Context, p cli.Profile, shelf *evidencebook.Shelf, w
 // window's final checkpoint, in the bundle form a window chain carries.
 func receiptsOf(p cli.Profile) func(context.Context, evidencebook.Checkpoint) ([]json.RawMessage, error) {
 	return func(_ context.Context, final evidencebook.Checkpoint) ([]json.RawMessage, error) {
-		label, ok := strings.CutPrefix(final.LogID, p.LogID+"/")
-		if !ok {
+		store := newBookWitnessStore(p) // the predecessor book's (evidencebook#808)
+		if label, ok := strings.CutPrefix(final.LogID, p.LogID+"/"); ok {
+			store = windowWitnessStore(p, label)
+		} else if final.LogID != p.LogID {
 			return nil, nil
 		}
-		states, err := windowWitnessStore(p, label).load()
+		states, err := store.load()
 		if err != nil {
 			return nil, err
 		}

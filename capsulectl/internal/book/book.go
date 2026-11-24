@@ -150,6 +150,13 @@ func openBookForReading(ctx context.Context, p cli.Profile) (openedBook, error) 
 // openBookKeyed is openBookUnguarded; ephemeral replaces the profile's
 // signing and checkpoint signing keys with throwaway ones.
 func openBookKeyed(ctx context.Context, p cli.Profile, create bool, artifacts cli.ArtifactStore, ephemeral bool) (openedBook, error) {
+	return openBookKeyedAt(ctx, p, create, artifacts, ephemeral, false)
+}
+
+// openBookKeyedAt is openBookKeyed; jsonl opens the profile's JSONL book
+// even beside a windowed store: the predecessor a converted store continues
+// (evidencebook#808).
+func openBookKeyedAt(ctx context.Context, p cli.Profile, create bool, artifacts cli.ArtifactStore, ephemeral, jsonl bool) (openedBook, error) {
 	if !isBook(p) {
 		return openedBook{}, cli.InputError("book verbs need a jsonl profile with log_id and operator set, and `log: book` (the log is not this plugin's otherwise)")
 	}
@@ -186,7 +193,7 @@ func openBookKeyed(ctx context.Context, p cli.Profile, create bool, artifacts cl
 	}
 	if windowed, err := isWindowedStore(p); err != nil {
 		return openedBook{}, err
-	} else if windowed {
+	} else if windowed && !jsonl {
 		return openWindowedBook(ctx, p, signer, checkpointKey, artifacts, ephemeral)
 	}
 	// The log is opened first: it takes an exclusive lock that a second
@@ -434,6 +441,9 @@ func bookError(err error) error {
 	}
 	if errors.Is(err, evidencebook.ErrInvalid) {
 		return errors.Join(cli.InputError("the evidence book refused this as invalid: "+err.Error()), err)
+	}
+	if errors.Is(err, evidencebook.ErrBookClosed) {
+		return errors.Join(cli.Hint(cli.ErrInput, "this profile's JSONL book is closed into a store split by window; if `book window convert` was interrupted before the store was made, run it again with the same --period and --grace"), err)
 	}
 	if errors.Is(err, evidencebook.ErrInGrace) {
 		return errors.Join(cli.Hint(cli.ErrInput, err.Error()+": end the chain at the window before it (--to), or wait until it closes; `book window roll` then closes it"), err)

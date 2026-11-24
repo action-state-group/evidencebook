@@ -117,10 +117,19 @@ func windowNotice(period evidencebook.WindowPeriod, grace time.Duration) string 
 
 // sealedStore reads a window book's records as sealed, the recordStore a
 // JSONL book's FileStore is.
-type sealedStore struct{ book *evidencebook.Book }
+type sealedStore struct {
+	book *evidencebook.Book
+	// predecessor is the log of the JSONL book a converted store continues
+	// (evidencebook#808), whose records no verb serves.
+	predecessor string
+}
 
 func (s sealedStore) GetRecord(ctx context.Context, recordID string) (evidencebook.StoredRecord, error) {
-	return s.book.Sealed(ctx, recordID)
+	stored, err := s.book.Sealed(ctx, recordID)
+	if errors.Is(err, evidencebook.ErrNotFound) && s.predecessor != "" {
+		return stored, errors.Join(cli.Hint(cli.ErrInput, fmt.Sprintf("record %s is not in this window's book; if it is a record of the predecessor book %s, which this store continues, it is not served after the conversion: it is verifiable through a chain's predecessor entry and bundles made before converting", recordID, s.predecessor)), err)
+	}
+	return stored, err
 }
 
 // windowedConfig is the shelf configuration of a profile's windowed store.
@@ -178,7 +187,7 @@ func openWindowedBook(ctx context.Context, p cli.Profile, signer evidencebook.Si
 			return fail(err)
 		}
 		if ephemeral {
-			return openedBook{book: newest, store: sealedStore{newest}, shelf: shelf, window: window, originals: artifacts}, nil
+			return openedBook{book: newest, store: sealedStore{book: newest, predecessor: predecessorLog(policy)}, shelf: shelf, window: window, originals: artifacts}, nil
 		}
 		if err = clock.floorAtLastRecord(ctx, newest); err != nil {
 			return fail(err)
@@ -202,7 +211,7 @@ func openWindowedBook(ctx context.Context, p cli.Profile, signer evidencebook.Si
 	if err = clock.floorAtLastRecord(ctx, book); err != nil {
 		return fail(err)
 	}
-	return openedBook{book: book, store: sealedStore{book}, shelf: shelf, window: window, originals: artifacts, lastCommit: clock.floor}, nil
+	return openedBook{book: book, store: sealedStore{book: book, predecessor: predecessorLog(policy)}, shelf: shelf, window: window, originals: artifacts, lastCommit: clock.floor}, nil
 }
 
 // initWindowedStore creates a profile's windowed store, its window fixed
@@ -319,8 +328,11 @@ func (o openedBook) forPeriod(ctx context.Context, start, end time.Time) (opened
 			return openedBook{}, err
 		}
 		o.current = o.book
-		o.book, o.store, o.window, o.inGrace = book, sealedStore{book}, window, true
+		o.book, o.store, o.window, o.inGrace = book, sealedStore{book: book, predecessor: predecessorLog(o.shelf.WindowPolicy())}, window, true
 		return o, nil
+	}
+	if policy := o.shelf.WindowPolicy(); policy.Predecessor != nil && start.Before(policy.Since) {
+		return openedBook{}, cli.Hint(cli.ErrInput, fmt.Sprintf("the period [%s, %s) begins before this store's conversion at %s: its records before then are in the predecessor book %s, which takes nothing after its close, so no Close over this period can be sealed now. Periods inside the windows, from the first whole period after %s, close here", start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339), policy.Since.Format(time.RFC3339), policy.Predecessor.LogID, policy.Since.Format(time.RFC3339)))
 	}
 	return openedBook{}, cli.Hint(cli.ErrInput, fmt.Sprintf("this store is split by window, and the period [%s, %s) is neither inside the current window %s [%s, %s) nor inside an earlier window in its grace: a Close covers the records of one window and is sealed in it, and an earlier window takes one only until it closes (`book window list` shows each window's closes_at)", start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339), o.window.Label, o.window.Start.Format(time.RFC3339), o.window.End.Format(time.RFC3339)))
 }
@@ -515,4 +527,13 @@ func citesWindowChain(verified evidencebook.VerifiedBundle) bool {
 		}
 	}
 	return false
+}
+
+// predecessorLog is the log of the book a converted store continues; "" for
+// a store created empty.
+func predecessorLog(policy *evidencebook.WindowPolicy) string {
+	if policy == nil || policy.Predecessor == nil {
+		return ""
+	}
+	return policy.Predecessor.LogID
 }
