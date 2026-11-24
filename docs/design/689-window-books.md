@@ -429,8 +429,9 @@ store already windowed, no JSONL book, a reproduced book, an unmigrated pre-book
 clock behind, or no `--yes`; it states that the conversion is one-way, the old book stays at its
 path and its records never move, the same key continues, and it is not a clear. Closes over a
 period before the conversion are sealed in the old book first: after conversion such a Close is
-refused, with a hint naming the predecessor book, and a period that spans the conversion is closed
-in two parts. Where the profile names a witness, the old book's final checkpoint is queued in
+refused, with a hint naming the predecessor book; the period in progress at the conversion cannot
+be closed afterwards in either book (`close` takes whole periods), so the holder closes the last
+whole period before converting, or converts at a period boundary. Where the profile names a witness, the old book's final checkpoint is queued in
 `book/witness.json` and delivered like a window's final; until a receipt arrives the chain reports
 "predecessor not witnessed". A profile with no witness converts, labelled unwitnessed: the verifier
 checks receipts only when witnesses are passed, so `convert` and the chain say so.
