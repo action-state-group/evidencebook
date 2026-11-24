@@ -52,6 +52,9 @@ func renderAuthorityLine(p cli.Profile, o dealOpen) string {
 	var text string
 	cli.Speak(map[string]any{}, p, func(w cli.Wording) cli.Narration {
 		vals := cli.V{"item": o.authorityItem()}
+		if vals["item"] == "" {
+			vals["item"] = w.Line("say.authority_line.item_unnamed", nil)
+		}
 		head := "say.authority_line.head_nomax"
 		if m := o.Intent.MaxTotalMinor; m != nil {
 			head, vals["max"] = "say.authority_line.head", spokenMoney(*m, o.Terms.Currency)
@@ -71,11 +74,24 @@ func renderAuthorityLine(p cli.Profile, o dealOpen) string {
 // requireConfirmed refuses a buyer's typed pay deal opened without the
 // user's yes, so nothing is sealed on the agent's reading of a request.
 func (o dealOpen) requireConfirmed() error {
-	if !o.needsAuthorityLine() && o.Intent.Confirmed != "" {
-		return cli.InputError("intent.confirmed goes with a buyer's typed deal that allows pay (--records typed, intent.allowed with pay)")
+	if !o.needsAuthorityLine() {
+		if o.Intent.Confirmed != "" || o.Intent.Rendered != "" {
+			return cli.InputError("intent.confirmed and intent.rendered go with a buyer's typed deal that allows pay (--records typed, intent.allowed with pay)")
+		}
+		return nil
 	}
-	if o.needsAuthorityLine() && strings.TrimSpace(o.Intent.Confirmed) == "" {
-		return cli.InputError("a deal that allows pay opens on the user's yes to what you recorded: run `deal open --authority-line` with this input, show the user its line, and put their own words answering it in intent.confirmed")
+	if strings.TrimSpace(o.Intent.Confirmed) == "" || strings.TrimSpace(o.Intent.Rendered) == "" {
+		return cli.InputError("a deal that allows pay opens on the user's yes to what you recorded: run `deal open --authority-line` with this input, show the user its line, and put the line in intent.rendered and their own words answering it in intent.confirmed")
+	}
+	return nil
+}
+
+// requireShown refuses an open whose intent.rendered is not the line this
+// input renders: what the user answered is what is recorded, so the line
+// they were shown cannot differ from the terms sealed beside it.
+func (o dealOpen) requireShown(p cli.Profile) error {
+	if o.needsAuthorityLine() && o.Intent.Rendered != renderAuthorityLine(p, o) {
+		return cli.InputError("intent.rendered is not the line `deal open --authority-line` shows for this input: show the user that line and open on their answer to it")
 	}
 	return nil
 }
@@ -95,7 +111,7 @@ func confirmedAsked(ta *dealIntent, open *dealOpen, key []byte, commit func(stri
 			first.Payee = first.Name
 		}
 		if ids := counterpartyIDs(key, first); len(ids) > 0 {
-			asked["seller"] = map[string]interface{}{"fp_alg": dealprofile.FPAlg, "ids": ids}
+			asked["seller"] = map[string]interface{}{"fp_alg": dealprofile.TypedFPAlg, "ids": ids}
 		}
 	}
 	var err error

@@ -3,6 +3,7 @@ package deal
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -87,7 +88,7 @@ func TestTheTaskAuthorityRecordsWhatTheUserConfirmed(t *testing.T) {
 	asked := ta["asked"].(map[string]any)
 	assert.Equal(t, "otter sticker", asked["item"])
 	seller := asked["seller"].(map[string]any)
-	assert.Equal(t, dealprofile.FPAlg, seller["fp_alg"])
+	assert.Equal(t, dealprofile.TypedFPAlg, seller["fp_alg"])
 	raw, err := json.Marshal(ta)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "Sticker Marketplace", "the seller is a keyed fingerprint, never the name")
@@ -107,4 +108,36 @@ func TestTheTaskAuthorityLeavesTheSellerUnconstrainedWhenNoneWasNamed(t *testing
 		}
 	}
 	t.Fatal("no task authority sealed")
+}
+
+func TestTheLineTheUserWasShownIsTheLineOfTheTermsSealed(t *testing.T) {
+	dealFixture(t)
+	keepOpenUnconfirmed = true
+	t.Cleanup(func() { keepOpenUnconfirmed = false })
+	shown := dealRun(t, "open", "--records", "typed", "--authority-line", "--input", lineInput(t, lineOpen, ""))["authority_line"].(string)
+	// The user confirmed $5; an open at another limit is not what they answered.
+	other := fmt.Sprintf(lineOpen, fmt.Sprintf(`,"confirmed":"yes","rendered":%q`, shown))
+	other = strings.Replace(other, `"max_total_minor":500`, `"max_total_minor":50000`, 1)
+	out, err := invokeRaw(t, "", "--profile", "deal", "deal", "open", "--records", "typed", "--input", writeJSON(t, other))
+	require.Error(t, err)
+	assert.Contains(t, out+err.Error(), "intent.rendered")
+	// The same line opens.
+	dealRun(t, "open", "--records", "typed", "--input", writeJSON(t, fmt.Sprintf(lineOpen, fmt.Sprintf(`,"confirmed":"yes","rendered":%q`, shown))))
+}
+
+func TestTheLineSaysWhenNoItemIsNamedYet(t *testing.T) {
+	dealFixture(t)
+	in := writeJSON(t, `{"type":"purchase","intent":{"verbatim":"buy something","max_total_minor":500,"allowed":["pay"]},
+		"terms":{"currency":"USD"},"recourse":{"rail":"card","refundable":true}}`)
+	out := dealRun(t, "open", "--records", "typed", "--authority-line", "--input", in)
+	assert.Contains(t, out["authority_line"], "pay up to $5 for an item you have not named yet.")
+}
+
+func TestASaleTakesNoYesOfItsOwn(t *testing.T) {
+	dealFixture(t)
+	in := writeJSON(t, `{"type":"purchase","intent":{"verbatim":"sell my sticker","allowed":["offer","commit"],"confirmed":"yes"},
+		"terms":{"item":"otter sticker","price_minor":454,"currency":"USD"},"recourse":{"rail":"card","refundable":true}}`)
+	out, err := invokeRaw(t, "", "--profile", "deal", "deal", "sale", "new", "--input", in)
+	require.Error(t, err)
+	assert.Contains(t, out+err.Error(), "intent.confirmed")
 }

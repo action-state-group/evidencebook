@@ -70,6 +70,8 @@ demo="$root/skills/deal/demo/retail-checkout"
   capsulectl --profile deal deal set-version x-deal-v0 >/dev/null
   # A buyer's typed deal that allows pay opens on the user's yes to the rendered line.
   jq '.intent.confirmed = "yes"' "$demo/open.json" >open.json
+  line=$(capsulectl --profile deal deal open --records typed --authority-line --input open.json | jq -er .authority_line)
+  jq --arg line "$line" '.intent.rendered = $line' open.json >open-shown.json && mv open-shown.json open.json
   id=$(capsulectl --profile deal deal open --records typed --input open.json | jq -er .deal_id)
   verdict=$(capsulectl --profile deal deal check --deal "$id" --input "$demo/check-pay.json" | jq -r .verdict)
   [[ "$verdict" == pass ]] || { echo "the demo's check did not pass: $verdict" >&2; exit 1; }

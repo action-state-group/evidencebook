@@ -171,6 +171,12 @@ func requestFixture(t *testing.T) []byte {
 func invoke(t *testing.T, input string, args ...string) (string, error) {
 	t.Helper()
 	confirmTypedBuyerOpen(t, args)
+	return invokeRaw(t, input, args...)
+}
+
+// invokeRaw runs the command tree as given, with no test help.
+func invokeRaw(t *testing.T, input string, args ...string) (string, error) {
+	t.Helper()
 	c := testCommand()
 	var out bytes.Buffer
 	c.SetIn(strings.NewReader(input))
@@ -802,14 +808,30 @@ func confirmTypedBuyerOpen(t *testing.T, args []string) {
 		return
 	}
 	intent, _ := doc["intent"].(map[string]any)
-	if intent == nil || intent["confirmed"] != nil {
+	if intent == nil || intent["rendered"] != nil {
 		return
 	}
 	allowed, _ := intent["allowed"].([]any)
 	if !slices.Contains(allowed, any("pay")) || intent["party_role"] == "seller" {
 		return
 	}
-	intent["confirmed"] = "yes"
+	if intent["confirmed"] == nil {
+		intent["confirmed"] = "yes"
+	}
+	// The line the user is shown, from the same input.
+	shown := append(slices.Clone(args[:slices.Index(args, "open")+1]), "--authority-line", "--input", args[i+1], "--records", "typed")
+	if j := slices.Index(args, "--deal-id"); j >= 0 {
+		shown = append(shown, args[j], args[j+1])
+	}
+	out, err := invokeRaw(t, "", shown...)
+	if err != nil {
+		return // an input the open refuses on its own: leave it as written
+	}
+	var line struct {
+		AuthorityLine string `json:"authority_line"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &line), out)
+	intent["rendered"] = line.AuthorityLine
 	raw, err = json.Marshal(doc)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(args[i+1], raw, 0o600))

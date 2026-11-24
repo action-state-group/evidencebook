@@ -1319,7 +1319,6 @@ func dealOpenCommand() *cobra.Command {
 		if err = normalizeOpen(&o); err != nil {
 			return err
 		}
-		o.Intent.Rendered = ""
 		if o.Intent.OrderedRepresentations != nil {
 			for _, cl := range o.Claims {
 				if cl.SourceKind == "agent" {
@@ -1379,8 +1378,8 @@ func dealOpenCommand() *cobra.Command {
 			return err
 		}
 		return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
-			if o.needsAuthorityLine() {
-				o.Intent.Rendered = renderAuthorityLine(s.p, o)
+			if err := o.requireShown(s.p); err != nil {
+				return err
 			}
 			// The pinned materiality predicate, sealed into the baseline from
 			// the profile (never the input): a check under another one later

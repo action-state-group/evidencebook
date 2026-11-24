@@ -115,6 +115,9 @@ for i in $(seq 0 $((count - 1))); do
     intent:{verbatim:("Buy a "+$item+" for up to "+($p|tostring)),party_role:"buyer",asked:{item:$item,quantity:1},max_total_minor:$p,allowed:["pay"],confirmed:"yes"},
     who:{name:"Sticker Shop",domain:"seller.example",relay_address:"shop@seller.example"},
     terms:{item:$item,quantity:1,price_minor:$p,currency:$cur},recourse:{rail:"x402",refundable:false}}' >"$f/buyer-open.json"
+  # The line the user is shown, and their yes to it.
+  line=$(side "$buyer_home" open --records typed --authority-line --input "$f/buyer-open.json" | jq -er .authority_line)
+  jq --arg line "$line" '.intent.rendered = $line' "$f/buyer-open.json" >"$f/buyer-open-shown.json" && mv "$f/buyer-open-shown.json" "$f/buyer-open.json"
   side "$buyer_home" open --deal-id "$thread" --records typed --input "$f/buyer-open.json" >/dev/null
   jq -n --argjson p "$paid" --argjson t "$price_check" \
     '{action:"pay",amount_minor:$p,authorized_max_minor:$p,terms:($t+{price_minor:$p}),recourse:{rail:"x402",refundable:false}}' >"$f/pay-check.json"

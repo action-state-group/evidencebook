@@ -520,6 +520,7 @@
     "say.authority_line.ask": "Is that right? (yes/no)",
     "say.authority_line.head": "I'll record that you authorize: pay up to {max} for {item}.",
     "say.authority_line.head_nomax": "I'll record that you authorize: pay, with no amount limit, for {item}.",
+    "say.authority_line.item_unnamed": "an item you have not named yet",
     "say.authority_line.no_seller": "You haven't picked a seller, so this doesn't limit who gets paid.",
     "say.authority_line.seller": "You chose {seller}; the rules check the amount, not the seller.",
     "say.close.called_off": "Closed: called off.",
