@@ -5,7 +5,6 @@ package evidencebook
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 )
 
@@ -68,18 +67,15 @@ func (v *journalView) Query(ctx context.Context, filter Filter) ([]Record, error
 }
 
 // ResolvePayload resolves the payload from the window book that holds the
-// record.
+// record, found by the store's key (book id, record id), newest window first.
 func (v *journalView) ResolvePayload(ctx context.Context, recordID, digest string) ([]byte, error) {
-	var bookID string
-	switch err := v.db.QueryRowContext(ctx, `SELECT book_id FROM book_records WHERE record_id = ?`, recordID).Scan(&bookID); {
-	case errors.Is(err, sql.ErrNoRows):
-		return nil, fmt.Errorf("%w: record %s is not in the journal", ErrNotFound, recordID)
-	case err != nil:
-		return nil, err
-	}
-	for _, b := range v.books {
-		if b.id == bookID {
-			return b.ResolvePayload(ctx, recordID, digest)
+	for i := len(v.books) - 1; i >= 0; i-- {
+		var n int
+		if err := v.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM book_records WHERE book_id = ? AND record_id = ?`, v.books[i].id, recordID).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			return v.books[i].ResolvePayload(ctx, recordID, digest)
 		}
 	}
 	return nil, fmt.Errorf("%w: record %s is not in the journal", ErrNotFound, recordID)

@@ -128,6 +128,7 @@ package	kind	symbol	feature	rust	python
 .	type	Coverage	request-reply-respond	ported	ported
 .	type	CoverageGiven	deal-reconcile	frozen #631	frozen #630
 .	type	CoverageOptions	window-books	frozen #798	frozen #799
+.	type	DealCoverage	window-books	frozen #844	frozen #845
 .	type	DealHalf	deal-reconcile	frozen #631	frozen #630
 .	type	DealMapping	standard-history	frozen #648	frozen #647
 .	type	DealReconcile	deal-reconcile	frozen #631	frozen #630
