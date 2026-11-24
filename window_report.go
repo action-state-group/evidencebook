@@ -163,8 +163,8 @@ func readWindowAnswer(header Header, reply []byte) (windowAnswer, error) {
 // record (RecordWindowChain) that states the range; responseRecordIDs are
 // the recorded answers, exactly one per window of the range, each anchored
 // at its window's final tree, and, for a chain of journal windows, exactly
-// one per deal book a window's close lists as placed, anchored at any
-// checkpoint of that book; every one to the pack opts.Derivation names
+// one per deal book a window's close lists as placed, anchored at the
+// book's tree at that close or a later one; every one to the pack opts.Derivation names
 // and under one holder checkpoint key, and each with proofs. Every claim of
 // the Result names one contract, cites at least one of the responses, and
 // cites nothing but those and the chain record. ReportFromDerivation is the
@@ -297,15 +297,17 @@ func (b *Book) payloadOf(ctx context.Context, record Record) ([]byte, error) {
 type placedDeal struct {
 	window   string // the placing window's log id
 	label    string
+	closed   WindowTree // the deal's tree when its window closed
 	answers  int
 	coverage DealCoverage
+	early    bool // its answer is anchored before closed
 }
 
 // coverage checks the chain a window_chain record carries against its
 // statement, and the answers against the chain: one per window of the range,
 // each at its window's final tree, and one per deal book placed in a window
-// of a journal chain (evidencebook#797 §4), at any checkpoint of that book,
-// all under one key. It returns the proved windows by log id, the placed
+// of a journal chain (evidencebook#797 §4), at that book's tree at the
+// window's close or a later one, all under one key. It returns the proved windows by log id, the placed
 // deals by log id, and a finding for each gap; err is for a record that
 // cannot be read at all.
 func coverage(chainHeader Header, payload []byte, answers []windowAnswer, opts VerifyChainOptions) (map[string]VerifiedWindow, []ChainFinding, error) {
@@ -344,8 +346,8 @@ func coverageWithDeals(chainHeader Header, payload []byte, answers []windowAnswe
 	deals := map[string]*placedDeal{}
 	for _, v := range verified {
 		windows[v.Final.LogID] = v
-		for _, logID := range v.Placed {
-			deals[logID] = &placedDeal{window: v.Final.LogID, label: v.Label}
+		for _, tree := range v.Placed {
+			deals[tree.LogID] = &placedDeal{window: v.Final.LogID, label: v.Label, closed: tree}
 		}
 	}
 	answered := map[string]int{}
@@ -353,6 +355,13 @@ func coverageWithDeals(chainHeader Header, payload []byte, answers []windowAnswe
 		v, ok := windows[a.tree.LogID]
 		if d, placed := deals[a.tree.LogID]; placed && !ok {
 			d.answers++
+			// The answer must hold the deal as its window's close states it,
+			// or more: an earlier checkpoint could leave out what followed
+			// (Sherlock2 on evidencebook#846).
+			if a.tree.Entries < d.closed.Entries || a.tree.Entries == d.closed.Entries && a.tree.Root != d.closed.Root {
+				d.early = true
+				findings = append(findings, ChainFinding{Window: d.label, Text: fmt.Sprintf("deal %s of window %s is answered at a tree of %d records, not at or after its tree of %d records when the window closed", a.tree.LogID, d.label, a.tree.Entries, d.closed.Entries)})
+			}
 			at := windowTime(a.issuedAt)
 			d.coverage = DealCoverage{LogID: a.tree.LogID, Window: d.label, Through: a.tree, ThroughAt: at,
 				Line: fmt.Sprintf("deal %s, placed in window %s, answered over its whole book, through its checkpoint of %d records issued %s, records after the window included", a.tree.LogID, d.label, a.tree.Entries, at)}
@@ -380,7 +389,8 @@ func coverageWithDeals(chainHeader Header, payload []byte, answers []windowAnswe
 		case n > 1:
 			findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("window %s has %d answers", v.Label, n)})
 		}
-		for _, logID := range v.Placed {
+		for _, tree := range v.Placed {
+			logID := tree.LogID
 			switch n := deals[logID].answers; {
 			case n == 0:
 				findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("deal %s of window %s has no answer", logID, v.Label)})
@@ -547,8 +557,8 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 	}
 	slices.SortFunc(out.Windows, func(a, b VerifiedWindow) int { return a.Start.Compare(b.Start) })
 	for _, w := range out.Windows {
-		for _, logID := range w.Placed {
-			if d := deals[logID]; d.answers == 1 {
+		for _, tree := range w.Placed {
+			if d := deals[tree.LogID]; d.answers == 1 && !d.early {
 				out.Deals = append(out.Deals, d.coverage)
 			}
 		}

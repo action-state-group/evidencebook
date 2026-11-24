@@ -104,15 +104,20 @@ Journal bool
 
 ## 3. Deal books placed in a window (R2)
 
-- `Shelf.Place(ctx, logID, at) (*Book, Window, error)` rolls to `at` and places a new, empty book
-  in the window holding `at`, refusing (`ErrWindowClosed`) when that is not the current window: it seals a `window_place` record (`window_place/v1`: `log_id`) in that window's
-  journal, then writes `shelf_window_placed (log_id PRIMARY KEY, label)`. A place record without
-  its row gets the row on the next open; a row is never written without the record. Placing a
-  book that is placed and holds records returns its window. Placing one that is still empty in an
-  earlier window (a crash between `Place` and the agreement, then a retry after the boundary)
-  places it again in the current window; the latest place record counts.
-- capsulectl-deal reads the agreement's time once, calls `Place` with it, and appends the
-  agreement (the deal book's seq 1, PROFILE.md §3) with that same time as the in-flight record
+- `Shelf.Place(ctx, logID, at, first) (*Book, Window, error)` rolls to `at` and places a new,
+  empty book in the window holding `at`, refusing (`ErrWindowClosed`) when that is not the current
+  window. It writes `shelf_window_placed (log_id, label, state)` as `pending`, seals a
+  `window_place` record (`window_place/v1`: `log_id`) in that window's journal, marks the row
+  `placed`, and then runs `first`, which appends the book's first record, before it releases the
+  shelf's lock: no roll can close the window between the placement and the agreement and leave
+  the deal out of the window's close (review of #846). A crash between the steps is finished by
+  the book's next `Place`: a pending row whose record is in the journal is marked placed, and one
+  without it gets the record. Placing a book that is placed and holds records returns its window.
+  Placing one that is still empty in an earlier window (a crash before its agreement, then a retry
+  after the boundary) places it again in the current window; the latest place record counts. A
+  book that holds records and was never placed is refused.
+- capsulectl-deal reads the agreement's time once, calls `Place` with it and with the
+  agreement's append as `first`, which appends the agreement (the deal book's seq 1, PROFILE.md §3) with that same time as the in-flight record
   time (`deal_v1_book.go:217` reads `v1Now()` today; it takes the time read before `Place`), so
   a clock that crosses a boundary between the two cannot put the agreement in the next window. A received agreement is not in an own book
   (`shelf_received`), so it is not placed. A deal stays in the window its agreement was sealed in
@@ -121,8 +126,10 @@ Journal bool
 - No book is refused for being unplaced: node books (`deal node`, the Goose node,
   `deal_node.go:30-40`) and adjudicator case books (`case/<hash>`, `deal_v1_entries.go:170-178`)
   open as today and are not windowed. Placement is what a deal agreement does, not a gate.
-- `window_close/v2` adds `placed`: the sorted log ids whose latest place record is in the window
-  and whose book holds its seq 1 at the close. The close is in the window's final tree, so the
+- `window_close/v2` adds `placed`: for each book whose latest place record is in the window and
+  that holds its seq 1 at the close, its log id and its tree then (`{log_id, entries, root}`, from
+  a checkpoint the close takes), sorted by log id. A deal's answer in a report must be at that tree
+  or a later one (§4). The close is in the window's final tree, so the
   chain alone lists the deals of a range. `VerifyWindowChain` reads `window_close/v1` and `/v2`;
   a build that knows only v1 refuses a v2 close (strict decode, `window_chain.go:388-393`), so a
   verifier of a deal shelf's chain needs this build.
@@ -152,12 +159,16 @@ what must a Terms Pack report over windows on a deal shelf cover?
   deals' own records; every printed coverage line states that limit.
 - (b) **The journal windows and each deal placed in them.** The requester also asks each deal
   book in a window's `placed` once, at its latest checkpoint; `VerifyReportCoverage` names a
-  placed deal with no answer (`deal <log id> of window 2026-11 has no answer`). A deal book is not
+  placed deal with no answer (`deal <log id> of window 2026-11 has no answer`), or with an answer
+  anchored below its tree at the close (fewer entries, or the same entries and another root), so a
+  holder cannot answer from an early checkpoint and leave out what followed (Sherlock2's review of
+  #846; the coordinator chose the recorded tree over a time floor, which would rest on the holder's
+  clock). A deal book is not
   bounded by the window, so its answer covers the whole deal, including records after the window.
   It needs three root-package changes beyond (a): `Shelf.Respond` routes a pin on a placed deal
   book's checkpoint to that book (today `answeringBookLocked` looks only through window rows,
   `window_respond.go:62-93`); `ReportFromWindows` accepts, beside one answer per window at its
-  final tree, one answer per placed deal at any checkpoint of its book, and lets claims cite them
+  final tree, one answer per placed deal at or after its tree at the close, and lets claims cite them
   (`window_report.go:137-139`); and `VerifyReportCoverage` applies the same rule
   (`window_report.go:386-388`).
 

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
@@ -333,8 +334,9 @@ type VerifiedWindow struct {
 	// then does not include.
 	Note string `json:"note,omitempty"`
 	// Placed is, for a journal window (window_close/v2), the books its close
-	// lists as placed in it (evidencebook#797 §3); nil for version 1.
-	Placed []string `json:"placed,omitempty"`
+	// lists as placed in it, each with its tree at the close
+	// (evidencebook#797 §3); nil for version 1.
+	Placed []WindowTree `json:"placed,omitempty"`
 }
 
 // ChainFinding is one failure of a window chain or a report's coverage,
@@ -520,9 +522,24 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 		fail(label, "chain breaks at %s: its open record names a previous tree other than window %s's final tree", label, prior.Label)
 		return VerifiedWindow{}, false
 	}
+	if cs.RecordVersion == WindowCloseVersionV2 {
+		// A journal window's placed list (evidencebook#797 §3): only on a
+		// chain of journal windows, each book once, in log id order, none
+		// of them a window book.
+		ok := chain.Base == JournalLogID
+		for i, tree := range cs.Placed {
+			if tree.LogID == "" || tree.LogID == JournalLogID || strings.HasPrefix(tree.LogID, JournalLogID+"/") || tree.Entries == 0 || !hex64.MatchString(tree.Root) || i > 0 && cs.Placed[i-1].LogID >= tree.LogID {
+				ok = false
+			}
+		}
+		if !ok {
+			fail(label, "window %s's close lists its placed books out of order, twice, or on a chain that is not a journal's", label)
+			return VerifiedWindow{}, false
+		}
+	}
 	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey, Predecessor: predecessor, Partial: chain.Period.Partial(w)}
 	if cs.RecordVersion == WindowCloseVersionV2 {
-		verified.Placed = append([]string{}, cs.Placed...)
+		verified.Placed = append([]WindowTree{}, cs.Placed...)
 	}
 	// The close record, in the final tree, names the boundary the window
 	// took: a chain carries exactly that one, so it can neither swap nor

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ func TestAJournalWindowPolicyIsFixedAndCreatedOnFacts(t *testing.T) {
 	for _, bad := range []*WindowPolicy{
 		{Period: WindowMonth, Base: "acme", Since: utc(2026, 10, 1), Journal: true},
 		{Period: WindowMonth, Base: JournalLogID, Since: utc(2026, 10, 1), Journal: true, Grace: 24 * time.Hour},
+		{Period: WindowMonth, Base: JournalLogID, Since: utc(2026, 10, 1), Journal: true, Predecessor: &WindowTree{LogID: "old", Entries: 3, Root: strings.Repeat("a", 64)}},
 	} {
 		f := newShelfFixture(t)
 		f.cfg.Window = bad
@@ -158,12 +160,16 @@ func TestADealBookIsPlacedInTheWindowOfItsAgreement(t *testing.T) {
 	node := mustOpenBook(t, shelf, "goose/node")
 	mustAppend(t, node, observation("n", "1"))
 
-	_, _, err := shelf.Place(ctx, "deal/a", utc(2026, 9, 30))
+	_, _, err := shelf.Place(ctx, "deal/a", utc(2026, 9, 30), nil)
 	assert.ErrorIs(t, err, ErrWindowClosed, "an agreement timed before the current window")
-	_, _, err = shelf.Place(ctx, "journal/2026-10", f.clock.Now())
+	_, _, err = shelf.Place(ctx, "journal/2026-10", f.clock.Now(), nil)
 	assert.ErrorIs(t, err, ErrInvalid)
+	_, _, err = shelf.Place(ctx, "goose/node", f.clock.Now(), nil)
+	assert.ErrorIs(t, err, ErrInvalid, "a book that holds records and was never placed")
+	_, err = shelf.Open(ctx, JournalLogID)
+	assert.ErrorIs(t, err, ErrInvalid, "no book takes the journal's own id on this shelf")
 
-	a, w, err := shelf.Place(ctx, "deal/a", f.clock.Now())
+	a, w, err := shelf.Place(ctx, "deal/a", f.clock.Now(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "2026-10", w.Label)
 	mustAppend(t, a, observation("deal", "agreement a"))
@@ -171,21 +177,21 @@ func TestADealBookIsPlacedInTheWindowOfItsAgreement(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "2026-10", placed.Label)
-	again, w, err := shelf.Place(ctx, "deal/a", f.clock.Now())
+	again, w, err := shelf.Place(ctx, "deal/a", f.clock.Now(), nil)
 	require.NoError(t, err)
 	assert.Same(t, a, again)
 	assert.Equal(t, "2026-10", w.Label, "placing twice returns the first placement")
 
 	// deal/b is placed and stays empty (a crash before its agreement).
-	_, _, err = shelf.Place(ctx, "deal/b", f.clock.Now())
+	_, _, err = shelf.Place(ctx, "deal/b", f.clock.Now(), nil)
 	require.NoError(t, err)
 
 	setClock(f.clock, utc(2026, 11, 2))
-	_, w, err = shelf.Place(ctx, "deal/a", f.clock.Now())
+	_, w, err = shelf.Place(ctx, "deal/a", f.clock.Now(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "2026-10", w.Label, "a placed, written book keeps its window as the deal runs on")
 	mustAppend(t, a, observation("deal", "perform a"))
-	b, w, err := shelf.Place(ctx, "deal/b", f.clock.Now())
+	b, w, err := shelf.Place(ctx, "deal/b", f.clock.Now(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "2026-11", w.Label, "an empty book is placed again in the current window")
 	mustAppend(t, b, observation("deal", "agreement b"))
@@ -203,16 +209,26 @@ func TestADealBookIsPlacedInTheWindowOfItsAgreement(t *testing.T) {
 	}
 	oct, nov := closeOf("2026-10"), closeOf("2026-11")
 	assert.Equal(t, WindowCloseVersionV2, oct.RecordVersion)
-	assert.Equal(t, []string{"deal/a"}, oct.Placed, "deal/b was empty when October closed")
-	assert.Equal(t, []string{"deal/b"}, nov.Placed)
+	logIDs := func(trees []WindowTree) []string {
+		var out []string
+		for _, tree := range trees {
+			out = append(out, tree.LogID)
+		}
+		return out
+	}
+	assert.Equal(t, []string{"deal/a"}, logIDs(oct.Placed), "deal/b was empty when October closed")
+	assert.Equal(t, []string{"deal/b"}, logIDs(nov.Placed))
+	require.Len(t, oct.Placed, 1)
+	assert.Less(t, oct.Placed[0].Entries, a.Size(), "deal/a's tree when October closed, before November's perform")
+	assert.NotEmpty(t, oct.Placed[0].Root)
 
 	chain, err := shelf.WindowChain(ctx, "2026-10", "2026-11", WindowChainOptions{})
 	require.NoError(t, err)
 	verified, findings := VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: shelfCheckpointKey(f)})
 	require.Empty(t, findings)
 	require.Len(t, verified, 2)
-	assert.Equal(t, []string{"deal/a"}, verified[0].Placed)
-	assert.Equal(t, []string{"deal/b"}, verified[1].Placed)
+	assert.Equal(t, oct.Placed, verified[0].Placed)
+	assert.Equal(t, nov.Placed, verified[1].Placed)
 
 	// A placement record is the shelf's own.
 	dec, err := shelf.Journal(ctx)
@@ -227,7 +243,7 @@ func TestAPlacementACrashLeftPendingIsFinished(t *testing.T) {
 	ctx := context.Background()
 	f := newJournalWindowFixture(t)
 	shelf := f.open(t)
-	_, _, err := shelf.Place(ctx, "deal/a", f.clock.Now())
+	_, _, err := shelf.Place(ctx, "deal/a", f.clock.Now(), nil)
 	require.NoError(t, err)
 	// The row as a crash after the record leaves it: pending.
 	_, err = shelf.db.ExecContext(ctx, `UPDATE shelf_window_placed SET state = ? WHERE log_id = ?`, placePending, "deal/a")
@@ -238,7 +254,7 @@ func TestAPlacementACrashLeftPendingIsFinished(t *testing.T) {
 	journal, err := shelf.Journal(ctx)
 	require.NoError(t, err)
 	before := journal.Size()
-	_, w, err := shelf.Place(ctx, "deal/a", f.clock.Now())
+	_, w, err := shelf.Place(ctx, "deal/a", f.clock.Now(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "2026-10", w.Label)
 	assert.Equal(t, before, journal.Size(), "the record already sealed is not sealed twice")
@@ -254,7 +270,7 @@ func TestAJournalWindowsFactsAreJournalFacts(t *testing.T) {
 	journal, err := shelf.Journal(ctx)
 	require.NoError(t, err)
 	mustAppend(t, journal, observation("deal", "a"))
-	book, _, err := shelf.Place(ctx, "deal/a", f.clock.Now())
+	book, _, err := shelf.Place(ctx, "deal/a", f.clock.Now(), nil)
 	require.NoError(t, err)
 	mustAppend(t, book, observation("deal", "agreement"))
 	var seen []StatusInput
@@ -317,11 +333,15 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	journal, err := shelf.Journal(ctx)
 	require.NoError(t, err)
 	mustAppend(t, journal, observation("deal", "offer a"))
-	a, _, err := shelf.Place(ctx, "deal/a", f.clock.Now())
+	a, _, err := shelf.Place(ctx, "deal/a", f.clock.Now(), nil)
 	require.NoError(t, err)
 	mustAppend(t, a, observation("deal", "agreement a"))
+	// A checkpoint of deal/a before the rest of its October records.
+	early, err := a.Checkpoint(ctx)
+	require.NoError(t, err)
+	mustAppend(t, a, observation("deal", "delivery a"))
 	setClock(f.clock, utc(2026, 11, 10))
-	b, _, err := shelf.Place(ctx, "deal/b", f.clock.Now())
+	b, _, err := shelf.Place(ctx, "deal/b", f.clock.Now(), nil)
 	require.NoError(t, err)
 	mustAppend(t, b, observation("deal", "agreement b"))
 	setClock(f.clock, utc(2026, 12, 4))
@@ -343,6 +363,9 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	require.NoError(t, err)
 	bCP, err := b.Checkpoint(ctx)
 	require.NoError(t, err)
+	// An answer for deal/a anchored before its window closed, at the tree it
+	// had right after its agreement.
+	dealAEarly := r.answerBook(t, early, 12).RecordID
 	dealA := r.answerBook(t, aCP, 10).RecordID
 	dealB := r.answerBook(t, bCP, 11).RecordID
 
@@ -351,6 +374,48 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	_, err = r.requester.ReportFromWindows(ctx, chainRecord.RecordID, partial, evaluateWindows(partial), ReportOptions{Derivation: pack}, VerifyChainOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "deal deal/b of window 2026-11 has no answer")
+
+	// An answer anchored before the deal's tree at its window's close is
+	// named, and no Result is sealed over it (Sherlock2 on #846).
+	earlyAll := append(append([]string{}, responses...), dealAEarly, dealB)
+	_, err = r.requester.ReportFromWindows(ctx, chainRecord.RecordID, earlyAll, evaluateWindows(earlyAll), ReportOptions{Derivation: pack}, VerifyChainOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), fmt.Sprintf("deal deal/a of window 2026-10 is answered at a tree of %d records, not at or after its tree of", early.Entries))
+
+	// The same size as the deal's tree at the close, another root: named too.
+	payload, err := canonicalJSON(chain)
+	require.NoError(t, err)
+	body, err := canonicalJSON(WindowChainStatement{RecordVersion: WindowChainRecordVersion, Base: JournalLogID, Period: WindowMonth, From: "2026-10", To: "2026-11", ChainDigest: digestBytes(payload)})
+	require.NoError(t, err)
+	verified, chainFindings := VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
+	require.Empty(t, chainFindings)
+	forked := verified[0].Placed[0]
+	forked.Root = strings.Repeat("0", 64)
+	_, deals, findings, err := coverageWithDeals(Header{Statement: body}, payload, []windowAnswer{
+		{key: r.keys.Checkpoint, tree: verified[0].Final},
+		{key: r.keys.Checkpoint, tree: verified[1].Final},
+		{key: r.keys.Checkpoint, tree: forked},
+		{key: r.keys.Checkpoint, tree: verified[1].Placed[0]},
+	}, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	assert.Equal(t, fmt.Sprintf("deal deal/a of window 2026-10 is answered at a tree of %d records, not at or after its tree of %d records when the window closed", forked.Entries, forked.Entries), findings[0].Text)
+
+	// No answer for a placed deal, and two for another, each named.
+	_, _, findings, err = coverageWithDeals(Header{Statement: body}, payload, []windowAnswer{
+		{key: r.keys.Checkpoint, tree: verified[0].Final},
+		{key: r.keys.Checkpoint, tree: verified[1].Final},
+		{key: r.keys.Checkpoint, tree: verified[1].Placed[0]},
+		{key: r.keys.Checkpoint, tree: verified[1].Placed[0]},
+	}, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
+	require.NoError(t, err)
+	var texts []string
+	for _, f := range findings {
+		texts = append(texts, f.Text)
+	}
+	assert.ElementsMatch(t, []string{"deal deal/a of window 2026-10 has no answer", "deal deal/b of window 2026-11 has 2 answers"}, texts)
+	assert.True(t, deals["deal/a"].early)
+	assert.False(t, deals["deal/b"].early)
 
 	all := append(partial, dealB)
 	var seen []WindowInputs
@@ -376,4 +441,53 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	assert.Contains(t, coverage.Deals[0].Line, fmt.Sprintf("deal deal/a, placed in window 2026-10, answered over its whole book, through its checkpoint of %d records issued 2026-12-04", aCP.Entries))
 	assert.Contains(t, coverage.Deals[0].Line, "records after the window included")
 	assert.Equal(t, "deal/b", coverage.Deals[1].LogID)
+}
+
+func TestAPlacementAndItsFirstRecordAreOneStep(t *testing.T) {
+	ctx := context.Background()
+	f := newJournalWindowFixture(t)
+	shelf := f.open(t)
+	setClock(f.clock, time.Date(2026, 10, 31, 23, 59, 30, 0, time.UTC))
+	book, w, err := shelf.Place(ctx, "deal/a", f.clock.Now(), func(b *Book) error {
+		// The clock crosses the boundary between the placement and the
+		// agreement; no roll can run until Place returns.
+		setClock(f.clock, utc(2026, 11, 1))
+		_, err := b.Append(ctx, observation("deal", "agreement a"))
+		return err
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "2026-10", w.Label)
+	assert.Equal(t, uint64(1), book.Size())
+	_, err = shelf.Roll(ctx)
+	require.NoError(t, err)
+	oct, _, err := shelf.WindowBook(ctx, "2026-10")
+	require.NoError(t, err)
+	log := oct.logLocked()
+	var st WindowCloseStatement
+	require.NoError(t, json.Unmarshal(log[len(log)-1].Header.Statement, &st))
+	require.Len(t, st.Placed, 1, "the deal is in its window's close")
+	assert.Equal(t, "deal/a", st.Placed[0].LogID)
+	// first runs only on an empty book.
+	ran := false
+	_, _, err = shelf.Place(ctx, "deal/a", f.clock.Now(), func(*Book) error { ran = true; return nil })
+	require.NoError(t, err)
+	assert.False(t, ran)
+}
+
+func TestPlaceAndWindowEndedRefuseWhatTheyShould(t *testing.T) {
+	ctx := context.Background()
+	g := newWindowFixture(t)
+	other := g.open(t)
+	_, _, err := other.Place(ctx, "deal/a", g.clock.Now(), nil)
+	assert.ErrorIs(t, err, ErrInvalid, "a shelf whose windows are not its journal places nothing")
+
+	f := newJournalWindowFixture(t)
+	shelf := f.open(t)
+	_, err = shelf.HostLog(ctx, "host/x", false)
+	require.NoError(t, err)
+	_, _, err = shelf.Place(ctx, "host/x", f.clock.Now(), nil)
+	assert.ErrorIs(t, err, ErrInvalid, "a host log is not a book to place")
+	require.NoError(t, shelf.Release())
+	_, err = shelf.WindowEnded(ctx, "journal/2026-10")
+	assert.ErrorIs(t, err, ErrReleased)
 }

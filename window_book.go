@@ -78,10 +78,11 @@ type WindowCloseStatement struct {
 	// grace (evidencebook#807): the final tree, which the close record ends,
 	// binds it, so a chain cannot swap or drop it. Absent with no grace.
 	Boundary *WindowTree `json:"boundary,omitempty"`
-	// Placed lists, in a journal window's close (window_close/v2), the log
-	// ids of the books placed in the window that hold their first record at
-	// the close, sorted (evidencebook#797 §3). Absent in version 1.
-	Placed []string `json:"placed,omitempty"`
+	// Placed lists, in a journal window's close (window_close/v2), the books
+	// placed in the window that hold their first record at the close, each
+	// with its tree then, sorted by log id (evidencebook#797 §3): an answer
+	// for the deal must be at that tree or a later one. Absent in version 1.
+	Placed []WindowTree `json:"placed,omitempty"`
 }
 
 // WindowPlaceStatement is the body of a window_place record: the book it
@@ -337,8 +338,9 @@ func initWindow(ctx context.Context, tx *sql.Tx, policy *WindowPolicy, version i
 }
 
 // windowPlacedSchema is the window each book of a journal-windowed shelf is
-// placed in (evidencebook#797 §3): written after its window_place record,
-// and recovered from it.
+// placed in (evidencebook#797 §3): written pending before its window_place
+// record and marked placed after it, so the book's next Place finishes a
+// placement a crash interrupted.
 const windowPlacedSchema = `
 CREATE TABLE IF NOT EXISTS shelf_window_placed (
 	log_id TEXT PRIMARY KEY,
@@ -803,6 +805,9 @@ func (s *Shelf) attachWindow(ctx context.Context, book *Book, logID string) erro
 	var entries uint64
 	err := s.db.QueryRowContext(ctx, `SELECT label, state, COALESCE(final_entries, 0), COALESCE(final_root, '') FROM shelf_window_books WHERE log_id = ?`, logID).Scan(&label, &state, &entries, &root)
 	if errors.Is(err, sql.ErrNoRows) {
+		if s.cfg.Window.Journal && logID == JournalLogID {
+			return fmt.Errorf("%w: this shelf's journal is its windows; %s is no book", ErrInvalid, JournalLogID)
+		}
 		if s.cfg.Window.Journal && !strings.HasPrefix(logID, JournalLogID+"/") {
 			// A journal-windowed shelf holds its other books as an
 			// unwindowed shelf does (evidencebook#797 §3), and a deal book
