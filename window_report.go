@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/agent-action-capsule/go/evidenceresult"
@@ -73,10 +74,35 @@ func joinFindings(findings []ChainFinding) string {
 	return strings.Join(texts, "; ")
 }
 
-// WindowInputs is one window's answer in a report over windows.
+// WindowInputs is one answer in a report over windows: a window's own, or,
+// on a shelf whose windows are its journal, a deal book's placed in it
+// (evidencebook#797 §4), Deal then naming the deal book.
 type WindowInputs struct {
 	Window VerifiedWindow
+	// Deal is the log id of the deal book that gave this answer, placed in
+	// Window; empty for the window's own answer.
+	Deal string
 	DerivedInputs
+}
+
+// ReportLimit is what no report over windows shows, stated once per report
+// beside its coverage and on anything shown on its own (Sherlock2 on
+// evidencebook#797, after #606).
+const ReportLimit = "Each answer proves its rows are in the holder's log; the rows' field values are the holder's word; no proof shows that no row was left out."
+
+// DealCoverage is one deal book placed in a window of the range and the
+// answer that covers it. A deal book is not bounded by its window: its
+// answer covers the whole book through the checkpoint it is anchored at,
+// records after the window included.
+type DealCoverage struct {
+	LogID string `json:"log_id"`
+	// Window is the label of the window the deal is placed in.
+	Window  string     `json:"window"`
+	Through WindowTree `json:"through"`
+	// ThroughAt is when that checkpoint was issued, RFC 3339 in UTC.
+	ThroughAt string `json:"through_at"`
+	// Line is the coverage line a page shows for the deal.
+	Line string `json:"line"`
 }
 
 // windowAnswer is what one response record holds for a report over
@@ -86,6 +112,7 @@ type windowAnswer struct {
 	inputs     DerivedInputs
 	key        string
 	tree       WindowTree
+	issuedAt   time.Time
 	derivation string
 }
 
@@ -127,7 +154,7 @@ func readWindowAnswer(header Header, reply []byte) (windowAnswer, error) {
 	if err != nil {
 		return windowAnswer{}, err
 	}
-	return windowAnswer{key: statement.CheckpointKey, tree: WindowTree{LogID: cp.LogID, Entries: cp.Entries, Root: cp.Root}, derivation: envelope.Derivation}, nil
+	return windowAnswer{key: statement.CheckpointKey, tree: WindowTree{LogID: cp.LogID, Entries: cp.Entries, Root: cp.Root}, issuedAt: cp.IssuedAt, derivation: envelope.Derivation}, nil
 }
 
 // ReportFromWindows seals the Evidence Result evaluate returns over a
@@ -135,7 +162,9 @@ func readWindowAnswer(header Header, reply []byte) (windowAnswer, error) {
 // with the contract-report/v1 extension. chainRecordID is the window_chain
 // record (RecordWindowChain) that states the range; responseRecordIDs are
 // the recorded answers, exactly one per window of the range, each anchored
-// at its window's final tree, every one to the pack opts.Derivation names
+// at its window's final tree, and, for a chain of journal windows, exactly
+// one per deal book a window's close lists as placed, anchored at any
+// checkpoint of that book; every one to the pack opts.Derivation names
 // and under one holder checkpoint key, and each with proofs. Every claim of
 // the Result names one contract, cites at least one of the responses, and
 // cites nothing but those and the chain record. ReportFromDerivation is the
@@ -189,7 +218,7 @@ func (b *Book) ReportFromWindows(ctx context.Context, chainRecordID string, resp
 		return Report{}, fmt.Errorf("%w: the answers are under holder checkpoint key %s, not %s", ErrInvalid, answers[0].key, chainOpts.CheckpointKey)
 	}
 	chainOpts.CheckpointKey = answers[0].key
-	windows, findings, err := coverage(chainRecord.Header, payload, answers, chainOpts)
+	windows, deals, findings, err := coverageWithDeals(chainRecord.Header, payload, answers, chainOpts)
 	if err != nil {
 		return Report{}, err
 	}
@@ -198,6 +227,10 @@ func (b *Book) ReportFromWindows(ctx context.Context, chainRecordID string, resp
 	}
 	inputs := make([]WindowInputs, len(answers))
 	for i, a := range answers {
+		if d, ok := deals[a.tree.LogID]; ok {
+			inputs[i] = WindowInputs{Window: windows[d.window], Deal: a.tree.LogID, DerivedInputs: a.inputs}
+			continue
+		}
 		inputs[i] = WindowInputs{Window: windows[a.tree.LogID], DerivedInputs: a.inputs}
 	}
 	result, err := evaluate(inputs)
@@ -259,22 +292,39 @@ func (b *Book) payloadOf(ctx context.Context, record Record) ([]byte, error) {
 	return b.resolveLocked(ctx, record.RecordID, record.Header.PayloadCommitments[0])
 }
 
+// placedDeal is a deal book a window of the chain lists as placed, and its
+// answer once one is found.
+type placedDeal struct {
+	window   string // the placing window's log id
+	label    string
+	answers  int
+	coverage DealCoverage
+}
+
 // coverage checks the chain a window_chain record carries against its
 // statement, and the answers against the chain: one per window of the range,
-// each at its window's final tree, under one key. It returns the proved
-// windows by log id and a finding for each gap; err is for a record that
+// each at its window's final tree, and one per deal book placed in a window
+// of a journal chain (evidencebook#797 §4), at any checkpoint of that book,
+// all under one key. It returns the proved windows by log id, the placed
+// deals by log id, and a finding for each gap; err is for a record that
 // cannot be read at all.
 func coverage(chainHeader Header, payload []byte, answers []windowAnswer, opts VerifyChainOptions) (map[string]VerifiedWindow, []ChainFinding, error) {
+	windows, _, findings, err := coverageWithDeals(chainHeader, payload, answers, opts)
+	return windows, findings, err
+}
+
+// coverageWithDeals is coverage with the placed deals by log id.
+func coverageWithDeals(chainHeader Header, payload []byte, answers []windowAnswer, opts VerifyChainOptions) (map[string]VerifiedWindow, map[string]*placedDeal, []ChainFinding, error) {
 	var statement WindowChainStatement
 	if err := decodeStrict(chainHeader.Statement, &statement); err != nil || statement.RecordVersion != WindowChainRecordVersion {
-		return nil, nil, fmt.Errorf("%w: the window chain record does not carry its body", ErrInvalid)
+		return nil, nil, nil, fmt.Errorf("%w: the window chain record does not carry its body", ErrInvalid)
 	}
 	if digestBytes(payload) != statement.ChainDigest {
-		return nil, nil, fmt.Errorf("%w: the window chain record's payload is not the chain it names", ErrInvalid)
+		return nil, nil, nil, fmt.Errorf("%w: the window chain record's payload is not the chain it names", ErrInvalid)
 	}
 	var chain WindowChain
 	if err := decodeStrict(payload, &chain); err != nil {
-		return nil, nil, fmt.Errorf("%w: the window chain: %v", ErrInvalid, err)
+		return nil, nil, nil, fmt.Errorf("%w: the window chain: %v", ErrInvalid, err)
 	}
 	var findings []ChainFinding
 	if chain.Base != statement.Base || chain.Period != statement.Period || chain.From != statement.From || chain.To != statement.To {
@@ -291,12 +341,23 @@ func coverage(chainHeader Header, payload []byte, answers []windowAnswer, opts V
 	verified, chainFindings := VerifyWindowChain(chain, opts)
 	findings = append(findings, chainFindings...)
 	windows := make(map[string]VerifiedWindow, len(verified))
+	deals := map[string]*placedDeal{}
 	for _, v := range verified {
 		windows[v.Final.LogID] = v
+		for _, logID := range v.Placed {
+			deals[logID] = &placedDeal{window: v.Final.LogID, label: v.Label}
+		}
 	}
 	answered := map[string]int{}
 	for _, a := range answers {
 		v, ok := windows[a.tree.LogID]
+		if d, placed := deals[a.tree.LogID]; placed && !ok {
+			d.answers++
+			at := windowTime(a.issuedAt)
+			d.coverage = DealCoverage{LogID: a.tree.LogID, Window: d.label, Through: a.tree, ThroughAt: at,
+				Line: fmt.Sprintf("deal %s, placed in window %s, answered over its whole book, through its checkpoint of %d records issued %s, records after the window included", a.tree.LogID, d.label, a.tree.Entries, at)}
+			continue
+		}
 		switch {
 		case !ok:
 			findings = append(findings, ChainFinding{Text: fmt.Sprintf("an answer anchored in log %s is outside the chain's windows", a.tree.LogID)})
@@ -319,8 +380,16 @@ func coverage(chainHeader Header, payload []byte, answers []windowAnswer, opts V
 		case n > 1:
 			findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("window %s has %d answers", v.Label, n)})
 		}
+		for _, logID := range v.Placed {
+			switch n := deals[logID].answers; {
+			case n == 0:
+				findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("deal %s of window %s has no answer", logID, v.Label)})
+			case n > 1:
+				findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("deal %s of window %s has %d answers", logID, v.Label, n)})
+			}
+		}
 	}
-	return windows, findings, nil
+	return windows, deals, findings, nil
 }
 
 // checkWindowsResult is checkDerivedResult for a report over windows: one
@@ -371,7 +440,12 @@ type ReportCoverage struct {
 	// they differ (a finding then says so).
 	Derivation string           `json:"derivation,omitempty"`
 	Windows    []VerifiedWindow `json:"windows"`
-	Findings   []ChainFinding   `json:"findings"`
+	// Deals are the deal books placed in the range's windows that have
+	// their answer, in window order then log id (evidencebook#797 §4).
+	Deals    []DealCoverage `json:"deals,omitempty"`
+	Findings []ChainFinding `json:"findings"`
+	// Limit is ReportLimit: what the report does not show.
+	Limit string `json:"limit"`
 }
 
 // CoverageOptions are what a verifier of a report's coverage brings: the
@@ -454,7 +528,7 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 	if err := decodeStrict(chainHeader.Statement, &statement); err != nil {
 		return ReportCoverage{}, fmt.Errorf("%w: the window chain record does not carry its body", ErrInvalid)
 	}
-	out := ReportCoverage{From: statement.From, To: statement.To, Findings: []ChainFinding{}}
+	out := ReportCoverage{From: statement.From, To: statement.To, Findings: []ChainFinding{}, Limit: ReportLimit}
 	if _, err := checkWindowsResult(result.Header.Statement, answerIDs, chainID); err != nil {
 		out.Findings = append(out.Findings, ChainFinding{Text: "the Result: " + strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": ")})
 	}
@@ -463,7 +537,7 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 	} else {
 		out.Derivation = answers[0].derivation
 	}
-	windows, findings, err := coverage(*chainHeader, chainPayload, answers, VerifyChainOptions{CheckpointKey: opts.CheckpointKey, Witnesses: opts.Witnesses})
+	windows, deals, findings, err := coverageWithDeals(*chainHeader, chainPayload, answers, VerifyChainOptions{CheckpointKey: opts.CheckpointKey, Witnesses: opts.Witnesses})
 	if err != nil {
 		return ReportCoverage{}, err
 	}
@@ -472,6 +546,13 @@ func VerifyReportCoverage(bundle []byte, opts CoverageOptions) (ReportCoverage, 
 		out.Windows = append(out.Windows, w)
 	}
 	slices.SortFunc(out.Windows, func(a, b VerifiedWindow) int { return a.Start.Compare(b.Start) })
+	for _, w := range out.Windows {
+		for _, logID := range w.Placed {
+			if d := deals[logID]; d.answers == 1 {
+				out.Deals = append(out.Deals, d.coverage)
+			}
+		}
+	}
 	return out, nil
 }
 

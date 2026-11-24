@@ -246,11 +246,19 @@ const JournalLogID = "journal"
 // changed at a stamp, never its size, and its openings go only to the owner
 // and an auditor it appoints. It needs a shelf of book facts (Migrate), and
 // it refuses a shelf on which a book or host log already has its log id.
+//
+// On a shelf whose windows are its journal (evidencebook#797 §2) it rolls
+// and returns the current window's journal book, the one a journal record
+// is appended to; JournalView reads the whole journal.
 func (s *Shelf) Journal(ctx context.Context) (*Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.released {
 		return nil, ErrReleased
+	}
+	if s.cfg.Window != nil && s.cfg.Window.Journal {
+		book, _, err := s.currentLocked(ctx)
+		return book, err
 	}
 	if book, ok := s.books[JournalLogID]; ok {
 		// Opened before: as the journal, or as a book that holds its id.

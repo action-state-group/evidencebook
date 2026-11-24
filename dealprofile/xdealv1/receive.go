@@ -362,8 +362,14 @@ const (
 	payloadUnavailable
 )
 
+// payloadResolver is a book, or the journal read across its windows
+// (evidencebook.JournalReader).
+type payloadResolver interface {
+	ResolvePayload(ctx context.Context, recordID, digest string) ([]byte, error)
+}
+
 // v1Payload is the x-deal-v1 record a book record of the holder's carries.
-func v1Payload(ctx context.Context, b *evidencebook.Book, r evidencebook.Record) (Record, payloadKind, error) {
+func v1Payload(ctx context.Context, b payloadResolver, r evidencebook.Record) (Record, payloadKind, error) {
 	if len(r.Header.PayloadCommitments) != 1 {
 		return Record{}, payloadOther, nil
 	}
@@ -409,7 +415,9 @@ func (p *ReceiveProfile) ours(ctx context.Context) (ours, error) {
 	if c.firsts == nil {
 		c.firsts = map[string]*Record{}
 	}
-	journal, err := p.Shelf.Journal(ctx)
+	// The whole journal, across its windows on a windowed shelf
+	// (evidencebook#797): its seqs never move, so journalSeen stays valid.
+	journal, err := p.Shelf.JournalView(ctx)
 	if err != nil {
 		return ours{}, err
 	}

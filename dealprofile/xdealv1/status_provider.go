@@ -92,7 +92,7 @@ func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.Status
 	}
 	ag, _ := asAgree(own[0].rec.Record.Body)
 	deal := own[0].rec.Record.Block.DealID
-	offer, err := p.offer(ctx, in.Journal, ag.Offer.Digest)
+	offer, err := p.offer(ctx, journalOf(in), ag.Offer.Digest)
 	if err != nil {
 		return fail(err)
 	}
@@ -182,7 +182,7 @@ type ownRecord struct {
 // (withheld under retention) ends the book read here, so no later record is
 // read past it.
 func (p *StatusProvider) ownBook(ctx context.Context, in evidencebook.StatusInput) ([]ownRecord, error) {
-	if in.Book == nil || in.Journal == nil {
+	if in.Book == nil || journalOf(in) == nil {
 		return nil, nil
 	}
 	recs, err := in.Book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: in.Book.Size()})
@@ -225,7 +225,7 @@ func (p *StatusProvider) ownBook(ctx context.Context, in evidencebook.StatusInpu
 
 // offer is the offer whose record digest is digest: the holder's own, in its
 // journal, or the one it received sent whole.
-func (p *StatusProvider) offer(ctx context.Context, journal *evidencebook.Book, digest string) (Record, error) {
+func (p *StatusProvider) offer(ctx context.Context, journal evidencebook.JournalReader, digest string) (Record, error) {
 	recs, err := journal.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: journal.Size()})
 	if err != nil {
 		return Record{}, err
@@ -561,4 +561,17 @@ func (p *StatusProvider) payments(ctx context.Context, offer Record, ag AgreeBod
 		out[row] = res
 	}
 	return out, nil
+}
+
+// journalOf is the journal a status input hands over: read across its
+// windows (Journals), or the one journal book of an input that sets only
+// Journal.
+func journalOf(in evidencebook.StatusInput) evidencebook.JournalReader {
+	if in.Journals != nil {
+		return in.Journals
+	}
+	if in.Journal != nil {
+		return in.Journal
+	}
+	return nil
 }

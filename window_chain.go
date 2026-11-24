@@ -332,6 +332,9 @@ type VerifiedWindow struct {
 	// window of a store that continues a predecessor book, which the chain
 	// then does not include.
 	Note string `json:"note,omitempty"`
+	// Placed is, for a journal window (window_close/v2), the books its close
+	// lists as placed in it (evidencebook#797 §3); nil for version 1.
+	Placed []string `json:"placed,omitempty"`
 }
 
 // ChainFinding is one failure of a window chain or a report's coverage,
@@ -482,7 +485,10 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 	}
 	var os WindowOpenStatement
 	var cs WindowCloseStatement
-	if decodeStrict(open.Statement, &os) != nil || decodeStrict(closing.Statement, &cs) != nil || os.RecordVersion != WindowOpenVersion || cs.RecordVersion != WindowCloseVersion {
+	decoded := decodeStrict(open.Statement, &os) == nil && decodeStrict(closing.Statement, &cs) == nil
+	// Version 1 carries no placed list; version 2 is a journal window's.
+	closeVersionOK := cs.RecordVersion == WindowCloseVersion && cs.Placed == nil || cs.RecordVersion == WindowCloseVersionV2
+	if !decoded || os.RecordVersion != WindowOpenVersion || !closeVersionOK {
 		fail(label, "window %s's open or close record does not carry its body", label)
 		return VerifiedWindow{}, false
 	}
@@ -515,6 +521,9 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 		return VerifiedWindow{}, false
 	}
 	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey, Predecessor: predecessor, Partial: chain.Period.Partial(w)}
+	if cs.RecordVersion == WindowCloseVersionV2 {
+		verified.Placed = append([]string{}, cs.Placed...)
+	}
 	// The close record, in the final tree, names the boundary the window
 	// took: a chain carries exactly that one, so it can neither swap nor
 	// drop it (evidencebook#807).

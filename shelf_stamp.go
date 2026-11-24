@@ -65,11 +65,17 @@ type BookStatusProvider interface {
 // before the host first opens it with Shelf.Journal. A stamp never creates
 // the journal.
 type StatusInput struct {
-	N       uint64
-	BookID  string
-	LogID   string
-	Book    *Book
+	N      uint64
+	BookID string
+	LogID  string
+	Book   *Book
+	// Journal is the shelf's journal book on a shelf without windows, nil
+	// on one whose windows are its journal: read Journals, which is set on
+	// both (evidencebook#797).
 	Journal *Book
+	// Journals is the shelf's journal read in order across its windows
+	// (Shelf.JournalView), nil when the shelf has no journal yet.
+	Journals JournalReader
 }
 
 // BeforeStampProvider is a StatusProvider that writes, before a stamp, what
@@ -161,6 +167,10 @@ func (c *Cadence) Migrate(ctx context.Context, now time.Time) error {
 	defer s.mu.Unlock()
 	if s.released {
 		return ErrReleased
+	}
+	if s.cfg.Window != nil && s.cfg.Window.Journal {
+		// Created on book facts (evidencebook#797 §1): nothing to migrate.
+		return nil
 	}
 	if s.cfg.Window != nil {
 		// Version 2 would drop the window's version 3, which keeps every
@@ -448,7 +458,9 @@ func (s *Shelf) bookIDOf(ctx context.Context, log CadenceLog) (string, error) {
 func (c *Cadence) factFor(ctx context.Context, n uint64, log CadenceLog, at time.Time, last *lastFact) (pendingFact, error) {
 	s := c.shelf
 	journal := false
-	if _, ok := log.(bookLog); ok && log.LogID() == JournalLogID {
+	if _, ok := log.(bookLog); ok {
+		// The journal, or a journal window's book (evidencebook#797 §2): a
+		// journal fact by the log's kind, so its size stays hidden.
 		kind, err := s.logKind(ctx, log.LogID())
 		if err != nil {
 			return pendingFact{}, err
@@ -474,9 +486,10 @@ func (c *Cadence) factFor(ctx context.Context, n uint64, log CadenceLog, at time
 		switch sp := c.cfg.Status.(type) {
 		case BookStatusProvider:
 			in := StatusInput{N: n, BookID: bookID, LogID: log.LogID(), Book: log.(bookLog).book}
-			if in.Journal, err = s.existingJournalLocked(ctx); err != nil {
+			if in.Journals, err = s.existingJournalViewLocked(ctx); err != nil {
 				return pendingFact{}, err
 			}
+			in.Journal, _ = in.Journals.(*Book)
 			p, l, st, ok, err = sp.BookValues(ctx, in)
 		case StampStatusProvider:
 			p, l, st, ok, err = sp.StampValues(ctx, n, bookID, log.LogID())
@@ -847,11 +860,17 @@ func (s *Shelf) Openings(ctx context.Context, bookID string, audience Audience) 
 // ExistingJournal is the shelf's journal when the shelf has one, nil
 // otherwise. Unlike Journal it never creates it, so a reader (a report)
 // changes nothing.
+//
+// A shelf whose windows are its journal has no one journal book: it refuses
+// (ErrInvalid); read ExistingJournalView (evidencebook#797).
 func (s *Shelf) ExistingJournal(ctx context.Context) (*Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.released {
 		return nil, ErrReleased
+	}
+	if s.cfg.Window != nil && s.cfg.Window.Journal {
+		return nil, fmt.Errorf("%w: this shelf's journal is its windows; read ExistingJournalView", ErrInvalid)
 	}
 	return s.existingJournalLocked(ctx)
 }
