@@ -143,17 +143,28 @@ owner and never bundled.
 ## Split a store by time window, and report over a range of windows
 
 A report's proofs are bounded by the book it draws from. A new book store is
-split by window (evidencebook#689): one book per calendar month in UTC, fixed
-when the store is created, which `store init` prints. To fix another window,
-or one JSONL book (`--period none`), create the store with `book window init`
-instead:
+split by window (evidencebook#689): one book per calendar month in UTC that
+closes 7 days after it ends, both fixed when the store is created, which
+`store init` prints. To fix another window or grace, or one JSONL book
+(`--period none`), create the store with `book window init` instead:
 
 ```sh
-capsulectl book window init --profile NAME --period year    # instead of store init; prints the window
+capsulectl book window init --profile NAME --period year --grace 14d   # instead of store init; prints the window
 capsulectl book window roll --profile NAME                  # close ended windows
 capsulectl book window chain --profile NAME --from 2026-01 --to 2026-12 --out chain.json
-capsulectl book window publish --profile NAME               # each closed window's final checkpoint to the witness
+capsulectl book window publish --profile NAME               # boundary and final checkpoints to the witness
 ```
+
+A window's grace (default 7 days for month, quarter and year, 1 day for week,
+none for day; shorter than the period) is how long after it ends it still
+takes a Close over a period inside it (evidencebook#807). When a window ends
+it takes a boundary checkpoint, then takes only such a Close until the grace
+ends and it closes; `book window list` shows each window's `closes_at` and
+`in_grace`, and `close` over last month seals the Close in last month's book
+while it is in grace; its `--bundle-out` is anchored at that window's
+checkpoint, and its disclosure record goes in the current window, since a
+window in grace takes only Closes. A chain over a window in grace is refused
+until it closes.
 
 The requester asks each window with `expected_pin` set to that window's final
 checkpoint digest (SHA-256 of `final_checkpoint` in the chain), records each
@@ -170,8 +181,8 @@ and no bundle or page is written over one. The holder's key must be obtained
 independently of the bundle. Without witness receipts a chain shows continuity
 only as the holder signed it, and no check shows that an answer holds every row
 of its window. On a windowed store, `close` and `reconcile` take a period inside
-the current window, and a requester derives over answers recorded in its
-current window.
+the current window or inside an earlier window in its grace, and a requester
+derives over answers recorded in its current window.
 
 ## Render a report
 

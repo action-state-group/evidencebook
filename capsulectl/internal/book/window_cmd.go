@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,12 +20,13 @@ import (
 // `capsulectl book window`: a book store split into one book per time window
 // (evidencebook#689). The window is fixed when the store is created.
 
-const windowHelp = "Windows are calendar periods in UTC (a month runs from the 1st 00:00 UTC to the next 1st). A store's window is fixed when it is created and can never change: records are never moved between windows."
+const windowHelp = "Windows are calendar periods in UTC (a month runs from the 1st 00:00 UTC to the next 1st). A window's grace is how long after it ends it still takes a Close over a period inside it, then closes and takes its final checkpoint (default 7 days for month, quarter and year, 1 day for week, none for day). A store's window and grace are fixed when it is created and can never change: records are never moved between windows."
 
 type windowInitResult struct {
 	Profile string                    `json:"profile"`
 	Period  evidencebook.WindowPeriod `json:"period"`
 	Since   string                    `json:"since,omitempty"`
+	Grace   string                    `json:"grace,omitempty"`
 	Notice  string                    `json:"notice"`
 }
 
@@ -45,6 +47,7 @@ type windowChainResult struct {
 type windowPublishResult struct {
 	Window string         `json:"window"`
 	LogID  string         `json:"log_id"`
+	Kind   string         `json:"kind"`
 	Size   uint64         `json:"checkpoint"`
 	State  map[string]any `json:"witness"`
 }
@@ -67,6 +70,17 @@ func windowCommands() *cobra.Command {
 				return cli.InputError("--period must be day, week, month, quarter, year or none")
 			}
 		}
+		graceRaw, _ := c.Flags().GetString("grace")
+		grace := defaultGrace(period)
+		if graceRaw != "" {
+			if raw == "none" {
+				return cli.InputError("--grace applies to a store split by window, not --period none")
+			}
+			var err error
+			if grace, err = parseGrace(graceRaw); err != nil {
+				return err
+			}
+		}
 		if err := refuseRetiredLog(p); err != nil {
 			return err
 		}
@@ -83,18 +97,22 @@ func windowCommands() *cobra.Command {
 			}
 			return cli.Output(c, windowInitResult{Profile: p.Name, Period: "none", Notice: "no window: one book for this store's whole history, fixed for this store"})
 		}
-		if err := initWindowedStore(c.Context(), p, period); err != nil {
+		if err := initWindowedStore(c.Context(), p, period, grace); err != nil {
+			if graceRaw != "" && errors.Is(err, evidencebook.ErrInvalid) {
+				return cli.InputError("--grace " + graceRaw + ": a " + string(period) + " window's grace is shorter than the period")
+			}
 			return err
 		}
 		policy, err := evidencebook.ReadShelfWindow(c.Context(), shelfFile(p))
 		if err != nil {
 			return err
 		}
-		return cli.Output(c, windowInitResult{Profile: p.Name, Period: period, Since: policy.Since.Format(time.RFC3339), Notice: windowNotice(period)})
+		return cli.Output(c, windowInitResult{Profile: p.Name, Period: period, Since: policy.Since.Format(time.RFC3339), Grace: graceText(policy.Grace), Notice: windowNotice(period, policy.Grace)})
 	}}
 	initCmd.Flags().String("period", string(defaultWindow), "day, week (ISO, from Monday), month, quarter or year, in UTC; or none for one book over the store's whole history")
+	initCmd.Flags().String("grace", "", "How long after a window ends it still takes a Close over a period inside it, then closes: whole days (7d) or a duration such as 36h (no fraction of a second), shorter than the period; default 7d for month, quarter and year, 1d for week, none for day")
 
-	list := &cobra.Command{Use: "list", Short: "List the store's windows, oldest first, with each closed window's final tree (reads only)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	list := &cobra.Command{Use: "list", Short: "List the store's windows, oldest first: when each closes, which are in their grace, and each closed window's final tree (reads only)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		p, shelf, err := selectedShelfForReading(c)
 		if err != nil {
 			return err
@@ -155,7 +173,7 @@ func windowCommands() *cobra.Command {
 	chain.Flags().String("to", "", "The last window's label")
 	chain.Flags().String("out", "", "Write the chain here (new file)")
 
-	publish := &cobra.Command{Use: "publish", Short: "Deliver each closed window's final checkpoint to the profile's witness and print the receipts; a closed window's earlier checkpoints are superseded by its final one (signs; the core's `cll checkpoint publish` delivers the current window's checkpoints)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	publish := &cobra.Command{Use: "publish", Short: "Deliver each closed window's final checkpoint, and each boundary checkpoint a window took as it entered its grace, to the profile's witness and print the receipts; a closed window's other checkpoints are superseded by its final one (signs; the core's `cll checkpoint publish` delivers the current window's checkpoints)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		p, opened, err := selectedWindowedBook(c)
 		if err != nil {
 			return err
@@ -175,20 +193,21 @@ func windowCommands() *cobra.Command {
 		if err = seedFinals(c.Context(), p, opened.shelf, windows); err != nil {
 			return err
 		}
+		due, err := witnessedCheckpoints(c.Context(), opened.shelf, windows)
+		if err != nil {
+			return err
+		}
 		var results []windowPublishResult
-		for _, w := range windows {
-			if !w.Closed {
-				continue
-			}
-			size, err := finalSize(c.Context(), p, opened.shelf, w)
+		for _, d := range due {
+			size, err := mmrSize(p, d.checkpoint)
 			if err != nil {
 				return err
 			}
-			state, err := cli.DeliverWitness(c.Context(), p, windowWitnessStore(p, w.Label), service, size)
+			state, err := cli.DeliverWitness(c.Context(), p, windowWitnessStore(p, d.window.Label), service, size)
 			if err != nil {
 				return err
 			}
-			results = append(results, windowPublishResult{Window: w.Label, LogID: w.LogID, Size: size, State: witnessEntry(p, state)})
+			results = append(results, windowPublishResult{Window: d.window.Label, LogID: d.window.LogID, Kind: d.kind, Size: size, State: witnessEntry(p, state)})
 		}
 		return cli.Output(c, results)
 	}}
@@ -236,49 +255,108 @@ func requireWindowed(p cli.Profile) error {
 	return nil
 }
 
-// finalSize is a closed window's final checkpoint's MMR size, the key its
-// witness delivery is kept under.
-func finalSize(ctx context.Context, p cli.Profile, shelf *evidencebook.Shelf, w evidencebook.WindowState) (uint64, error) {
-	book, _, err := shelf.WindowBook(ctx, w.Label)
-	if err != nil {
-		return 0, err
+// witnessed is a checkpoint of a window that the profile's witness takes:
+// a closed window's final checkpoint and, for a window that had a grace, the
+// boundary checkpoint it took when it ended (evidencebook#807), which a
+// window chain carries with its own receipts.
+type witnessed struct {
+	window     evidencebook.WindowState
+	kind       string // "boundary" or "final"
+	checkpoint evidencebook.Checkpoint
+}
+
+// witnessedCheckpoints lists the boundary and final checkpoints of the
+// store's windows, oldest first. A window's boundary is the tree the next
+// window's open record names, when that is not its final tree.
+func witnessedCheckpoints(ctx context.Context, shelf *evidencebook.Shelf, windows []evidencebook.WindowState) ([]witnessed, error) {
+	var out []witnessed
+	for i, w := range windows {
+		book, _, err := shelf.WindowBook(ctx, w.Label)
+		if err != nil {
+			return nil, err
+		}
+		if i+1 < len(windows) {
+			previous, err := previousTree(ctx, shelf, windows[i+1].Label)
+			if err != nil {
+				return nil, err
+			}
+			if previous != nil && (w.Final == nil || *previous != *w.Final) {
+				checkpoints, err := book.Checkpoints(ctx)
+				if err != nil {
+					return nil, err
+				}
+				found := false
+				for _, cp := range checkpoints {
+					if cp.Entries == previous.Entries && cp.Root == previous.Root {
+						out, found = append(out, witnessed{window: w, kind: "boundary", checkpoint: cp}), true
+						break
+					}
+				}
+				if !found {
+					return nil, fmt.Errorf("%w: window %s holds no checkpoint at the boundary window %s names", evidencebook.ErrCorrupt, w.Label, windows[i+1].Label)
+				}
+			}
+		}
+		if w.Closed {
+			final, err := book.Checkpoint(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, witnessed{window: w, kind: "final", checkpoint: final})
+		}
 	}
-	final, err := book.Checkpoint(ctx)
+	return out, nil
+}
+
+// previousTree is the tree a window's open record names.
+func previousTree(ctx context.Context, shelf *evidencebook.Shelf, label string) (*evidencebook.WindowTree, error) {
+	book, _, err := shelf.WindowBook(ctx, label)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	record, err := cli.VerifyCheckpoint(windowProfile(p, final.LogID), final.Statement)
+	opens, err := book.Query(ctx, evidencebook.Filter{RecordType: evidencebook.RecordTypeWindowOpen})
+	if err != nil {
+		return nil, err
+	}
+	if len(opens) == 0 {
+		return nil, fmt.Errorf("%w: window %s holds no open record", evidencebook.ErrCorrupt, label)
+	}
+	var open evidencebook.WindowOpenStatement
+	if err := json.Unmarshal(opens[0].Header.Statement, &open); err != nil {
+		return nil, fmt.Errorf("%w: window %s's open record: %v", evidencebook.ErrCorrupt, label, err)
+	}
+	return open.Previous, nil
+}
+
+// mmrSize is a window checkpoint's MMR size, the key its witness delivery
+// is kept under.
+func mmrSize(p cli.Profile, cp evidencebook.Checkpoint) (uint64, error) {
+	record, err := cli.VerifyCheckpoint(windowProfile(p, cp.LogID), cp.Statement)
 	if err != nil {
 		return 0, err
 	}
 	return record.MMRSize, nil
 }
 
-// seedFinals records each closed window's final checkpoint as due for the
-// profile's witness, once: where the agreement names a witness, a window's
-// final checkpoint is the one it witnesses (Sherlock2, #689).
+// seedFinals records each window's boundary and final checkpoints as due
+// for the profile's witness, once: where the agreement names a witness, a
+// window's final checkpoint is the one it witnesses (Sherlock2, #689), and
+// its boundary is witnessed too (evidencebook#807).
 func seedFinals(ctx context.Context, p cli.Profile, shelf *evidencebook.Shelf, windows []evidencebook.WindowState) error {
 	service, err := cli.ServiceID(p)
 	if err != nil || service == "" {
 		return err
 	}
-	for _, w := range windows {
-		if !w.Closed {
-			continue
-		}
-		book, _, err := shelf.WindowBook(ctx, w.Label)
+	due, err := witnessedCheckpoints(ctx, shelf, windows)
+	if err != nil {
+		return err
+	}
+	for _, d := range due {
+		size, err := mmrSize(p, d.checkpoint)
 		if err != nil {
 			return err
 		}
-		final, err := book.Checkpoint(ctx)
-		if err != nil {
-			return err
-		}
-		record, err := cli.VerifyCheckpoint(windowProfile(p, final.LogID), final.Statement)
-		if err != nil {
-			return err
-		}
-		if err = windowWitnessStore(p, w.Label).seed(service, record.MMRSize, final.Statement, time.Now()); err != nil {
+		if err = windowWitnessStore(p, d.window.Label).seed(service, size, d.checkpoint.Statement, time.Now()); err != nil {
 			return err
 		}
 	}

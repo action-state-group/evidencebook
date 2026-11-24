@@ -70,6 +70,11 @@ type openedBook struct {
 	originals cli.ArtifactStore
 	// lastCommit is the committed_at of the book's last record.
 	lastCommit time.Time
+	// inGrace marks a book forPeriod chose: an earlier window in its grace,
+	// which takes only a Close for a period inside it (evidencebook#807);
+	// current is then the current window's book, which takes the rest.
+	inGrace bool
+	current *evidencebook.Book
 }
 
 // refuseDisplacedClose keeps a Close from being sealed over times that
@@ -430,6 +435,9 @@ func bookError(err error) error {
 	if errors.Is(err, evidencebook.ErrInvalid) {
 		return errors.Join(cli.InputError("the evidence book refused this as invalid: "+err.Error()), err)
 	}
+	if errors.Is(err, evidencebook.ErrInGrace) {
+		return errors.Join(cli.Hint(cli.ErrInput, err.Error()+": end the chain at the window before it (--to), or wait until it closes; `book window roll` then closes it"), err)
+	}
 	return err
 }
 
@@ -639,10 +647,12 @@ type reconcileResult struct {
 // Close sealed, and none for a close/v1 Close, whose body has no pairs.
 // Close is the sealed body as stored.
 type closeResult struct {
-	RecordID       string                       `json:"record_id"`
-	Seq            uint64                       `json:"seq"`
-	Period         string                       `json:"period"`
-	Counterparty   string                       `json:"counterparty"`
+	RecordID     string `json:"record_id"`
+	Seq          uint64 `json:"seq"`
+	Period       string `json:"period"`
+	Counterparty string `json:"counterparty"`
+	// Window is the window whose book holds the Close, on a windowed store.
+	Window         string                       `json:"window,omitempty"`
 	AlreadyClosed  bool                         `json:"already_closed"`
 	PeerBundle     string                       `json:"peer_bundle,omitempty"`
 	PeerClose      string                       `json:"peer_close,omitempty"`
@@ -798,11 +808,13 @@ func reconcileCommand() *cobra.Command {
 		if e != nil {
 			return e
 		}
-		defer func() { err = errors.Join(err, opened.release()) }()
+		// The store opened here is released, whichever window's book the
+		// period uses (forPeriod returns one sharing its shelf).
+		defer func(o openedBook) { err = errors.Join(err, o.release()) }(opened)
 		if e = opened.refuseDisplacedClose(); e != nil {
 			return e
 		}
-		if e = opened.periodInWindow(a.period.start, a.period.end); e != nil {
+		if opened, e = opened.forPeriod(c.Context(), a.period.start, a.period.end); e != nil {
 			return e
 		}
 		in, e := reconcileInput(c.Context(), opened.book, a.period, a.counterparty, a.peer, true)
@@ -980,15 +992,20 @@ func closeCommand() *cobra.Command {
 		if e != nil {
 			return e
 		}
-		defer func() { err = errors.Join(err, opened.release()) }()
+		// The store opened here is released, whichever window's book the
+		// period uses (forPeriod returns one sharing its shelf).
+		defer func(o openedBook) { err = errors.Join(err, o.release()) }(opened)
 		if e = opened.refuseDisplacedClose(); e != nil {
 			return e
 		}
-		if e = opened.periodInWindow(a.period.start, a.period.end); e != nil {
+		if opened, e = opened.forPeriod(c.Context(), a.period.start, a.period.end); e != nil {
 			return e
 		}
 		book := opened.book
 		result := closeResult{Period: a.period.key, Counterparty: a.counterparty}
+		if opened.shelf != nil {
+			result.Window = opened.window.Label
+		}
 		closes, e := priorCloses(c.Context(), book, a.counterparty)
 		if e != nil {
 			return e
@@ -1068,7 +1085,7 @@ func closeCommand() *cobra.Command {
 	periodFlags(cmd)
 	cmd.Flags().Bool("since-last", false, "Start the window just after the furthest position an earlier Close with this counterparty reached")
 	cmd.Flags().String("capsule-out", "", "Also write the Close as an artifact.Record for `verify --capsule`; a file already holding exactly those bytes is left alone (a repeat is a no-op), any other file there is refused")
-	cmd.Flags().String("bundle-out", "", "Also write an Evidence Bundle rooted at the Close (commits a disclosure record and a checkpoint)")
+	cmd.Flags().String("bundle-out", "", "Also write an Evidence Bundle rooted at the Close (commits a disclosure record and a checkpoint; in an earlier window in its grace the checkpoint is that window's and the disclosure record goes in the current window)")
 	return cmd
 }
 
@@ -1099,9 +1116,25 @@ func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *cl
 	if err != nil {
 		return err
 	}
-	bundle, err := opened.book.Bundle(c.Context(), evidencebook.BundleRequest{Root: sealed.RecordID, Include: include, WithholdPayloads: true, ProducerKey: key.Public().(ed25519.PublicKey), ConductPacks: conduct})
+	request := evidencebook.BundleRequest{Root: sealed.RecordID, Include: include, WithholdPayloads: true, ProducerKey: key.Public().(ed25519.PublicKey), ConductPacks: conduct}
+	if opened.inGrace {
+		// A window in its grace takes only Closes: the bundle is anchored at
+		// a checkpoint of that window, and its disclosure record goes in the
+		// current window, where the hand-over happens (Sherlock2, #828).
+		anchor, err := opened.book.Checkpoint(c.Context())
+		if err != nil {
+			return bookError(err)
+		}
+		request.At, request.DisclosureRecordedElsewhere = &anchor, true
+	}
+	bundle, err := opened.book.Bundle(c.Context(), request)
 	if err != nil {
 		return bookError(err)
+	}
+	if opened.inGrace {
+		if _, err = opened.current.Append(c.Context(), *bundle.DisclosureEntry); err != nil {
+			return bookError(err)
+		}
 	}
 	if _, err = evidencebook.VerifyBundle(bundle.JSON); err != nil {
 		return err
