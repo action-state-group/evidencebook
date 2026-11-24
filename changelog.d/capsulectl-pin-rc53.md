@@ -1,0 +1,4 @@
+### Changed: `capsulectl` pins capsule-cli v0.1.0-rc53 and report v0.8.0 (evidencebook-skills#248)
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc53` (was rc52; capsule-viewer/go v0.23.1, so `presentation build` draws an `eu-ai-act-obligations-report/v2` report, capsule-cli#630) and `report` `v0.8.0` (was v0.7.0). The report module's own changes since v0.7.0 are the coverage banner that names each placed deal (#848), `capsulectl-deal` emitting `parent-log-witness/v1` (#826) and the rc50 pins (#816); the last two already shipped in capsulectl rc52. New in `capsulectl/v0.1.0-rc53` since rc52: the window-split deal store (#847), the buyer's confirmed task authority (#841) and `book window convert` (#837).
+- `capsulectl/go.mod` also requires the `evidencebook` library at 8ddb2abe (was 3550482e), which carries a placed deal's coverage line and findings naming the deal book once (#849).
