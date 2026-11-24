@@ -1,0 +1,2 @@
+<!-- changelog: capsulectl/CHANGELOG-deal.md -->
+- `capsulectl deal` docs: `skills/deal/ASSURANCE.md` writes down the difference between the witness (on by default, `deal init --no-witness` to opt out) and a countersignature (manual, per deal, per bundle), with the command sequence to add one. No behavior changes: `deal init` already points a new profile at Action State's hosted witness (evidencebook#862).

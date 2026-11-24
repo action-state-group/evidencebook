@@ -774,7 +774,7 @@ capsulectl --profile deal deal init --dir ~/.local/share/capsule-deal
 ```
 
 This creates a local SQLite store and two signing seeds (mode 0600), and
-turns on the public witness by default (`--no-witness` turns it off). It
+turns on the public witness by default (`--no-witness` turns it off; `ASSURANCE.md` compares it with a countersignature). It
 prints `public_key`: the other side names it in an offer's `to`, so give it
 to them when they make the offer. Raw names, numbers, addresses and message
 text stay in this local store: each sealed step is an x-deal-v1 record (see

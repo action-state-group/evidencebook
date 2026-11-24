@@ -238,7 +238,8 @@ Content never leaves the machine. By default, one thing does: a checkpoint of
 hashes, once a tick.
 
 - **Witness (on by default; `deal init --no-witness` turns it off).** See
-  "Witness cadence" below. The witness sees hashes and a checkpoint size
+  "Witness cadence" below, and [ASSURANCE.md](ASSURANCE.md) for how it differs
+  from a countersignature. The witness sees hashes and a checkpoint size
   that grows by the same amount every tick, at a time on the profile's
   cadence: never content, how many deals there are, or when they happen.
 - **Remote checker (optional).** When `CAPSULE_DEAL_CHECK_URL` is set

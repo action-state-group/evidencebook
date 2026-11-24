@@ -17,9 +17,13 @@ countersign request` and `capsulectl countersign verify` already handle. The
 bundle digest leaves out only the `countersignatures` member itself, so the
 signature covers everything else in that file.
 
-capsulectl sends nothing to get one. How a countersigner came to sign a
-bundle is outside capsulectl. The deal commands only check a countersignature
-you already hold:
+No deal command asks for a countersignature or sends a bundle anywhere: the
+deal commands only check one you already hold. You get one by asking the
+countersigner you chose with `capsulectl countersign request` once the bundle
+(step 1 below) exists; [ASSURANCE.md](ASSURANCE.md) gives the whole sequence
+with that request and says how it differs from the witness that is on by
+default. These commands apply to an x-deal-v0 deal only. With a signature you
+hold:
 
 ```sh
 # 1. Write the deal's report bundle.
