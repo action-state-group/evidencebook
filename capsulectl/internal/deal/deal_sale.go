@@ -53,6 +53,9 @@ func dealSaleNewCommand() *cobra.Command {
 			return err
 		}
 		o.Who = dealWho{}
+		if err = o.requireConfirmed(); err != nil {
+			return err
+		}
 		if o.Recourse.Rail == "" {
 			return cli.InputError("recourse needs the payment rail and whether it is refundable")
 		}

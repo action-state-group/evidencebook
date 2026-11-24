@@ -1365,7 +1365,22 @@ func dealOpenCommand() *cobra.Command {
 		case !validDate(o.ExpectCloseBy):
 			return cli.InputError("expect_close_by must be a date, YYYY-MM-DD")
 		}
+		// Show the user what will be recorded, before anything is sealed.
+		if show, _ := c.Flags().GetBool("authority-line"); show {
+			if !o.needsAuthorityLine() {
+				return cli.InputError("--authority-line is for a buyer's typed deal that allows pay (--records typed, intent.allowed with pay)")
+			}
+			return runDeal(c, false, func(_ context.Context, s *dealSession, _ string, _ []sealedEvent) error {
+				return cli.Output(c, map[string]any{"authority_line": renderAuthorityLine(s.p, o)})
+			})
+		}
+		if err = o.requireConfirmed(); err != nil {
+			return err
+		}
 		return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
+			if err := o.requireShown(s.p); err != nil {
+				return err
+			}
 			// The pinned materiality predicate, sealed into the baseline from
 			// the profile (never the input): a check under another one later
 			// is flagged. One that cannot be read refuses the open.
@@ -1455,10 +1470,17 @@ func dealOpenCommand() *cobra.Command {
 				out["skill"] = map[string]any{"skill_md_digest": o.Skill.Digest, "other_copies": o.Skill.OtherCopies, "others": o.Skill.Others}
 			}
 			return cli.Output(c, cli.Speak(out, s.p, func(w cli.Wording) cli.Narration {
-				if heldDeals > 0 {
+				var lines []string
+				if o.needsAuthorityLine() {
+					lines = append(lines, w.Line("say.open.confirmed", nil))
+				}
+				if heldDeals == 0 {
+					lines = append(lines, w.Line("say.open.first", nil))
+				}
+				if len(lines) == 0 {
 					return silent(w)
 				}
-				return line(w.Line("say.open.first", nil))
+				return line(lines...)
 			}))
 		})
 	}}
@@ -1466,6 +1488,7 @@ func dealOpenCommand() *cobra.Command {
 	cmd.Flags().String("deal-id", "", "Open your side of a deal the other party opened, under the deal id it gave you (deal- and 16 hex): both copies then carry one deal id, so they can be composed. Default: a new random id")
 	cmd.Flags().String("skill", "", "The SKILL.md the agent is following (or $"+dealSkillEnv+"): its digest is sealed in the baseline")
 	cmd.Flags().String("records", "", "The record set: x-deal-v0 (the default) or typed (the typed action records, which carry the check contract)")
+	cmd.Flags().Bool("authority-line", false, "Print the line to show the user before a buyer's typed deal that allows pay opens (what will be recorded as authorized); seals nothing. Their own words answering it go in intent.confirmed")
 	cmd.Flags().String("sale", "", "A sale id from `deal sale new`: open this buyer's thread under the sale's request and task authority (typed records)")
 	return cmd
 }
