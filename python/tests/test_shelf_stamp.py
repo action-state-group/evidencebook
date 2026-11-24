@@ -654,3 +654,36 @@ def test_existing_journal_never_creates_it(fx):
         shelf.release()
         with pytest.raises(ReleasedError):
             shelf.existing_journal()
+
+
+def test_verify_witness_receipt_for_a_reader(fx):
+    """Go's TestVerifyWitnessReceipt and TestVerifyWitnessReceiptTime: a
+    trailing slash on the witness's URL is dropped, a receipt missing a part
+    is invalid with no error, a verified receipt gives its registration time
+    and a receipt with none gives none."""
+    from dataclasses import replace
+
+    from evidencebook.cadence import (WITNESS_INVALID, verify_witness_receipt_for_reader,
+                                      verify_witness_receipt_time)
+
+    with fx.open() as shelf:
+        c, _ = stamp_cadence(shelf)
+        statement = c.tick(START).tick.checkpoint
+        r = script.mint_receipt(statement)
+        slashed = replace(r, ts_url=r.ts_url + "/")
+        check, key_id = verify_witness_receipt_for_reader(statement, slashed, script.DIRECTORY)
+        assert check.state == WITNESS_VERIFIED and key_id
+        check, key_id = verify_witness_receipt_for_reader(
+            statement, replace(r, entry_hash=""), script.DIRECTORY)
+        assert check.state == WITNESS_INVALID and key_id == ""
+
+        iat = int((START + timedelta(minutes=5)).timestamp())
+        check, key_id, at = verify_witness_receipt_time(statement, script.mint_receipt(statement, iat),
+                                                        script.DIRECTORY)
+        assert check.state == WITNESS_VERIFIED and key_id and at == START + timedelta(minutes=5)
+        check, key_id, at = verify_witness_receipt_time(statement, r, script.DIRECTORY)
+        assert check.state == WITNESS_VERIFIED and key_id and at is None, "a receipt with no time gives none"
+        later = c.tick(START + timedelta(hours=1)).tick.checkpoint
+        other = replace(script.mint_receipt(statement, iat), receipt=script.mint_receipt(later, iat).receipt)
+        check, _, at = verify_witness_receipt_time(statement, other, script.DIRECTORY)
+        assert check.state != WITNESS_VERIFIED and at is None, "a receipt for another statement gives no time"
