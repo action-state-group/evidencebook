@@ -99,8 +99,8 @@ Show it as it is, seal only what the user answers (`loop_deal_approve`), and cal
 `check_id`. A leg or an act the tool seals returns `person_signature: missing` until the person has signed it: say "settled, as the agent's records show", never that the user signed. The scripted run plays the user: its answers are the script's, and its records say what the script said, not what a person consented to.
 
 A deal is admitted by `capsule-engine admission evaluate` over the pack in `admission-pack.json` (capsule-engine's
-`ladder` conformance pack), for this price and currency. The node seals the decision (`deal admit`) and the agreement
-cites it. With this pack a deal under one USD is a GO; a larger price asks for history or a stake and the tool refuses
+`ladder` conformance pack, `asg/admission_test/0.1.0`: **a test pack, not a policy for real deals**: its trust roots are placeholders (`ctl-trusted`, `judge-a`, `witness-a`), so a node that deals for real gives its own pack), for this price and currency. The node seals the decision (`deal admit`) and the agreement
+cites it. With this pack a deal under one USD is a GO; a larger price asks for more (from one USD the peer's `history_card/1` and a settled exchange with you, from ten USD also two vouches) and the tool refuses
 (answer the asks in capsule-engine, or give the node a pack of your own). `loop_admit` is the node's own GO or NO on
 a peer, sealed in the node book before any deal: a NO stops every deal with it.
 
@@ -202,7 +202,7 @@ CI runs it on every bundle the scripted run writes (`python/examples/goose/tests
 A card can be registered on a transparency service, so that a relying party you give the card statement to, and that accepts the service, can check that your key stated this
 card no later than a time. This is off until you name a service: there is no default service, and with
 `GOOSE_CARD_SERVICE` unset `loop_register_card` refuses and nothing is sent. The card is complete without it, and a
-registration that fails changes nothing about the card. It runs `capsulectl-book card register` (`GOOSE_CAPSULECTL_BOOK`
+registration that fails changes nothing about the card, but the service may have logged the statement anyway (the error says so). It runs `capsulectl-book card register` (`GOOSE_CAPSULECTL_BOOK`
 names another binary), over the node's `history_card/2`.
 
 `card-service.example.json` names the service this demo uses: capsule-anchor at
@@ -219,7 +219,7 @@ export GOOSE_CARD_SERVICE=python/examples/goose/card-service.example.json
 ```
 
 `loop_register_card` writes the card statement, with the service's Receipt, to `out_path`; keep it beside the card.
-A registration is permanent: the service's log is append-only, and it learns which of your keys registered a card for
+A registration is permanent: the service's log is append-only, and it, and anyone who reads its log, learn which of your keys registered a card for
 which anchor, and when. The statement carries the card's digest, not the card, but a digest does not hide a small card from
 a party that can guess its counts. What a passing Receipt shows, and what it does not, is in
 `capsulectl-book card register --help`; a relying party checks it with its own copy of the service's key

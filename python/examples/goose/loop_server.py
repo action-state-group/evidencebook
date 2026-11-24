@@ -316,8 +316,8 @@ def loop_settle(deal_id: str, payment_ref: str, out_path: str, check_id: str = "
     payment hash); this tool drives no rail and moves no money. A check that pauses returns the card the user
     must see (``say``) and ``paused: true``: show it as it is, then seal their answer with ``loop_deal_approve``
     and call again with the ``check_id``.
-    The result's ``person_signature: missing`` means the person has not signed this record. Say "settled, as the
-    agent's records show"; never say the user signed it."""
+    When the result has ``person_signature: missing``, the act is sealed but not yet signed by the person: do not
+    tell the user it is final. Say "settled, as the agent's records show"; never say the user signed it."""
     done = node().pay(deal_id, payment_ref, _path(out_path), check_id)
     return _out(ok=True, step="06", file=out_path, **done)
 
@@ -334,8 +334,8 @@ def loop_deal_approve(deal_id: str, check_id: str, choice: str, said: str) -> st
 def loop_deal_received(deal_id: str, amount_minor: int, payment_ref: str, out_path: str) -> str:
     """The seller's payee leg: what it received (an amount in minor units and the payment reference it observed),
     written to ``out_path`` for the buyer. Keep the buyer's payer leg first (``loop_deal_reconcile``).
-    The result's ``person_signature: missing`` means the person has not signed this record. Say "settled, as the
-    agent's records show"; never say the user signed it."""
+    When the result has ``person_signature: missing``, the act is sealed but not yet signed by the person: do not
+    tell the user it is final. Say "settled, as the agent's records show"; never say the user signed it."""
     done = node().received(deal_id, amount_minor, payment_ref, _path(out_path))
     return _out(ok=True, step="06", file=out_path, **done)
 
@@ -344,8 +344,8 @@ def loop_deal_received(deal_id: str, amount_minor: int, payment_ref: str, out_pa
 def loop_deal_deliver(deal_id: str, out_path: str, observed: str = "delivered", check_id: str = "") -> str:
     """The seller's delivery: a commit review, then the act, written to ``out_path`` for the buyer. A review that
     pauses is answered as for ``loop_settle``.
-    The result's ``person_signature: missing`` means the person has not signed this record. Say "settled, as the
-    agent's records show"; never say the user signed it."""
+    When the result has ``person_signature: missing``, the act is sealed but not yet signed by the person: do not
+    tell the user it is final. Say "settled, as the agent's records show"; never say the user signed it."""
     done = node().deliver(deal_id, _path(out_path), observed, check_id)
     return _out(ok=True, step="06", file=out_path, **done)
 
@@ -478,14 +478,16 @@ def loop_standard_history(out_path: str, shared: bool = False) -> str:
 def loop_register_card(out_path: str) -> str:
     """Register this node's ``history_card/2`` on the transparency service named in ``GOOSE_CARD_SERVICE`` (a
     service file: name, operator, url and the keys its Receipts verify under) and write the card statement with
-    its Receipt to ``out_path``. Opt-in: with ``GOOSE_CARD_SERVICE`` unset nothing is sent and the tool refuses;
-    the card is complete without it, and a failed registration changes nothing.
+    its Receipt to ``out_path``. Opt-in: with ``GOOSE_CARD_SERVICE`` unset nothing is sent and the tool refuses.
+    The card is complete without a registration, and a failed registration changes nothing about the card, but
+    the service may have logged the statement anyway (the error says so).
 
     Call it only when the user has asked to register this card, and tell them first that it is permanent and
-    that the service learns which of their keys registered a card for which anchor, and when. Say who runs the
-    service as the result names it. What a passing Receipt shows is what ``capsulectl book card register --help``
-    says: that this card existed by the Receipt's time, not that its counts are right, and ``anchor_inclusion``
-    stays NOT_CHECKED."""
+    that the service and anyone who reads its log learn which of their keys registered a card for which anchor,
+    and when. Say who runs the service as the result names it. What a passing Receipt shows is what
+    ``capsulectl-book card register --help`` says: that this exact card existed by the Receipt's registration
+    time, when it carries one (without one, only that the service logged the statement); not that its counts are
+    right, not that this is the holder's only card, and ``anchor_inclusion`` stays NOT_CHECKED."""
     service = os.environ.get("GOOSE_CARD_SERVICE")
     if not service:
         raise Refused("no transparency service is configured: set GOOSE_CARD_SERVICE to a service file; "
