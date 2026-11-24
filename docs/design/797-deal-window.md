@@ -47,8 +47,12 @@ Journal bool
 - It is written with the window in `shelf_window.journal` when the file is created and compared
   on every reopen, as `Grace` is; `ReadShelfWindow` (`window_book.go:761-805`) reads it, so a host
   reopens with the stored policy. The version rule at `window_book.go:241` becomes: `Journal`
-  gives shelf **version 5**, else grace above 0 gives 4, else 3. A build that knows up to 4 refuses
-  a version 5 file rather than refusing its deal books one by one.
+  gives shelf **version 6**, else grace above 0 gives 4, else 3 (version 5 is #836's shelf with a
+  predecessor, `689-window-books.md` §11 on its branch). A build that knows only up to 5 refuses a
+  version 6 file rather than refusing its deal books one by one. A version 6 file never has a
+  predecessor (converting a deal store is not this item), and a test checks that a journal policy
+  on a version 5 file is refused. Whichever of #836 and this item merges second takes the higher
+  number.
 - It is created already on book facts: the creating transaction writes the `shelf_migration` row
   as `done` (there is no unmigrated cadence log to carry over), so `Cadence.Migrated` is true and
   `deal set-version x-deal-v1 --migrate` skips `Migrate`. `Migrate` on a #689 windowed shelf
@@ -75,8 +79,11 @@ Journal bool
   one seq space (window N's records follow window N-1's close record), offering what those readers
   call on a `*Book`: `Size`, `Query` by seq, `ResolvePayload`, and the records list. It is
   append-only: a window closes before the next opens and a closed window takes no record
-  (grace 0), so a seq never moves and `journalSeen` stays valid. On an unwindowed shelf the view
-  is the one journal. `StatusInput.Journal`, `ExistingJournal` and the readers above move to a
+  (grace 0), so a seq never moves and `journalSeen` stays valid. The view opens each window's book as
+  `Shelf.Journal` opens the journal today, so a record a crash left stored but not yet in its log
+  is recovered and visible to `Query` and `ResolvePayload` (`journalHolds` relies on it,
+  `deal_v1.go:392-398`; a second admit sealed for a missed one would fail authorization for good,
+  `deal_v1_admit.go:196-199`). On an unwindowed shelf the view is the one journal. `StatusInput.Journal`, `ExistingJournal` and the readers above move to a
   small interface both satisfy; `existingJournalLocked` returns the view on a windowed shelf
   without creating or rolling anything.
 - **Journal facts.** `factFor` decides a journal fact by `shelf_logs.kind = 'journal'`, not by the
@@ -97,16 +104,17 @@ Journal bool
 
 ## 3. Deal books placed in a window (R2)
 
-- `Shelf.Place(ctx, logID) (*Book, Window, error)` places a new, empty book in the current window
-  (after a roll): it seals a `window_place` record (`window_place/v1`: `log_id`) in that window's
+- `Shelf.Place(ctx, logID, at) (*Book, Window, error)` rolls to `at` and places a new, empty book
+  in the window holding `at`, refusing (`ErrWindowClosed`) when that is not the current window: it seals a `window_place` record (`window_place/v1`: `log_id`) in that window's
   journal, then writes `shelf_window_placed (log_id PRIMARY KEY, label)`. A place record without
   its row gets the row on the next open; a row is never written without the record. Placing a
   book that is placed and holds records returns its window. Placing one that is still empty in an
   earlier window (a crash between `Place` and the agreement, then a retry after the boundary)
   places it again in the current window; the latest place record counts.
-- capsulectl-deal calls `Place` for a v1 deal book just before it appends the agreement (the
-  deal book's seq 1, PROFILE.md §3), outside the in-flight record time, so the agreement's
-  `committed_at` is in the placing window. A received agreement is not in an own book
+- capsulectl-deal reads the agreement's time once, calls `Place` with it, and appends the
+  agreement (the deal book's seq 1, PROFILE.md §3) with that same time as the in-flight record
+  time (`deal_v1_book.go:217` reads `v1Now()` today; it takes the time read before `Place`), so
+  a clock that crosses a boundary between the two cannot put the agreement in the next window. A received agreement is not in an own book
   (`shelf_received`), so it is not placed. A deal stays in the window its agreement was sealed in
   as it runs past the window's end. Its later deal-book records go to its own book; its journal
   records (checks, approvals, messages) go to the window of their own time.
@@ -139,6 +147,12 @@ what must a Terms Pack report over windows on a deal shelf cover?
   book in a window's `placed` once, at its latest checkpoint; `VerifyReportCoverage` names a
   placed deal with no answer (`deal <log id> of window 2026-11 has no answer`). A deal book is not
   bounded by the window, so its answer covers the whole deal, including records after the window.
+  It needs three root-package changes beyond (a): `Shelf.Respond` routes a pin on a placed deal
+  book's checkpoint to that book (today `answeringBookLocked` looks only through window rows,
+  `window_respond.go:62-93`); `ReportFromWindows` accepts, beside one answer per window at its
+  final tree, one answer per placed deal at any checkpoint of its book, and lets claims cite them
+  (`window_report.go:137-139`); and `VerifyReportCoverage` applies the same rule
+  (`window_report.go:386-388`).
 
 The engineering recommendation is (b): the deal's own acts are what a Terms Pack judges a deal
 holder on, and (a) would pass coverage while leaving every act out. The build follows the answer.
@@ -166,11 +180,12 @@ respond --request FILE --pack FILE...`, which registers the given compiled packs
 
 ## 6. Owner, doors, ports, PRs
 
-- Owner: evidencebook: the root package (policy member, version 5, `Place`, `JournalView`,
-  `WindowEnded`, journal facts by kind, `window_close/v2`), `dealprofile/xdealv1` (readers on the
+- Owner: evidencebook: the root package (policy member, version 6, `Place`, `JournalView`,
+  `WindowEnded`, journal facts by kind, `window_close/v2`, and under §4 (b) deal-book routing in
+  `Shelf.Respond` and the deal answers in `ReportFromWindows` and `VerifyReportCoverage`), `dealprofile/xdealv1` (readers on the
   view), `capsulectl/internal/deal` (verbs) and `dealprofile/x-deal-v1/PROFILE.md` (§3 placement,
   §8 one sentence). No AAC wire change; capsule-cli unchanged.
-- Doors, engineering's unless Sherlock2 says otherwise: shelf version 5 and its column; record type
+- Doors, engineering's unless Sherlock2 says otherwise: shelf version 6 and its column; record type
   `window_place` (`window_place/v1`); `window_close/v2`. User-visible what for Sherlock2: what a
   report over windows covers (§4), `deal init --window` and its default.
 - Not in this item: converting an existing deal store; Rust and Python ("Frozen port: ..." issues,
@@ -182,16 +197,18 @@ respond --request FILE --pack FILE...`, which registers the given compiled packs
 ## 7. Tests
 
 - Policy: `Journal` written, compared and read back by `ReadShelfWindow`; reopen without it
-  refused; `Base` other than `journal` or a grace refused; version 5; created migrated; `Migrate`
+  refused; `Base` other than `journal` or a grace refused; version 6; created migrated; `Migrate`
   refused on a #689 windowed shelf.
 - Journal: appends before and after a boundary land in each window; the view over three windows
   (one empty) in order with one seq space; `ResolvePayload` from a closed window; a receive cache
   built before a roll reads the new window's records; a crash between a window's open and its
-  first journal record; a recovered record with an earlier `at` behaves as on one journal.
+  first journal record; a recovered record with an earlier `at` behaves as on one journal. A crash after an admit is stored and
+  before its append, then `deal admit` again: the view shows it held and no second admit is sealed.
 - Facts: a stamp across a boundary gives each window's journal a journal fact (size hidden) and
   each v1 deal book its profile and status, with the offer in an earlier window; a closed,
   witnessed window leaves the live set.
-- Place: the current window; a place record without its row recovered; a placed, written book
+- Place: the current window; an agreement time read before a boundary and `Place` called after
+  it refused, under a fixed clock stepping between the two; a place record without its row recovered; a placed, written book
   returns its window; an empty book placed in an earlier window placed again; node and case books
   open unplaced; `window_close/v2.placed` lists the window's deals, empty for an empty window; a
   v1 chain still verifies.
@@ -226,6 +243,15 @@ was checked in code and accepted; none declined.
 | the `at` ordering argument conflates header and block time (both) | P2 | §2 reworded; §7 test |
 | the policy's source on reopen (Kimi) | P3 | §1, §5 `ReadShelfWindow` |
 | no pack registration for respond (Kimi) | P3 | §4 |
-| version 5 vs the grace version check; clock stepping back (stand-in) | P3 | §1, §5 |
+| the new version vs the grace version check; clock stepping back (stand-in) | P3 | §1, §5 |
+| verification (stand-in): option (b) omits the respond, report and verifier changes it needs | P2 | §4 (b), §6; targeted check |
+| verification (Kimi): the view must recover a stored, unlogged record as the journal's open does | P2 | §2; §7 test; targeted check |
+| verification (stand-in): the agreement time is read after `Place`, so a boundary can split them | P3 | §3 `Place(ctx, logID, at)`; §7 test |
 
-review: rounds 1, accepted 15, declined 0, pre-existing 0; classes: missing reader migration, privacy leak in facts, scope gate breaks callers, coverage gap, write order, crash recovery, live-set growth, doc contradiction, dead machinery, compatibility, wrong invariant; record: this section
+Verification (one call each, pre-approved for P1 fixes, on `64a457c1`): both confirmed every
+round-0 finding fixed; their three new findings (P2, P2, P3) are fixed in the next commit and
+checked by the driver against the cited code (no model round, as the severity rule says). The
+version number moved from 5 to 6 after the Sherlock2 twin found #836 already uses 5
+(`689-window-books.md` §11 on `claude/eb-808`).
+
+review: rounds 2, accepted 18, declined 0, pre-existing 0; classes: missing reader migration, missing recovery invariant, missing dependency, privacy leak in facts, scope gate breaks callers, coverage gap, write order, crash recovery, live-set growth, doc contradiction, dead machinery, compatibility, wrong invariant; record: this section
