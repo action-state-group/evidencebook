@@ -106,6 +106,7 @@ package	kind	symbol	feature	rust	python
 .	type	CardRegisteredReport	card-registration	frozen #618	frozen #619
 .	type	CardStatementRegistrar	card-registration	frozen #618	frozen #619
 .	type	ChainBoundary	window-books	frozen #798	frozen #799
+.	type	ChainDeal	window-books	frozen #844	frozen #845
 .	type	ChainFinding	window-books	frozen #798	frozen #799
 .	type	ChainPredecessor	window-books	frozen #798	frozen #799
 .	type	ChainTail	window-books	frozen #798	frozen #799
@@ -128,6 +129,7 @@ package	kind	symbol	feature	rust	python
 .	type	Coverage	request-reply-respond	ported	ported
 .	type	CoverageGiven	deal-reconcile	frozen #631	frozen #630
 .	type	CoverageOptions	window-books	frozen #798	frozen #799
+.	type	DealCoverage	window-books	frozen #844	frozen #845
 .	type	DealHalf	deal-reconcile	frozen #631	frozen #630
 .	type	DealMapping	standard-history	frozen #648	frozen #647
 .	type	DealReconcile	deal-reconcile	frozen #631	frozen #630
@@ -177,6 +179,7 @@ package	kind	symbol	feature	rust	python
 .	type	InclusionEvidence	substrates	ported	ported
 .	type	IndexRoot	indexes	ported	frozen #637
 .	type	IntervalEvidence	substrates	frozen #650	frozen #649
+.	type	JournalReader	window-books	frozen #844	frozen #845
 .	type	JournalStatus	shelf	frozen #646	frozen #645
 .	type	KeyRangeAnswer	indexes	ported	frozen #637
 .	type	KeyRangeProof	indexes	frozen #638	frozen #637
@@ -295,6 +298,7 @@ package	kind	symbol	feature	rust	python
 .	type	WindowLimiter	request-reply-respond	ported	ported
 .	type	WindowOpenStatement	window-books	frozen #798	frozen #799
 .	type	WindowPeriod	window-books	frozen #798	frozen #799
+.	type	WindowPlaceStatement	window-books	frozen #844	frozen #845
 .	type	WindowPolicy	window-books	frozen #798	frozen #799
 .	type	WindowState	window-books	frozen #798	frozen #799
 .	type	WindowTree	window-books	frozen #798	frozen #799

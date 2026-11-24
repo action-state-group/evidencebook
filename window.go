@@ -49,6 +49,13 @@ type WindowPolicy struct {
 	// PredecessorPolicy is the disclosure policy in force when the
 	// predecessor closed, which the first window opens with; nil for none.
 	PredecessorPolicy *DisclosurePolicy
+	// Journal makes the window books the shelf's journal (evidencebook#797,
+	// docs/design/797-deal-window.md): each window's journal is the window
+	// book "journal/<label>", of kind journal, and the shelf also holds its
+	// other books (one per deal, placed in a window with Place), the cadence
+	// and book facts. Base must then be JournalLogID, with no grace and no
+	// predecessor. Without it a windowed shelf holds window books only.
+	Journal bool
 }
 
 // Window is one window of a policy: its label and its half-open bounds
@@ -227,6 +234,11 @@ func (wp WindowPolicy) validate() error {
 		return fmt.Errorf("%w: a predecessor's policy needs its predecessor", ErrInvalid)
 	case !wp.Since.Equal(wp.Period.start(wp.Since)):
 		return fmt.Errorf("%w: the window policy's since (%s) is not the start of a %s", ErrInvalid, wp.Since.UTC().Format(time.RFC3339), wp.Period)
+	}
+	if wp.Journal && (wp.Base != JournalLogID || wp.Grace != 0 || wp.Predecessor != nil) {
+		// A deal shelf's journal takes no close/v1 Close, the one record a
+		// grace admits, and converting a deal store is not supported.
+		return fmt.Errorf("%w: a journal window policy has base %q, no grace and no predecessor", ErrInvalid, JournalLogID)
 	}
 	if wp.Grace < 0 || wp.Grace >= wp.Period.shortest() || wp.Grace%time.Second != 0 {
 		return fmt.Errorf("%w: a %s window's grace is whole seconds, at least zero and shorter than %s", ErrInvalid, wp.Period, wp.Period.shortest())

@@ -76,7 +76,9 @@ func (s *Shelf) answeringBookLocked(ctx context.Context, request Message) (*Book
 				return s.openLocked(ctx, row.logID)
 			}
 		}
-		return nil, nil
+		// On a shelf whose windows are its journal, a deal book placed in a
+		// window answers for itself (evidencebook#797 §4).
+		return s.placedBookPinnedLocked(ctx, pin)
 	}
 	for _, row := range slices.Backward(rows) {
 		book, err := s.openLocked(ctx, row.logID)
@@ -88,6 +90,39 @@ func (s *Shelf) answeringBookLocked(ctx context.Context, request Message) (*Book
 		book.mu.Unlock()
 		if slices.ContainsFunc(log, func(r Record) bool { return slices.Contains(r.Header.LinksTo(Cites), pin) }) {
 			return book, nil
+		}
+	}
+	return nil, nil
+}
+
+// placedBookPinnedLocked is the placed book whose stored checkpoints hold
+// pin, nil when none does or the shelf's windows are not its journal.
+func (s *Shelf) placedBookPinnedLocked(ctx context.Context, pin string) (*Book, error) {
+	if !s.cfg.Window.Journal {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT log_id FROM shelf_window_placed WHERE state = ? ORDER BY log_id`, placePlaced)
+	if err != nil {
+		return nil, err
+	}
+	var placed []string
+	for rows.Next() {
+		var logID string
+		if err := rows.Scan(&logID); err != nil {
+			return nil, errors.Join(err, rows.Close())
+		}
+		placed = append(placed, logID)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	for _, logID := range placed {
+		checkpoints, err := (&sqliteStore{db: s.db, bookID: logID}).Checkpoints(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if slices.ContainsFunc(checkpoints, func(cp Checkpoint) bool { return cp.Kind == SubstrateKindCLL && anchorDigest(cp) == pin }) {
+			return s.openLocked(ctx, logID)
 		}
 	}
 	return nil, nil

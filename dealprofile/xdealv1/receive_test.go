@@ -79,9 +79,17 @@ func newPartyKeyed(t *testing.T, name string, checkpointKey ed25519.PrivateKey) 
 		// A deal book's log holds its own records only, so the counterparty
 		// can recompute its checkpoints from the records it receives.
 		AuthenticatedIndexes: func(string) []evidencebook.AuthenticatedIndex { return []evidencebook.AuthenticatedIndex{} }}
+	if partyWindow != nil {
+		policy := *partyWindow
+		p.cfg.Window = &policy
+	}
 	p.open()
 	return p
 }
+
+// partyWindow, when set, makes each new party's shelf one whose windows are
+// its journal (evidencebook#797).
+var partyWindow *evidencebook.WindowPolicy
 
 func (p *party) open() {
 	p.t.Helper()

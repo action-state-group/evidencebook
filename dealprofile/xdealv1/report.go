@@ -631,7 +631,7 @@ func (p *StatusProvider) ReportSnapshot(ctx context.Context, logID string, c Rep
 	} else if a, ok := asAgree(rec.Body); kind != payloadV1 || !ok || a.Kind != KindAgreement {
 		return ReportSnapshot{}, notV1
 	}
-	journal, err := p.Shelf.ExistingJournal(ctx)
+	journal, err := p.Shelf.ExistingJournalView(ctx)
 	if err != nil {
 		return ReportSnapshot{}, err
 	}
@@ -684,7 +684,7 @@ func paymentsNotRun(b StatusBooks) map[string]string {
 // pair of each record read by record id; stable false when the book moved
 // during the read. The counterparty's prefix is the one
 // read the status walked.
-func (p *StatusProvider) reportBooks(ctx context.Context, logID, bookID string, book, journal *evidencebook.Book) (ReportBooks, map[string][]byte, bool, error) {
+func (p *StatusProvider) reportBooks(ctx context.Context, logID, bookID string, book *evidencebook.Book, journal evidencebook.JournalReader) (ReportBooks, map[string][]byte, bool, error) {
 	cps, err := book.Checkpoints(ctx)
 	if err != nil {
 		return ReportBooks{}, nil, false, err
@@ -694,7 +694,7 @@ func (p *StatusProvider) reportBooks(ctx context.Context, logID, bookID string, 
 		return ReportBooks{}, nil, false, fmt.Errorf("xdealv1: report: book %s has no checkpoint at its size %d; a stamp checkpoints it", logID, size)
 	}
 	cp := cps[len(cps)-1]
-	b, _, counterpart, pairs, ok, err := p.statusBooks(ctx, evidencebook.StatusInput{BookID: bookID, LogID: logID, Book: book, Journal: journal})
+	b, _, counterpart, pairs, ok, err := p.statusBooks(ctx, evidencebook.StatusInput{BookID: bookID, LogID: logID, Book: book, Journals: journal})
 	if err != nil {
 		return ReportBooks{}, nil, false, err
 	}
