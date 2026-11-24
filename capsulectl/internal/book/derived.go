@@ -339,7 +339,7 @@ func reportCoverageCommand() *cobra.Command {
 		Use:   "coverage",
 		Short: "Check that a report over a holder's windows covers its range: the chain links, the windows tile the range, and every window has its answer (reads only; needs no profile)",
 		Long: "Checks the bundle `report derive --chain` wrote, under the holder's checkpoint key you obtained yourself (never one read from the bundle). Each gap is named (\"window 2026-03 has no answer\", \"chain breaks at 2026-04\"); a range with any finding is not covered, and the command exits non-zero. " +
-			"On a deal store's report, every deal placed in a window needs its own answer too (\"deal deal/… of window 2026-03 has no answer\"), and each covered deal is printed with its line: its answer covers its whole book, records after its window included. " +
+			"On a deal store's report, every deal placed in a window needs its own answer too (\"deal/… of window 2026-03 has no answer\"), and each covered deal is printed with its line: its answer covers its whole book, records after its window included. " +
 			"Without --witness-directory, the windows' continuity is as the holder signed it. Each answer proves its rows are in the holder's log; the rows' field values are the holder's word; no proof shows that no row was left out.",
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {

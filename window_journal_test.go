@@ -382,7 +382,7 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	tampered.Windows[0].Deals[0].Latest = forkCP.Statement
 	_, chainFindings = VerifyWindowChain(tampered, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
 	require.Len(t, chainFindings, 1)
-	assert.Equal(t, "deal deal/a of window 2026-10: its latest tree does not extend its tree at the close", chainFindings[0].Text)
+	assert.Equal(t, "deal/a of window 2026-10: its latest tree does not extend its tree at the close", chainFindings[0].Text)
 
 	chainRecord, err := r.requester.RecordWindowChain(ctx, chain, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
 	require.NoError(t, err)
@@ -400,13 +400,13 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	partial := append(append([]string{}, responses...), dealA)
 	_, err = r.requester.ReportFromWindows(ctx, chainRecord.RecordID, partial, evaluateWindows(partial), ReportOptions{Derivation: pack}, VerifyChainOptions{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "deal deal/b of window 2026-11 has no answer")
+	assert.Contains(t, err.Error(), "deal/b of window 2026-11 has no answer")
 	// An answer anchored before the tree the chain proves is named, and no
 	// Result is sealed over it (Sherlock2 on #846).
 	earlyAll := append(append([]string{}, responses...), dealAEarly, dealB)
 	_, err = r.requester.ReportFromWindows(ctx, chainRecord.RecordID, earlyAll, evaluateWindows(earlyAll), ReportOptions{Derivation: pack}, VerifyChainOptions{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), fmt.Sprintf("deal deal/a of window 2026-10 is answered at a tree of %d records that is not the tree its window's chain proves", early.Entries))
+	assert.Contains(t, err.Error(), fmt.Sprintf("deal/a of window 2026-10 is answered at a tree of %d records that is not the tree its window's chain proves", early.Entries))
 
 	// At the coverage check: the proved size with another root, no answer,
 	// and two answers, each named.
@@ -424,7 +424,7 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	}, VerifyChainOptions{CheckpointKey: r.keys.Checkpoint})
 	require.NoError(t, err)
 	require.Len(t, findings, 1)
-	assert.Equal(t, fmt.Sprintf("deal deal/a of window 2026-10 is answered at a tree of %d records that is not the tree its window's chain proves", otherRoot.Entries), findings[0].Text)
+	assert.Equal(t, fmt.Sprintf("deal/a of window 2026-10 is answered at a tree of %d records that is not the tree its window's chain proves", otherRoot.Entries), findings[0].Text)
 	assert.True(t, deals["deal/a"].off)
 	assert.False(t, deals["deal/b"].off)
 	_, _, findings, err = coverageWithDeals(Header{Statement: body}, payload, []windowAnswer{
@@ -438,7 +438,7 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	for _, f := range findings {
 		texts = append(texts, f.Text)
 	}
-	assert.ElementsMatch(t, []string{"deal deal/a of window 2026-10 has no answer", "deal deal/b of window 2026-11 has 2 answers"}, texts)
+	assert.ElementsMatch(t, []string{"deal/a of window 2026-10 has no answer", "deal/b of window 2026-11 has 2 answers"}, texts)
 
 	all := append(partial, dealB)
 	var seen []WindowInputs
@@ -461,7 +461,7 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	assert.Equal(t, "deal/a", coverage.Deals[0].LogID)
 	assert.Equal(t, "2026-10", coverage.Deals[0].Window)
 	assert.Equal(t, aCP.Entries, coverage.Deals[0].Through.Entries, "deal/a's answer covers its perform after the window")
-	assert.Contains(t, coverage.Deals[0].Line, fmt.Sprintf("deal deal/a, placed in window 2026-10, answered over its whole book, through its checkpoint of %d records issued 2026-12-04", aCP.Entries))
+	assert.Contains(t, coverage.Deals[0].Line, fmt.Sprintf("deal/a, placed in window 2026-10, is answered over its whole book, through its checkpoint of %d records issued 2026-12-04", aCP.Entries))
 	assert.Contains(t, coverage.Deals[0].Line, "records after the window included")
 	assert.Equal(t, "deal/b", coverage.Deals[1].LogID)
 }
