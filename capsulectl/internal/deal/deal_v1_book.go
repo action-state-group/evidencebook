@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -212,9 +213,12 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 		if opening && !isAgreement() {
 			return bookSealed{}, cli.InputError("deal " + dealID + " has no deal book yet: it opens at your agreement (`deal agree`)")
 		}
+		// One clock read: the record's at, and on a windowed store the time
+		// its book is placed by (evidencebook#797 §3).
+		now := cli.DealClock().UTC().Truncate(time.Second)
 		block := xdealv1.Block{
 			Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, DealID: dealID,
-			RecordType: in.Body.RecordType(), At: v1Now(), Marks: in.Marks,
+			RecordType: in.Body.RecordType(), At: now.Format(time.RFC3339), Marks: in.Marks,
 			Seq: int64(size) + 1,
 		}
 		var prevID string
@@ -280,7 +284,25 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 		// next record: a write that landed since the tail was read (Receive names a
 		// counted ruling in the same book) is refused with ErrBusy, and the
 		// caller reads the tail again and rebuilds the record.
-		stored, err := book.AppendAt(ctx, size+1, entry)
+		var stored evidencebook.Record
+		appendAt := func(b *evidencebook.Book) error {
+			var err error
+			stored, err = b.AppendAt(ctx, size+1, entry)
+			return err
+		}
+		if opening && s.shelf.WindowPolicy() != nil {
+			// A windowed store places the deal's book in the window its
+			// agreement is sealed in, and appends the agreement in the same
+			// step (evidencebook#797 §3). Place skips the append when the book
+			// is no longer empty: another write took the place.
+			// A window that closed between the record's time and its placement
+			// is a place taken too: the next try reads the clock again.
+			if _, _, err = s.shelf.Place(ctx, logID, now, appendAt); err == nil && stored.RecordID == "" || errors.Is(err, evidencebook.ErrWindowClosed) {
+				err = evidencebook.ErrBusy
+			}
+		} else {
+			err = appendAt(book)
+		}
 		if err != nil {
 			if errors.Is(err, evidencebook.ErrBusy) {
 				return bookSealed{}, errPlaceTaken

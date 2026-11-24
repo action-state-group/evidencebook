@@ -181,12 +181,16 @@ what must a Terms Pack report over windows on a deal shelf cover?
 
 The build is (b).
 
-capsulectl-deal: `deal window list|roll|chain|publish` (the #689 verbs over the journal windows,
-sharing capsulectl-book's code where #828 and #837 put it rather than copying it) and `deal window
-respond --request FILE --pack FILE...`, which registers the given compiled packs on the shelf
-(`Shelf.RegisterDerivation`) and answers through `Shelf.Respond`. `deal node respond` and
-`deal respond` are unchanged. The requester side and the coverage verb stay capsulectl-book's
-(`book report derive --chain`, `book report coverage`).
+capsulectl-deal: `deal window list|roll|chain` (the #689 verbs over the journal windows; the
+deal plugin links no capsulectl-book package, so they are thin calls on the root package's
+`Windows`, `Roll` and `WindowChain`) and `deal window respond --request FILE --pack FILE...`,
+which registers the given compiled packs on the shelf (`Shelf.RegisterDerivation`) and answers
+through `Shelf.Respond`. There is no `deal window publish`: a deal store's witness sees its
+cadence log, whose book facts already cover every journal window and placed deal book, and the
+witnessed per-window final checkpoints a #689 chain can require (`VerifyChainOptions.Witnesses`)
+stay capsulectl-book's. `deal node respond` and `deal respond` are unchanged. The requester side
+and the coverage verb stay capsulectl-book's (`book report derive --chain`, `book report
+coverage`, which prints each deal's coverage line and the report's limit).
 
 ## 5. capsulectl-deal
 
@@ -216,8 +220,9 @@ respond --request FILE --pack FILE...`, which registers the given compiled packs
 - Not in this item: converting an existing deal store; Rust and Python ("Frozen port: ..." issues,
   Ethan 2026-11-22); the Mesh plugin; the Goose node.
 - PRs, after #828, #836 and #837 merge: (1) root package and `dealprofile/xdealv1` §1-§4 with
-  tests; (2) capsulectl-deal §4-§5 and the profile text. Then the tau2 demo's switch, filed in
-  evidencebook-skills.
+  tests (#846); (2) capsulectl-deal §4-§5, capsulectl-book's coverage lines and the profile text;
+  (3) the `report` module's page: each deal's coverage line and the report's limit, once its
+  root pin is bumped. Then the tau2 demo's switch, filed in evidencebook-skills.
 
 ## 7. Tests
 

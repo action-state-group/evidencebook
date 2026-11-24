@@ -312,9 +312,26 @@ type reportCoverageResult struct {
 	To         string                        `json:"to"`
 	Derivation string                        `json:"derivation,omitempty"`
 	Windows    []evidencebook.VerifiedWindow `json:"windows"`
-	Findings   []string                      `json:"findings"`
+	// Deals are the coverage lines of the deal books placed in the windows,
+	// on a deal store's report (evidencebook#797): each deal's answer covers
+	// its whole book, records after its window included.
+	Deals    []string `json:"deals,omitempty"`
+	Findings []string `json:"findings"`
 	// Limits is what a covered range does not show.
 	Limits []string `json:"limits,omitempty"`
+}
+
+// coverageResult is what `report coverage` prints of a report's coverage,
+// before the limits: its range, windows, deals' lines and findings.
+func coverageResult(coverage evidencebook.ReportCoverage) reportCoverageResult {
+	printed := reportCoverageResult{Covered: len(coverage.Findings) == 0, From: coverage.From, To: coverage.To, Derivation: coverage.Derivation, Windows: coverage.Windows, Findings: []string{}}
+	for _, f := range coverage.Findings {
+		printed.Findings = append(printed.Findings, f.Text)
+	}
+	for _, d := range coverage.Deals {
+		printed.Deals = append(printed.Deals, d.Line)
+	}
+	return printed
 }
 
 func reportCoverageCommand() *cobra.Command {
@@ -322,7 +339,8 @@ func reportCoverageCommand() *cobra.Command {
 		Use:   "coverage",
 		Short: "Check that a report over a holder's windows covers its range: the chain links, the windows tile the range, and every window has its answer (reads only; needs no profile)",
 		Long: "Checks the bundle `report derive --chain` wrote, under the holder's checkpoint key you obtained yourself (never one read from the bundle). Each gap is named (\"window 2026-03 has no answer\", \"chain breaks at 2026-04\"); a range with any finding is not covered, and the command exits non-zero. " +
-			"Without --witness-directory, the windows' continuity is as the holder signed it. No check shows that an answer holds every row of its window.",
+			"On a deal store's report, every deal placed in a window needs its own answer too (\"deal deal/… of window 2026-03 has no answer\"), and each covered deal is printed with its line: its answer covers its whole book, records after its window included. " +
+			"Without --witness-directory, the windows' continuity is as the holder signed it. Each answer proves its rows are in the holder's log; the rows' field values are the holder's word; no proof shows that no row was left out.",
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			bundlePath, _ := c.Flags().GetString("bundle")
@@ -349,17 +367,14 @@ func reportCoverageCommand() *cobra.Command {
 			if err != nil {
 				return bookError(err)
 			}
-			printed := reportCoverageResult{Covered: len(coverage.Findings) == 0, From: coverage.From, To: coverage.To, Derivation: coverage.Derivation, Windows: coverage.Windows, Findings: []string{}}
-			for _, f := range coverage.Findings {
-				printed.Findings = append(printed.Findings, f.Text)
-			}
+			printed := coverageResult(coverage)
 			if !printed.Covered {
 				return errors.Join(cli.InputError("the report does not cover its range: "+findingsText(coverage.Findings)), cli.Output(c, printed))
 			}
 			if directory == "" {
 				printed.Limits = append(printed.Limits, "Without --witness-directory, the windows' continuity is as the holder signed it.")
 			}
-			printed.Limits = append(printed.Limits, "No check shows that an answer holds every row of its window.")
+			printed.Limits = append(printed.Limits, coverage.Limit)
 			return cli.Output(c, printed)
 		},
 	}

@@ -136,6 +136,13 @@ book opens with its agreement, and an agreement is only ever at `seq` 1. A journ
 no `seq`, `prev`, `agreement_ref` or `seen`, so a record sent whole shows no place in the journal.
 A decline or cancellation also carries no `refs`, `marks` or `counterparty`.
 
+**On a shelf whose journal is split by window** (evidencebook#797, `deal init --window`): the
+journal is one book per time window, chained as `docs/design/689-window-books.md` §5 gives, and a
+deal book stays one book for the whole deal, placed in the window its agreement is sealed in: the
+holder seals a `window_place` record naming the book in that window's journal as the agreement is
+appended, and the window's close lists the deal with its book's tree then. Nothing in a record
+changes: a deal's records carry the same members whichever window holds them.
+
 **The case book.** The adjudicator seals its rulings of a deal in one case book per deal and
 adjudicator, whose log id both parties compute (`xdealv1.CaseLogID`): `case/` followed by the
 first 16 bytes, lowercase hex, of SHA-256 over three UTF-8 strings, each followed by one zero byte:
@@ -358,7 +365,9 @@ the verdict's first approval proceeds, is not a `confirm_limits` and was sealed 
 act; one approval authorizes one act; no journal record between the check and the act changes the
 details; and the limits in force are those the journal's intents and confirmed proposals set, in
 journal order. The journal is read in order and its `at` never decreases: a journal record whose
-`at` is earlier than the record before it is refused.
+`at` is earlier than the record before it is refused. On a shelf whose journal is split by window, the journal
+is its windows read in chain order, oldest first, and these rules apply across them: an intent or
+a confirmed proposal in an earlier window still sets the limits in force.
 
 `xdealv1.CheckAuthorizations(journal, acts)` checks them, refusing at the `authorization` stage,
 and returns per act the record digests the person signs. A settle's leg travels in its Capsule's

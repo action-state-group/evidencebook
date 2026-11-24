@@ -193,10 +193,15 @@ capsulectl book report build --bundle bundle.json --card CARD --holder-checkpoin
 ```
 
 Every gap is named (`window 2026-03 has no answer`, `chain breaks at 2026-04`),
-and no bundle or page is written over one. The holder's key must be obtained
+and no bundle or page is written over one. On a deal store's report
+(capsulectl-deal `deal init --window`), each deal placed in a window needs its
+own answer too (`deal … of window 2026-03 has no answer`), and `coverage` prints
+each covered deal's line under `deals`: its answer covers its whole book,
+records after its window included. The holder's key must be obtained
 independently of the bundle. Without witness receipts a chain shows continuity
-only as the holder signed it, and no check shows that an answer holds every row
-of its window. On a windowed store, `close` and `reconcile` take a period inside
+only as the holder signed it. Each answer proves its rows are in the holder's
+log; the rows' field values are the holder's word; no proof shows that no row
+was left out. On a windowed store, `close` and `reconcile` take a period inside
 the current window or inside an earlier window in its grace, and a requester
 derives over answers recorded in its current window.
 

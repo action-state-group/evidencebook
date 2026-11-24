@@ -151,7 +151,7 @@ func TestAReportOverMonthWindowsThroughTheCommands(t *testing.T) {
 	assert.True(t, coverage.Covered)
 	assert.Len(t, coverage.Windows, 3)
 	assert.Equal(t, x.digest, coverage.Derivation)
-	assert.Equal(t, []string{"Without --witness-directory, the windows' continuity is as the holder signed it.", "No check shows that an answer holds every row of its window."}, coverage.Limits)
+	assert.Equal(t, []string{"Without --witness-directory, the windows' continuity is as the holder signed it.", evidencebook.ReportLimit}, coverage.Limits)
 
 	// Witnesses named, no receipt carried: every window is named unwitnessed.
 	directory := writeDirectory(t, map[string]interface{}{"name": "w", "endpoint": "https://witness.example", "binding": "cll", "key_ids": []string{strings.Repeat("ab", 32)}})
@@ -610,4 +610,16 @@ func TestStoreInitRefusesAnUnreadableRetiredLog(t *testing.T) {
 	require.Error(t, err)
 	_, statErr := os.Stat(shelfFile(b))
 	assert.ErrorIs(t, statErr, os.ErrNotExist, "no windowed store was created")
+}
+
+// A deal store's report (evidencebook#797): each covered deal's line is
+// printed under deals, and a named gap leaves the range uncovered.
+func TestReportCoveragePrintsEachDealsLine(t *testing.T) {
+	printed := coverageResult(evidencebook.ReportCoverage{From: "2026-09", To: "2026-09", Findings: []evidencebook.ChainFinding{},
+		Deals: []evidencebook.DealCoverage{{LogID: "deal/a", Window: "2026-09", Line: "deal deal/a, placed in window 2026-09, answered over its whole book"}}})
+	assert.True(t, printed.Covered)
+	assert.Equal(t, []string{"deal deal/a, placed in window 2026-09, answered over its whole book"}, printed.Deals)
+	gap := coverageResult(evidencebook.ReportCoverage{Findings: []evidencebook.ChainFinding{{Window: "2026-09", Text: "deal deal/b of window 2026-09 has no answer"}}})
+	assert.False(t, gap.Covered)
+	assert.Equal(t, []string{"deal deal/b of window 2026-09 has no answer"}, gap.Findings)
 }
