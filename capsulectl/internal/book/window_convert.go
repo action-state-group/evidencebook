@@ -159,6 +159,8 @@ func createShelf(ctx context.Context, p cli.Profile, policy *evidencebook.Window
 	if err := os.Rename(tmp, shelfFile(p)); err != nil {
 		return err
 	}
+	// The lock file of the temporary path; a crash before this leaves it,
+	// and `book window init` or the next convert removes it.
 	if err := os.Remove(tmp + ".lock"); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -262,4 +264,23 @@ func publishPredecessor(ctx context.Context, p cli.Profile, policy *evidencebook
 		return windowPublishResult{}, err
 	}
 	return windowPublishResult{LogID: policy.Predecessor.LogID, Kind: "predecessor", Size: size, State: witnessEntry(p, state)}, nil
+}
+
+// requeuePredecessor queues the predecessor book's final checkpoint for the
+// witness again, as `book window roll` does each window's final: once per
+// witness and size, so a lost book/witness.json is restored.
+func requeuePredecessor(ctx context.Context, p cli.Profile, policy *evidencebook.WindowPolicy) error {
+	if policy == nil || policy.Predecessor == nil {
+		return nil
+	}
+	service, err := cli.ServiceID(p)
+	if err != nil || service == "" {
+		return err
+	}
+	opened, err := openBookKeyedAt(ctx, p, false, nil, true, true)
+	if err != nil {
+		return err
+	}
+	_, err = seedPredecessor(ctx, p, opened.book, policy)
+	return errors.Join(err, opened.release())
 }

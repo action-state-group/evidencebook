@@ -127,7 +127,7 @@ type sealedStore struct {
 func (s sealedStore) GetRecord(ctx context.Context, recordID string) (evidencebook.StoredRecord, error) {
 	stored, err := s.book.Sealed(ctx, recordID)
 	if errors.Is(err, evidencebook.ErrNotFound) && s.predecessor != "" {
-		return stored, errors.Join(cli.Hint(cli.ErrInput, fmt.Sprintf("record %s is not in this window's book; a record of the predecessor book %s, which this store continues, is not served after the conversion: it is verifiable through a chain's predecessor entry and bundles made before converting", recordID, s.predecessor)), err)
+		return stored, errors.Join(cli.Hint(cli.ErrInput, fmt.Sprintf("record %s is not in this window's book; if it is a record of the predecessor book %s, which this store continues, it is not served after the conversion: it is verifiable through a chain's predecessor entry and bundles made before converting", recordID, s.predecessor)), err)
 	}
 	return stored, err
 }

@@ -84,6 +84,13 @@ func windowCommands() *cobra.Command {
 		if err := refuseRetiredLog(p); err != nil {
 			return err
 		}
+		// A conversion interrupted before its store was made leaves its
+		// temporary files; with no store and no book they are litter.
+		for _, suffix := range []string{"", "-wal", "-shm", ".lock"} {
+			if err := os.Remove(shelfFile(p) + ".converting" + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 		for _, existing := range []string{shelfFile(p), filepath.Join(p.Connection.Database, "book", "log.jsonl")} {
 			if _, err := os.Stat(existing); err == nil {
 				return cli.Hint(cli.ErrInput, "this profile already has a book store ("+existing+"); a store's window is fixed when it is created")
@@ -136,6 +143,9 @@ func windowCommands() *cobra.Command {
 			return err
 		}
 		if err = seedFinals(c.Context(), p, opened.shelf, windows); err != nil {
+			return err
+		}
+		if err = requeuePredecessor(c.Context(), p, opened.shelf.WindowPolicy()); err != nil {
 			return err
 		}
 		return cli.Output(c, windowListResult{Profile: p.Name, Period: opened.shelf.WindowPolicy().Period, Windows: windows})

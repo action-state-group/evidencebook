@@ -113,6 +113,14 @@ func TestConvertingQueuesThePredecessorForTheWitness(t *testing.T) {
 	states, err := newBookWitnessStore(b).load()
 	require.NoError(t, err)
 	require.NotEmpty(t, states)
+	// A lost witness file is restored by the next roll.
+	require.NoError(t, os.Remove(newBookWitnessStore(b).path))
+	bookClock(t, time.Date(2026, 9, 24, 10, 5, 0, 0, time.UTC))
+	_, err = invoke(t, "", "book", "window", "roll", "--profile", "b")
+	require.NoError(t, err)
+	states, err = newBookWitnessStore(b).load()
+	require.NoError(t, err)
+	assert.NotEmpty(t, states)
 }
 
 // An interrupted conversion (the book closed, the store not made) resumes
