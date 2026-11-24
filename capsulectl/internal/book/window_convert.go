@@ -64,7 +64,14 @@ func windowConvertCommand() *cobra.Command {
 			if policy == nil || policy.Predecessor == nil {
 				return cli.Hint(cli.ErrInput, "this profile's store is already split by window, created empty: there is no JSONL book to convert")
 			}
-			return cli.Output(c, windowConvertResult{Profile: p.Name, Period: policy.Period, Since: policy.Since.Format(time.RFC3339), Grace: graceText(policy.Grace), Predecessor: policy.Predecessor, Already: true, Notice: "already converted: " + convertNotice(p, policy, false)})
+			if (c.Flags().Changed("period") && period != policy.Period) || (c.Flags().Changed("grace") && grace != policy.Grace) {
+				return cli.Hint(cli.ErrInput, "this profile is already converted, to "+windowNotice(policy.Period, policy.Grace)+": the window cannot change")
+			}
+			service, err := cli.ServiceID(p)
+			if err != nil {
+				return err
+			}
+			return cli.Output(c, windowConvertResult{Profile: p.Name, Period: policy.Period, Since: policy.Since.Format(time.RFC3339), Grace: graceText(policy.Grace), Predecessor: policy.Predecessor, Witnessed: service != "", Already: true, Notice: "already converted: " + convertNotice(p, policy, service != "")})
 		}
 		if _, reproduced, _ := reproductionAt(); reproduced {
 			return cli.InputError(SourceDateEpochEnv + " is set: a reproduced scratch book is not converted")
@@ -84,6 +91,8 @@ func windowConvertCommand() *cobra.Command {
 		}
 		// The store starts at the first whole second after the close: wait
 		// for it, so the next verb's clock is not behind the first window.
+		// The wall clock is the store's (bookNow) except in tests, which set
+		// a clock in the past and never wait.
 		if d := time.Until(policy.Since); d > 0 && d <= 2*time.Second {
 			time.Sleep(d)
 		}
@@ -111,10 +120,15 @@ func convertBook(ctx context.Context, p cli.Profile, period evidencebook.WindowP
 		return nil, false, errors.Join(bookError(err), opened.release())
 	}
 	witnessed, err := seedPredecessor(ctx, p, opened.book, policy)
+	if err == nil {
+		// Under the book's lock, so a second convert cannot race the store's
+		// creation.
+		err = createShelf(ctx, p, policy)
+	}
 	if err = errors.Join(err, opened.release()); err != nil {
 		return nil, false, err
 	}
-	return policy, witnessed, createShelf(ctx, p, policy)
+	return policy, witnessed, nil
 }
 
 // createShelf creates the windowed store at a temporary path and moves it
@@ -177,9 +191,10 @@ func predecessorFinal(ctx context.Context, book *evidencebook.Book, tree *eviden
 	if err != nil {
 		return evidencebook.Checkpoint{}, err
 	}
-	for i := len(checkpoints) - 1; i >= 0; i-- {
-		if checkpoints[i].Entries == tree.Entries && checkpoints[i].Root == tree.Root {
-			return checkpoints[i], nil
+	// The first checkpoint of the tree, the one the root's chain carries.
+	for _, cp := range checkpoints {
+		if cp.Entries == tree.Entries && cp.Root == tree.Root {
+			return cp, nil
 		}
 	}
 	return evidencebook.Checkpoint{}, fmt.Errorf("%w: the predecessor book holds no checkpoint of the tree the store names", evidencebook.ErrCorrupt)
@@ -202,7 +217,7 @@ func convertNotice(p cli.Profile, policy *evidencebook.WindowPolicy, witnessed b
 	if witnessed {
 		witness = "the predecessor's final checkpoint is queued for the witness (book window publish delivers it)"
 	}
-	return fmt.Sprintf("converted: the JSONL book %s is closed at %d records and stays at book/log.jsonl; its records never move. %s; the first window %s starts at %s (partial). The same signing key continues; this is not a clear. Requests open in the old book cannot be answered now, a Close over a period before the conversion is refused, and capsulectl builds before window books must not write to this profile. %s",
+	return fmt.Sprintf("converted: the JSONL book %s is closed at %d records and stays at book/log.jsonl; its records never move. %s; the first window %s starts at %s (partial). The same signing key continues; this is not a clear. No verb serves the old book's records now (a chain's predecessor entry and bundles made before carry them), requests open in it cannot be answered, a Close over a period before the conversion is refused, and capsulectl builds before window books must not write to this profile. %s",
 		policy.Predecessor.LogID, policy.Predecessor.Entries, windowNotice(policy.Period, policy.Grace), first.Label, policy.Since.Format(time.RFC3339), witness)
 }
 

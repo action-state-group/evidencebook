@@ -114,3 +114,91 @@ func TestConvertingQueuesThePredecessorForTheWitness(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, states)
 }
+
+// An interrupted conversion (the book closed, the store not made) resumes
+// with the same window, refuses another, and says so to a writing verb.
+func TestAnInterruptedConversionResumes(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC))
+	b, _ := bookProfile(t, "b")
+	_, err := invoke(t, "", "book", "window", "init", "--profile", "b", "--period", "none")
+	require.NoError(t, err)
+	appendHalves(t, b, half{"x1", "r1", "p1"})
+	opened, err := openBookKeyedAt(t.Context(), b, false, nil, false, true)
+	require.NoError(t, err)
+	_, err = opened.book.CloseForWindows(t.Context(), b.LogID, evidencebook.WindowMonth, 7*24*time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, opened.release())
+	require.NoError(t, os.WriteFile(shelfFile(b)+".converting", []byte("half made"), 0o600))
+
+	// A writing verb is told how to finish.
+	opened, err = openBookKeyed(t.Context(), b, false, nil, false)
+	require.NoError(t, err)
+	_, err = opened.book.Append(t.Context(), evidencebook.Entry{RecordType: "deal", EpistemicType: evidencebook.ObservedEvent, Links: []evidencebook.Link{}, Statement: json.RawMessage(`{"a":1}`)})
+	require.NoError(t, opened.release())
+	require.ErrorIs(t, bookError(err), cli.ErrInput)
+	assert.Contains(t, bookError(err).Error(), "run it again with the same --period and --grace")
+	_, err = invoke(t, "", "book", "window", "convert", "--profile", "b", "--yes", "--period", "week")
+	require.Error(t, err, "another window than the close names")
+	out, err := invoke(t, "", "book", "window", "convert", "--profile", "b", "--yes")
+	require.NoError(t, err, out)
+	assert.FileExists(t, shelfFile(b))
+	assert.NoFileExists(t, shelfFile(b)+".converting")
+	opened, err = openBookKeyedAt(t.Context(), b, false, nil, true, true)
+	require.NoError(t, err)
+	closes := 0
+	held, err := opened.book.Query(t.Context(), evidencebook.Filter{RecordType: evidencebook.RecordTypeBookClose})
+	require.NoError(t, err)
+	closes = len(held)
+	require.NoError(t, opened.release())
+	assert.Equal(t, 1, closes)
+	_, err = invoke(t, "", "book", "window", "convert", "--profile", "b", "--yes", "--period", "week")
+	require.ErrorIs(t, err, cli.ErrInput, "a converted store's window cannot change")
+}
+
+func TestConvertRefuses(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC))
+	empty, _ := bookProfile(t, "empty")
+	_, err := invoke(t, "", "book", "window", "convert", "--profile", "empty", "--yes")
+	require.ErrorIs(t, err, cli.ErrInput, "no JSONL book")
+	_, statErr := os.Stat(shelfFile(empty))
+	assert.ErrorIs(t, statErr, os.ErrNotExist)
+
+	_, _ = bookProfile(t, "windowed")
+	_, err = invoke(t, "", "book", "window", "init", "--profile", "windowed")
+	require.NoError(t, err)
+	_, err = invoke(t, "", "book", "window", "convert", "--profile", "windowed", "--yes")
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, err.Error(), "created empty")
+
+	b, _ := bookProfile(t, "b")
+	_, err = invoke(t, "", "book", "window", "init", "--profile", "b", "--period", "none")
+	require.NoError(t, err)
+	appendHalves(t, b, half{"x1", "r1", "p1"})
+	t.Setenv(SourceDateEpochEnv, "1790000000")
+	_, err = invoke(t, "", "book", "window", "convert", "--profile", "b", "--yes")
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, err.Error(), "reproduced")
+}
+
+// A record id of the old book gets the predecessor's hint.
+func TestAnOldRecordIDNamesThePredecessor(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC))
+	b, _ := bookProfile(t, "b")
+	_, err := invoke(t, "", "book", "window", "init", "--profile", "b", "--period", "none")
+	require.NoError(t, err)
+	appendHalves(t, b, half{"x1", "r1", "p1"})
+	set := bookClock(t, time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC))
+	_, err = invoke(t, "", "book", "window", "convert", "--profile", "b", "--yes")
+	require.NoError(t, err)
+	set(time.Date(2026, 9, 24, 10, 5, 0, 0, time.UTC))
+	appendHalves(t, b, half{"x2", "r2", "p2"})
+	opened, err := openBookForReading(t.Context(), b)
+	require.NoError(t, err)
+	defer opened.release()
+	_, err = opened.store.GetRecord(t.Context(), strings.Repeat("ab", 32))
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, err.Error(), "predecessor book "+b.LogID)
+}

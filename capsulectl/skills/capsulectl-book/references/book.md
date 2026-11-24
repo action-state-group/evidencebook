@@ -172,8 +172,10 @@ the book is closed for good by a `book_close` record and its final checkpoint,
 stays at `book/log.jsonl` with its records unmoved, and the store's first
 window starts at the first whole second after the close (a partial window,
 `partial` in `book window list`). The same signing key continues, and it is not
-a clear. A Close over a period before the conversion is sealed in the book
-first: afterwards it is refused, and a period that spans the conversion closes
+a clear. No verb serves the old book's records afterwards: a chain's
+predecessor entry and bundles made before converting carry them, and requests
+open in it cannot be answered. A Close over a period before the conversion is
+sealed in the book first: afterwards it is refused, and a period that spans the conversion closes
 in two parts. A chain from the first window carries the book as its
 predecessor. Where the profile names a witness, the book's final checkpoint is
 queued in `book/witness.json` and `book window publish` delivers it; with no

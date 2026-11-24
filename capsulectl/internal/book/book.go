@@ -442,6 +442,9 @@ func bookError(err error) error {
 	if errors.Is(err, evidencebook.ErrInvalid) {
 		return errors.Join(cli.InputError("the evidence book refused this as invalid: "+err.Error()), err)
 	}
+	if errors.Is(err, evidencebook.ErrBookClosed) {
+		return errors.Join(cli.Hint(cli.ErrInput, "this profile's JSONL book is closed into a store split by window; if `book window convert` was interrupted before the store was made, run it again with the same --period and --grace"), err)
+	}
 	if errors.Is(err, evidencebook.ErrInGrace) {
 		return errors.Join(cli.Hint(cli.ErrInput, err.Error()+": end the chain at the window before it (--to), or wait until it closes; `book window roll` then closes it"), err)
 	}
