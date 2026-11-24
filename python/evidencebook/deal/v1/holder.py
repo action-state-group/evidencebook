@@ -12,6 +12,7 @@ agreement.
 from __future__ import annotations
 
 import bisect
+import hashlib
 import re
 import threading
 from dataclasses import dataclass, field
@@ -27,7 +28,49 @@ from .rawjson import GoJSONError, string_member, string_value, unmarshal_map
 from .sent import SENT_LOG_PREFIX, STAGE_BOOK, BookRead, Sent, verify_book, verify_sent
 from ..check import StageError
 
-__all__ = ["GATE_NO_PROOF", "GATE_NO_LAYER", "ActGate", "ActGateInput", "CanActInput", "ReceiveProfile", "version"]
+__all__ = ["CASE_LOG_PREFIX", "GATE_NO_PROOF", "GATE_NO_LAYER", "ActGate", "ActGateInput", "CanActInput",
+           "ReceiveProfile", "case_log_id", "held_ruling", "version"]
+
+#: Begins the log id of an adjudicator's case book (Go ``CaseLogPrefix``).
+CASE_LOG_PREFIX = "case/"
+_CASE_LOG_TAG = PROFILE + "/case-log"
+
+
+def case_log_id(offer_digest: str, adjudicator_key_id: str) -> str:
+    """The log id of the case book in which the adjudicator whose key id is
+    ``adjudicator_key_id`` seals its rulings of the deal whose agreements
+    cite the offer with record digest ``offer_digest`` (Go ``CaseLogID``,
+    ``case_book.go``): ``case/`` and the first 16 bytes, lowercase hex, of
+    SHA-256 over the tag, the offer digest and the key id, each followed by
+    a zero byte."""
+    h = hashlib.sha256()
+    for part in (_CASE_LOG_TAG, offer_digest, adjudicator_key_id):
+        h.update(part.encode())
+        h.update(b"\x00")
+    return CASE_LOG_PREFIX + h.digest()[:16].hex()
+
+
+def held_ruling(shelf: Any, deal_id: str, adjudicator_key: str, digest_: str) -> tuple[BookRead | None, bool]:
+    """The ruling of the deal ``deal_id`` whose record digest is ``digest_``,
+    sealed by ``adjudicator_key``, among the records the holder holds for
+    that deal (Go ``HeldRuling``); ``(None, False)`` means the ruling is
+    unavailable to this holder: never received, or deleted under retention."""
+    for h in shelf.held_by_deal(deal_id):
+        if h.received.sender_key != adjudicator_key or not h.received.log_id.startswith(CASE_LOG_PREFIX):
+            continue
+        try:
+            b = verify_book(h.record)
+        except (ValueError, StageError):
+            continue
+        if b.record.record_type != TYPE_RULING or b.record.block["deal_id"] != deal_id:
+            continue
+        try:
+            d = digest(b.record)
+        except (ValueError, StageError):
+            continue
+        if d == digest_:
+            return b, True
+    return None, False
 
 #: No held stamp proof covers the counterparty's agreement.
 GATE_NO_PROOF = "no_counterparty_proof"
@@ -61,6 +104,21 @@ def _read_pair(record: bytes) -> _Read:
 class _Ours:
     journal: list[Record]
     agreements: list[Record]
+    #: The rulings opening each of our case books, when the holder is an
+    #: adjudicator, by their log id.
+    cases: dict[str, Record] = field(default_factory=dict)
+
+    def case_party(self, deal_id: str, offer_digest: str, adjudicator_key: str, sender: str) -> bool:
+        """Whether ``sender`` is a party of a deal whose agreement cites
+        ``offer_digest`` and names ``adjudicator_key``, by our case book of
+        that deal (Go ``caseParty``): the case log of that offer and
+        adjudicator is one of ours, and its first ruling, of the same deal,
+        names sender among its keys."""
+        r = self.cases.get(case_log_id(offer_digest, adjudicator_key))
+        if r is None or r.block["deal_id"] != deal_id or r.record_type != TYPE_RULING:
+            return False
+        keys = r.body["keys"]
+        return keys["buyer"] == sender or keys["seller"] == sender
 
     def offer_by_digest(self, d: str) -> tuple[dict, Record] | None:
         for r in self.journal:
@@ -234,7 +292,9 @@ class ReceiveProfile:
     def admit(self, r: Any) -> bool:
         """The push rule (Go ``Admit``): an offer from any key; a decline
         from the key the offer was sent to and a cancellation from the
-        offer's signer; a ruling from the adjudicator the agreement names;
+        offer's signer; a ruling from the adjudicator the agreement names, on
+        the deal's case log (:func:`case_log_id`); at an adjudicator holding
+        a deal's case book, a deal-book record of either party it names;
         and a deal-book record from the counterparty the agreement names,
         or, before it, the key the offer was sent to."""
         if r.offer:
@@ -258,8 +318,13 @@ class ReceiveProfile:
                     and sent[0].block["deal_id"] == rec.block["deal_id"]
             return False
         if rec.record_type == TYPE_RULING:
+            # From our agreement's adjudicator, on the deal's one case book
+            # (Go ``CaseLogID``), whoever carried it: a party forwards the
+            # ruling it received, so a judge that gave each side another
+            # ruling shows as a fork of that log.
             a = o.agreement(rec.block["deal_id"])
-            return a is not None and isinstance(a["adjudicator"], dict) and a["adjudicator"]["key_id"] == r.sender_key
+            return a is not None and isinstance(a["adjudicator"], dict) and a["adjudicator"]["key_id"] == r.sender_key \
+                and r.log_id == case_log_id(a["offer"]["digest"], r.sender_key)
         genesis = rec
         if r.position > 1:
             genesis = self._held_genesis(r.sender_key, r.log_id)
@@ -269,6 +334,10 @@ class ReceiveProfile:
                 or genesis.block["deal_id"] != r.deal_id:
             return False
         gag = genesis.body
+        if isinstance(gag["adjudicator"], dict) \
+                and o.case_party(r.deal_id, gag["offer"]["digest"], gag["adjudicator"]["key_id"], r.sender_key):
+            # We are the deal's adjudicator and ruled on it: a party's book.
+            return True
         a = o.agreement(r.deal_id)
         if a is not None:
             return _counterparty_key(a) == r.sender_key and gag["offer"]["digest"] == a["offer"]["digest"]
@@ -299,7 +368,10 @@ class ReceiveProfile:
         """Who sent a stamp proof of ``log_id`` under ``checkpoint_key_id``
         (Go ``ProofSender``): the one sender whose held first record of the
         log is an agreement naming that checkpoint key, sent by the key the
-        holder expects for that deal; none when it forked or is not one."""
+        holder expects for that deal (at an adjudicator, a party its case
+        book names); or a case book's first ruling when the checkpoint key is
+        the adjudicator key our agreement names and the log is the deal's
+        case log; none when it forked or is not one."""
         held = self.shelf.held_first(log_id)
         first: dict[str, str] = {}
         forked: set[str] = set()
@@ -318,6 +390,14 @@ class ReceiveProfile:
                 b = verify_book(h.record)
             except (ValueError, StageError):
                 continue
+            if b.record.record_type == TYPE_RULING:
+                # A case book: the adjudicator checkpoints it with the key
+                # our agreement names it by, so the proof binds to that key.
+                a = o.agreement(b.record.block["deal_id"])
+                if a is not None and isinstance(a["adjudicator"], dict) and a["adjudicator"]["key_id"] == k \
+                        and checkpoint_key_id == k and log_id == case_log_id(a["offer"]["digest"], k):
+                    candidates.append(k)
+                continue
             if b.record.record_type != TYPE_AGREE:
                 continue
             ag = b.record.body
@@ -332,6 +412,9 @@ class ReceiveProfile:
                 found = o.offer_by_digest(ag["offer"]["digest"])
                 if found is not None and found[1].block["deal_id"] == deal and _to(found[0]) is not None:
                     expected = _to(found[0])
+            if not expected and isinstance(ag["adjudicator"], dict) \
+                    and o.case_party(deal, ag["offer"]["digest"], ag["adjudicator"]["key_id"], k):
+                expected = k
             if expected and expected == k:
                 candidates.append(k)
         if len(candidates) != 1:
@@ -430,7 +513,8 @@ class ReceiveProfile:
 
     def _ours(self) -> _Ours:
         """The holder's v1 journal records and the agreements its books open
-        with (Go ``ours``), read incrementally: a payload not readable now is
+        with (Go ``ours``) and, at an adjudicator, the ruling opening each case
+        book, read incrementally: a payload not readable now is
         read again next time."""
         if self.shelf is None:
             raise ValueError("xdealv1: the receive profile has no shelf")
@@ -470,10 +554,16 @@ class ReceiveProfile:
                         rec, kind = _v1_payload(book, recs[0])
                         if kind == _V1 and rec.record_type == TYPE_AGREE and rec.body["kind"] == KIND_AGREEMENT:
                             first = rec
+                        if kind == _V1 and rec.record_type == TYPE_RULING and log_id.startswith(CASE_LOG_PREFIX):
+                            first = rec
                         unavailable = kind == _UNAVAILABLE
                     if not unavailable:
                         c.firsts[log_id] = first
-                if first is not None:
+                if first is None:
+                    continue
+                if first.record_type == TYPE_RULING:
+                    out.cases[log_id] = first
+                else:
                     out.agreements.append(first)
             return out
 

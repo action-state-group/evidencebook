@@ -1,0 +1,2 @@
+<!-- changelog: python/CHANGELOG.md -->
+- `evidencebook.deal.v1.holder` follows Go's case book rules (evidencebook#615): `case_log_id` (the log id of an adjudicator's case book of a deal), `held_ruling` (a held ruling by its record digest), `admit` refusing a ruling that is not on the deal's case log, `proof_sender` binding a case book's stamp proof to the adjudicator key the agreement names (a forked first ruling refuses it), and an adjudicator that holds a deal's case book admitting both parties' deal-book records.
