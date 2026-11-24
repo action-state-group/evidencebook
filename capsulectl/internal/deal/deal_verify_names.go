@@ -40,9 +40,11 @@ import (
 const (
 	// dealCadenceDepth fixes every path at 16 hashes: up to 65535 deals.
 	DealCadenceDepth = 16
-	// A public witness a holder may set. No deal profile uses it unless told to. Its
-	// key ships in this binary: a user trusts it as far as they trust the
-	// release they installed.
+	// The hosted witness `deal init` points a new profile at unless it is given
+	// --no-witness (Steven's ruling, 2026-11-24: witnessed by default). This is
+	// the one place the endpoint and its key are defined. The witness is run by
+	// Action State, so it is not independent of us. Its key ships in this
+	// binary: a user trusts it as far as they trust the release they installed.
 	DealDefaultWitness    = "https://witness.agentactioncapsule.org"
 	DealDefaultWitnessKey = "39bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5"
 	// The bundle extension that carries a checkpoint's witnessed chain
