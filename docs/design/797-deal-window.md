@@ -1,8 +1,8 @@
 # evidencebook#797: a window on a capsulectl-deal shelf
 
 Status: revised after the plan review's round 0 (Kimi, and one Claude stand-in for Codex, who is
-out until 2026-11-28); §8 holds the findings and answers. One what question is open for
-Sherlock2 (§4). Written 2026-11-23 CST at main `375e1b8a`. It reuses #689's window books
+out until 2026-11-28); §8 holds the findings and answers. Sherlock2 answered the what (§4, §5) and
+confirmed the names carry no product meaning. Written 2026-11-23 CST at main `375e1b8a`. It reuses #689's window books
 ([689-window-books.md](689-window-books.md)) and adds no second window mechanism.
 
 ## Problem
@@ -136,7 +136,14 @@ window in the range by the pack's digest, pinning its final checkpoint; the hold
 window's journal); the requester runs `RecordWindowChain` and `ReportFromWindows`; anyone runs
 `VerifyReportCoverage`, which names every gap.
 
-**Open what (Sherlock2, asked before PR 1).** A window's journal holds offers, admissions,
+**The what, decided: (b).** Sherlock2 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=1dec2d22e3d3ea0f518f464c400e513478db0ebb12aeac18be4b714f468401a1&thread=d90677151450165ee08197e67e240adfba3e7710092e6598167404fea5a143ba):
+(b), because a report that passes coverage with every agreement, perform and settle left out is a
+false green; a deal's line says it runs past the window: "deal <log id> answered over its whole
+book, through <checkpoint>". In the discussion round on the twin's points
+(buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=721fff7f33a117bd9fc69692dbe8e19f1b291c74b2bb77c7b58ea4c6a7a8d6b8&thread=d90677151450165ee08197e67e240adfba3e7710092e6598167404fea5a143ba):
+the #606 limit (rows proven in the holder's log; field values the holder's word; no proof that no
+row was left out) is stated once per report beside the coverage section, and again on anything
+shown on its own, such as one deal's answer or a single-deal view. The question as asked: A window's journal holds offers, admissions,
 intents, checks, approvals, verdicts and the journey overlay (messages, claims, evidence
 citations). The agreement, perform, settle and statement records are in each deal's own book. So
 what must a Terms Pack report over windows on a deal shelf cover?
@@ -154,8 +161,7 @@ what must a Terms Pack report over windows on a deal shelf cover?
   (`window_report.go:137-139`); and `VerifyReportCoverage` applies the same rule
   (`window_report.go:386-388`).
 
-The engineering recommendation is (b): the deal's own acts are what a Terms Pack judges a deal
-holder on, and (a) would pass coverage while leaving every act out. The build follows the answer.
+The build is (b).
 
 capsulectl-deal: `deal window list|roll|chain|publish` (the #689 verbs over the journal windows,
 sharing capsulectl-book's code where #828 and #837 put it rather than copying it) and `deal window
@@ -169,9 +175,10 @@ respond --request FILE --pack FILE...`, which registers the given compiled packs
 - `deal init --window <day|week|month|quarter|year|none>` creates the shelf with the policy
   before anything else writes the file (`openOwnedTarget` and `MarkOwned` write it first today,
   `deal.go:1203-1212`, and #689 fixes a policy only on a fresh file), then the rest as today.
-  Default `none`. With a period it prints "window: month (calendar months, UTC), fixed for this
-  store". Whether `month` should become the default for a new deal profile is part of the what
-  ask.
+  Default `none` (Sherlock2, above: revisit `month` once windowed deal shelves have a real user).
+  With a period it prints "window: month (calendar months, UTC), fixed for this store"; without
+  one it prints on stderr, in capsulectl-book's wording (`booklog.go:895`), "no window: one journal
+  for this store's whole history, fixed for this store" (Sherlock2, discussion round above).
 - `openShelf` (`deal_shelf.go:85-100`) reads the stored policy (`ReadShelfWindow`) and passes it,
   so every verb opens a windowed store.
 - A windowed store has no x-deal-v0 deal: v0 verbs that open a legacy log are refused on it with a
