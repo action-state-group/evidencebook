@@ -225,13 +225,27 @@ func TestTheCoverageBannerEscapesItsRange(t *testing.T) {
 	assert.NotContains(t, witnessed, "Without witness receipts")
 }
 
-// A deal store's report (evidencebook#797): the banner names each deal
-// placed in the windows with its line, and the report's limit once.
+// A deal store's report (evidencebook#797): the banner counts the deals
+// placed in the windows and states the report's limit once, beside the
+// coverage; each deal's line follows in a list.
 func TestTheCoverageBannerNamesEachPlacedDeal(t *testing.T) {
-	page, err := markCoverage(appElement, evidencebook.ReportCoverage{From: "2026-09", To: "2026-09", Windows: make([]evidencebook.VerifiedWindow, 1),
-		Deals: []evidencebook.DealCoverage{{LogID: "deal/a", Window: "2026-09", Line: "deal deal/a, placed in window 2026-09, answered over its whole book, records after the window included"}},
-		Limit: evidencebook.ReportLimit}, false)
+	line := func(id string) evidencebook.DealCoverage {
+		// The line as evidencebook's coverage check writes it (window_report.go).
+		return evidencebook.DealCoverage{LogID: id, Window: "2026-09", Line: "deal " + id + ", placed in window 2026-09, answered over its whole book, through its checkpoint of 4 records issued 2026-10-02T09:00:00Z, records after the window included <&>"}
+	}
+	one, err := markCoverage(appElement, evidencebook.ReportCoverage{From: "2026-09", To: "2026-09", Windows: make([]evidencebook.VerifiedWindow, 1),
+		Deals: []evidencebook.DealCoverage{line("deal/a")}, Limit: evidencebook.ReportLimit}, false)
 	require.NoError(t, err)
-	assert.Contains(t, page, "Each of the 1 deal placed in these windows has its answer too: deal deal/a, placed in window 2026-09, answered over its whole book, records after the window included.")
-	assert.Equal(t, 1, strings.Count(page, htmlstd.EscapeString(evidencebook.ReportLimit)), "the limit once")
+	assert.Contains(t, one, "The one deal placed in these windows has its answer too, over its whole book.")
+	assert.Contains(t, one, "<details><summary>The deal and what each answer covers</summary><ul><li>"+htmlstd.EscapeString(line("deal/a").Line)+"</li></ul></details>")
+	assert.Equal(t, 1, strings.Count(one, htmlstd.EscapeString(evidencebook.ReportLimit)), "the limit once")
+	assert.Less(t, strings.Index(one, htmlstd.EscapeString(evidencebook.ReportLimit)), strings.Index(one, "<details>"), "the limit before the list")
+
+	two, err := markCoverage(appElement, evidencebook.ReportCoverage{From: "2026-09", To: "2026-09", Windows: make([]evidencebook.VerifiedWindow, 1),
+		Deals: []evidencebook.DealCoverage{line("deal/a"), line("deal/b")}, Limit: evidencebook.ReportLimit}, false)
+	require.NoError(t, err)
+	assert.Contains(t, two, "Each of the 2 deals placed in these windows has its answer too, over its whole book.")
+	assert.Contains(t, two, "<summary>The 2 deals and what each answer covers</summary>")
+	assert.Equal(t, 2, strings.Count(two, "<li>"))
+	assert.NotContains(t, two, "<&>", "each line is escaped")
 }
