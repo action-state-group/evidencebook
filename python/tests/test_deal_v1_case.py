@@ -191,7 +191,6 @@ def test_check_case_record(tmp_path, monkeypatch):
     prev = c.dispute.digest
 
     def seal_seller(body: dict, seq: int, prev_digest: str) -> bytes:
-        nonlocal block
         b = {**block, "seq": seq, "prev": v1.ref_to(prev_digest)}
         seller.tick()
         book = seller.shelf.open(log)
@@ -212,7 +211,62 @@ def test_check_case_record(tmp_path, monkeypatch):
     with pytest.raises(StageError, match="the case of deal deal-ffffffffffffffff"):
         check_case_record(pair, other, [sealed.digest])
 
-    d3 = got.digest
+    # A record signed by neither party: the adjudicator seals the same challenge on its own shelf.
+    adj_book = adj.shelf.open("deal/c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0")
+    adj_first = adj_book.append(v1.book_entry(c.agreement))
+    adj.tick()
+    adj_second = adj_book.append(v1.book_entry(c.dispute.record, adj_first.record_id))
+    chal = decode(jcs({"x-deal-v1": {**json.loads(jcs(c.dispute.record.value))["x-deal-v1"], "seq": 3,
+                                      "prev": v1.ref_to(c.dispute.digest)}, "body": challenge}))
+    third = adj_book.append(v1.book_entry(chal, adj_second.record_id))
+    st = adj_book._stored[third.record_id]
+    forged = v1.book_pair(jcs(st.capsule), st.envelope, st.header, v1.encode(chal)[0])
+    with pytest.raises(StageError, match="signed by neither party"):
+        check_case_record(forged, c, [sealed.digest])
+
+    withdrawal = seal_seller({"kind": "withdrawal", "row": "delivered"}, 4, got.digest)
     with pytest.raises(StageError, match="the withdrawal is of row delivered"):
-        check_case_record(seal_seller({"kind": "withdrawal", "row": "delivered"}, 4, d3), c, [])
-    assert check_case_record(seal_seller({"kind": "withdrawal", "row": "as_described"}, 5, d3), c, []) is not None
+        check_case_record(withdrawal, c, [])
+    ok = seal_seller({"kind": "withdrawal", "row": "as_described"}, 5, verify_book(withdrawal).digest)
+    assert check_case_record(ok, c, []).record.body["row"] == "as_described"
+
+
+def test_check_case_two_copies(tmp_path, monkeypatch):
+    """Go's TestCheckCaseTwoCopies over the cross-checks of ``check_case``: the
+    copies are read as the buyer's and the seller's, whichever order they come
+    in; copies that do not name each other, answer different offers or name
+    other terms or forums are refused."""
+    import copy as cp
+
+    from evidencebook.deal.v1 import case as case_mod
+
+    parties, dispute, seller_copy, adj_key, one = _case(tmp_path, monkeypatch)
+    real = case_mod._read_case_copy
+    seller_cc = real(seller_copy, adj_key)
+    buyer_key = one.keys["buyer"]
+
+    def buyer_cc(edit=None):
+        ag = cp.deepcopy(seller_cc.ag)
+        ag.update({"role": "buyer", "counterparty_key": one.keys["seller"], "counterparty_layer": True})
+        if edit:
+            edit(ag)
+        return case_mod._CaseCopy("buyer", buyer_key, "buyer-last", seller_cc.agreement, ag)
+
+    def run(second, order=(0, 1)):
+        copies = [seller_copy, v1.CaseCopy(b"buyer", b"")]
+        got = {id(copies[0]): seller_cc, id(copies[1]): second}
+        monkeypatch.setattr(case_mod, "_read_case_copy", lambda c, k: got[id(c)])
+        return check_case(dispute, [copies[i] for i in order], adj_key)
+
+    both = run(buyer_cc())
+    assert both.read == {"buyer": "buyer-last", "seller": seller_cc.last}
+    assert both.keys == one.keys
+    assert run(buyer_cc(), (1, 0)) == both, "the order of the copies does not matter"
+    with pytest.raises(StageError, match="answer different offers"):
+        run(buyer_cc(lambda a: a["offer"].update({"digest": "e" * 64})))
+    with pytest.raises(StageError, match="do not name each other's keys"):
+        run(buyer_cc(lambda a: a.update({"counterparty_key": "f" * 64})))
+    with pytest.raises(StageError, match="different adjudicator terms or forums"):
+        run(buyer_cc(lambda a: a.update({"forums": ["auto:ref", "external:elsewhere"]})))
+    with pytest.raises(StageError, match="both copies are the seller's"):
+        run(case_mod._CaseCopy("seller", seller_cc.key, "x", seller_cc.agreement, seller_cc.ag))
