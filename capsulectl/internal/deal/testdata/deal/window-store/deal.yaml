@@ -1,0 +1,24 @@
+name: deal
+type: sqlite
+log_id: deal-cadence/738902c35deb1ca8
+namespace: deal
+log: deal
+connection:
+    host: ""
+    port: 0
+    database: @STORE@/deal.db
+    tls: ""
+credentials:
+    username: ""
+signing:
+    file: @STORE@/signing.seed
+trusted_keys:
+    - ca53b77e031f610da5d44585ee3f8794afa77ca6351048121e2f1b2ed4d86e6a
+checkpoint:
+    signing:
+        file: @STORE@/checkpoint.seed
+    trusted_keys:
+        - a62cc2c404d1450baadd246607ea7793df80bb5cc31d1059bb2ae1702e27791f
+materiality:
+    predicate: @STORE@/materiality.json
+    digest: 53af8695f236e1351c36c7996efadcc8665c7185862f95d9ac8acf070ad6b6d1
