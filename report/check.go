@@ -48,12 +48,28 @@ func markCoverage(page string, c evidencebook.ReportCoverage, witnessed bool) (s
 		return "", fmt.Errorf("the page shell has no single %s to mark with its coverage", appElement)
 	}
 	windows := plural(len(c.Windows), "window", "windows")
-	continuity := "Without witness receipts the windows' continuity is as the holder signed it; no check shows that an answer holds every row of its window."
+	continuity := "Without witness receipts the windows' continuity is as the holder signed it."
 	if witnessed {
-		continuity = "Each window's final checkpoint carries a receipt from a witness the page's builder named, and it verified when this page was built; no check shows that an answer holds every row of its window."
+		continuity = "Each window's final checkpoint carries a receipt from a witness the page's builder named, and it verified when this page was built."
 	}
-	banner := fmt.Sprintf(`<div class="aac-banner" data-state="verified" role="status"><strong>Covers %s to %s.</strong> Each of the %d %s has its answer from the holder's book for that window, and the windows link with no gap. The page's builder checked this from this page's bundle, under the holder checkpoint key the builder obtained, when the page was built; the page does not check it again when opened. %s</div>`,
-		htmlstd.EscapeString(c.From), htmlstd.EscapeString(c.To), len(c.Windows), windows, continuity)
+	// On a deal store's report (evidencebook#797) each deal placed in a
+	// window has its own answer, over its whole book: its line says so, so
+	// no one reads it as bounded by the window.
+	deals := ""
+	if len(c.Deals) > 0 {
+		lines := make([]string, len(c.Deals))
+		for i, d := range c.Deals {
+			lines[i] = htmlstd.EscapeString(d.Line)
+		}
+		deals = fmt.Sprintf(" Each of the %d %s placed in these windows has its answer too: %s.", len(c.Deals), plural(len(c.Deals), "deal", "deals"), strings.Join(lines, "; "))
+	}
+	// The report's limit, once, beside its coverage (Sherlock2 on #797).
+	limit := c.Limit
+	if limit == "" {
+		limit = evidencebook.ReportLimit
+	}
+	banner := fmt.Sprintf(`<div class="aac-banner" data-state="verified" role="status"><strong>Covers %s to %s.</strong> Each of the %d %s has its answer from the holder's book for that window, and the windows link with no gap.%s The page's builder checked this from this page's bundle, under the holder checkpoint key the builder obtained, when the page was built; the page does not check it again when opened. %s %s</div>`,
+		htmlstd.EscapeString(c.From), htmlstd.EscapeString(c.To), len(c.Windows), windows, deals, continuity, htmlstd.EscapeString(limit))
 	return strings.Replace(page, appElement, banner+appElement, 1), nil
 }
 

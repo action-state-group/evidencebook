@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	htmlstd "html"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -168,7 +169,7 @@ func TestBuildStatesTheCheckedCoverageOfAReportOverWindows(t *testing.T) {
 	require.NoError(t, err)
 	html := string(page.HTML)
 	assert.Contains(t, html, `<div class="aac-banner" data-state="verified" role="status"><strong>Covers 2026-10 to 2026-12.</strong> Each of the 3 windows has its answer from the holder's book for that window, and the windows link with no gap. The page's builder checked this from this page's bundle, under the holder checkpoint key the builder obtained, when the page was built; the page does not check it again when opened.`)
-	assert.Contains(t, html, "Without witness receipts the windows' continuity is as the holder signed it; no check shows that an answer holds every row of its window.")
+	assert.Contains(t, html, "Without witness receipts the windows' continuity is as the holder signed it. "+htmlstd.EscapeString(evidencebook.ReportLimit))
 	require.NotNil(t, page.Coverage)
 	assert.Len(t, page.Coverage.Windows, 3)
 	_, err = page.Permalink("")
@@ -222,4 +223,15 @@ func TestTheCoverageBannerEscapesItsRange(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, witnessed, "carries a receipt from a witness the page's builder named")
 	assert.NotContains(t, witnessed, "Without witness receipts")
+}
+
+// A deal store's report (evidencebook#797): the banner names each deal
+// placed in the windows with its line, and the report's limit once.
+func TestTheCoverageBannerNamesEachPlacedDeal(t *testing.T) {
+	page, err := markCoverage(appElement, evidencebook.ReportCoverage{From: "2026-09", To: "2026-09", Windows: make([]evidencebook.VerifiedWindow, 1),
+		Deals: []evidencebook.DealCoverage{{LogID: "deal/a", Window: "2026-09", Line: "deal deal/a, placed in window 2026-09, answered over its whole book, records after the window included"}},
+		Limit: evidencebook.ReportLimit}, false)
+	require.NoError(t, err)
+	assert.Contains(t, page, "Each of the 1 deal placed in these windows has its answer too: deal deal/a, placed in window 2026-09, answered over its whole book, records after the window included.")
+	assert.Equal(t, 1, strings.Count(page, htmlstd.EscapeString(evidencebook.ReportLimit)), "the limit once")
 }
