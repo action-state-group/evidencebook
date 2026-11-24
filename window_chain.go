@@ -321,6 +321,10 @@ type VerifiedWindow struct {
 	Boundary *WindowTree `json:"boundary,omitempty"`
 	// RecordKey is the hex public key that signed the window's records.
 	RecordKey string `json:"record_key"`
+	// Partial is set on the first window of a store that continues a
+	// predecessor book: it starts at the conversion, after its period's
+	// start (evidencebook#808).
+	Partial bool `json:"partial,omitempty"`
 	// Predecessor is, on the store's first window, the predecessor book's
 	// final tree the chain carried and proved (evidencebook#808).
 	Predecessor *WindowTree `json:"predecessor,omitempty"`
@@ -510,7 +514,7 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 		fail(label, "chain breaks at %s: its open record names a previous tree other than window %s's final tree", label, prior.Label)
 		return VerifiedWindow{}, false
 	}
-	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey, Predecessor: predecessor}
+	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey, Predecessor: predecessor, Partial: chain.Period.Partial(w)}
 	// The close record, in the final tree, names the boundary the window
 	// took: a chain carries exactly that one, so it can neither swap nor
 	// drop it (evidencebook#807).

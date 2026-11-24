@@ -196,7 +196,7 @@ func TestAChainCarriesThePredecessorAcrossTheConversion(t *testing.T) {
 	if len(findings) > 0 || len(verified) != 2 {
 		t.Fatalf("findings %v", findings)
 	}
-	if verified[0].Predecessor == nil || verified[0].Predecessor.LogID != "acme-log" || !WindowMonth.Partial(verified[0].Window) {
+	if verified[0].Predecessor == nil || verified[0].Predecessor.LogID != "acme-log" || !verified[0].Partial || verified[1].Partial {
 		t.Fatalf("first window %+v", verified[0])
 	}
 

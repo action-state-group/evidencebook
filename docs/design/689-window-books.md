@@ -383,8 +383,8 @@ current window.
 
 ## 11. Converting a JSONL book: the predecessor (#808)
 
-**The what.** Sherlock2 answered (engineering's call, not a door): the old JSONL book closes as a
-whole and verifies as the window chain's predecessor, because a conversion that left the old book
+**The decision.** The old JSONL book closes as a whole and verifies as the window chain's
+predecessor, because a conversion that left the old book
 unlinked would read as a clear (a new stream) and a separately checked one would leave the join
 unchecked. Continuity across the conversion is as strong as between windows.
 
@@ -402,7 +402,7 @@ disclosure policy in force at the close, which the first window opens with, sinc
 open the JSONL book). `Since` is the first whole second after the close record's commit time
 (`SuccessorSince`), so no window holds a moment the book also does. The first window runs from
 `Since` to the next period start: a partial window with its usual label, `partial` in
-`WindowState`. Every reader of a window's bounds goes through one helper that clamps the first
+`WindowState` and on the chain's verified window. Every reader of a window's bounds goes through one helper that clamps the first
 window's start to `Since`, so a record dated before the conversion is refused there. The policy,
 predecessor included, is fixed in `shelf_window` and compared on every reopen; a shelf with a
 predecessor is version 5, which builds without predecessors refuse. The unsigned-ask limiter
@@ -427,4 +427,10 @@ answers for it.
 **capsulectl.** `book window convert` (a second PR) runs the close and creates the store, refusing a
 store already windowed, no JSONL book, a reproduced book, an unmigrated pre-book `cll.jsonl`, a
 clock behind, or no `--yes`; it states that the conversion is one-way, the old book stays at its
-path and its records never move, the same key continues, and it is not a clear.
+path and its records never move, the same key continues, and it is not a clear. Closes over a
+period before the conversion are sealed in the old book first: after conversion such a Close is
+refused, with a hint naming the predecessor book, and a period that spans the conversion is closed
+in two parts. Where the profile names a witness, the old book's final checkpoint is queued in
+`book/witness.json` and delivered like a window's final; until a receipt arrives the chain reports
+"predecessor not witnessed". A profile with no witness converts, labelled unwitnessed: the verifier
+checks receipts only when witnesses are passed, so `convert` and the chain say so.
