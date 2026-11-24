@@ -15,7 +15,7 @@ whether that counts for it.
 | What the third party sees | One checkpoint per tick of the cadence: hashes, a size that grows by the same amount every tick, and a time on the cadence. Never content, how many deals there are, or when they happen | The bundle it is asked to sign: digests, plus anything you chose to disclose in it |
 | What it covers | Every deal under that checkpoint | That one bundle, through one step; steps after it need a new countersignature |
 | Who starts it | `capsulectl deal init` sets it up; opt out with `--no-witness` | You, per deal and per bundle; nothing requests one automatically |
-| What the receipt says | "Sealed, witness pending" until the next tick of the cadence, then "Witnessed" (`assurance.rung` is `self_attested` until a receipt verifies, then `witnessed`, or `witnessed_in_part` while steps sealed after the last witnessed tick are uncovered; `unverified` when a receipt held does not verify) | `countersigned` only when the signature verifies and the directory you chose lists the signer; a signer the directory lacks, or the producer's own key, is not a rung |
+| What the receipt says | "Sealed, witness pending" until the next tick of the cadence, then "Witnessed" (`assurance.rung` is `self_attested` until a receipt verifies, then `witnessed`, or `witnessed_in_part` while steps sealed after the last witnessed tick are uncovered; `witness_state` is `unverified` and the rung stays `self_attested` when a receipt held does not verify) | `countersigned` only when the signature verifies and the directory you chose lists the signer; a signer the directory lacks, or the producer's own key, is not a rung |
 | Choose it when | You want any deal checked by a third party without doing anything, and are content that it learns only checkpoint hashes | A counterparty or auditor needs a named party to have signed this exact bundle, and you accept that party seeing it |
 
 ## Switch a deal to countersign
@@ -27,7 +27,7 @@ x-deal-v1 deals yet", `deal report` has no `--from-bundle`, `--directory` or
 `--html` for it, and `countersign request` refuses the v1 report bundle because
 it carries a disclosures member. A v1 deal stays witnessed (default) and
 self-attested otherwise; a countersign path for v1 is not built
-([evidencebook#862](https://github.com/action-state-group/evidencebook/issues/862)
+([evidencebook#865](https://github.com/action-state-group/evidencebook/issues/865)
 tracks it). The steps below are for a v0 deal.
 
 Witnessing stays on unless you turn it off. To add a countersignature you ask a
