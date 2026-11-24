@@ -23,13 +23,31 @@ dependencies = [
 [[package]]
 name = "agent-action-capsule"
 version = "0.12.0"
-source = "git+https://github.com/action-state-group/agent-action-capsule?rev=3072014ec75f08e91688efca67b7433c38d9abd4#3072014ec75f08e91688efca67b7433c38d9abd4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e4ad5a4c1d7d2954570d78e7ffb2a7746a534a4dfbc6062d87cafac170a7dd6"
+dependencies = [
+ "base64",
+ "checkpointed-local-log",
+ "ed25519-dalek",
+ "evidence-request 0.7.0",
+ "hex",
+ "p256",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "agent-action-capsule"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76c00b95000b446f500b7cdc1c413d1c098cef599e39c875fec0913b64f36b62"
 dependencies = [
  "base64",
  "checkpointed-local-log",
  "curve25519-dalek",
  "ed25519-dalek",
- "evidence-request 0.7.0",
+ "evidence-request 0.8.0",
  "hex",
  "p256",
  "serde",
@@ -409,7 +427,8 @@ dependencies = [
 [[package]]
 name = "evidence-request"
 version = "0.7.0"
-source = "git+https://github.com/action-state-group/agent-action-capsule?rev=3072014ec75f08e91688efca67b7433c38d9abd4#3072014ec75f08e91688efca67b7433c38d9abd4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efb48cc95fada13e1b10d17adcc5e0b0f717fd3f589d62b43ca16b8fa9bc09f9"
 dependencies = [
  "base64",
  "ciborium",
@@ -433,6 +452,7 @@ dependencies = [
  "ciborium",
  "ed25519-dalek",
  "hex",
+ "k256",
  "serde",
  "serde_json",
  "sha2",
@@ -443,7 +463,7 @@ dependencies = [
 name = "evidencebook"
 version = "0.0.26"
 dependencies = [
- "agent-action-capsule 0.12.0",
+ "agent-action-capsule 0.13.0",
  "base64",
  "boon",
  "capsule-emit-artifact",

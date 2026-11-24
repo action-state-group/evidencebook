@@ -2,9 +2,3 @@
 resolver = "2"
 # interop holds the programs the interop CI job runs; it is never published.
 members = ["evidencebook", "interop"]
-
-# TEMPORARY: card_registration uses witness::check_card_registered, which is in
-# agent-action-capsule 0.13.0 but not 0.12.0. Remove this patch and bump the
-# dependency when 0.13.0 is on crates.io.
-[patch.crates-io]
-agent-action-capsule = { git = "https://github.com/action-state-group/agent-action-capsule", rev = "3072014ec75f08e91688efca67b7433c38d9abd4" }
