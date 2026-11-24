@@ -21,7 +21,7 @@ import (
 // File is one pack file. `document` is the compiled definition as
 // compiled: the digest requesters name is the SHA-256 of its JCS, so it is read
 // as the file's own bytes. `forms` and `fields` are what the holder declares:
-// this plugin reads no member of the definition (the interop profile does not
+// neither plugin reads a member of the definition (the interop profile does not
 // fix them), and `fields` are what each answer reveals of a record, header
 // members or paths into one (`statement.generated_at`).
 type File struct {
@@ -105,7 +105,7 @@ func decodeStrings(raw json.RawMessage, into *[]string) error {
 	return json.Unmarshal(raw, into)
 }
 
-// documentDigest is the identifier of a definition: SHA-256 over the JCS of
+// Digest is the identifier of a definition: SHA-256 over the JCS of
 // its document, the digest a requester names.
 func Digest(document []byte) (string, error) {
 	decoded, err := evidencerequest.DecodeJSON(document)

@@ -461,7 +461,7 @@ func TestAReportOverJournalWindowsCoversTheirDeals(t *testing.T) {
 	assert.Equal(t, "deal/a", coverage.Deals[0].LogID)
 	assert.Equal(t, "2026-10", coverage.Deals[0].Window)
 	assert.Equal(t, aCP.Entries, coverage.Deals[0].Through.Entries, "deal/a's answer covers its perform after the window")
-	assert.Contains(t, coverage.Deals[0].Line, fmt.Sprintf("deal deal/a, placed in window 2026-10, answered over its whole book, through its checkpoint of %d records issued 2026-12-04", aCP.Entries))
+	assert.Contains(t, coverage.Deals[0].Line, fmt.Sprintf("deal/a, placed in window 2026-10, is answered over its whole book, through its checkpoint of %d records issued 2026-12-04", aCP.Entries))
 	assert.Contains(t, coverage.Deals[0].Line, "records after the window included")
 	assert.Equal(t, "deal/b", coverage.Deals[1].LogID)
 }

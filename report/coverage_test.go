@@ -231,7 +231,7 @@ func TestTheCoverageBannerEscapesItsRange(t *testing.T) {
 func TestTheCoverageBannerNamesEachPlacedDeal(t *testing.T) {
 	line := func(id string) evidencebook.DealCoverage {
 		// The line as evidencebook's coverage check writes it (window_report.go).
-		return evidencebook.DealCoverage{LogID: id, Window: "2026-09", Line: "deal " + id + ", placed in window 2026-09, answered over its whole book, through its checkpoint of 4 records issued 2026-10-02T09:00:00Z, records after the window included <&>"}
+		return evidencebook.DealCoverage{LogID: id, Window: "2026-09", Line: id + ", placed in window 2026-09, is answered over its whole book, through its checkpoint of 4 records issued 2026-10-02T09:00:00Z, records after the window included <&>"}
 	}
 	one, err := markCoverage(appElement, evidencebook.ReportCoverage{From: "2026-09", To: "2026-09", Windows: make([]evidencebook.VerifiedWindow, 1),
 		Deals: []evidencebook.DealCoverage{line("deal/a")}, Limit: evidencebook.ReportLimit}, false)

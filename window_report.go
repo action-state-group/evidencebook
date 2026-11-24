@@ -369,7 +369,7 @@ func coverageWithDeals(chainHeader Header, payload []byte, answers []windowAnswe
 			}
 			at := windowTime(a.issuedAt)
 			d.coverage = DealCoverage{LogID: a.tree.LogID, Window: d.label, Through: a.tree, ThroughAt: at,
-				Line: fmt.Sprintf("deal %s, placed in window %s, answered over its whole book, through its checkpoint of %d records issued %s, records after the window included", a.tree.LogID, d.label, a.tree.Entries, at)}
+				Line: fmt.Sprintf("%s, placed in window %s, is answered over its whole book, through its checkpoint of %d records issued %s, records after the window included", a.tree.LogID, d.label, a.tree.Entries, at)}
 			continue
 		}
 		switch {
