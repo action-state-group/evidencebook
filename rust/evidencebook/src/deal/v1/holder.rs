@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use serde_json::Value;
 
 use super::book::verify_book;
+use super::case_book::{case_log_id, CASE_LOG_PREFIX};
 use super::check::record_digest;
 use super::names::*;
 use super::record::{decode, Body, Record};
@@ -67,9 +68,35 @@ fn read_pair(record: &[u8]) -> Result<Read, String> {
 struct Ours {
     journal: Vec<Record>,
     agreements: Vec<Record>,
+    /// The rulings opening each of our case books, when the holder is an
+    /// adjudicator, by their log id.
+    cases: HashMap<String, Record>,
 }
 
 impl Ours {
+    /// Whether `sender` is a party of a deal whose agreement cites
+    /// `offer_digest` and names `adjudicator_key`, by our case book of that
+    /// deal: the case log of that offer and adjudicator is one of ours, and
+    /// its first ruling, of the same deal, names `sender` among its keys. An
+    /// adjudicator then takes the parties' book records after its ruling, to
+    /// check each entered it (Go `caseParty`).
+    fn case_party(
+        &self,
+        deal_id: &str,
+        offer_digest: &str,
+        adjudicator_key: &str,
+        sender: &str,
+    ) -> bool {
+        let Some(r) = self.cases.get(&case_log_id(offer_digest, adjudicator_key)) else {
+            return false;
+        };
+        r.block.deal_id == deal_id
+            && match &r.body {
+                Body::Ruling(rb) => rb.keys.buyer == sender || rb.keys.seller == sender,
+                _ => false,
+            }
+    }
+
     /// Our journal's propose whose record digest is `d`: an offer or a
     /// counter-offer, whichever a reply cites.
     fn offer_by_digest(&self, d: &str) -> Option<(&ProposeBody, &Record)> {
@@ -315,6 +342,7 @@ impl ReceiveProfile {
         let mut o = Ours {
             journal: c.journal.iter().map(|(_, r)| r.clone()).collect(),
             agreements: Vec::new(),
+            cases: HashMap::new(),
         };
         for log_id in shelf.books()? {
             let first = match c.firsts.get(&log_id) {
@@ -325,7 +353,9 @@ impl ReceiveProfile {
                     if let Some(r) = book.record_by_seq(1) {
                         match v1_payload(&book, &r)? {
                             Payload::V1(rec)
-                                if rec.agree().is_some_and(|a| a.kind == KIND_AGREEMENT) =>
+                                if rec.agree().is_some_and(|a| a.kind == KIND_AGREEMENT)
+                                    || (rec.block.record_type == TYPE_RULING
+                                        && log_id.starts_with(CASE_LOG_PREFIX)) =>
                             {
                                 first = Some(*rec)
                             }
@@ -339,8 +369,12 @@ impl ReceiveProfile {
                     first
                 }
             };
-            if let Some(first) = first {
-                o.agreements.push(first);
+            match first {
+                Some(first) if first.block.record_type == TYPE_RULING => {
+                    o.cases.insert(log_id, first);
+                }
+                Some(first) => o.agreements.push(first),
+                None => {}
             }
         }
         Ok(o)
@@ -448,10 +482,16 @@ impl ReceiveProfile {
             return Ok(false);
         }
         if rec.block.record_type == TYPE_RULING {
-            return Ok(o
-                .agreement(&rec.block.deal_id)
-                .and_then(|a| a.adjudicator.value())
-                .is_some_and(|adj| adj.key_id == r.sender_key));
+            // From our agreement's adjudicator, on the deal's one case book
+            // (case_log_id), whoever carried it: a party forwards the ruling
+            // it received, so a judge that gave each side another ruling
+            // shows as a fork of that log.
+            return Ok(o.agreement(&rec.block.deal_id).is_some_and(|a| {
+                a.adjudicator
+                    .value()
+                    .is_some_and(|adj| adj.key_id == r.sender_key)
+                    && r.log_id == case_log_id(&a.offer.digest, &r.sender_key)
+            }));
         }
         // The log's first record from this sender: this record, or the one
         // held.
@@ -469,6 +509,12 @@ impl ReceiveProfile {
         else {
             return Ok(false);
         };
+        if gag.adjudicator.value().is_some_and(|adj| {
+            o.case_party(&r.deal_id, &gag.offer.digest, &adj.key_id, &r.sender_key)
+        }) {
+            // We are the deal's adjudicator and ruled on it: a party's book.
+            return Ok(true);
+        }
         if let Some(a) = o.agreement(&r.deal_id) {
             // The counterparty of our deal, on a book that answers the same
             // offer.
@@ -530,6 +576,18 @@ impl ReceiveProfile {
             let Ok(b) = verify_book(&h.record) else {
                 continue;
             };
+            if b.record.block.record_type == TYPE_RULING {
+                // A case book: the adjudicator checkpoints it with the key
+                // our agreement names it by, so the proof binds to that key.
+                if o.agreement(&b.record.block.deal_id).is_some_and(|a| {
+                    a.adjudicator.value().is_some_and(|adj| adj.key_id == *key)
+                        && checkpoint_key_id == key
+                        && log_id == case_log_id(&a.offer.digest, key)
+                }) {
+                    candidates.push(key.clone());
+                }
+                continue;
+            }
             let Some(ag) = b
                 .record
                 .agree()
@@ -538,13 +596,21 @@ impl ReceiveProfile {
                 continue;
             };
             let deal = &b.record.block.deal_id;
-            let expected = match o.agreement(deal).and_then(|a| a.counterparty_key.value()) {
+            let mut expected = match o.agreement(deal).and_then(|a| a.counterparty_key.value()) {
                 Some(k) => Some(k.clone()),
                 None => o
                     .offer_by_digest(&ag.offer.digest)
                     .filter(|(_, offer)| offer.block.deal_id == *deal)
                     .and_then(|(of, _)| of.to.value().cloned()),
             };
+            if expected.is_none()
+                && ag
+                    .adjudicator
+                    .value()
+                    .is_some_and(|adj| o.case_party(deal, &ag.offer.digest, &adj.key_id, key))
+            {
+                expected = Some(key.clone());
+            }
             if expected.as_ref() == Some(key) {
                 candidates.push(key.clone());
             }
@@ -749,10 +815,12 @@ impl ShelfReceiveProfile for ReceiveProfile {
     /// EBL's current push rule (Go `Admit`): an offer from any key; a
     /// decline of an offer of ours from the key it was sent to; a
     /// cancellation of an offer of this deal from that offer's signer; a
-    /// ruling from our agreement's adjudicator; and a deal-book record from
-    /// the counterparty of the deal, on a log whose first record from that
-    /// sender is the counterparty's agreement of this deal, citing the
-    /// offer it answers.
+    /// ruling from our agreement's adjudicator, on the deal's case log
+    /// ([`case_log_id`]), whoever carries it; at an adjudicator holding a
+    /// deal's case book, a deal-book record of either party it names; and a
+    /// deal-book record from the counterparty of the deal, on a log whose
+    /// first record from that sender is the counterparty's agreement of this
+    /// deal, citing the offer it answers.
     fn admit(&self, record: &ReceivedRecord) -> Result<bool, String> {
         self.admit_record(record).map_err(profile_err)
     }
@@ -768,8 +836,11 @@ impl ShelfReceiveProfile for ReceiveProfile {
     /// names (Go `ProofSender`): among every record held at position 1 of
     /// that log, a sender holding two different ones is refused; of the
     /// rest, an x-deal-v1 agreement under this checkpoint key, of a deal of
-    /// ours, signed by the key that deal expects. Exactly one candidate
-    /// gives its signer; none or more refuses the proof.
+    /// ours, signed by the key that deal expects (at an adjudicator, a party
+    /// its case book names); or a case book's first ruling, when the
+    /// checkpoint key is the adjudicator key our agreement names and the log
+    /// is the deal's case log. Exactly one candidate gives its signer; none
+    /// or more refuses the proof.
     fn proof_sender(
         &self,
         checkpoint_key_id: &str,

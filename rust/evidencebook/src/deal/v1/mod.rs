@@ -37,6 +37,7 @@
 
 mod authorization;
 mod book;
+mod case_book;
 mod check;
 mod exact;
 mod gotime;
@@ -58,6 +59,9 @@ mod types;
 
 pub use authorization::{check_authorizations, new_nonce, ActAuthorization, STAGE_AUTHORIZATION};
 pub use book::{book_pair, verify_book, BookRead, STAGE_BOOK};
+#[cfg(feature = "shelf")]
+pub use case_book::held_ruling;
+pub use case_book::{case_log_id, CASE_LOG_PREFIX};
 pub use check::{
     check, check_agreement, check_dispute, check_ruling, check_sealed, digest, encode,
     placement_of, profile_schema, record_digest, ref_to, rows_digest, Placement, SealContext,

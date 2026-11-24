@@ -122,7 +122,15 @@ impl Party {
     }
 
     fn with_signer(name: &str, signer: &str) -> Party {
-        Party::build(name, signer, None)
+        Party::build(name, signer, None, None)
+    }
+
+    /// A party that checkpoints with its record key, as an adjudicator does
+    /// (Go `newAdjudicator`): the key its agreements name is the key its
+    /// case book's stamp proof is signed with.
+    fn adjudicator(name: &str) -> Party {
+        let signer = format!("{name} record key");
+        Party::build(name, &signer, None, Some(&signer))
     }
 
     /// A party whose cadence asks a [`v1::DealStatus`] for each book.
@@ -131,10 +139,17 @@ impl Party {
             name,
             &format!("{name} record key"),
             Some(Arc::new(v1::DealStatus::new(None))),
+            None,
         )
     }
 
-    fn build(name: &str, signer: &str, status: Option<Arc<v1::DealStatus>>) -> Party {
+    fn build(
+        name: &str,
+        signer: &str,
+        status: Option<Arc<v1::DealStatus>>,
+        checkpoint: Option<&str>,
+    ) -> Party {
+        let checkpoint = checkpoint.map_or_else(|| format!("{name} checkpoint key"), String::from);
         let dir = Arc::new(tempfile::tempdir().unwrap());
         let path = dir.path().join("shelf.db");
         let clock = Arc::new(Mutex::new(Time::parse("2026-11-01T09:00:00Z").unwrap()));
@@ -143,7 +158,7 @@ impl Party {
             name,
             &path,
             &key_of(signer),
-            &key_of(&format!("{name} checkpoint key")),
+            &key_of(&checkpoint),
             &clock,
             &profile,
             status.as_ref(),
@@ -153,7 +168,7 @@ impl Party {
             name: name.into(),
             path,
             signer: key_of(signer),
-            checkpoint: key_of(&format!("{name} checkpoint key")),
+            checkpoint: key_of(&checkpoint),
             clock,
             profile,
             status,
@@ -392,6 +407,11 @@ impl Handshake {
             commitment_shelf_log: String::new(),
         }
     }
+}
+
+/// The deal's case log for `adjudicator` (Go `caseLogOf`).
+fn case_log_of(h: &Handshake, adjudicator: &Party) -> String {
+    v1::case_log_id(&digest(&h.offer), &adjudicator.key())
 }
 
 /// The sender a stamp proof under `ck` for `log` is related to, at `p`.
@@ -668,14 +688,19 @@ fn cancellation() {
 
 #[test]
 fn ruling_from_the_adjudicator() {
-    let adjudicator = Party::new("adjudicator");
+    let adjudicator = Party::adjudicator("adjudicator");
     let h = handshake(|a| a["body"]["adjudicator"]["key_id"] = json!(adjudicator.key()));
     let mut ruling = fixture("case-book/01-ruling.json");
     ruling["body"]["keys"] = json!({"buyer": h.buyer.key(), "seller": h.seller.key()});
     ruling["body"]["read"] = json!({"buyer": null, "seller": h.agreement_id});
-    let case_log = format!("case/{}", hex::encode(&seed("case log")[..16]));
+    let case_log = case_log_of(&h, &adjudicator);
     let (_, pair) = adjudicator.seal(&case_log, &ruling);
     assert!(h.seller.receive(Some(&pair), None).record.unwrap().stored);
+    // On any log but the deal's case log a ruling is refused (Go
+    // `TestRulingOnAnotherLogIsRefused`).
+    let other_log = format!("case/{}", hex::encode(&seed("another case log")[..16]));
+    let (_, elsewhere) = adjudicator.seal(&other_log, &ruling);
+    assert!(h.seller.refused(&elsewhere));
     let stranger = Party::new("stranger");
     let (_, forged) = stranger.seal(&case_log, &ruling);
     assert!(h.seller.refused(&forged));
@@ -1073,7 +1098,7 @@ fn a_profile_with_no_shelf_or_a_released_one_errs() {
 /// the deal against the seller, in the adjudicator's case book (Go
 /// `rulingCase`).
 fn ruling_case(buyer: Party, seller: Party) -> (Handshake, Party, Value, String) {
-    let adjudicator = Party::new("adjudicator");
+    let adjudicator = Party::adjudicator("adjudicator");
     let key = adjudicator.key();
     let h = handshake_of(buyer, seller, |a| {
         a["body"]["adjudicator"]["key_id"] = json!(key)
@@ -1083,7 +1108,7 @@ fn ruling_case(buyer: Party, seller: Party) -> (Handshake, Party, Value, String)
     ruling["body"]["read"] = json!({"buyer": null, "seller": h.agreement_id});
     ruling["body"]["final"] = json!(true);
     record(&ruling);
-    let case_log = format!("case/{}", hex::encode(&seed("case log")[..16]));
+    let case_log = case_log_of(&h, &adjudicator);
     (h, adjudicator, ruling, case_log)
 }
 
@@ -1578,4 +1603,256 @@ fn deal_status_report_with_book() {
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(read.key_id, h.buyer.key(), "{name}");
     }
+}
+
+/// A handshake between `buyer` and `seller` whose agreement names
+/// `adjudicator` (`edit` changes it further), and its final ruling against
+/// the seller, ready to seal on the deal's case log (Go `caseBookHolder`).
+fn case_book_holder_of(
+    buyer: Party,
+    seller: Party,
+    adjudicator: Party,
+    edit: impl FnOnce(&mut Value),
+) -> (Handshake, Party, Value, String) {
+    let key = adjudicator.key();
+    let h = handshake_of(buyer, seller, |a| {
+        a["body"]["adjudicator"]["key_id"] = json!(key);
+        edit(a);
+    });
+    let mut ruling = fixture("case-book/01-ruling.json");
+    ruling["body"]["keys"] = json!({"buyer": h.buyer.key(), "seller": h.seller.key()});
+    ruling["body"]["read"] = json!({"buyer": null, "seller": h.agreement_id});
+    ruling["body"]["final"] = json!(true);
+    record(&ruling);
+    let case_log = case_log_of(&h, &adjudicator);
+    (h, adjudicator, ruling, case_log)
+}
+
+fn case_book_holder(adjudicator: Party) -> (Handshake, Party, Value, String) {
+    case_book_holder_of(
+        Party::new("buyer"),
+        Party::new("seller"),
+        adjudicator,
+        |_| {},
+    )
+}
+
+/// A case book's stamp proof is bound to the adjudicator key the agreement
+/// names: the adjudicator checkpoints with that key, and the holder keeps
+/// the proof beside the ruling (Go `TestCaseBookProofBindsToTheAdjudicatorKey`).
+#[test]
+fn case_book_proof_binds_to_the_adjudicator_key() {
+    let (h, adjudicator, ruling, case_log) = case_book_holder(Party::adjudicator("adjudicator"));
+    let (id, pair) = adjudicator.seal(&case_log, &ruling);
+    let proof = adjudicator.stamp(&id);
+    let res = h.seller.receive(Some(&pair), Some(&proof));
+    let p = res.proof.expect("a proof result");
+    assert!(p.accepted, "refused: {:?}", p.refused);
+}
+
+/// A case book proof under a checkpoint key that is not the adjudicator's
+/// record key binds to nothing and is refused; the ruling itself is kept
+/// (Go `TestCaseBookProofUnderAnotherKeyIsRefused`).
+#[test]
+fn case_book_proof_under_another_key_is_refused() {
+    let (h, adjudicator, ruling, case_log) = case_book_holder(Party::new("adjudicator"));
+    let (id, pair) = adjudicator.seal(&case_log, &ruling);
+    let proof = adjudicator.stamp(&id);
+    let e = h
+        .seller
+        .shelf
+        .receive(Some(&pair), Some(&proof))
+        .unwrap_err();
+    assert!(e
+        .errors()
+        .iter()
+        .any(|e| matches!(e, ShelfError::Refused(_))));
+    assert!(e.to_string().contains("may not push a stamp proof"), "{e}");
+    let res = h.seller.receive(Some(&pair), None);
+    let r = res.record.unwrap();
+    assert!(r.stored || r.duplicate);
+    assert!(r.counted);
+}
+
+/// A judge that gives each side another ruling at the same place of the
+/// case log shows as a fork once one side forwards what it received: the
+/// holder then holds both, its proofs for that log are refused, and the row
+/// has no effective ruling (Go `TestForwardedRulingShowsAFork`).
+#[test]
+fn forwarded_ruling_shows_a_fork() {
+    let (h, adjudicator, ruling, case_log) = case_book_holder_of(
+        Party::with_status("buyer"),
+        Party::new("seller"),
+        Party::adjudicator("adjudicator"),
+        |a| a["body"]["witnesses"] = json!([]),
+    );
+    // The buyer holds both agreements, so its deal has started.
+    let mut ba = buyer_agreement(&h, true);
+    ba["body"]["witnesses"] = json!([]);
+    ba["body"]["adjudicator"]["key_id"] = json!(adjudicator.key());
+    let buyer_log = log_of("buyer log");
+    h.buyer.seal(&buyer_log, &ba);
+    h.buyer.receive(Some(&h.agreement_pair), Some(&h.proof));
+    let status = h.buyer.status.clone().unwrap();
+    let report_row = |now: String| {
+        let copy = v1::ReportCopy {
+            audience: "keep".into(),
+            nonce: "a".repeat(64),
+            referee: String::new(),
+            as_of: now,
+            text: None,
+        };
+        let r = status.report(&buyer_log, &copy).unwrap();
+        r.rows
+            .into_iter()
+            .find(|row| row.id == "as_described")
+            .expect("row as_described")
+    };
+
+    let (id_a, pair_a) = adjudicator.seal(&case_log, &ruling);
+    let proof_a = adjudicator.stamp(&id_a);
+    let res = h.buyer.receive(Some(&pair_a), Some(&proof_a));
+    let p = res.proof.expect("a proof result");
+    assert!(p.accepted, "refused: {:?}", p.refused);
+    h.buyer.tick();
+    h.buyer.cadence.stamp(h.buyer.now()).unwrap();
+    assert!(
+        report_row(h.buyer.now().rfc3339()).ruling.is_some(),
+        "one ruling held: it is effective"
+    );
+
+    // The seller got ruling B at the same place, and forwards it.
+    let mut other = ruling.clone();
+    other["body"]["against"] = json!("buyer");
+    other["body"]["value"] = json!("met");
+    let second = Party::adjudicator("adjudicator");
+    let (_, pair_b) = second.seal(&case_log, &other);
+    h.buyer.receive(Some(&pair_b), None);
+    h.buyer.tick();
+    h.buyer.cadence.stamp(h.buyer.now()).unwrap();
+    assert!(
+        report_row(h.buyer.now().rfc3339()).ruling.is_none(),
+        "two different first final rulings: none is effective"
+    );
+
+    // A forked case book makes no checkpoint claim.
+    assert_eq!(sender(&h.buyer, &adjudicator.key(), &case_log), None);
+}
+
+/// The adjudicator, once it ruled on a deal, takes each party's book: the
+/// agreement with its stamp proof, and the statement naming its ruling.
+/// Before it ruled, or for a deal it did not rule on, it takes nothing (Go
+/// `TestAdjudicatorTakesThePartiesBooksAfterItsRuling`).
+#[test]
+fn adjudicator_takes_the_parties_books_after_its_ruling() {
+    let (h, adjudicator, ruling, case_log) = case_book_holder(Party::adjudicator("adjudicator"));
+
+    // Not yet ruled: the seller's agreement is refused.
+    assert!(adjudicator.refused(&h.agreement_pair), "no case book yet");
+
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    h.seller.receive(Some(&pair), None); // names the ruling at seq 2 of the seller's book
+    let seller_book = h.seller.shelf.open(&h.seller_log).unwrap();
+    assert_eq!(seller_book.size(), 2);
+
+    let res = adjudicator.receive(Some(&h.agreement_pair), Some(&h.proof));
+    assert!(res.record.unwrap().stored);
+    let p = res.proof.expect("a proof result");
+    assert!(p.accepted, "refused: {:?}", p.refused);
+    let naming = read_back(&seller_book, 2);
+    let pair_2 = book_pair_at(&seller_book, 2);
+    let res = adjudicator.receive(Some(&pair_2), None);
+    assert!(res.record.unwrap().stored);
+    let st = match &naming.record.body {
+        v1::Body::Statement(s) => s,
+        b => panic!("not a statement: {b:?}"),
+    };
+    assert_eq!(
+        st.names
+            .as_ref()
+            .expect("names")
+            .ruling
+            .as_ref()
+            .expect("ruling ref")
+            .digest,
+        digest(&ruling),
+        "the seller entered this ruling"
+    );
+
+    // The buyer's agreement and its proof are taken too: either party the
+    // ruling names.
+    let buyer_agreement_of = |p: &Party| {
+        let mut ba = buyer_agreement(&h, true);
+        ba["body"]["checkpoint_key"] = json!(p.checkpoint_key());
+        ba["body"]["adjudicator"]["key_id"] = json!(adjudicator.key());
+        ba
+    };
+    let (buyer_id, buyer_pair) = h.buyer.seal(
+        "deal/b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+        &buyer_agreement_of(&h.buyer),
+    );
+    let buyer_proof = h.buyer.stamp(&buyer_id);
+    let res = adjudicator.receive(Some(&buyer_pair), Some(&buyer_proof));
+    assert!(res.record.unwrap().stored);
+    let p = res.proof.expect("a proof result");
+    assert!(p.accepted, "refused: {:?}", p.refused);
+
+    // A third key's agreement of the same deal, naming the same adjudicator,
+    // is no party's: refused, and so is its proof.
+    let intruder = Party::new("intruder");
+    let (intruder_id, intruder_pair) = intruder.seal(
+        "deal/c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+        &buyer_agreement_of(&intruder),
+    );
+    let intruder_proof = intruder.stamp(&intruder_id);
+    assert!(
+        adjudicator.refused(&intruder_pair),
+        "a key the ruling does not name"
+    );
+    let e = adjudicator
+        .shelf
+        .receive(Some(&intruder_pair), Some(&intruder_proof))
+        .unwrap_err();
+    assert!(e
+        .errors()
+        .iter()
+        .any(|e| matches!(e, ShelfError::Refused(_))));
+
+    // Another adjudicator, which ruled on nothing, takes none of it.
+    let stranger = Party::adjudicator("another adjudicator");
+    assert!(stranger.refused(&h.agreement_pair));
+}
+
+/// The book pair of the record at `seq` of `book`, as it is sent (Go
+/// `bookPairAt`).
+fn book_pair_at(book: &evidencebook::shelf::ShelfBook, seq: u64) -> Vec<u8> {
+    let r = book.record_by_seq(seq).unwrap();
+    let digest = r.header["payload_commitments"][0].as_str().unwrap();
+    let payload = book.resolve_payload(&r.record_id, digest).unwrap();
+    v1::book_pair(&r.header_bytes, &r.capsule, &r.envelope, &payload).unwrap()
+}
+
+/// `held_ruling` finds a received ruling by the record digest a statement
+/// names, and reports one the holder does not hold as unavailable (Go
+/// `TestHeldRuling`).
+#[test]
+fn held_ruling_finds_a_received_ruling() {
+    let (h, adjudicator, ruling, case_log) = case_book_holder(Party::adjudicator("adjudicator"));
+    let rd = digest(&ruling);
+    let find = |deal: &str, key: &str| v1::held_ruling(&h.seller.shelf, deal, key, &rd).unwrap();
+    assert!(
+        find(DEAL, &adjudicator.key()).is_none(),
+        "not received yet: unavailable"
+    );
+
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    h.seller.receive(Some(&pair), None);
+    let read = find(DEAL, &adjudicator.key()).expect("held");
+    assert_eq!(read.record.block.record_type, v1::TYPE_RULING);
+
+    assert!(find(DEAL, &h.buyer.key()).is_none(), "from another key");
+    assert!(
+        find("deal-ffffffffffffffff", &adjudicator.key()).is_none(),
+        "of another deal"
+    );
 }
