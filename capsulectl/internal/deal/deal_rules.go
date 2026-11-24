@@ -160,6 +160,15 @@ type dealIntent struct {
 	// item takes the item back.
 	Delegated     []string `json:"delegated,omitempty"`
 	DelegatedSaid string   `json:"delegated_said,omitempty"`
+	// Confirmed is the user's own words answering the line `deal open
+	// --authority-line` rendered back to them (deal_authority_line.go). A
+	// buyer's typed deal that allows pay opens only with it, and its task
+	// authority records what was rendered and a commitment to this answer.
+	// Absent on every deal sealed before it was recorded.
+	Confirmed string `json:"confirmed,omitempty"`
+	// Rendered is the line the user was shown, set by `deal open` from the
+	// wording in force when it seals, never from the input file.
+	Rendered string `json:"rendered,omitempty"`
 	// Who is, on an intent note, the counterparty the user picked or
 	// switched to: it starts a leg (deal_journey.go). Why is the user's own
 	// reason, kept only on a switch or a raise. Neither is on the opening.

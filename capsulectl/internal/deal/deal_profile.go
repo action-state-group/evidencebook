@@ -98,6 +98,12 @@ func dealTexts(ev dealEvent) map[string]string {
 	case ev.TaskAuthority != nil:
 		t["verbatim"] = ev.TaskAuthority.Verbatim
 		boundsText(t, *ev.TaskAuthority)
+		if ev.TaskAuthority.Confirmed != "" {
+			t["confirmed"] = ev.TaskAuthority.Confirmed
+		}
+		if ev.TaskAuthority.Rendered != "" {
+			t["rendered"] = ev.TaskAuthority.Rendered
+		}
 		if ev.SaleAuthority != "" {
 			t["sale_authority"] = ev.SaleAuthority
 		}
@@ -1331,7 +1337,7 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 			body["carried_obligations"] = carried
 		}
 	case "task_authority":
-		return taskAuthorityRecord(ev, events, commit, block)
+		return taskAuthorityRecord(ev, events, commit, block, key)
 	case "platform_approval":
 		return platformApprovalRecord(ev, events, commit, block, currency)
 	case "acceptance":

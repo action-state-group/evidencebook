@@ -170,6 +170,7 @@ func requestFixture(t *testing.T) []byte {
 
 func invoke(t *testing.T, input string, args ...string) (string, error) {
 	t.Helper()
+	confirmTypedBuyerOpen(t, args)
 	c := testCommand()
 	var out bytes.Buffer
 	c.SetIn(strings.NewReader(input))
@@ -775,4 +776,41 @@ func verifyBundleOutput(t *testing.T, path string) (map[string]interface{}, erro
 
 func status(result map[string]interface{}, claim string) string {
 	return result[claim].(map[string]interface{})["status"].(string)
+}
+
+// keepOpenUnconfirmed leaves a typed buyer open as the test wrote it, to
+// test the refusal of one with no yes from the user.
+var keepOpenUnconfirmed bool
+
+// confirmTypedBuyerOpen adds the user's yes to a typed buyer's open input
+// that allows pay and has none: the suites that open such deals are about
+// what follows the open, and a deal that allows pay opens only on that yes
+// (deal_authority_line.go).
+func confirmTypedBuyerOpen(t *testing.T, args []string) {
+	t.Helper()
+	if keepOpenUnconfirmed || !slices.Contains(args, "open") || !slices.Contains(args, "typed") {
+		return
+	}
+	i := slices.Index(args, "--input")
+	if i < 0 || i+1 >= len(args) {
+		return
+	}
+	raw, err := os.ReadFile(args[i+1])
+	require.NoError(t, err)
+	var doc map[string]any
+	if json.Unmarshal(raw, &doc) != nil {
+		return
+	}
+	intent, _ := doc["intent"].(map[string]any)
+	if intent == nil || intent["confirmed"] != nil {
+		return
+	}
+	allowed, _ := intent["allowed"].([]any)
+	if !slices.Contains(allowed, any("pay")) || intent["party_role"] == "seller" {
+		return
+	}
+	intent["confirmed"] = "yes"
+	raw, err = json.Marshal(doc)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(args[i+1], raw, 0o600))
 }

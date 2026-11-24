@@ -155,7 +155,7 @@ func moveCounterparty(block, body map[string]interface{}) {
 
 // taskAuthorityRecord is the task authority step sealed right after the
 // baseline when a typed deal opens: the user's words and limits as asked.
-func taskAuthorityRecord(ev dealEvent, events []sealedEvent, commit func(string) (string, error), block map[string]interface{}) (map[string]interface{}, error) {
+func taskAuthorityRecord(ev dealEvent, events []sealedEvent, commit func(string) (string, error), block map[string]interface{}, key []byte) (map[string]interface{}, error) {
 	ta := ev.TaskAuthority
 	verbatim, err := commit("verbatim")
 	if err != nil {
@@ -201,6 +201,13 @@ func taskAuthorityRecord(ev dealEvent, events []sealedEvent, commit func(string)
 		if body["sale_authority_commitment"], err = commit("sale_authority"); err != nil {
 			return nil, err
 		}
+	}
+	if ta.Confirmed != "" {
+		asked, err := confirmedAsked(ta, events[0].Event.Open, key, commit)
+		if err != nil {
+			return nil, err
+		}
+		body["asked"] = asked
 	}
 	block["refs"] = []interface{}{relRef("source", events[0].Digest)}
 	// A thread opened after threads were registered names its registration
