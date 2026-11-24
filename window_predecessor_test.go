@@ -355,3 +355,128 @@ func TestAPredecessorSignedByAnotherKeyIsNamed(t *testing.T) {
 		t.Fatal("a predecessor under other keys passed")
 	}
 }
+
+// A successor the store would refuse never closes the book.
+func TestABadSuccessorLeavesTheBookOpen(t *testing.T) {
+	ctx := context.Background()
+	bf := newFixture(t, "acme", 7)
+	old := bf.open(t)
+	mustAppend(t, old, observation("deal", "before-1"))
+	for name, c := range map[string]struct {
+		base   string
+		period WindowPeriod
+		grace  time.Duration
+	}{
+		"a grace not shorter than the period": {"acme", WindowMonth, 30 * 24 * time.Hour},
+		"an unknown period":                   {"acme", "fortnight", 0},
+		"no base":                             {"", WindowMonth, 0},
+		"a negative grace":                    {"acme", WindowMonth, -time.Hour},
+	} {
+		if _, err := old.CloseForWindows(ctx, c.base, c.period, c.grace); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
+		if old.Closed() {
+			t.Fatalf("%s closed the book", name)
+		}
+	}
+	mustAppend(t, old, observation("deal", "still-open"))
+}
+
+// A crash after the close record, before the final checkpoint, resumes.
+func TestAConversionResumesAfterACrashBeforeTheFinalCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	bf := newFixture(t, "acme", 7)
+	old := bf.open(t)
+	mustAppend(t, old, observation("deal", "before-1"))
+	if _, err := old.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	body, err := canonicalJSON(BookCloseStatement{RecordVersion: BookCloseVersion, CountsByKind: map[string]int{}, Successor: BookSuccessor{Base: "acme", Period: WindowMonth}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.mu.Lock()
+	old.closing = true
+	_, err = old.appendLocked(ctx, Entry{RecordType: RecordTypeBookClose, EpistemicType: ProducerClaim, Links: []Link{}, Statement: body})
+	old.closing = false
+	old.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Release(); err != nil {
+		t.Fatal(err)
+	}
+	old = bf.open(t)
+	if !old.Closed() {
+		t.Fatal("the reopened book is not closed")
+	}
+	policy, err := old.CloseForWindows(ctx, "acme", WindowMonth, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.Predecessor.Entries != uint64(old.Size()) {
+		t.Fatalf("predecessor %+v of %d records", policy.Predecessor, old.Size())
+	}
+}
+
+// The first window opens with the disclosure policy in force at the close.
+func TestTheFirstWindowCarriesThePredecessorsPolicy(t *testing.T) {
+	ctx := context.Background()
+	bf := newFixture(t, "acme", 7)
+	old := bf.open(t)
+	mustAppend(t, old, observation("deal", "before-1"))
+	adopted, _, err := old.AdoptPolicy(ctx, HolderNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := old.CloseForWindows(ctx, "acme", WindowMonth, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.PredecessorPolicy == nil {
+		t.Fatal("no predecessor policy")
+	}
+	sf := newShelfFixture(t)
+	sf.cfg.Window = policy
+	setClock(sf.clock, policy.Since.Add(time.Minute))
+	shelf := sf.open(t)
+	book, _, err := shelf.Current(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carried, err := book.DisclosurePolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := adopted.Digest()
+	got, _ := carried.Digest()
+	if got != want {
+		t.Fatalf("carried policy %s, adopted %s", got, want)
+	}
+	// It reads back from the file intact.
+	if err := shelf.Release(); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := ReadShelfWindow(ctx, sf.path)
+	if err != nil || !stored.sameAs(policy) {
+		t.Fatalf("stored %+v %v", stored, err)
+	}
+}
+
+// A predecessor closed into another store is named.
+func TestAPredecessorOfAnotherStoreIsNamed(t *testing.T) {
+	ctx := context.Background()
+	_, sf, _, chain := convertedChain(t, nil)
+	other := newFixture(t, "acme", 7).open(t)
+	mustAppend(t, other, observation("deal", "elsewhere"))
+	if _, err := other.CloseForWindows(ctx, "other", WindowMonth, 0); err != nil {
+		t.Fatal(err)
+	}
+	p, err := ChainPredecessorFromBook(ctx, other, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	swapped := chain
+	swapped.Predecessor = p
+	assertFinding(t, swapped, VerifyChainOptions{CheckpointKey: shelfCheckpointKey(sf)}, "the predecessor book's close names another successor than this store (month windows under \"acme\" from "+chain.Since+")")
+}

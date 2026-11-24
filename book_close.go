@@ -54,48 +54,52 @@ func SuccessorSince(committedAt time.Time) time.Time {
 // and the disclosure policy in force at the close. A book already closed
 // returns its policy again when it names the same successor, so a host
 // resumes a conversion a crash interrupted; a different successor is
-// refused. A window book cannot be closed this way.
+// refused. A window book cannot be closed this way. The store starts at
+// the first whole second after the close, so its host waits until then
+// before its first write (Shelf.Current refuses an earlier clock).
 func (b *Book) CloseForWindows(ctx context.Context, base string, period WindowPeriod, grace time.Duration) (*WindowPolicy, error) {
 	successor := BookSuccessor{Base: base, Period: period, GraceSeconds: int64(grace / time.Second)}
-	b.mu.Lock()
-	window, size := b.window, len(b.log)
-	var last *Record
-	if size > 0 {
-		last = &b.log[size-1]
-	}
-	b.mu.Unlock()
-	if window != nil {
-		return nil, fmt.Errorf("%w: a window book is closed by its shelf", ErrInvalid)
-	}
 	if grace%time.Second != 0 {
 		return nil, fmt.Errorf("%w: a grace is whole seconds", ErrInvalid)
 	}
-	if last == nil || last.Header.RecordType != RecordTypeBookClose {
-		if size == 0 {
+	b.mu.Lock()
+	if b.window != nil {
+		b.mu.Unlock()
+		return nil, fmt.Errorf("%w: a window book is closed by its shelf", ErrInvalid)
+	}
+	if n := len(b.log); n == 0 || b.log[n-1].Header.RecordType != RecordTypeBookClose {
+		if n == 0 {
+			b.mu.Unlock()
 			return nil, fmt.Errorf("%w: an empty book has nothing to continue; create the windowed store instead", ErrInvalid)
 		}
-		if _, err := b.Checkpoint(ctx); err != nil {
-			return nil, err
-		}
-		b.mu.Lock()
-		counts := map[string]int{}
-		for _, record := range b.log {
-			counts[record.Header.RecordType]++
-		}
-		body, err := canonicalJSON(BookCloseStatement{RecordVersion: BookCloseVersion, CountsByKind: counts, Successor: successor})
+		// The roots are committed and the close appended under one hold of
+		// the lock, so no record makes a root stale between them; and the
+		// successor is checked first, since the close cannot be undone.
+		cp, err := b.checkpointLocked(ctx)
 		if err == nil {
-			b.closing = true
-			_, err = b.appendLocked(ctx, Entry{RecordType: RecordTypeBookClose, EpistemicType: ProducerClaim, Links: []Link{}, Statement: body})
-			b.closing = false
+			provisional := WindowPolicy{Period: period, Base: base, Since: SuccessorSince(time.Unix(0, 0)), Grace: grace,
+				Predecessor: &WindowTree{LogID: cp.LogID, Entries: cp.Entries + 1, Root: cp.Root}}
+			err = provisional.validate()
 		}
 		if err == nil {
-			last = &b.log[len(b.log)-1]
+			counts := map[string]int{}
+			for _, record := range b.log {
+				counts[record.Header.RecordType]++
+			}
+			var body []byte
+			if body, err = canonicalJSON(BookCloseStatement{RecordVersion: BookCloseVersion, CountsByKind: counts, Successor: successor}); err == nil {
+				b.closing = true
+				_, err = b.appendLocked(ctx, Entry{RecordType: RecordTypeBookClose, EpistemicType: ProducerClaim, Links: []Link{}, Statement: body})
+				b.closing = false
+			}
 		}
-		b.mu.Unlock()
 		if err != nil {
+			b.mu.Unlock()
 			return nil, err
 		}
 	}
+	last := b.log[len(b.log)-1]
+	b.mu.Unlock()
 	var stated BookCloseStatement
 	if err := decodeStrict(last.Header.Statement, &stated); err != nil || stated.RecordVersion != BookCloseVersion {
 		return nil, fmt.Errorf("%w: book %s's book_close record does not carry its body", ErrCorrupt, b.id)

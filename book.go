@@ -813,7 +813,13 @@ func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoin
 	}
 	b.checkpointing = true
 	defer func() { b.checkpointing = false }()
+	// A book closed into a windowed store commits no index root after its
+	// close: its book_close stays its last record (evidencebook#808).
+	closedBook := len(b.log) > 0 && b.log[len(b.log)-1].Header.RecordType == RecordTypeBookClose
 	for _, index := range b.index {
+		if closedBook {
+			break
+		}
 		root := index.Root()
 		if b.roots[root.Index] == root {
 			continue
