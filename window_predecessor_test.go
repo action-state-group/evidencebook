@@ -609,3 +609,24 @@ func convertedShelfGrace(t *testing.T) (*Book, *bookFixture, *shelfFixture, *She
 	setClock(sf.clock, policy.Since.Add(time.Minute))
 	return old, bf, sf, sf.open(t), policy
 }
+
+// A later checkpoint of the closed tree never replaces the final one the
+// chain and the witness carry.
+func TestTheFinalCheckpointOfAClosedBookIsItsFirst(t *testing.T) {
+	ctx := context.Background()
+	_, old, _, _, _ := convertedShelf(t, 0)
+	first, err := ChainPredecessorFromBook(ctx, old, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	again, err := ChainPredecessorFromBook(ctx, old, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again.FinalCheckpoint) != string(first.FinalCheckpoint) {
+		t.Fatal("a later checkpoint replaced the final one")
+	}
+}

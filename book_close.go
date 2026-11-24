@@ -142,6 +142,8 @@ func (b *Book) CloseForWindows(ctx context.Context, base string, period WindowPe
 
 // finalOfClosed is a closed book's final checkpoint, taken now when a crash
 // left it untaken: a checkpoint of every record, which ends at the close.
+// It is the oldest checkpoint of that tree, so a later one of the same tree
+// never replaces the statement a witness was given.
 func (b *Book) finalOfClosed(ctx context.Context) (Checkpoint, error) {
 	b.mu.Lock()
 	size := uint64(len(b.log))
@@ -150,9 +152,9 @@ func (b *Book) finalOfClosed(ctx context.Context) (Checkpoint, error) {
 	if err != nil {
 		return Checkpoint{}, err
 	}
-	for i := len(stored) - 1; i >= 0; i-- {
-		if stored[i].Entries == size {
-			return stored[i], nil
+	for _, cp := range stored {
+		if cp.Entries == size {
+			return cp, nil
 		}
 	}
 	final, err := b.Checkpoint(ctx)
