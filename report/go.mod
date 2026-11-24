@@ -6,7 +6,7 @@ require (
 	github.com/action-state-group/agent-action-capsule/go v0.24.0
 	github.com/action-state-group/capsule-cli v0.1.0-rc50
 	github.com/action-state-group/capsule-viewer/go v0.23.1
-	github.com/action-state-group/evidencebook v0.26.1-0.20261123183005-f697663390cd
+	github.com/action-state-group/evidencebook v0.26.1-0.20261124044638-3550482e98e9
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/net v0.59.0
 )

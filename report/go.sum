@@ -18,8 +18,8 @@ github.com/action-state-group/capsule-viewer/go v0.23.1 h1:I5X8SqtuJdjbEL01bldgZ
 github.com/action-state-group/capsule-viewer/go v0.23.1/go.mod h1:D6U6Q9b4cEFb8McPyqInxANbVPCaoDFCM0KJk3CTwG4=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0 h1:AcIdYJq6vkhzBMQGsXm/AmfAqGLNAVLaNHXfambPVf0=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
-github.com/action-state-group/evidencebook v0.26.1-0.20261123183005-f697663390cd h1:zOOTCkice1C4747LfQQdWMTzC0xrW5ZSXnt9i02jA8k=
-github.com/action-state-group/evidencebook v0.26.1-0.20261123183005-f697663390cd/go.mod h1:HVnvMUEWl+Ot6Bnfzq4WtsdN0JC8w0AwM8rLTj5fsgs=
+github.com/action-state-group/evidencebook v0.26.1-0.20261124044638-3550482e98e9 h1:uLjcCjeXKBnCa1bvE4iGuZXXuza+rFubkzQr4JaJgjM=
+github.com/action-state-group/evidencebook v0.26.1-0.20261124044638-3550482e98e9/go.mod h1:HVnvMUEWl+Ot6Bnfzq4WtsdN0JC8w0AwM8rLTj5fsgs=
 github.com/btcsuite/btcd/btcec/v2 v2.5.1 h1:zDnj4h0PTlFz69xIhoGGXYkkkYxPgTv/AfjBxQQLlnE=
 github.com/btcsuite/btcd/btcec/v2 v2.5.1/go.mod h1:jCw+V1Y+1y1AruEuF21h2wkWXiPBlAPE78UJHxwqdDk=
 github.com/btcsuite/btcd/chainhash/v2 v2.0.0 h1:PMLlSloHJuEeB80XG9EjpXWNEKAZAMLl6YHZ6YsEuoA=
