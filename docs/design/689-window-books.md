@@ -358,7 +358,8 @@ ends).
 window; the notice and help state it ("window: month (calendar months, UTC), closes 7 days after
 it ends, fixed for this store"); `book window list` shows each window's close time; `book close`
 over a period inside a window in grace seals the Close in that window; `book window roll` and
-`publish` queue the boundary and final checkpoints for the witness (`witness/<label>.json`).
+`publish` queue the boundary and final checkpoints for the witness (`witness/<label>.json`);
+`close` names the window it sealed in.
 
 **Tests.** Policy: grace written, compared, refused when not shorter than the period, a version 3
 file without the column reads 0, version 4 for grace above 0. Roll: boundary then grace then
@@ -370,5 +371,67 @@ a backdated ordinary record after the boundary, an omitted tail leaf, a rewritte
 consistency proof fails), a boundary without receipts under witnesses, a malformed `index_root`;
 an honest chain with late Closes and index roots verifies; a v1 chain verifies. Respond and
 report: a pin on a window in grace; `ErrInGrace` from chain and derive. capsulectl: the notice and
-help, `book close` last month in grace and after it, acknowledgements in the current window,
-`book window list`, an old store opening with grace 0.
+help, `--grace` and its refusals (no store is left behind), `book close` last month in grace
+and after it, an ordinary record after a window ends landing in the current window, `book window
+list`, a chain refused over a window in grace, the boundary checkpoint queued for the witness,
+`close --bundle-out` in grace (anchored at that window's checkpoint, its disclosure record in the
+current window, since a window in grace takes only Closes); an old store opening with grace 0
+is the root package's test.
+capsulectl-book has no verb that writes an acknowledgement or rebuttal; the root package's tests
+show a window in grace refusing every record but a Close inside it, so such records go to the
+current window.
+
+## 11. Converting a JSONL book: the predecessor (#808)
+
+**The decision.** The old JSONL book closes as a whole and verifies as the window chain's
+predecessor, because a conversion that left the old book
+unlinked would read as a clear (a new stream) and a separately checked one would leave the join
+unchecked. Continuity across the conversion is as strong as between windows.
+
+**The close.** `Book.CloseForWindows(base, period, grace)` checkpoints the book (committing any
+pending index roots), appends a `book_close` record (`book_close/v1`: `counts_by_kind`, and the
+`successor`: base, period, grace in seconds), and takes the final checkpoint, whose tree ends at
+that record. The record is found by position and is not indexed, so the final checkpoint commits
+no new index root. A book whose last record is its `book_close` refuses every append
+(`ErrBookClosed`), recomputed on open, so neither a crash window nor a later verb writes after the
+close. Closing again with the same successor returns the same policy (a resumed conversion);
+another successor is refused.
+
+**The store.** The policy carries `Predecessor` (the book's final tree) and `PredecessorPolicy` (the
+disclosure policy in force at the close, which the first window opens with, since the shelf cannot
+open the JSONL book). `Since` is the first whole second after the close record's commit time
+(`SuccessorSince`), so no window holds a moment the book also does. The first window runs from
+`Since` to the next period start: a partial window with its usual label, `partial` in
+`WindowState` and on the chain's verified window. Every reader of a window's bounds goes through one helper that clamps the first
+window's start to `Since`, so a record dated before the conversion is refused there. The policy,
+predecessor included, is fixed in `shelf_window` and compared on every reopen; a shelf with a
+predecessor is version 5, which builds without predecessors refuse. The unsigned-ask limiter
+starts afresh with the store.
+
+**The chain.** The chain of such a store is `v: 3`, so a verifier that knows only 1 and 2 refuses it
+by version. A chain from the store's first window carries `predecessor`: the `book_close` record
+with its inclusion proof under the book's final checkpoint, that checkpoint and its receipts
+(`ChainPredecessorFromBook`; the host builds it, since the shelf does not hold the book).
+`VerifyWindowChain` checks the checkpoint under the holder's key and of its log; the close record
+at its last leaf, signed by the windows' key, naming this store's base and period, with `Since` the
+first whole second after it; the final tree equal to the first window's `previous`; and, under
+witnesses, its receipts ("predecessor not witnessed"). A missing predecessor, an altered tree, and
+a record after the close (the close is then not the last leaf of the tree the window names) are
+named findings. A chain from a later window carries a note on its first window: "continues from a
+predecessor book, not included", which rests on the chain's version and since, both unsigned.
+
+**Coverage.** A report over the conversion's period names the part before `Since` ("window 2026-11
+starts at <Since>; [<period start>, <Since>) is in the predecessor book, not covered"): no window
+answers for it.
+
+**capsulectl.** `book window convert` (a second PR) runs the close and creates the store, refusing a
+store already windowed, no JSONL book, a reproduced book, an unmigrated pre-book `cll.jsonl`, a
+clock behind, or no `--yes`; it states that the conversion is one-way, the old book stays at its
+path and its records never move, the same key continues, and it is not a clear. Closes over a
+period before the conversion are sealed in the old book first: after conversion such a Close is
+refused, with a hint naming the predecessor book; the period in progress at the conversion cannot
+be closed afterwards in either book (`close` takes whole periods), so the holder closes the last
+whole period before converting, or converts at a period boundary. Where the profile names a witness, the old book's final checkpoint is queued in
+`book/witness.json` and delivered like a window's final; until a receipt arrives the chain reports
+"predecessor not witnessed". A profile with no witness converts, labelled unwitnessed: the verifier
+checks receipts only when witnesses are passed, so `convert` and the chain say so.

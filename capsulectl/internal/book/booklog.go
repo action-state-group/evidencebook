@@ -882,10 +882,10 @@ func initBookFiles(ctx context.Context, p cli.Profile) error {
 			return err
 		}
 		if !reproduced && len(retired.entries) == 0 && retired.checkpoint == nil {
-			if err := initWindowedStore(ctx, p, defaultWindow); err != nil {
+			if err := initWindowedStore(ctx, p, defaultWindow, defaultGrace(defaultWindow)); err != nil {
 				return err
 			}
-			fmt.Fprintln(noticeOut, "capsulectl: "+windowNotice(defaultWindow))
+			fmt.Fprintln(noticeOut, "capsulectl: "+windowNotice(defaultWindow, defaultGrace(defaultWindow)))
 			return nil
 		}
 		reason := "a reproduced scratch book"

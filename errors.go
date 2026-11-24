@@ -56,4 +56,7 @@ var (
 	// ErrInGrace reports a window that has ended but is still in its grace
 	// (evidencebook#807): it has no final tree yet, so it is in no chain.
 	ErrInGrace = errors.New("evidencebook: window in grace")
+	// ErrBookClosed reports an append to a book closed into a windowed
+	// store (evidencebook#808): its book_close record is its last.
+	ErrBookClosed = errors.New("evidencebook: book closed")
 )

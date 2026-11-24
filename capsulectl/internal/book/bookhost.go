@@ -44,10 +44,12 @@ func (BookBackend) OwnsLogID(p cli.Profile, logID string) bool {
 		return false
 	}
 	w, err := policy.Period.ParseWindow(label)
-	// Not a window before the store's first; no upper bound, since a clock
-	// a little behind the newest window must not refuse its checkpoints, and
-	// the core still checks the signature and the trusted key.
-	return err == nil && !w.Start.Before(policy.Since)
+	// Not a window that ends by the store's start (the first window of a
+	// converted store begins after its period's start, evidencebook#808);
+	// no upper bound, since a clock a little behind the newest window must
+	// not refuse its checkpoints, and the core still checks the signature
+	// and the trusted key.
+	return err == nil && w.End.After(policy.Since)
 }
 
 // List is `cll list` on a book profile.

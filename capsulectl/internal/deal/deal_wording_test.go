@@ -84,7 +84,8 @@ func TestTheDealWordingPackIsRegisteredBesideTheCores(t *testing.T) {
 
 // The merge gate of capsule-cli#428 step 3 (Steven's door (c) ruling): the
 // card's terms line lives in this plugin's pack, and a pinned pack that
-// could hide a term from it is still refused across processes. The real
+// could hide a term from it is still refused across processes, while a pack
+// that only lacks keys is pinned with a notice. The real
 // capsulectl reads this plugin's pack from the handshake of the real
 // capsulectl-deal when it pins, and this plugin's process refuses such a pack
 // when it speaks (TestAPackThatHidesTheTermsLineIsNotUsed).
@@ -100,8 +101,14 @@ func TestCapsulectlRefusesAPackThatHidesADealTerm(t *testing.T) {
 	require.NoError(t, json.Unmarshal(cli.BuiltinWordingBytes(), &coreOnly))
 	coreOnly["id"] = "org.example.product.wording/v0"
 	out, err := run("profile", "update", "--profile", "deal", "--wording", writePackDoc(t, coreOnly))
-	require.Error(t, err, out)
-	assert.Contains(t, out, "of the capsulectl-deal plugin's keys, first action.cancel: a pack that plugin speaks with holds the core's keys and its own")
+	// A pack that only lacks keys is pinned with a notice (capsule-cli#627,
+	// evidencebook#834): an older plugin keeps installing, and the whole
+	// built-in pack speaks.
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "of the capsulectl-deal plugin's keys, first action.cancel")
+	assert.Contains(t, out, "uses the built-in wording for everything, not just the missing keys, until the pack is updated")
+	out, err = run("profile", "update", "--profile", "deal", "--wording", "")
+	require.NoError(t, err, out)
 
 	for key, text := range map[string]string{
 		"card.terms.price":          "a new price",
