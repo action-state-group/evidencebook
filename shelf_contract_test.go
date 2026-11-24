@@ -98,13 +98,13 @@ func TestAShelfRefusesAVersionItDoesNotKnow(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := rawShelfDB(t, f.path)
-	if _, err := db.Exec(`UPDATE shelf_meta SET version = 5`); err != nil {
+	if _, err := db.Exec(`UPDATE shelf_meta SET version = 6`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := OpenSQLiteShelf(context.Background(), f.cfg); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("a version 5 file: %v", err)
+		t.Fatalf("a version 6 file: %v", err)
 	}
-	if v := shelfVersion(t, db); v != 5 {
+	if v := shelfVersion(t, db); v != 6 {
 		t.Fatalf("a refused file is not rewritten: version %d", v)
 	}
 }

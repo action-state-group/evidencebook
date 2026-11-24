@@ -307,6 +307,12 @@ func coverage(chainHeader Header, payload []byte, answers []windowAnswer, opts V
 		}
 	}
 	for _, v := range verified {
+		if chain.Period.Partial(v.Window) {
+			// The conversion's period began in the predecessor book, which
+			// no window answers for (evidencebook#808).
+			periodStart := chain.Period.start(v.Start)
+			findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("window %s starts at %s; [%s, %s) is in the predecessor book, not covered", v.Label, windowTime(v.Start), windowTime(periodStart), windowTime(v.Start))})
+		}
 		switch n := answered[v.Label]; {
 		case n == 0:
 			findings = append(findings, ChainFinding{Window: v.Label, Text: fmt.Sprintf("window %s has no answer", v.Label)})

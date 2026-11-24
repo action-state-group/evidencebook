@@ -105,6 +105,9 @@ type Book struct {
 	// checkpointing suppresses the automatic checkpoint while the book is
 	// committing index roots inside a checkpoint.
 	checkpointing bool
+	// closing is set while CloseForWindows appends the book's book_close
+	// record, the one caller that may (evidencebook#808).
+	closing bool
 
 	responder       ResponderPolicy
 	standardHistory *StandardHistorySource
@@ -401,10 +404,11 @@ func (b *Book) addAuthenticated(record Record) error {
 		// commits; indexing it would make every root commit the next one stale.
 		return nil
 	}
-	if isWindowRecord(record.Header.RecordType) {
-		// A window's open and close are found by position (its first and
-		// last leaf), and the final checkpoint right after the close must
-		// commit no new index root (evidencebook#689 §2).
+	if isWindowRecord(record.Header.RecordType) || record.Header.RecordType == RecordTypeBookClose {
+		// A window's open and close, and a book's close into a windowed
+		// store, are found by position (first and last leaf), and the final
+		// checkpoint right after a close must commit no new index root
+		// (evidencebook#689 §2, #808).
 		return nil
 	}
 	for _, index := range b.index {
@@ -506,6 +510,15 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	}
 	if err := b.flushPendingLocked(ctx); err != nil {
 		return Record{}, err
+	}
+	// A book closed into a windowed store takes nothing after its close:
+	// the record is its last, which a chain checks (evidencebook#808).
+	// Checked after the flush, so a close left pending counts.
+	if n := len(b.log); n > 0 && b.log[n-1].Header.RecordType == RecordTypeBookClose {
+		return Record{}, fmt.Errorf("%w: book %s is closed: its last record is its book_close, and it continues in a windowed store", ErrBookClosed, b.id)
+	}
+	if entry.RecordType == RecordTypeBookClose && !b.closing {
+		return Record{}, fmt.Errorf("%w: a book_close record is written only by CloseForWindows", ErrInvalid)
 	}
 	fieldOpenings, fieldCommitments, err := fieldOriginals(entry.Fields)
 	if err != nil {
@@ -801,7 +814,13 @@ func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoin
 	}
 	b.checkpointing = true
 	defer func() { b.checkpointing = false }()
+	// A book closed into a windowed store commits no index root after its
+	// close: its book_close stays its last record (evidencebook#808).
+	closedBook := len(b.log) > 0 && b.log[len(b.log)-1].Header.RecordType == RecordTypeBookClose
 	for _, index := range b.index {
+		if closedBook {
+			break
+		}
 		root := index.Root()
 		if b.roots[root.Index] == root {
 			continue

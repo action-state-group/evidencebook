@@ -19,6 +19,13 @@ import (
 // otherwise. A verifier takes both.
 const WindowChainVersion = 2
 
+// WindowChainVersionPredecessor is the v member of the chain of a store that
+// continues a predecessor book (evidencebook#808): its since is the moment
+// after the predecessor closed, its first window is partial, and a chain
+// from that window carries the predecessor. A verifier that knows only 1 and
+// 2 refuses it by its version.
+const WindowChainVersionPredecessor = 3
+
 // WindowChain is a run of consecutive closed windows of one windowed shelf,
 // handed over with nothing else (evidencebook#689 §5; v 1, or 2 when a
 // window carries its boundary, evidencebook#807): each window's open and
@@ -35,6 +42,59 @@ type WindowChain struct {
 	To     string       `json:"to"`
 	// Windows are the windows From through To, in order.
 	Windows []ChainWindow `json:"windows"`
+	// Predecessor is the JSONL book the store continues, carried by a v3
+	// chain that starts at the store's first window (evidencebook#808).
+	Predecessor *ChainPredecessor `json:"predecessor,omitempty"`
+}
+
+// ChainPredecessor is the book a converted store continues, in a chain: its
+// book_close record with its inclusion proof under the book's final
+// checkpoint, that checkpoint, and its witness receipts.
+type ChainPredecessor struct {
+	LogID           string            `json:"log_id"`
+	Close           StoredRecord      `json:"close"`
+	CloseProof      []byte            `json:"close_proof"`
+	FinalCheckpoint []byte            `json:"final_checkpoint"`
+	Receipts        []json.RawMessage `json:"receipts,omitempty"`
+}
+
+// ChainPredecessorFromBook builds the predecessor entry of a book closed
+// into a windowed store (CloseForWindows). The shelf does not hold the
+// book, so its host builds the entry and passes it in WindowChainOptions.
+// receipts, when set, returns the witness receipts the host holds for the
+// book's final checkpoint.
+func ChainPredecessorFromBook(ctx context.Context, book *Book, receipts func(context.Context, Checkpoint) ([]json.RawMessage, error)) (*ChainPredecessor, error) {
+	if !book.Closed() {
+		return nil, fmt.Errorf("%w: book %s is not closed into a windowed store", ErrInvalid, book.id)
+	}
+	final, err := book.finalOfClosed(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cllLog, ok := book.commitments.(*CLLSubstrate)
+	if !ok {
+		return nil, fmt.Errorf("%w: book %s is not on a CLL log", ErrUnsupported, book.id)
+	}
+	prover, err := cllLog.cllProver(ctx, final)
+	if err != nil {
+		return nil, err
+	}
+	book.mu.Lock()
+	closeID := book.log[len(book.log)-1].RecordID
+	book.mu.Unlock()
+	out := &ChainPredecessor{LogID: final.LogID, FinalCheckpoint: bytes.Clone(final.Statement)}
+	if out.Close, err = book.store.GetRecord(ctx, closeID); err != nil {
+		return nil, err
+	}
+	if out.CloseProof, err = prover.inclusionProof(final.Entries); err != nil {
+		return nil, err
+	}
+	if receipts != nil {
+		if out.Receipts, err = receipts(ctx, final); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // ChainWindow is one window of a WindowChain.
@@ -86,6 +146,10 @@ type WindowChainOptions struct {
 	// final or boundary checkpoint, in the bundle form; nil carries none. It runs under the
 	// shelf's lock and must not call back into the Shelf.
 	Receipts func(ctx context.Context, final Checkpoint) ([]json.RawMessage, error)
+	// Predecessor is the predecessor book's entry (ChainPredecessorFromBook)
+	// for a store that continues one: a chain from the store's first window
+	// needs it.
+	Predecessor *ChainPredecessor
 }
 
 // WindowChain rolls the shelf and returns the chain of windows from through
@@ -101,11 +165,11 @@ func (s *Shelf) WindowChain(ctx context.Context, from, to string, opts WindowCha
 		return WindowChain{}, err
 	}
 	policy := s.cfg.Window
-	first, err := policy.Period.ParseWindow(from)
+	first, err := policy.window(from)
 	if err != nil {
 		return WindowChain{}, err
 	}
-	last, err := policy.Period.ParseWindow(to)
+	last, err := policy.window(to)
 	if err != nil {
 		return WindowChain{}, err
 	}
@@ -145,6 +209,15 @@ func (s *Shelf) WindowChain(ctx context.Context, from, to string, opts WindowCha
 	for _, w := range chain.Windows {
 		if w.Boundary != nil {
 			chain.V = WindowChainVersion
+		}
+	}
+	if policy.Predecessor != nil {
+		chain.V = WindowChainVersionPredecessor
+		if first.Label == policy.first().Label {
+			if opts.Predecessor == nil {
+				return WindowChain{}, fmt.Errorf("%w: a chain from window %s, the store's first, carries the predecessor book it continues; pass it in WindowChainOptions", ErrInvalid, first.Label)
+			}
+			chain.Predecessor = opts.Predecessor
 		}
 	}
 	return chain, nil
@@ -248,6 +321,17 @@ type VerifiedWindow struct {
 	Boundary *WindowTree `json:"boundary,omitempty"`
 	// RecordKey is the hex public key that signed the window's records.
 	RecordKey string `json:"record_key"`
+	// Partial is set on the first window of a store that continues a
+	// predecessor book: it starts at the conversion, after its period's
+	// start (evidencebook#808).
+	Partial bool `json:"partial,omitempty"`
+	// Predecessor is, on the store's first window, the predecessor book's
+	// final tree the chain carried and proved (evidencebook#808).
+	Predecessor *WindowTree `json:"predecessor,omitempty"`
+	// Note is set on a chain's first window when it starts after the first
+	// window of a store that continues a predecessor book, which the chain
+	// then does not include.
+	Note string `json:"note,omitempty"`
 }
 
 // ChainFinding is one failure of a window chain or a report's coverage,
@@ -277,8 +361,8 @@ func VerifyWindowChain(chain WindowChain, opts VerifyChainOptions) ([]VerifiedWi
 	fail := func(window, format string, args ...any) {
 		findings = append(findings, ChainFinding{Window: window, Text: fmt.Sprintf(format, args...)})
 	}
-	if chain.V != 1 && chain.V != WindowChainVersion {
-		fail("", "window chain version %d is not 1 or %d", chain.V, WindowChainVersion)
+	if chain.V != 1 && chain.V != WindowChainVersion && chain.V != WindowChainVersionPredecessor {
+		fail("", "window chain version %d is not 1, %d or %d", chain.V, WindowChainVersion, WindowChainVersionPredecessor)
 		return nil, findings
 	}
 	if !chain.Period.valid() {
@@ -286,18 +370,26 @@ func VerifyWindowChain(chain WindowChain, opts VerifyChainOptions) ([]VerifiedWi
 		return nil, findings
 	}
 	since, err := time.Parse(time.RFC3339, chain.Since)
-	if err != nil || !since.Equal(chain.Period.start(since)) {
+	continues := chain.V == WindowChainVersionPredecessor
+	if err != nil || (!continues && !since.Equal(chain.Period.start(since))) {
 		fail("", "since %q is not the start of a %s", chain.Since, chain.Period)
 		return nil, findings
 	}
-	first, err := chain.Period.ParseWindow(chain.From)
+	// A store that continues a predecessor starts at its since: its first
+	// window is partial (evidencebook#808).
+	policy := WindowPolicy{Period: chain.Period, Base: chain.Base, Since: since}
+	first, err := policy.window(chain.From)
 	if err != nil {
 		fail("", "from: %v", err)
 		return nil, findings
 	}
-	last, err := chain.Period.ParseWindow(chain.To)
+	last, err := policy.window(chain.To)
 	if err != nil {
 		fail("", "to: %v", err)
+		return nil, findings
+	}
+	if chain.Predecessor != nil && (!continues || !first.Start.Equal(since)) {
+		fail("", "the chain carries a predecessor book but is not a version %d chain from the store's first window", WindowChainVersionPredecessor)
 		return nil, findings
 	}
 	if first.Start.Before(since) {
@@ -322,6 +414,9 @@ func VerifyWindowChain(chain WindowChain, opts VerifyChainOptions) ([]VerifiedWi
 		v, ok := verifyChainWindow(chain, cw, expected, since, prior, opts, fail)
 		if !ok {
 			return verified, findings
+		}
+		if i == 0 && continues && !expected.Start.Equal(since) {
+			v.Note = "continues from a predecessor book, not included (as the chain's version and since state)"
 		}
 		if i > 0 && v.RecordKey != verified[0].RecordKey {
 			fail(cw.Label, "window %s's records are signed by another key than the chain's", cw.Label)
@@ -397,7 +492,18 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 		fail(label, "window %s bounds differ from its label's [%s, %s)", label, start, end)
 		return VerifiedWindow{}, false
 	}
+	var predecessor *WindowTree
 	switch {
+	case w.Start.Equal(since) && chain.V == WindowChainVersionPredecessor:
+		if os.Previous == nil {
+			fail(label, "chain breaks at %s: the store continues a predecessor book, and its first window names none", label)
+			return VerifiedWindow{}, false
+		}
+		tree, ok := verifyPredecessor(chain, *os.Previous, label, openKey, since, opts, fail)
+		if !ok {
+			return VerifiedWindow{}, false
+		}
+		predecessor = tree
 	case w.Start.Equal(since) && os.Previous != nil:
 		fail(label, "chain breaks at %s: the chain's first window names a previous one", label)
 		return VerifiedWindow{}, false
@@ -408,7 +514,7 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 		fail(label, "chain breaks at %s: its open record names a previous tree other than window %s's final tree", label, prior.Label)
 		return VerifiedWindow{}, false
 	}
-	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey}
+	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey, Predecessor: predecessor, Partial: chain.Period.Partial(w)}
 	// The close record, in the final tree, names the boundary the window
 	// took: a chain carries exactly that one, so it can neither swap nor
 	// drop it (evidencebook#807).
@@ -435,6 +541,65 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 		verified.Boundary = boundary
 	}
 	return verified, true
+}
+
+// verifyPredecessor checks the predecessor book a v3 chain carries against
+// the tree its first window names (evidencebook#808): its final checkpoint
+// under the holder's key, of its log; its receipts under witnesses; its
+// book_close record at the last leaf, signed by the windows' key, naming
+// this store as its successor and closed just before its since; and that
+// tree. A record after the close cannot pass: the close is proved the last
+// leaf of the tree the first window names.
+func verifyPredecessor(chain WindowChain, named WindowTree, label, recordKey string, since time.Time, opts VerifyChainOptions, fail func(string, string, ...any)) (*WindowTree, bool) {
+	p := chain.Predecessor
+	if p == nil {
+		fail(label, "chain breaks at %s: its open record names a predecessor book the chain does not carry", label)
+		return nil, false
+	}
+	cp, err := readSignedCheckpoint(p.FinalCheckpoint, opts.CheckpointKey)
+	if err != nil {
+		fail(label, "the predecessor book's final checkpoint: %v", err)
+		return nil, false
+	}
+	if cp.LogID != p.LogID {
+		fail(label, "the predecessor book's final checkpoint is of log %q, not %q", cp.LogID, p.LogID)
+		return nil, false
+	}
+	if len(opts.Witnesses) > 0 {
+		if len(p.Receipts) == 0 {
+			fail(label, "predecessor not witnessed: its final checkpoint carries no receipt")
+			return nil, false
+		}
+		if err := verifyCarriedReceipts(p.FinalCheckpoint, p.Receipts, opts.Witnesses); err != nil {
+			fail(label, "predecessor not witnessed: %v", err)
+			return nil, false
+		}
+	}
+	closing, key, err := windowChainRecord(p.Close, cp, cp.Entries, p.CloseProof)
+	if err != nil {
+		fail(label, "the predecessor book's close record: %v", err)
+		return nil, false
+	}
+	var stated BookCloseStatement
+	if closing.RecordType != RecordTypeBookClose || decodeStrict(closing.Statement, &stated) != nil || stated.RecordVersion != BookCloseVersion {
+		fail(label, "the predecessor book's last record is not its book_close")
+		return nil, false
+	}
+	if key != recordKey {
+		fail(label, "the predecessor book's close is signed by another key than the windows'")
+		return nil, false
+	}
+	closedAt, err := time.Parse(time.RFC3339Nano, closing.CommittedAt)
+	if err != nil || stated.Successor.Base != chain.Base || stated.Successor.Period != chain.Period || !SuccessorSince(closedAt).Equal(since) {
+		fail(label, "the predecessor book's close names another successor than this store (%s windows under %q from %s)", chain.Period, chain.Base, chain.Since)
+		return nil, false
+	}
+	tree := WindowTree{LogID: p.LogID, Entries: cp.Entries, Root: cp.Root}
+	if tree != named {
+		fail(label, "chain breaks at %s: its open record names a predecessor tree other than the predecessor book's final tree", label)
+		return nil, false
+	}
+	return &tree, true
 }
 
 // next is the tree the next window's open record must name.

@@ -52,8 +52,9 @@ type WindowOpenStatement struct {
 	Start         string       `json:"start"`
 	End           string       `json:"end"`
 	// Previous is the previous window's boundary tree when it had a grace
-	// (evidencebook#807), else its final tree; absent only in the shelf's
-	// first window (WindowPolicy.Since).
+	// (evidencebook#807), else its final tree; in the shelf's first window
+	// it is the predecessor book's final tree for a store that continues one
+	// (evidencebook#808), and absent otherwise.
 	Previous *WindowTree `json:"previous,omitempty"`
 }
 
@@ -214,6 +215,23 @@ const ShelfVersionWindow = 3
 // refuses it rather than close its windows when they end.
 const ShelfVersionWindowGrace = 4
 
+// ShelfVersionWindowPredecessor is the shelf file version of a windowed
+// shelf that continues a predecessor book (evidencebook#808), with a grace
+// or not: a build that does not know predecessors refuses it rather than
+// read its partial first window as a whole period.
+const ShelfVersionWindowPredecessor = 5
+
+// shelfVersionFor is the version a shelf created with policy has.
+func shelfVersionFor(policy *WindowPolicy) int64 {
+	switch {
+	case policy.Predecessor != nil:
+		return ShelfVersionWindowPredecessor
+	case policy.Grace > 0:
+		return ShelfVersionWindowGrace
+	}
+	return ShelfVersionWindow
+}
+
 const (
 	windowOpen   = "open"
 	windowClosed = "closed"
@@ -223,7 +241,7 @@ const (
 // (fresh, so it holds nothing yet), or checks a windowed file's recorded
 // policy against it.
 func initWindow(ctx context.Context, tx *sql.Tx, policy *WindowPolicy, version int64, fresh bool) error {
-	windowed := version == ShelfVersionWindow || version == ShelfVersionWindowGrace
+	windowed := version == ShelfVersionWindow || version == ShelfVersionWindowGrace || version == ShelfVersionWindowPredecessor
 	switch {
 	case windowed && policy == nil:
 		return fmt.Errorf("%w: this shelf is windowed; open it with its window policy", ErrInvalid)
@@ -231,16 +249,15 @@ func initWindow(ctx context.Context, tx *sql.Tx, policy *WindowPolicy, version i
 		if err := addWindowColumns(ctx, tx); err != nil {
 			return err
 		}
-		var period, base, since string
-		var grace int64
-		if err := tx.QueryRowContext(ctx, `SELECT period, base, since, grace FROM shelf_window WHERE id = 1`).Scan(&period, &base, &since, &grace); err != nil {
+		stored, err := readWindowPolicy(ctx, tx)
+		if err != nil {
 			return fmt.Errorf("%w: windowed shelf without its policy: %v", ErrCorrupt, err)
 		}
-		if period != string(policy.Period) || base != policy.Base || since != windowTime(policy.Since) || time.Duration(grace)*time.Second != policy.Grace {
-			return fmt.Errorf("%w: this shelf's window is %s from %s under %q with a grace of %s, fixed when it was created; it cannot change", ErrInvalid, period, since, base, time.Duration(grace)*time.Second)
+		if !stored.sameAs(policy) {
+			return fmt.Errorf("%w: this shelf's window is %s from %s under %q with a grace of %s%s, fixed when it was created; it cannot change", ErrInvalid, stored.Period, windowTime(stored.Since), stored.Base, stored.Grace, stored.predecessorText())
 		}
-		if (grace > 0) != (version == ShelfVersionWindowGrace) {
-			return fmt.Errorf("%w: shelf version %d does not match its grace of %ds", ErrCorrupt, version, grace)
+		if want := shelfVersionFor(stored); version != want {
+			return fmt.Errorf("%w: shelf version %d does not match its window policy (version %d)", ErrCorrupt, version, want)
 		}
 		return nil
 	case policy == nil:
@@ -257,8 +274,88 @@ func initWindow(ctx context.Context, tx *sql.Tx, policy *WindowPolicy, version i
 	if err := addWindowColumns(ctx, tx); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO shelf_window (id, period, base, since, grace) VALUES (1, ?, ?, ?, ?)`, string(policy.Period), policy.Base, windowTime(policy.Since), int64(policy.Grace/time.Second))
+	var predLog, predRoot, predPolicy any
+	var predEntries any
+	if p := policy.Predecessor; p != nil {
+		predLog, predEntries, predRoot = p.LogID, int64(p.Entries), p.Root
+		if policy.PredecessorPolicy != nil {
+			body, err := canonicalJSON(policy.PredecessorPolicy)
+			if err != nil {
+				return err
+			}
+			predPolicy = string(body)
+		}
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO shelf_window (id, period, base, since, grace, pred_log_id, pred_entries, pred_root, pred_policy) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`, string(policy.Period), policy.Base, windowTime(policy.Since), int64(policy.Grace/time.Second), predLog, predEntries, predRoot, predPolicy)
 	return err
+}
+
+// queryRower is what readWindowPolicy reads from: a transaction or a
+// read-only handle.
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// windowPolicyQuery reads every window column of a current shelf.
+const windowPolicyQuery = `SELECT period, base, since, grace, pred_log_id, pred_entries, pred_root, pred_policy FROM shelf_window WHERE id = 1`
+
+// readWindowPolicy reads a shelf's stored policy with query, which selects
+// the columns of windowPolicyQuery in order.
+func readWindowPolicyWith(ctx context.Context, db queryRower, query string) (*WindowPolicy, error) {
+	var period, base, since string
+	var grace int64
+	var predLog, predRoot, predPolicy sql.NullString
+	var predEntries sql.NullInt64
+	if err := db.QueryRowContext(ctx, query).Scan(&period, &base, &since, &grace, &predLog, &predEntries, &predRoot, &predPolicy); err != nil {
+		return nil, err
+	}
+	start, err := time.Parse(time.RFC3339, since)
+	if err != nil {
+		return nil, fmt.Errorf("%w: the shelf's window since %q: %v", ErrCorrupt, since, err)
+	}
+	out := &WindowPolicy{Period: WindowPeriod(period), Base: base, Since: start, Grace: time.Duration(grace) * time.Second}
+	if predLog.Valid {
+		out.Predecessor = &WindowTree{LogID: predLog.String, Entries: uint64(predEntries.Int64), Root: predRoot.String}
+		if predPolicy.Valid {
+			var policy DisclosurePolicy
+			if err := decodeStrict([]byte(predPolicy.String), &policy); err != nil {
+				return nil, fmt.Errorf("%w: the shelf's predecessor policy: %v", ErrCorrupt, err)
+			}
+			out.PredecessorPolicy = &policy
+		}
+	}
+	return out, nil
+}
+
+func readWindowPolicy(ctx context.Context, db queryRower) (*WindowPolicy, error) {
+	return readWindowPolicyWith(ctx, db, windowPolicyQuery)
+}
+
+// sameAs reports whether a stored policy is the one a caller opens with.
+func (wp *WindowPolicy) sameAs(other *WindowPolicy) bool {
+	if wp.Period != other.Period || wp.Base != other.Base || windowTime(wp.Since) != windowTime(other.Since) || wp.Grace != other.Grace {
+		return false
+	}
+	if (wp.Predecessor == nil) != (other.Predecessor == nil) || (wp.Predecessor != nil && *wp.Predecessor != *other.Predecessor) {
+		return false
+	}
+	a, errA := policyDigest(wp.PredecessorPolicy)
+	b, errB := policyDigest(other.PredecessorPolicy)
+	return errA == nil && errB == nil && a == b
+}
+
+func policyDigest(p *DisclosurePolicy) (string, error) {
+	if p == nil {
+		return "", nil
+	}
+	return p.Digest()
+}
+
+func (wp *WindowPolicy) predecessorText() string {
+	if wp.Predecessor == nil {
+		return ""
+	}
+	return fmt.Sprintf(", continuing %s at %d entries", wp.Predecessor.LogID, wp.Predecessor.Entries)
 }
 
 // addWindowColumns adds the grace columns (evidencebook#807) to a windowed
@@ -269,6 +366,12 @@ func addWindowColumns(ctx context.Context, tx *sql.Tx) error {
 		{"shelf_window", "grace", "ALTER TABLE shelf_window ADD COLUMN grace INTEGER NOT NULL DEFAULT 0"},
 		{"shelf_window_books", "boundary_entries", "ALTER TABLE shelf_window_books ADD COLUMN boundary_entries INTEGER"},
 		{"shelf_window_books", "boundary_root", "ALTER TABLE shelf_window_books ADD COLUMN boundary_root TEXT"},
+		// The predecessor (evidencebook#808): absent on every shelf created
+		// before it, and on any created empty.
+		{"shelf_window", "pred_log_id", "ALTER TABLE shelf_window ADD COLUMN pred_log_id TEXT"},
+		{"shelf_window", "pred_entries", "ALTER TABLE shelf_window ADD COLUMN pred_entries INTEGER"},
+		{"shelf_window", "pred_root", "ALTER TABLE shelf_window ADD COLUMN pred_root TEXT"},
+		{"shelf_window", "pred_policy", "ALTER TABLE shelf_window ADD COLUMN pred_policy TEXT"},
 	} {
 		var n int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, c.table, c.column).Scan(&n); err != nil {
@@ -321,7 +424,7 @@ func (s *Shelf) windowRowsLocked(ctx context.Context) ([]windowRow, error) {
 		if err := rows.Scan(&label, &r.logID, &r.state, &r.entries, &r.root, &r.boundaryEntries, &r.boundaryRoot); err != nil {
 			return nil, err
 		}
-		if r.Window, err = s.cfg.Window.Period.ParseWindow(label); err != nil {
+		if r.Window, err = s.cfg.Window.window(label); err != nil {
 			return nil, fmt.Errorf("%w: window row %q: %v", ErrCorrupt, label, err)
 		}
 		out = append(out, r)
@@ -408,14 +511,14 @@ func (s *Shelf) rollLocked(ctx context.Context) (windowRow, error) {
 		if now := s.now(); now.Before(policy.Since) {
 			return windowRow{}, fmt.Errorf("%w: the window policy starts at %s; the clock reads %s", ErrClockBehind, windowTime(policy.Since), now.UTC().Format(time.RFC3339))
 		}
-		if latest, err = s.openWindowLocked(ctx, policy.first(), nil); err != nil {
+		if latest, err = s.openWindowLocked(ctx, policy.first(), policy.Predecessor); err != nil {
 			return windowRow{}, err
 		}
 	} else {
 		latest = rows[len(rows)-1]
 		// A crash may have left the newest window's book without its open
 		// record: write it now (openWindowLocked is idempotent).
-		var previous *WindowTree
+		previous := policy.Predecessor
 		if len(rows) > 1 {
 			previous = rows[len(rows)-2].tree()
 		}
@@ -519,15 +622,26 @@ func (s *Shelf) carryPolicyLocked(ctx context.Context, book *Book, previous *Win
 	if previous == nil {
 		return nil
 	}
-	prev, err := s.openLocked(ctx, previous.LogID)
-	if err != nil {
-		return err
-	}
-	prev.mu.Lock()
-	policy, ok, err := policyInForce(prev.logLocked())
-	prev.mu.Unlock()
-	if err != nil || !ok {
-		return err
+	var policy DisclosurePolicy
+	if p := s.cfg.Window.Predecessor; p != nil && *previous == *p {
+		// The predecessor is no book of this shelf: its policy came with
+		// the window policy (evidencebook#808).
+		if s.cfg.Window.PredecessorPolicy == nil {
+			return nil
+		}
+		policy = *s.cfg.Window.PredecessorPolicy
+	} else {
+		prev, err := s.openLocked(ctx, previous.LogID)
+		if err != nil {
+			return err
+		}
+		prev.mu.Lock()
+		inForce, ok, err := policyInForce(prev.logLocked())
+		prev.mu.Unlock()
+		if err != nil || !ok {
+			return err
+		}
+		policy = inForce
 	}
 	book.mu.Lock()
 	_, carried, err := policyInForce(book.logLocked())
@@ -610,7 +724,7 @@ func (s *Shelf) attachWindow(ctx context.Context, book *Book, logID string) erro
 	if err != nil {
 		return err
 	}
-	w, err := s.cfg.Window.Period.ParseWindow(label)
+	w, err := s.cfg.Window.window(label)
 	if err != nil {
 		return fmt.Errorf("%w: window row %q: %v", ErrCorrupt, label, err)
 	}
@@ -668,7 +782,7 @@ func (s *Shelf) WindowBook(ctx context.Context, label string) (*Book, Window, er
 	if err := s.windowed(); err != nil {
 		return nil, Window{}, err
 	}
-	w, err := s.cfg.Window.Period.ParseWindow(label)
+	w, err := s.cfg.Window.window(label)
 	if err != nil {
 		return nil, Window{}, err
 	}
@@ -691,6 +805,9 @@ type WindowState struct {
 	// ClosesAt is when the window closes: its end plus the store's grace.
 	InGrace  bool      `json:"in_grace,omitempty"`
 	ClosesAt time.Time `json:"closes_at"`
+	// Partial is set for the first window of a store that continues a
+	// predecessor book: it starts at the conversion, not its period's start.
+	Partial bool `json:"partial,omitempty"`
 	// Final is the window's final tree once it is closed.
 	Final *WindowTree `json:"final,omitempty"`
 }
@@ -711,7 +828,7 @@ func (s *Shelf) Windows(ctx context.Context) ([]WindowState, error) {
 	}
 	out := make([]WindowState, len(rows))
 	for i, r := range rows {
-		out[i] = WindowState{Window: r.Window, LogID: r.logID, Closed: r.state == windowClosed, InGrace: r.inGrace(), ClosesAt: r.End.Add(s.cfg.Window.Grace)}
+		out[i] = WindowState{Window: r.Window, LogID: r.logID, Closed: r.state == windowClosed, InGrace: r.inGrace(), ClosesAt: r.End.Add(s.cfg.Window.Grace), Partial: s.cfg.Window.Period.Partial(r.Window)}
 		if out[i].Closed {
 			out[i].Final = &WindowTree{LogID: r.logID, Entries: r.entries, Root: r.root}
 		}
@@ -782,25 +899,38 @@ func ReadShelfWindow(ctx context.Context, path string) (*WindowPolicy, error) {
 	if tables == 0 {
 		return nil, nil
 	}
-	var period, base, since string
-	var grace int64
-	var graceColumn int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('shelf_window') WHERE name = 'grace'`).Scan(&graceColumn); err != nil {
+	// A shelf created before grace or predecessors lacks their columns:
+	// they read as none.
+	columns := map[string]bool{}
+	rows, err := db.QueryContext(ctx, `SELECT name FROM pragma_table_info('shelf_window')`)
+	if err != nil {
 		return nil, err
 	}
-	query := `SELECT period, base, since, 0 FROM shelf_window WHERE id = 1`
-	if graceColumn > 0 {
-		query = `SELECT period, base, since, grace FROM shelf_window WHERE id = 1`
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		columns[name] = true
 	}
-	switch err := db.QueryRowContext(ctx, query).Scan(&period, &base, &since, &grace); {
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	column := func(name, absent string) string {
+		if columns[name] {
+			return name
+		}
+		return absent
+	}
+	query := fmt.Sprintf(`SELECT period, base, since, %s, %s, %s, %s, %s FROM shelf_window WHERE id = 1`,
+		column("grace", "0"), column("pred_log_id", "NULL"), column("pred_entries", "NULL"), column("pred_root", "NULL"), column("pred_policy", "NULL"))
+	policy, err := readWindowPolicyWith(ctx, db, query)
+	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return nil, nil
 	case err != nil:
 		return nil, err
 	}
-	start, err := time.Parse(time.RFC3339, since)
-	if err != nil {
-		return nil, fmt.Errorf("%w: the shelf's window since %q: %v", ErrCorrupt, since, err)
-	}
-	return &WindowPolicy{Period: WindowPeriod(period), Base: base, Since: start, Grace: time.Duration(grace) * time.Second}, nil
+	return policy, nil
 }
