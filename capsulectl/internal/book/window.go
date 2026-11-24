@@ -222,20 +222,8 @@ func initWindowedStore(ctx context.Context, p cli.Profile, period evidencebook.W
 		return err
 	}
 	policy := &evidencebook.WindowPolicy{Period: period, Base: p.LogID, Since: period.WindowAt(bookNow()).Start, Grace: grace}
-	_, statErr := os.Stat(shelfFile(p))
-	absent := errors.Is(statErr, os.ErrNotExist)
 	shelf, err := evidencebook.OpenSQLiteShelf(ctx, windowedConfig(p, signer, scratchKey, noOriginals{profile: p.Name}, bookNow, policy))
 	if err != nil {
-		// The shelf validates its policy after creating its file
-		// (evidencebook#827): a refused policy leaves no store behind, and
-		// a file that was there before this call is never removed.
-		if absent && errors.Is(err, evidencebook.ErrInvalid) {
-			for _, suffix := range []string{"", "-wal", "-shm", ".lock"} {
-				if e := os.Remove(shelfFile(p) + suffix); e != nil && !errors.Is(e, os.ErrNotExist) {
-					err = errors.Join(err, e)
-				}
-			}
-		}
 		return bookError(err)
 	}
 	return shelf.Release()

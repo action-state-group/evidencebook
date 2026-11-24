@@ -375,7 +375,8 @@ help, `--grace` and its refusals (no store is left behind), `book close` last mo
 and after it, an ordinary record after a window ends landing in the current window, `book window
 list`, a chain refused over a window in grace, the boundary checkpoint queued for the witness,
 `close --bundle-out` in grace (anchored at that window's checkpoint, its disclosure record in the
-current window, since a window in grace takes only Closes); an old store opening with grace 0 is the root package's test.
+current window, since a window in grace takes only Closes); an old store opening with grace 0
+is the root package's test.
 capsulectl-book has no verb that writes an acknowledgement or rebuttal; the root package's tests
 show a window in grace refusing every record but a Close inside it, so such records go to the
 current window.
