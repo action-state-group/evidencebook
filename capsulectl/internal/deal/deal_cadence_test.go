@@ -212,6 +212,8 @@ func TestDealWitnessStatesAreShownAsTheyAre(t *testing.T) {
 	require.NoError(t, err)
 	status, _ := bundleWitnesses(result)
 	assert.Equal(t, "pass", status, "deal checkpoint -> tree path -> cadence entry -> witnessed cadence checkpoint")
+	requireParentWitness(t, mustRead(t, bundlePath), "")
+	requireParentWitness(t, mustRead(t, bundlePath), writeDirectory(t, rawKeyRow(endpoint, public)))
 	other, _, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	result, _ = verifyWithDirectory(t, bundlePath, writeDirectory(t, rawKeyRow(endpoint, other)))
@@ -224,7 +226,7 @@ func TestDealWitnessStatesAreShownAsTheyAre(t *testing.T) {
 	// Any change to the chain fails.
 	var bundle map[string]any
 	require.NoError(t, json.Unmarshal(mustRead(t, bundlePath), &bundle))
-	chain := bundle["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any)
+	chain := bundle["extensions"].(map[string]any)[DealParentWitnessExtension].(map[string]any)
 	path := chain["path"].([]any)
 	require.Len(t, path, DealCadenceDepth, "the path is always the same length")
 	for _, tamper := range []func(map[string]any){
@@ -234,7 +236,7 @@ func TestDealWitnessStatesAreShownAsTheyAre(t *testing.T) {
 	} {
 		var copy map[string]any
 		require.NoError(t, json.Unmarshal(mustRead(t, bundlePath), &copy))
-		tamper(copy["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any))
+		tamper(copy["extensions"].(map[string]any)[DealParentWitnessExtension].(map[string]any))
 		path := filepath.Join(t.TempDir(), "tampered.json")
 		raw, err := json.Marshal(copy)
 		require.NoError(t, err)
@@ -671,7 +673,7 @@ func TestDealIsWitnessPendingUntilATick(t *testing.T) {
 	assert.Equal(t, "witnessed", a["rung"])
 	assert.Equal(t, "2026-09-27T18:07:00Z", a["checkpoint_at"], "the tick's time, coarsened to the minute")
 	assert.Contains(t, a["text"], "signed this receipt's checkpoint, cut at 2026-09-27T18:07:00Z at a cadence tick after its steps")
-	cadence := embeddedBundle(t, string(mustRead(t, page)))["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any)
+	cadence := embeddedBundle(t, string(mustRead(t, page)))["extensions"].(map[string]any)[DealParentWitnessExtension].(map[string]any)
 	assert.Equal(t, "2026-09-27T18:07:00Z", cadence["checkpoint_at"], "the page reads it from the bundle")
 }
 
@@ -722,24 +724,29 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 	status, findings := bundleWitnesses(result)
 	assert.Equal(t, "pass", status, "earlier checkpoint -> consistency -> current checkpoint, and the earlier one's chain: %v", findings)
 
-	// The chain is written under x-cadence-witness/v0, and read under it and
-	// under both names bundles carried it under before (x-deal-cadence-v0
+	// The chain is written under parent-log-witness/v1, and read under it and
+	// under the three names bundles carried it under before (x-deal-cadence-v0
 	// named its log deal_log_id): each verifies, and the rung reads the same.
 	{
 		var written map[string]any
 		require.NoError(t, json.Unmarshal(mustRead(t, partPath), &written))
 		exts := written["extensions"].(map[string]any)
-		require.Contains(t, exts, "x-cadence-witness/v0")
-		for _, name := range []string{"cadence-witness/v0", "x-deal-cadence-v0"} {
+		require.Contains(t, exts, DealParentWitnessExtension)
+		for _, name := range []string{DealCadenceExtension, "cadence-witness/v0", "x-deal-cadence-v0"} {
 			require.NotContains(t, exts, name)
 		}
 	}
-	for _, name := range []string{"x-cadence-witness/v0", "cadence-witness/v0", "x-deal-cadence-v0"} {
+	for _, name := range []string{DealParentWitnessExtension, "x-cadence-witness/v0", "cadence-witness/v0", "x-deal-cadence-v0"} {
 		var renamed map[string]any
 		require.NoError(t, json.Unmarshal(mustRead(t, partPath), &renamed))
 		exts := renamed["extensions"].(map[string]any)
-		chain := exts[DealCadenceExtension].(map[string]any)
-		delete(exts, DealCadenceExtension)
+		chain := exts[DealParentWitnessExtension].(map[string]any)
+		delete(exts, DealParentWitnessExtension)
+		if name != DealParentWitnessExtension {
+			// The names before parent-log-witness/v1 carried it as "cadence".
+			chain["cadence"] = chain["parent"]
+			delete(chain, "parent")
+		}
 		if name == "x-deal-cadence-v0" {
 			chain["deal_log_id"] = chain["log_id"]
 			delete(chain, "log_id")
@@ -752,7 +759,7 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 		result, _ := verifyWithDirectory(t, path, directory)
 		status, findings := bundleWitnesses(result)
 		assert.Equal(t, "pass", status, "%s: %v", name, findings)
-		assert.Equal(t, "witnessed_in_part", dealAssuranceRung(renamed)["rung"], name)
+		assert.Equal(t, "witnessed_in_part", dealAssuranceRung(renamed, nil)["rung"], name)
 	}
 
 	// Tampering with the earlier checkpoint or its proof fails.
@@ -763,13 +770,13 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 			peaks[0] = strings.Repeat("ab", 32)
 		},
 		"checkpoint": func(c map[string]any) {
-			c["earlier"].(map[string]any)["checkpoint"].(map[string]any)["cose"] = c["cadence"].(map[string]any)["checkpoint"].(map[string]any)["cose"]
+			c["earlier"].(map[string]any)["checkpoint"].(map[string]any)["cose"] = c["parent"].(map[string]any)["checkpoint"].(map[string]any)["cose"]
 		},
-		"extent": func(c map[string]any) { c["extent"] = "all" },
+		"earlier removed": func(c map[string]any) { delete(c, "earlier") },
 	} {
 		var copy map[string]any
 		require.NoError(t, json.Unmarshal(mustRead(t, partPath), &copy))
-		tamper(copy["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any))
+		tamper(copy["extensions"].(map[string]any)[DealParentWitnessExtension].(map[string]any))
 		path := filepath.Join(t.TempDir(), "tampered.json")
 		raw, err := json.Marshal(copy)
 		require.NoError(t, err)

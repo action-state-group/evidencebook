@@ -51,14 +51,13 @@ func TestEveryCopyOfASellersDealEngagesTheSellerKind(t *testing.T) {
 	for name, id := range map[string]string{"a seller's deal": openTyped(t, sellerTyped), "a sale's thread": buyerThread(t, saleID, "buyer-a.example")} {
 		for audience, raw := range dealCopies(t, id) {
 			kinds, exts := engagedKinds(t, raw)
-			assert.Equal(t, []string{DealCadenceExtension, dealprofile.ReportExtension, dealSellerExtension, dealprofile.Profile}, kinds, "%s, %s", name, audience)
+			assert.Equal(t, []string{dealprofile.ReportExtension, dealSellerExtension, dealprofile.Profile}, kinds, "%s, %s", name, audience)
 			assert.Equal(t, map[string]any{}, exts[dealSellerExtension], "%s, %s: no values", name, audience)
 		}
 	}
 }
 
-// A buyer's deal engages what it did before, the cadence chain and the deal
-// section, plus its standalone report (capsule-cli#294): nothing of a
+// A buyer's deal engages what it did before, the deal section, plus its standalone report (capsule-cli#294): nothing of a
 // seller's.
 func TestNoCopyOfABuyersDealEngagesTheSellerKind(t *testing.T) {
 	for name, typed := range map[string]bool{"x-deal-v0": false, "typed": true} {
@@ -66,7 +65,7 @@ func TestNoCopyOfABuyersDealEngagesTheSellerKind(t *testing.T) {
 			id := stickerDeal(t, "card", typed)
 			for audience, raw := range dealCopies(t, id) {
 				kinds, _ := engagedKinds(t, raw)
-				assert.Equal(t, []string{DealCadenceExtension, dealprofile.ReportExtension, dealprofile.Profile}, kinds, audience)
+				assert.Equal(t, []string{dealprofile.ReportExtension, dealprofile.Profile}, kinds, audience)
 			}
 		})
 	}

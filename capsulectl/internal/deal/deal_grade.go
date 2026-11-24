@@ -126,8 +126,8 @@ func laterTime(a, b string) bool {
 // dealWitnessGrade is the witness part of a report bundle's grade: the rung
 // it reached and where its witnessing stands, from the same reading the
 // assurance line makes (dealAssuranceRung).
-func dealWitnessGrade(b map[string]interface{}) (string, dealGradeWitness) {
-	a := dealAssuranceRung(b)
+func dealWitnessGrade(b, producer map[string]interface{}) (string, dealGradeWitness) {
+	a := dealAssuranceRung(b, producer)
 	rung, _ := a["rung"].(string)
 	w := dealGradeWitness{}
 	w.State, _ = a["witness_state"].(string)
@@ -153,7 +153,7 @@ func dealWitnessGrade(b map[string]interface{}) (string, dealGradeWitness) {
 func (s *dealSession) dealGradeOf(ctx context.Context, b map[string]interface{}, events []sealedEvent) (dealGrade, error) {
 	g := dealGrade{Rung: "self_attested", Witness: dealGradeWitness{State: "unchecked"}}
 	if b != nil {
-		g.Rung, g.Witness = dealWitnessGrade(b)
+		g.Rung, g.Witness = dealWitnessGrade(b, s.hostCadence)
 	}
 	var err error
 	if g.Countersign, err = s.storedCountersign(ctx, events); err != nil {

@@ -7,7 +7,7 @@ require (
 	github.com/action-state-group/capsule-cli v0.1.0-rc51
 	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
 	github.com/action-state-group/capsule-engine/go v0.6.0
-	github.com/action-state-group/capsule-viewer/go v0.23.0
+	github.com/action-state-group/capsule-viewer/go v0.23.1
 	github.com/action-state-group/checkpointed-local-log/go v0.4.0
 	github.com/action-state-group/evidencebook v0.26.1-0.20261123215439-65d0703d67e9
 	github.com/action-state-group/evidencebook/report v0.7.0

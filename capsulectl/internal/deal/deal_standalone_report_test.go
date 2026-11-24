@@ -541,7 +541,7 @@ func TestTheAsOfLineOnWitnessedCopies(t *testing.T) {
 
 	b, err := cli.DecodeBundleJSON(mustRead(t, all))
 	require.NoError(t, err)
-	receipt := b["extensions"].(map[string]any)[DealCadenceExtension].(map[string]any)["cadence"].(map[string]any)["witnesses"].([]any)[0].(map[string]any)
+	receipt := b["extensions"].(map[string]any)[DealParentWitnessExtension].(map[string]any)["parent"].(map[string]any)["witnesses"].([]any)[0].(map[string]any)
 	sig := receipt["receipt_b64"].(string)
 	flip := map[bool]string{true: "A", false: "B"}[sig[len(sig)-3] != 'A']
 	receipt["receipt_b64"] = sig[:len(sig)-3] + flip + sig[len(sig)-2:]

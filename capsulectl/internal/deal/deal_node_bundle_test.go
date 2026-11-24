@@ -233,7 +233,7 @@ func TestDealNodeBundleCarriesTheCadenceChain(t *testing.T) {
 	assert.Equal(t, "all", got["cadence_extent"])
 	raw, err := os.ReadFile(out)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "x-cadence-witness/v0")
+	requireParentWitness(t, raw, "")
 	_, err = evidencebook.VerifyBundle(raw)
 	require.NoError(t, err)
 
