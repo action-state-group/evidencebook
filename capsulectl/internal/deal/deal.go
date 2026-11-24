@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -231,6 +232,11 @@ func (s *dealSession) useDeal(ctx context.Context, dealID string, create bool) e
 		return err
 	} else if v1 {
 		return cli.InputError("deal " + dealID + " is an x-deal-v1 deal: this command is not served for x-deal-v1 deals yet")
+	}
+	// A windowed store holds x-deal-v1 deals only: an x-deal-v0 deal's log is
+	// placed in no window (evidencebook#797 §5).
+	if s.shelf != nil && s.shelf.WindowPolicy() != nil {
+		return cli.InputError("this deal store's journal is split by window, which holds x-deal-v1 deals only; " + dealID + " is not one. Start a deal with `deal offer`, or use a store created without --window for x-deal-v0 deals")
 	}
 	if create {
 		// The deal key is stored at open, so rotating the store secret later
@@ -950,7 +956,7 @@ func (s *dealSession) milestone(ctx context.Context) (map[string]any, error) {
 
 func dealCommands() *cobra.Command {
 	deal := &cobra.Command{Use: "deal", Short: "Seal a deal's baseline and check every point of no return against it", Long: "Seal a deal's baseline and check every point of no return against it.\n\nNew deals are x-deal-v1, which start with `deal offer`. `deal open`, `deal sale new`, `deal close` and `deal terms-result` are for x-deal-v0 deals, the legacy version (`deal set-version x-deal-v0`)."}
-	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand(), dealAdmitCommand(), dealAgreeCommand(), dealReceiveCommand(), dealDisputeCommand(), dealRulingCommand(), dealPerformCommand(), dealStatementCommand(), dealSettleCommand(), dealNodeCommands())
+	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand(), dealAdmitCommand(), dealAgreeCommand(), dealReceiveCommand(), dealDisputeCommand(), dealRulingCommand(), dealPerformCommand(), dealStatementCommand(), dealSettleCommand(), dealNodeCommands(), dealWindowCommands())
 	// A deal profile's copies: asked for, answered, composed.
 	deal.AddCommand(dealEvidenceCommands()...)
 	// A scheduled demo deal and the watcher that alarms when it stops.
@@ -1141,6 +1147,10 @@ func dealInitCommand() *cobra.Command {
 		}
 		signingFrom, _ := c.Flags().GetString("signing-key-file")
 		checkpointFrom, _ := c.Flags().GetString("checkpoint-key-file")
+		window, err := dealWindowFlag(c)
+		if err != nil {
+			return err
+		}
 		// Every key is resolved, read and checked, before anything is created.
 		signing, err := resolveKey(signingFrom)
 		if err != nil {
@@ -1193,6 +1203,24 @@ func dealInitCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+		// A window is fixed only in a fresh file (evidencebook#797 §5), so the
+		// shelf is created with it before anything else writes the store.
+		if window != nil {
+			recordSigner, err := evidencebook.NewEd25519Signer(signing)
+			if err != nil {
+				return err
+			}
+			// Creating the shelf writes no record, so it needs no artifact
+			// store yet: one that refuses every call stands in.
+			shelf, err := evidencebook.OpenSQLiteShelf(c.Context(), evidencebook.ShelfConfig{Path: dbPath, LockPath: dbPath + ".deal.lock", Window: window,
+				Operator: name, Signer: recordSigner, CheckpointKey: cpKey, Originals: noOriginals{}})
+			if err != nil {
+				return err
+			}
+			if err = shelf.Release(); err != nil {
+				return err
+			}
+		}
 		unlock, err := lockDealStore(dbPath)
 		if err != nil {
 			return err
@@ -1240,8 +1268,12 @@ func dealInitCommand() *cobra.Command {
 				return fmt.Errorf("deal profile %s and its store were created, but putting the store in the layout x-deal-v1 deals need failed; run `capsulectl --profile %s deal set-version x-deal-v1 --migrate` to finish: %w", name, name, err)
 			}
 		}
+		// The window, or its absence, is fixed now: said once, when it is
+		// chosen (Sherlock2 on evidencebook#797).
+		fmt.Fprintln(dealNoticeOut, "capsulectl: "+dealWindowNotice(window))
 		out := map[string]any{
 			"profile": name, "store": p.Connection.Database, "public_key": public, "witness": witness, "cadence_log": p.LogID,
+			"window":    dealWindowNotice(window),
 			"guarantee": "tamper-evident against ourselves and the agent, not non-repudiation: the signing seed is on this machine",
 		}
 		if signingFrom != "" || checkpointFrom != "" {
@@ -1271,6 +1303,7 @@ func dealInitCommand() *cobra.Command {
 	cmd.Flags().String("signing-key-file", "", "Keep an existing signing key (a PKCS#8 PEM or a 64-hex seed) instead of making one, so its key id stays; the key is copied into --dir as a hex seed. Stop writing to the earlier home first: one key, one live store")
 	cmd.Flags().String("checkpoint-key-file", "", "Keep an existing checkpoint signing key (a PKCS#8 PEM or a 64-hex seed) instead of making one; copied into --dir as a hex seed. Stop the earlier home's checkpointing first: one key, one live store")
 	cmd.Flags().Bool("no-witness", false, "Do not configure the default public witness; deals are sealed on this device only")
+	cmd.Flags().String("window", "none", "Split the store's journal into windows: day, week (ISO, from Monday), month, quarter or year, calendar periods in UTC, or none. Each deal's book stays whole, placed in the window its agreement is sealed in. Fixed when the store is created; it cannot change later")
 	cmd.Flags().String("materiality", "", "A materiality predicate (a materiality-predicate/v0 JSON file, or builtin:neutral) for this profile's checks to evaluate, pinned by its digest; without one, every attribute the agent picks pauses the check")
 	return cmd
 }
@@ -3135,3 +3168,49 @@ func dealExportCommand() *cobra.Command {
 // callerToken is a name the caller gives a platform or its approval
 // mechanism: capsulectl names none itself.
 var callerToken = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// dealWindowFlag reads deal init's --window: nil for none, else the policy
+// a windowed deal store is created with (evidencebook#797): its journal in
+// windows of the period from the current one's start.
+func dealWindowFlag(c *cobra.Command) (*evidencebook.WindowPolicy, error) {
+	period, _ := c.Flags().GetString("window")
+	if period == "" || period == "none" {
+		return nil, nil
+	}
+	p := evidencebook.WindowPeriod(period)
+	switch p {
+	case evidencebook.WindowDay, evidencebook.WindowWeek, evidencebook.WindowMonth, evidencebook.WindowQuarter, evidencebook.WindowYear:
+	default:
+		return nil, cli.InputError("--window is one of day, week, month, quarter, year or none, not " + period)
+	}
+	return &evidencebook.WindowPolicy{Period: p, Base: evidencebook.JournalLogID, Since: p.WindowAt(cli.DealClock().UTC()).Start, Journal: true}, nil
+}
+
+// dealWindowNotice is what deal init says of the store's window; neither
+// the window nor its absence can change once the store exists.
+func dealWindowNotice(policy *evidencebook.WindowPolicy) string {
+	if policy == nil {
+		return "no window: one journal for this store's whole history, fixed for this store"
+	}
+	unit := "calendar " + string(policy.Period) + "s"
+	if policy.Period == evidencebook.WindowWeek {
+		unit = "ISO weeks from Monday"
+	}
+	return fmt.Sprintf("window: %s (%s, UTC), fixed for this store; each deal's book is placed in the window its agreement is sealed in", policy.Period, unit)
+}
+
+// dealNoticeOut is where deal init's notices go: stderr, apart from the JSON
+// result, as capsulectl-book's do. A test replaces it.
+var dealNoticeOut io.Writer = os.Stderr
+
+// noOriginals is the artifact store deal init creates a windowed shelf
+// with: creating it stores no artifact, and any call is refused.
+type noOriginals struct{}
+
+func (noOriginals) Put(context.Context, artifact.Record) error { return errNoOriginals }
+func (noOriginals) Get(context.Context, string) (artifact.Record, error) {
+	return artifact.Record{}, errNoOriginals
+}
+func (noOriginals) Purge(context.Context, string) error { return errNoOriginals }
+
+var errNoOriginals = errors.New("deal init creates the shelf without an artifact store")

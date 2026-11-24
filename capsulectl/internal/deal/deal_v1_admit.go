@@ -292,15 +292,11 @@ func (s *dealSession) admitWithNonce(ctx context.Context, nonce string) (string,
 	if err := rows.Err(); err != nil {
 		return "", err
 	}
-	j, err := s.shelf.Journal(ctx)
+	j, records, err := s.journalRecords(ctx)
 	if err != nil {
 		return "", err
 	}
-	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
-	if err != nil {
-		return "", err
-	}
-	for _, r := range read.Records {
+	for _, r := range records {
 		for _, c := range r.Header.PayloadCommitments {
 			payload, err := j.ResolvePayload(ctx, r.RecordID, c)
 			var gone *evidencebook.UnavailableError

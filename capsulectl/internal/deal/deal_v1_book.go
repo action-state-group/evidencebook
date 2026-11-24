@@ -280,7 +280,23 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 		// next record: a write that landed since the tail was read (Receive names a
 		// counted ruling in the same book) is refused with ErrBusy, and the
 		// caller reads the tail again and rebuilds the record.
-		stored, err := book.AppendAt(ctx, size+1, entry)
+		var stored evidencebook.Record
+		appendAt := func(b *evidencebook.Book) error {
+			var err error
+			stored, err = b.AppendAt(ctx, size+1, entry)
+			return err
+		}
+		if opening && s.shelf.WindowPolicy() != nil {
+			// A windowed store places the deal's book in the window its
+			// agreement is sealed in, and appends the agreement in the same
+			// step (evidencebook#797 §3). Place skips the append when the book
+			// is no longer empty: another write took the place.
+			if _, _, err = s.shelf.Place(ctx, logID, cli.DealClock().UTC(), appendAt); err == nil && stored.RecordID == "" {
+				err = evidencebook.ErrBusy
+			}
+		} else {
+			err = appendAt(book)
+		}
 		if err != nil {
 			if errors.Is(err, evidencebook.ErrBusy) {
 				return bookSealed{}, errPlaceTaken

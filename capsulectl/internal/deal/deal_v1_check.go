@@ -202,16 +202,12 @@ type journalRecordV1 struct {
 // the authorization never read different subsets. A withheld or deleted
 // payload is skipped; any other read error is returned.
 func (s *dealSession) v1JournalRecords(ctx context.Context) ([]journalRecordV1, error) {
-	j, err := s.shelf.Journal(ctx)
-	if err != nil {
-		return nil, err
-	}
-	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
+	j, records, err := s.journalRecords(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var out []journalRecordV1
-	for _, r := range read.Records {
+	for _, r := range records {
 		for _, c := range r.Header.PayloadCommitments {
 			payload, err := j.ResolvePayload(ctx, r.RecordID, c)
 			var gone *evidencebook.UnavailableError

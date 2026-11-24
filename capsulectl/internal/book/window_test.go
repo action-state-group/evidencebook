@@ -151,7 +151,7 @@ func TestAReportOverMonthWindowsThroughTheCommands(t *testing.T) {
 	assert.True(t, coverage.Covered)
 	assert.Len(t, coverage.Windows, 3)
 	assert.Equal(t, x.digest, coverage.Derivation)
-	assert.Equal(t, []string{"Without --witness-directory, the windows' continuity is as the holder signed it.", "No check shows that an answer holds every row of its window."}, coverage.Limits)
+	assert.Equal(t, []string{"Without --witness-directory, the windows' continuity is as the holder signed it.", evidencebook.ReportLimit}, coverage.Limits)
 
 	// Witnesses named, no receipt carried: every window is named unwitnessed.
 	directory := writeDirectory(t, map[string]interface{}{"name": "w", "endpoint": "https://witness.example", "binding": "cll", "key_ids": []string{strings.Repeat("ab", 32)}})

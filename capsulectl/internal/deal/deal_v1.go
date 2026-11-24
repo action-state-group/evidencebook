@@ -387,19 +387,27 @@ func (s *dealSession) sendV1(ctx context.Context, requestDigest, dealID, kind st
 	return pair, nil
 }
 
+// journalRecords reads the whole journal in order, across its windows on a
+// windowed store (evidencebook#797), with the reader that resolves its
+// payloads. Opening the journal recovers a record a crash left stored but
+// not yet in its log, so it is read here.
+func (s *dealSession) journalRecords(ctx context.Context) (evidencebook.JournalReader, []evidencebook.Record, error) {
+	j, err := s.shelf.JournalView(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	records, err := j.Query(ctx, evidencebook.Filter{})
+	return j, records, err
+}
+
 // journalHolds reports whether the journal holds a record whose payload
 // commitment is the record's digest.
 func (s *dealSession) journalHolds(ctx context.Context, digest string) (bool, error) {
-	// Opening the journal first recovers a record a crash left stored but not
-	// yet in its log; Records lists committed records only.
-	if _, err := s.shelf.Journal(ctx); err != nil {
-		return false, err
-	}
-	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
+	_, records, err := s.journalRecords(ctx)
 	if err != nil {
 		return false, err
 	}
-	for _, r := range read.Records {
+	for _, r := range records {
 		for _, c := range r.Header.PayloadCommitments {
 			if c == digest {
 				return true, nil
@@ -431,15 +439,11 @@ func (s *dealSession) writePair(ctx context.Context, c *cobra.Command, path, dig
 // digest digest (nil when the journal's record there is not one), and
 // whether the journal holds one.
 func (s *dealSession) journalRecord(ctx context.Context, digest string) (rec *xdealv1.Record, held bool, err error) {
-	j, err := s.shelf.Journal(ctx)
+	j, records, err := s.journalRecords(ctx)
 	if err != nil {
 		return nil, false, err
 	}
-	read, err := s.shelf.Records(ctx, evidencebook.JournalLogID)
-	if err != nil {
-		return nil, false, err
-	}
-	for _, r := range read.Records {
+	for _, r := range records {
 		for _, c := range r.Header.PayloadCommitments {
 			if c != digest {
 				continue

@@ -82,8 +82,14 @@ func (s *dealSession) openShelf(ctx context.Context, dbPath string, originals ev
 		s.v1Profile = &xdealv1.ReceiveProfile{}
 		receive = evidencebook.ReceiveConfig{Profile: s.v1Profile}
 	}
+	// A store created with a window (deal init --window, evidencebook#797)
+	// opens with the policy it stored; any other store has none.
+	window, err := evidencebook.ReadShelfWindow(ctx, dbPath)
+	if err != nil && !errors.Is(err, evidencebook.ErrNotFound) {
+		return err
+	}
 	shelf, err := evidencebook.OpenSQLiteShelf(ctx, evidencebook.ShelfConfig{
-		Path: dbPath, LockPath: dbPath + ".deal.lock", Receive: receive,
+		Path: dbPath, LockPath: dbPath + ".deal.lock", Receive: receive, Window: window,
 		Operator: s.p.Name, Developer: "capsulectl-deal",
 		Signer: signer, CheckpointKey: checkpointKey, Originals: originals,
 		// The deal clock (cli.DealClock), or, while a book record is appended,
@@ -154,6 +160,10 @@ func (s *dealSession) ended(ctx context.Context, logID string) (bool, error) {
 	// 7.1). Only book deals have one, and settleEnded settled its deal.
 	if dealID, ok := dealOfResultsBook(logID); ok {
 		return s.bookEnded[dealID], nil
+	}
+	// A closed journal window of a windowed store (evidencebook#797).
+	if strings.HasPrefix(logID, evidencebook.JournalLogID+"/") {
+		return s.shelf.WindowEnded(ctx, logID)
 	}
 	dealID, ok := strings.CutPrefix(logID, "deal/")
 	if !ok || !(cli.DealIDPattern.MatchString(dealID) || cli.SaleIDPattern.MatchString(dealID)) {
