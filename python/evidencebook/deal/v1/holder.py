@@ -292,7 +292,9 @@ class ReceiveProfile:
     def admit(self, r: Any) -> bool:
         """The push rule (Go ``Admit``): an offer from any key; a decline
         from the key the offer was sent to and a cancellation from the
-        offer's signer; a ruling from the adjudicator the agreement names;
+        offer's signer; a ruling from the adjudicator the agreement names, on
+        the deal's case log (:func:`case_log_id`); at an adjudicator holding
+        a deal's case book, a deal-book record of either party it names;
         and a deal-book record from the counterparty the agreement names,
         or, before it, the key the offer was sent to."""
         if r.offer:
@@ -366,7 +368,10 @@ class ReceiveProfile:
         """Who sent a stamp proof of ``log_id`` under ``checkpoint_key_id``
         (Go ``ProofSender``): the one sender whose held first record of the
         log is an agreement naming that checkpoint key, sent by the key the
-        holder expects for that deal; none when it forked or is not one."""
+        holder expects for that deal (at an adjudicator, a party its case
+        book names); or a case book's first ruling when the checkpoint key is
+        the adjudicator key our agreement names and the log is the deal's
+        case log; none when it forked or is not one."""
         held = self.shelf.held_first(log_id)
         first: dict[str, str] = {}
         forked: set[str] = set()
@@ -508,7 +513,8 @@ class ReceiveProfile:
 
     def _ours(self) -> _Ours:
         """The holder's v1 journal records and the agreements its books open
-        with (Go ``ours``), read incrementally: a payload not readable now is
+        with (Go ``ours``) and, at an adjudicator, the ruling opening each case
+        book, read incrementally: a payload not readable now is
         read again next time."""
         if self.shelf is None:
             raise ValueError("xdealv1: the receive profile has no shelf")

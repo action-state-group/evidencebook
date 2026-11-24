@@ -689,8 +689,8 @@ def test_a_ruling_on_another_log_is_refused(tmp_path, monkeypatch):
     adj, seller = parties["adjudicator"], parties["seller"]
     adj.tick()
     entry = entry_of(ruling["record"])
-    rec = adj.shelf.open("case/" + hashlib.sha256(b"another case log").hexdigest()[:32]).append(entry)
     book = adj.shelf.open("case/" + hashlib.sha256(b"another case log").hexdigest()[:32])
+    rec = book.append(entry)
     stored = book._stored[rec.record_id]
     pair = sent.book_pair(jcs(stored.capsule), stored.envelope, stored.header, jcs(ruling["record"]))
     res = seller.shelf.receive(pair, None)
@@ -747,16 +747,15 @@ def test_the_adjudicator_takes_the_parties_books_after_its_ruling(tmp_path, monk
     adj.tick()
     book = adj.shelf.open(c["steps"][7]["log"])
     book.append(entry_of(ruling["record"]))
-    res = adj.shelf.receive(seller_agreement, None)
-    assert not res.refusals and res.record.stored
+    # With its stamp proof: the proof's sender is the party the case book names.
+    res = adj.shelf.receive(seller_agreement, go_proof(c["steps"][6]["out"]))
+    assert not res.refusals and res.record.stored and res.proof.accepted
     intruder = Party("intruder", tmp_path / "intruder")
-    ag = decode(jcs(agreement["record"]))
     ibook = intruder.shelf.open("deal/c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0")
     rec = ibook.append(entry_of(agreement["record"]))
     st = ibook._stored[rec.record_id]
     pair = sent.book_pair(jcs(st.capsule), st.envelope, st.header, jcs(agreement["record"]))
     assert adj.shelf.receive(pair, None).refusals, "a key the ruling does not name"
-    assert ag is not None
 
 
 def test_a_forked_case_book_makes_no_checkpoint_claim(tmp_path, monkeypatch):
