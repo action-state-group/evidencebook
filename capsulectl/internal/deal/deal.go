@@ -1196,15 +1196,14 @@ func dealInitCommand() *cobra.Command {
 			p.Checkpoint.Endpoint, p.Checkpoint.PublicKey = DealDefaultWitness, DealDefaultWitnessKey
 			witness = "scheduled"
 		}
-		if err = cli.SaveProfile(p, false); err != nil {
-			return err
-		}
 		dbPath, err := filepath.Abs(p.Connection.Database)
 		if err != nil {
 			return err
 		}
 		// A window is fixed only in a fresh file (evidencebook#797 §5), so the
-		// shelf is created with it before anything else writes the store.
+		// shelf is created with it before anything else writes the store, and
+		// before the profile is saved: a failure here leaves no profile, so
+		// the same deal init runs again.
 		if window != nil {
 			recordSigner, err := evidencebook.NewEd25519Signer(signing)
 			if err != nil {
@@ -1220,6 +1219,9 @@ func dealInitCommand() *cobra.Command {
 			if err = shelf.Release(); err != nil {
 				return err
 			}
+		}
+		if err = cli.SaveProfile(p, false); err != nil {
+			return err
 		}
 		unlock, err := lockDealStore(dbPath)
 		if err != nil {
@@ -1273,7 +1275,7 @@ func dealInitCommand() *cobra.Command {
 		fmt.Fprintln(dealNoticeOut, "capsulectl: "+dealWindowNotice(window))
 		out := map[string]any{
 			"profile": name, "store": p.Connection.Database, "public_key": public, "witness": witness, "cadence_log": p.LogID,
-			"window":    dealWindowNotice(window),
+			"window": dealWindowPeriod(window), "notice": dealWindowNotice(window),
 			"guarantee": "tamper-evident against ourselves and the agent, not non-repudiation: the signing seed is on this machine",
 		}
 		if signingFrom != "" || checkpointFrom != "" {
@@ -3214,3 +3216,11 @@ func (noOriginals) Get(context.Context, string) (artifact.Record, error) {
 func (noOriginals) Purge(context.Context, string) error { return errNoOriginals }
 
 var errNoOriginals = errors.New("deal init creates the shelf without an artifact store")
+
+// dealWindowPeriod is a store's window as a token: its period, or none.
+func dealWindowPeriod(policy *evidencebook.WindowPolicy) string {
+	if policy == nil {
+		return "none"
+	}
+	return string(policy.Period)
+}

@@ -321,6 +321,19 @@ type reportCoverageResult struct {
 	Limits []string `json:"limits,omitempty"`
 }
 
+// coverageResult is what `report coverage` prints of a report's coverage,
+// before the limits: its range, windows, deals' lines and findings.
+func coverageResult(coverage evidencebook.ReportCoverage) reportCoverageResult {
+	printed := reportCoverageResult{Covered: len(coverage.Findings) == 0, From: coverage.From, To: coverage.To, Derivation: coverage.Derivation, Windows: coverage.Windows, Findings: []string{}}
+	for _, f := range coverage.Findings {
+		printed.Findings = append(printed.Findings, f.Text)
+	}
+	for _, d := range coverage.Deals {
+		printed.Deals = append(printed.Deals, d.Line)
+	}
+	return printed
+}
+
 func reportCoverageCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "coverage",
@@ -354,13 +367,7 @@ func reportCoverageCommand() *cobra.Command {
 			if err != nil {
 				return bookError(err)
 			}
-			printed := reportCoverageResult{Covered: len(coverage.Findings) == 0, From: coverage.From, To: coverage.To, Derivation: coverage.Derivation, Windows: coverage.Windows, Findings: []string{}}
-			for _, f := range coverage.Findings {
-				printed.Findings = append(printed.Findings, f.Text)
-			}
-			for _, d := range coverage.Deals {
-				printed.Deals = append(printed.Deals, d.Line)
-			}
+			printed := coverageResult(coverage)
 			if !printed.Covered {
 				return errors.Join(cli.InputError("the report does not cover its range: "+findingsText(coverage.Findings)), cli.Output(c, printed))
 			}

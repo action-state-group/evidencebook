@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -212,9 +213,12 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 		if opening && !isAgreement() {
 			return bookSealed{}, cli.InputError("deal " + dealID + " has no deal book yet: it opens at your agreement (`deal agree`)")
 		}
+		// One clock read: the record's at, and on a windowed store the time
+		// its book is placed by (evidencebook#797 §3).
+		now := cli.DealClock().UTC().Truncate(time.Second)
 		block := xdealv1.Block{
 			Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, DealID: dealID,
-			RecordType: in.Body.RecordType(), At: v1Now(), Marks: in.Marks,
+			RecordType: in.Body.RecordType(), At: now.Format(time.RFC3339), Marks: in.Marks,
 			Seq: int64(size) + 1,
 		}
 		var prevID string
@@ -291,7 +295,9 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 			// agreement is sealed in, and appends the agreement in the same
 			// step (evidencebook#797 §3). Place skips the append when the book
 			// is no longer empty: another write took the place.
-			if _, _, err = s.shelf.Place(ctx, logID, cli.DealClock().UTC(), appendAt); err == nil && stored.RecordID == "" {
+			// A window that closed between the record's time and its placement
+			// is a place taken too: the next try reads the clock again.
+			if _, _, err = s.shelf.Place(ctx, logID, now, appendAt); err == nil && stored.RecordID == "" || errors.Is(err, evidencebook.ErrWindowClosed) {
 				err = evidencebook.ErrBusy
 			}
 		} else {

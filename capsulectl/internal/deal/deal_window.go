@@ -1,7 +1,6 @@
 package deal
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/capsulectl/internal/packfile"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +59,8 @@ func dealWindowListCommand() *cobra.Command {
 					out[i].Placed = []string{}
 				}
 			}
-			return cli.Output(c, map[string]any{"window": dealWindowNotice(s.shelf.WindowPolicy()), "windows": out})
+			policy := s.shelf.WindowPolicy()
+			return cli.Output(c, map[string]any{"window": dealWindowPeriod(policy), "notice": dealWindowNotice(policy), "windows": out})
 		})
 	}}
 }
@@ -124,45 +125,69 @@ func dealWindowChainCommand() *cobra.Command {
 	return cmd
 }
 
-// windowPackFile is a --pack file: a Terms Pack the holder agrees to answer
-// by the digest of its compiled definition, in capsulectl-book's pack-file
-// format.
-type windowPackFile struct {
-	Document   json.RawMessage `json:"document"`
-	Recipients []string        `json:"recipients"`
-	Forms      []string        `json:"forms"`
-	Fields     []string        `json:"fields"`
-	Proofs     *bool           `json:"proofs"`
+// readWindowPacks reads the --pack files with the strict reader
+// capsulectl-book's pack directory uses (packfile.Read): one document
+// declared twice must be declared alike.
+func readWindowPacks(paths []string) ([]evidencebook.DerivationDefinition, error) {
+	var defs []evidencebook.DerivationDefinition
+	byDigest := map[string]int{}
+	for _, path := range paths {
+		raw, err := cli.ReadInput(path)
+		if err != nil {
+			return nil, err
+		}
+		file, err := packfile.Read(raw)
+		if err != nil {
+			return nil, cli.InputError(fmt.Sprintf("--pack %s: %v", path, err))
+		}
+		digest, err := packfile.Digest(file.Document)
+		if err != nil {
+			return nil, cli.InputError(fmt.Sprintf("--pack %s: document: %v", path, err))
+		}
+		def := file.Definition()
+		if at, repeated := byDigest[digest]; repeated {
+			if !packfile.SameDeclaration(defs[at], def) {
+				return nil, cli.InputError(fmt.Sprintf("--pack %s declares document %s differently from an earlier --pack", path, digest))
+			}
+			continue
+		}
+		byDigest[digest] = len(defs)
+		defs = append(defs, def)
+	}
+	return defs, nil
 }
 
-func readWindowPack(path string) (evidencebook.DerivationDefinition, error) {
-	raw, err := cli.ReadInput(path)
-	if err != nil {
-		return evidencebook.DerivationDefinition{}, err
+// respondResult writes a respond verb's reply to --output and prints its
+// result: the outcome a recorded answer, a refusal or an envelope carries.
+// A reply that cannot be written is printed instead, since it is signed,
+// and when recorded on record, already.
+func respondResult(c *cobra.Command, in cli.EvidenceRespondInput, reply evidencebook.Reply, record evidencebook.Record) error {
+	result := cli.EvidenceRespondResult{RecordID: record.RecordID, Output: in.Output}
+	switch {
+	case record.RecordID != "":
+		var st evidencebook.AnsweredStatement
+		if err := json.Unmarshal(record.Header.Statement, &st); err != nil {
+			return err
+		}
+		result.RequestDigest, result.Outcome, result.Reason, result.Relationship = st.RequestDigest, st.Outcome, st.Reason, st.Relationship
+	case reply.Refusal != nil:
+		result.RequestDigest, result.Outcome, result.Reason = reply.Refusal.RequestDigest, evidencebook.OutcomeRefusal, reply.Refusal.Reason
+	case reply.Envelope != nil:
+		result.RequestDigest, result.Outcome = reply.Envelope.RequestDigest, evidencebook.OutcomeArtifact
 	}
-	var file windowPackFile
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&file); err != nil || len(file.Document) == 0 {
-		return evidencebook.DerivationDefinition{}, cli.InputError(fmt.Sprintf("--pack %s: a pack file is an object with document, recipients, forms, fields and proofs: %v", path, err))
+	if err := cli.AtomicFile(in.Output, reply.Octets, false); err != nil {
+		result.Output, result.Response = "", reply.Octets
+		return errors.Join(err, cli.Output(c, result))
 	}
-	def := evidencebook.DerivationDefinition{Document: file.Document, Recipients: file.Recipients, Fields: file.Fields, Proofs: file.Proofs == nil || *file.Proofs}
-	for _, form := range file.Forms {
-		def.Forms = append(def.Forms, evidencebook.SubjectKind(form))
-	}
-	return def, nil
+	return cli.Output(c, result)
 }
 
 func dealWindowRespondCommand() *cobra.Command {
 	cmd := cli.EvidenceRespondCommand(func(c *cobra.Command, p cli.Profile, in cli.EvidenceRespondInput) (err error) {
 		packs, _ := c.Flags().GetStringArray("pack")
-		var defs []evidencebook.DerivationDefinition
-		for _, path := range packs {
-			def, err := readWindowPack(path)
-			if err != nil {
-				return err
-			}
-			defs = append(defs, def)
+		defs, err := readWindowPacks(packs)
+		if err != nil {
+			return err
 		}
 		policy := evidencebook.DefaultSharePolicy()
 		if in.PolicyPath != "" {
@@ -195,26 +220,7 @@ func dealWindowRespondCommand() *cobra.Command {
 		if e != nil {
 			return e
 		}
-		result := cli.EvidenceRespondResult{RecordID: record.RecordID, Output: in.Output}
-		switch {
-		case record.RecordID != "":
-			var st evidencebook.AnsweredStatement
-			if e = json.Unmarshal(record.Header.Statement, &st); e != nil {
-				return e
-			}
-			result.RequestDigest, result.Outcome, result.Reason, result.Relationship = st.RequestDigest, st.Outcome, st.Reason, st.Relationship
-		case reply.Refusal != nil:
-			result.RequestDigest, result.Outcome, result.Reason = reply.Refusal.RequestDigest, evidencebook.OutcomeRefusal, reply.Refusal.Reason
-		case reply.Envelope != nil:
-			result.RequestDigest, result.Outcome = reply.Envelope.RequestDigest, evidencebook.OutcomeArtifact
-		}
-		if e = cli.AtomicFile(in.Output, reply.Octets, false); e != nil {
-			// The reply is signed (and, when record_id is set, on record)
-			// already: report it rather than lose it with the file.
-			result.Output, result.Response = "", reply.Octets
-			return errors.Join(e, cli.Output(c, result))
-		}
-		return cli.Output(c, result)
+		return respondResult(c, in, reply, record)
 	})
 	cmd.Short = "Answer an Evidence Request on a windowed deal store: from the journal window or placed deal book its pin names, recording the answer in the current window"
 	cmd.Flags().StringArray("pack", nil, "A Terms Pack this answer may serve, by the digest of its compiled definition (a pack file: document, recipients, forms, fields, proofs); repeat for more")
