@@ -79,17 +79,27 @@ def test_the_loops_checker_accepts_each_nodes_commitment(run):
 
 
 @pytest.mark.skipif(not LOOP, reason="GOOSE_LOOP_SCRIPTS (the loop's scripts/) is not set")
-def test_the_loops_checker_refuses_an_extra_member_and_another_signer(run, tmp_path):
+@pytest.mark.parametrize("name, expected", [("extra", "count"), ("tampered", "signature")])
+def test_the_loops_checker_refuses_an_extra_member_and_a_tampered_commitment(run, tmp_path, name, expected):
+    """Each case is a complete commitment and policy that differs in one thing, so only that can be what refuses it."""
     key = (run / "buyer.key").read_text()
     doc = json.loads((run / "commitments" / f"{key}.json").read_text())
-    for name, change in (("extra", lambda d: d.update(count=3)), ("signer", lambda d: d.update(node_id="0" * 64))):
-        d = json.loads(json.dumps(doc))
-        change(d)
-        (tmp_path / name).mkdir()
-        (tmp_path / name / f"{d['node_id']}.json").write_text(json.dumps(d))
-        done = subprocess.run([sys.executable, str(Path(LOOP) / "check_commitment.py"), str(tmp_path / name)],
-                              capture_output=True, text=True, env={**os.environ, "PYTHONPATH": LOOP})
-        assert done.returncode != 0, name
+    n = gn.Node.open(run / "buyer", operator="goose-buyer")
+    try:
+        if name == "extra":
+            doc["count"] = 3
+            doc = cm._signed(n, doc)  # signed by the node's own key: only the extra member is wrong
+        else:
+            doc["answers_within"] = "PT1H"  # changed after it was signed
+    finally:
+        n.close()
+    out = tmp_path / name
+    (out / "policies").mkdir(parents=True)
+    (out / f"{key}.json").write_text(json.dumps(doc))
+    (out / "policies" / f"{key}.json").write_bytes((run / "commitments" / "policies" / f"{key}.json").read_bytes())
+    done = subprocess.run([sys.executable, str(Path(LOOP) / "check_commitment.py"), str(out)],
+                          capture_output=True, text=True, env={**os.environ, "PYTHONPATH": LOOP})
+    assert done.returncode != 0 and expected in done.stdout + done.stderr, done.stdout + done.stderr
 
 
 # -- refusals: a tool that refuses seals nothing -----------------------------------------------
@@ -101,6 +111,16 @@ def node(tmp_path):
     n.note(gn.JOINED, {"operator": n.operator, "key_id": n.key_id}, once="key_id")
     yield n
     n.close()
+
+
+def test_two_tool_calls_never_share_a_scratch_file_and_none_is_left(node):
+    first = node.note(gn.ADMITTED, {"peer": "c" * 64, "decision": "GO"}, once="peer")
+    second = node.note(gn.ADMITTED, {"peer": "d" * 64, "decision": "NO"}, once="peer")
+    assert first["record_id"] != second["record_id"]
+    assert node._file("a", "x") != node._file("a", "x")
+    node.seal_model_call("rehearsal", "m", "one", "one")
+    node.seal_model_call("rehearsal", "m", "two", "two")  # the second call's output file is its own
+    assert not list(node._tmp.glob("out-*")), "a verb's output is read and removed"
 
 
 def test_a_note_with_the_same_identifying_member_is_found_not_sealed_again(node):
@@ -159,3 +179,51 @@ def test_registering_a_card_without_a_service_sends_nothing(node, monkeypatch, t
     out = json.loads(ls.loop_register_card(str(tmp_path / "statement.json")))
     assert out["ok"] is False and "opt-in" in out["error"]
     assert not (tmp_path / "statement.json").exists()
+
+
+@pytest.fixture
+def pair(tmp_path):
+    buyer, seller = (gn.Node.open(tmp_path / n, operator=f"goose-{n}") for n in ("buyer", "seller"))
+    buyer.note(gn.ADMITTED, {"peer": seller.key_id, "decision": "GO"}, once="peer")
+    seller.note(gn.ADMITTED, {"peer": buyer.key_id, "decision": "GO"}, once="peer")
+    offer = tmp_path / "offer.json"
+    opened = buyer.open_deal(seller.key_id, "tokens", 50, "USD", "lightning", "buy tokens", False, str(offer))
+    yield buyer, seller, opened["deal_id"], offer, tmp_path
+    buyer.close()
+    seller.close()
+
+
+def test_a_retried_agree_reuses_the_decision_and_the_intent_it_sealed(pair):
+    buyer, seller, deal, offer, tmp = pair
+    seller.respond(str(offer), "sell tokens", str(tmp / "s.json"))
+    with pytest.raises(Refused):  # the seller's agreement is not kept yet: nothing may be stuck by this
+        buyer.agree(deal, str(tmp / "b.json"))
+    buyer.receive(str(tmp / "s.json"))
+    assert buyer.agree(deal, str(tmp / "b.json"))["agreement"]
+    assert len(buyer.notes(gn.DEAL_INTENT)) == 1, "the intent was sealed once"
+    assert buyer.agree(deal, str(tmp / "b2.json"))["agreement"], "agreeing again rewrites the same agreement"
+    seller.respond(str(offer), "sell tokens", str(tmp / "s2.json"))  # a retry of the seller's answer
+
+
+def test_the_users_words_are_in_no_record_the_deal_bundle_discloses(pair):
+    buyer, seller, deal, offer, tmp = pair
+    bundle = tmp / "bundle.json"
+    buyer.bundle(gn.NODE_BOOK, buyer.context(deal)["record_id"], str(bundle), disclose=True)
+    assert "buy tokens" not in bundle.read_text()
+    assert json.loads(bundle.read_text())["disclosures"], "the context and the decision it cites are disclosed"
+
+
+def test_a_payment_resumed_with_another_reference_is_refused(pair):
+    buyer, seller, deal, offer, tmp = pair
+    seller.respond(str(offer), "sell tokens", str(tmp / "s.json"))
+    buyer.receive(str(tmp / "s.json"))
+    buyer.agree(deal, str(tmp / "b.json"))
+    seller.receive(str(tmp / "b.json"))
+    paused = buyer.pay(deal, "reference-a", str(tmp / "leg.json"))
+    assert paused["paused"]
+    buyer.approve(deal, paused["check_id"], "proceed", "yes")
+    with pytest.raises(Refused, match="not the reference"):
+        buyer.pay(deal, "reference-b", str(tmp / "leg.json"), paused["check_id"])
+    paid = buyer.pay(deal, "reference-a", str(tmp / "leg.json"), paused["check_id"])
+    assert paid["leg"] == "payer"
+    assert paid["person_signature"] == "missing", "the leg says the person's signatures are still to come, and the tool says so"

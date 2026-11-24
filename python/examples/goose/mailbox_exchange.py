@@ -71,7 +71,7 @@ def answer_round(node: gn.Node, relays: list[str], relay_factory: Any = None,
     def answer(octets: bytes, media: str) -> bytes | None:
         out = node._out("reply.bin")
         try:
-            node.ctl.run("node", "respond", "--book", gn.NODE_BOOK, "--request", node._file("request.bin", octets),
+            node._run("node", "respond", "--book", gn.NODE_BOOK, "--request", node._file("request.bin", octets),
                          "--output", out)
         except Refused:
             return None  # not a well-formed request: no reply (binding §5.2)
@@ -128,7 +128,7 @@ def ask(node: gn.Node, commitment: Any, subject_form: str, subject_value: Any = 
     if derivation:
         request["derivation"] = derivation
     out = node._out("request.bin")
-    sealed = node.ctl.run("node", "request", "--book", gn.NODE_BOOK, "--request", node._file("request.json", request),
+    sealed = node._run("node", "request", "--book", gn.NODE_BOOK, "--request", node._file("request.json", request),
                           "--responder", where["responder"], "--output", out)
     octets = open(out, "rb").read()
     os.unlink(out)
@@ -160,7 +160,7 @@ def _outcome(node: gn.Node, request_digest: str) -> dict | None:
 def _signed_answer(node: gn.Node, octets: bytes, digest: str, signer: str) -> bool:
     """Whether ``octets`` are an envelope or refusal ``signer`` signed for the request with ``digest``
     (the signature check a late reply gets; it is not recorded as an outcome)."""
-    checked = node.ctl.run("node", "reply-check", "--reply", node._file("late.bin", octets),
+    checked = node._run("node", "reply-check", "--reply", node._file("late.bin", octets),
                            "--request-digest", digest, "--signer", signer)
     return bool(checked.get("signed"))
 
@@ -201,7 +201,7 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
     if outcome is None and arrived < deadline:
         for reply in replies:
             try:
-                node.ctl.run("node", "request", "--book", gn.NODE_BOOK, "--for", asked["request_record_id"],
+                node._run("node", "request", "--book", gn.NODE_BOOK, "--for", asked["request_record_id"],
                              "--response", node._file("reply.bin", mb.decode(reply.content) or b""),
                              "--responder-key", asked["responder"], "--responder-checkpoint-key", asked["checkpoint_key"])
             except Refused:
@@ -210,7 +210,7 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
             return {"status": "answered", "record_id": outcome["record_id"], "outcome": outcome["statement"]["outcome"]}
         return {"status": "pending", "deadline": int(deadline.timestamp())}
     if outcome is None:
-        node.ctl.run("node", "request", "--book", gn.NODE_BOOK, "--for", asked["request_record_id"],
+        node._run("node", "request", "--book", gn.NODE_BOOK, "--for", asked["request_record_id"],
                      "--absent-until", deadline.strftime("%Y-%m-%dT%H:%M:%SZ"),
                      "--route", mb.nprofile(asked["mailbox_key"], asked["relays"]))
         outcome = _outcome(node, asked["request_digest"])

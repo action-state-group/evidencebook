@@ -469,9 +469,10 @@ func TestRegisteringACardChangesNothingAboutTheAnswer(t *testing.T) {
 }
 
 // TestBuildCardStatementMatchesGolden pins the statement BuildCardStatement
-// signs over the vectors' card to a golden file the Goose demo's own builder
-// (python/examples/goose/card_registration.py) is tested against, so the
-// demo's bytes are Go's. EB_WRITE_CARD_GOLDEN=1 rewrites it for an intended change.
+// signs over the vectors' card to a golden file, so the statement's bytes are
+// pinned. (The Goose demo's own Python builder that was tested against it is
+// gone: the demo registers through capsulectl-book.) EB_WRITE_CARD_GOLDEN=1
+// rewrites it for an intended change.
 func TestBuildCardStatementMatchesGolden(t *testing.T) {
 	v := loadCardRegistrationVectors(t)
 	c := v.find(t, "pass-eddsa-time")

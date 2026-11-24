@@ -70,7 +70,7 @@ checkpoints (`checkpoint.seed`), and the store. Back them up. Optional settings:
 
 ## A deal, tool by tool
 
-Every tool returns one JSON object. A refusal is `{"ok": false, "error": ...}` and seals nothing.
+Every tool returns one JSON object. A refusal is `{"ok": false, "error": ...}`. A tool that refuses before its verb runs seals nothing; a tool that is cut short part-way (an agreement written to a file that cannot be written, say) is called again with the same arguments and finishes: the decision, the intent and the settled payment are found, not sealed twice.
 The deal's files are what you move to the other party over your own channel. Nothing here moves money: a
 payment reference is a value you observed.
 
@@ -80,7 +80,7 @@ payment reference is a value you observed.
 | 01 | `loop_seal` (a model call you made: provider, model id, prompt, completion) | |
 | 04 | `loop_admit` (the seller's key from its `loop_join`, `GO`) | `loop_admit` (the buyer's key, `GO`) |
 | 05 | `loop_deal_open` (item, price, rail, the user's words): the offer file | |
-| 04 | `loop_deal_bundle` (your decision on the peer and your record of the deal, one bundle) | |
+| 04 | `loop_deal_bundle` (your decision on the peer and your record of the deal, one bundle, both disclosed: the deal's terms and peer, never your words) | |
 | 05 | | `loop_deal_respond` (keeps the offer, runs the admission, agrees): the agreement file |
 | 05 | `loop_deal_reconcile` (keeps the seller's agreement), then `loop_deal_agree`: the agreement file | `loop_deal_reconcile` (keeps the buyer's agreement) |
 | 06 | `loop_settle` (the payment reference you saw on the rail). A pause returns the card to show the user; `loop_deal_approve` seals their answer, then `loop_settle` again with the `check_id`: the payer leg | `loop_deal_reconcile` (keeps it), then `loop_deal_received` (what you received): the payee leg |
@@ -181,7 +181,7 @@ With `GOOSE_CARD_SERVICE` set to a service file ([Registering your card](#regist
 
 Each side's deal book holds the records of an x-deal-v1 deal: its agreement (citing its admission decision and,
 for the buyer, the intent), the payment leg it wrote (the buyer's payer leg, the seller's payee leg), the seller's
-delivery, and its statement on the payment row. The final review's check and the user's answer are sealed too. Your own
+delivery, and its statement on the deal's two rows (`paid_as_agreed`, owed by the buyer, and `delivered`, owed by the seller; `received` says both were met, `not_received` says the buyer's `delivered` or the seller's `paid_as_agreed` was not). The final review's check and the user's answer are sealed too. Your own
 words (what you asked, the payment reference) appear in a record only as commitments; their openings stay in your store.
 
 A deal counts on your card as the profile counts it (x-deal-v1 PROFILE §11); the card is what `deal standard-history card`

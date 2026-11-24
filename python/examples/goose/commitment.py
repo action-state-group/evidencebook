@@ -48,8 +48,8 @@ ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 DURATION = re.compile(r"^P(?=\d|T\d)(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?$")
 TOKEN = re.compile(r"^[a-z0-9][a-z0-9_./:+-]*$")
-#: What the node discloses, and to whom: its node book's card to anyone, a
-#: deal's half to that deal's counterparty only (``loop_deal_push``).
+#: What the node discloses, and to whom: its History card to anyone, a deal's files to that deal's
+#: counterparty only (the files each deal verb writes for it).
 POLICY = {"stranger_safe": ["history_card/2"], "share_deal_file": "counterparty"}
 
 
@@ -173,7 +173,7 @@ def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
         ask["nostr"] = {"mailbox_key": node.mailbox_key, "relays": list(s.relays)}
     # The card is the profile's history_card/2 reply (a staple's reply, the answer to the holder's own request over
     # its cadence checkpoints); the checkpoint is the node book's newest, cut now.
-    staple = node.ctl.run("standard-history", "staple")["staple"]
+    staple = node._run("standard-history", "staple")["staple"]
     card = json.dumps(staple["reply"], sort_keys=True, separators=(",", ":")).encode()
     stream = json.loads(base64.urlsafe_b64decode(
         staple["reply"]["artifact"] + "=" * (-len(staple["reply"]["artifact"]) % 4)))["evidence_stream"]

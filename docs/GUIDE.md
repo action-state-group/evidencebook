@@ -200,8 +200,9 @@ joins the halves; the deal id is.
 The same reference in other languages:
 
 - **Goose, many books at a tick, in Python:**
-  [`python/examples/goose`](../python/examples/goose/README.md). CI checks
-  each card it writes with Go (`test/interop/goose-card`).
+  [`python/examples/goose`](../python/examples/goose/README.md), a client of
+  the capsulectl deal plugin. CI checks each card it writes with Go
+  (`capsulectl-deal verify --bundle`).
 - **Mesh, one stream, in Rust:** a capsules-plugin node keeps its chain on
   its shelf from release v0.1.11
   ([capsules-plugin#213](https://github.com/Mesh-LLM/capsules-plugin/pull/213)).

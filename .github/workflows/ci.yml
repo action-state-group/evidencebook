@@ -640,7 +640,7 @@ jobs:
     # tests and the scripted two-node run over MCP stdio, has Go verify every bundle the run wrote
     # (`capsulectl-deal verify --bundle`) and the model-call Capsule (test/interop/goose-capsule), and checks
     # each node's step 03 commitment through the loop's checker. The run waits for the cadence ticks a report
-    # rests on (about five minutes).
+    # rests on (about six minutes).
     name: Goose loop reference (scripted run on capsulectl, bundles Go verifies)
     runs-on: ubuntu-latest
     timeout-minutes: 30

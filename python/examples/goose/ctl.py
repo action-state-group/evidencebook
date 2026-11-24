@@ -38,7 +38,7 @@ class Ctl:
     def run(self, *args: str, stdin: bytes | None = None) -> Any:
         """Run ``capsulectl-deal --profile PROFILE ARGS...`` and return the JSON it prints (an object, or the array of ``deal list --json``).
         A refusal (a non-zero exit) raises :class:`Refused` with the verb's own words."""
-        env = {**os.environ, "HOME": str(self.home)}
+        env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config")}
         try:
             done = subprocess.run([self.binary, "--profile", self.profile, *args], input=stdin, env=env,
                                   capture_output=True, timeout=TIMEOUT, check=False)

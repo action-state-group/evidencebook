@@ -47,7 +47,7 @@ files and requests move over the caller's own channel.
 """
 from __future__ import annotations
 
-import base64
+import atexit
 import functools
 import json
 import os
@@ -93,6 +93,7 @@ def node() -> gn.Node:
     global _node
     if _node is None:
         _node = gn.Node.open(HOME, operator=OPERATOR, developer=DEVELOPER)
+        atexit.register(_node.close)
     return _node
 
 
@@ -163,16 +164,17 @@ def loop_join(node_id: str = "", commitment_dir: str = "") -> str:
 def loop_probe() -> str:
     """The deals this profile holds with their state, and the node book's newest checkpoint."""
     n = node()
-    return _out(ok=True, step="12", deals=n.ctl.run("list", "--json"), node_book=n.checkpoint(gn.NODE_BOOK))
+    return _out(ok=True, step="12", deals=n._run("list", "--json"), node_book=n.checkpoint(gn.NODE_BOOK))
 
 
 # -- 02 Book and the cadence ------------------------------------------------------------
 
 
 @_tool
-def loop_book(book_id: str) -> str:
-    """A node book's newest checkpoint (cut now if the book grew)."""
-    cp = node().checkpoint(book_id)
+def loop_book(book_id: str, out_path: str = "") -> str:
+    """A node book's newest checkpoint (cut now if the book grew). With ``out_path`` its COSE statement is written
+    there, the file to submit to a witness."""
+    cp = node().checkpoint(book_id, _path(out_path) if out_path else "")
     return _out(ok=True, step="02", book_id=book_id, size=cp["size"],
                 checkpoint={"entries": cp["entries"], "root": cp["root"], "key_id": cp["key_id"], "id": cp["id"]})
 
@@ -188,15 +190,16 @@ def loop_tick() -> str:
 
 @_tool
 def loop_book_bundle(book_id: str, record_id: str, out_path: str, disclose: bool = False,
-                     witness_receipt: str = "", witness_directory: str = "") -> str:
+                     witness_receipt: str = "", witness_directory: str = "", at: str = "") -> str:
     """Write an Evidence Bundle (``evidence-bundle/v2``) for one record of a node book to ``out_path``: the
     record, its position and inclusion proof, and the book's checkpoint covering it. ``capsulectl verify
     --bundle`` reads it. With ``disclose`` it also reveals the headers of the record and of the records it
     cites, with their payloads. A witness's receipt for the checkpoint is the host's to fetch (submit the
-    checkpoint statement, ``loop_book`` writes it); give the receipt file and the witness directory and the
-    bundle carries it, checked under the directory."""
+    checkpoint statement, ``loop_book`` with ``out_path`` writes it); give the receipt file, the witness directory
+    and ``at``, the checkpoint id the receipt covers (``loop_book`` prints it), and the bundle carries the receipt,
+    checked under the directory."""
     n = node()
-    done = n.bundle(book_id, record_id, _path(out_path), disclose=disclose,
+    done = n.bundle(book_id, record_id, _path(out_path), at=at, disclose=disclose,
                     witness_receipt=_path(witness_receipt) if witness_receipt else "",
                     witness_directory=_path(witness_directory) if witness_directory else "")
     return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path, **{
@@ -257,11 +260,11 @@ def loop_admit(peer_key_id: str, decision: str, reason: str = "") -> str:
 @_tool
 def loop_deal_bundle(deal_id: str, out_path: str) -> str:
     """Write an Evidence Bundle of this node's record of a deal's context to ``out_path``: that record, the
-    admission it cites (this node's GO, sealed before the deal) and the rest of the node book up to the
-    checkpoint, so a verifier reads that no deal record cites a NO. The deal's own records stay in the
-    deal's book."""
+    admission it cites (this node's GO, sealed before the deal), both disclosed: the deal's terms, its peer and the
+    admission's decision are in the bundle, the user's words are not (they are in a record the bundle does not
+    cite). The deal's own records stay in the deal's book."""
     n = node()
-    n.bundle(gn.NODE_BOOK, n.context(deal_id)["record_id"], _path(out_path))
+    n.bundle(gn.NODE_BOOK, n.context(deal_id)["record_id"], _path(out_path), disclose=True)
     return _out(ok=True, step="04", deal_id=deal_id, file=out_path)
 
 
@@ -375,7 +378,7 @@ def loop_ask(responder: str, subject_form: str, out_path: str, subject_value: st
     if derivation:
         request["derivation"] = derivation
     n = node()
-    sealed = n.ctl.run("node", "request", "--book", gn.NODE_BOOK, "--request", n._file("request.json", request),
+    sealed = n._run("node", "request", "--book", gn.NODE_BOOK, "--request", n._file("request.json", request),
                        "--responder", responder, "--output", _path(out_path))
     return _out(ok=True, step="07", record_id=sealed["record_id"], file=out_path)
 
@@ -385,7 +388,7 @@ def loop_ask_reply(request_record_id: str, reply_file: str, responder_key: str, 
     """Record the answer to a request this node sent: the reply is verified under the responder's signing and
     checkpoint keys you trust, and sealed as received (an artifact or a signed refusal). A reply that does not
     verify is recorded as failing, never as an answer."""
-    done = node().ctl.run("node", "request", "--book", gn.NODE_BOOK, "--for", request_record_id,
+    done = node()._run("node", "request", "--book", gn.NODE_BOOK, "--for", request_record_id,
                           "--response", _path(reply_file), "--responder-key", responder_key,
                           "--responder-checkpoint-key", checkpoint_key)
     record = done.get("record", done)
@@ -446,7 +449,7 @@ def loop_ask_mailbox_poll(request_event_id: str) -> str:
 def loop_history_card(out_path: str) -> str:
     """Write this profile's ``history_card/2`` to ``out_path``: the staple (the holder's own request and its signed
     reply), a sampled chain of its cadence checkpoints with no deal counts, as of the newest finished tick."""
-    staple = node().ctl.run("standard-history", "staple")
+    staple = node()._run("standard-history", "staple")
     _write(out_path, json.dumps(staple["staple"], sort_keys=True, indent=2).encode())
     return _out(ok=True, derivation=staple["derivation"], file=out_path)
 
@@ -459,7 +462,7 @@ def loop_standard_history(out_path: str, shared: bool = False) -> str:
     args = ["standard-history", "card", "--out", _path(out_path)]
     if shared:
         args.append("--shared")
-    done = node().ctl.run(*args)
+    done = node()._run(*args)
     return _out(ok=True, file=out_path, **{k: v for k, v in done.items() if k not in ("spec_version", "voice", "file")})
 
 
@@ -480,13 +483,13 @@ def loop_register_card(out_path: str) -> str:
         raise Refused("no transparency service is configured: set GOOSE_CARD_SERVICE to a service file; "
                       "registration is opt-in and has no default")
     n = node()
-    staple = n.ctl.run("standard-history", "staple")["staple"]["reply"]
+    staple = n._run("standard-history", "staple")["staple"]["reply"]
     card = n._file("card.json", json.dumps(staple, sort_keys=True, separators=(",", ":")))
     book = os.environ.get("GOOSE_CAPSULECTL_BOOK", "capsulectl-book")
     done = subprocess.run([book, "--profile", n.operator, "card", "register", "--card", card,
                            "--anchor", staple["anchor"]["digest"], "--holder", n.key_id,
                            "--service", _path(service), "--out", _path(out_path)],
-                          env={**os.environ, "HOME": str(n.home)}, capture_output=True, timeout=300, check=False)
+                          env={**os.environ, "HOME": str(n.home), "XDG_CONFIG_HOME": str(n.home / ".config")}, capture_output=True, timeout=300, check=False)
     if done.returncode != 0:
         try:
             why = json.loads(done.stdout).get("error")
