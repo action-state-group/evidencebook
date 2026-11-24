@@ -229,7 +229,7 @@ adjudicator" (Sherlock2's string, ledger-cloud#35) and never as "refused".
 x-deal-v1 records are closed (PROFILE.md §1), so a party on a capsulectl-deal release before
 `sources` refuses a ruling that carries it on `deal receive` and cannot name it. That is a forced
 upgrade, stated as one: the hosted adjudicator writes `sources` only from the capsulectl-deal
-release that reads it (PR 2), and its RUNBOOK and its `/status.json` name that release as the
+release that reads it (PR 2), and its RUNBOOK, its `/status.json` and that release's notes name it as the
 minimum a party needs.
 
 ### 3.3 Tests
@@ -338,6 +338,25 @@ Each PR is reviewed under the usual rules; none starts before Steven's ruling on
    adjudicator". Proposed: 7 days from the request, a service constant stated in the practice
    statement, as the 30-day challenge window is (ledger-cloud `ledger_cloud/adjudicator/RUNBOOK.md:74`).
 5. **Hosting.** Option A (Steven's machine) now, B on his decision to deploy (§4.1).
+
+**Sherlock2's recommendation** (a recommendation, not a ruling; Steven rules; buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=4f37c6bfa53b02847a3ebeb5cbfd882472d257f67fc2d86589dbae9e9d3e0a7d&thread=440510368f48f25851cb3b3476a5d116f1b9acb9bb41833b3fb55b5a74faaddb, on head `25e8b4d6`):
+
+1. Yes; forwarding the held copy is within u207, since those records were already sent to the
+   counterparty. u615 and u547 hold mechanically: agent claims and the floor are journal-only
+   (PROFILE.md:123), so a whole deal book cannot carry them.
+2. Yes, with one condition: the ruling may turn only on records the silent side signed itself,
+   and the page names the source that timed each deciding record. The challenge window is its
+   remedy.
+3. Yes: the branch the counterparty received governs; keep both branches and `fork_at`, and the
+   page says plainly "the signer's book forked at N".
+4. 7 days, counted from when the request is published, with that time printed on the page; a
+   service constant in the practice statement, out of the neutral spec.
+5. A now. Before B: agreements name the adjudicator by `key_id`, so moving to the cloud either
+   moves that key or gives new deals a new key, with old cases ruled under the old one; Steven
+   should choose before real deals name the local key.
+
+Doors: confirmed as format only. The forced reader upgrade is acceptable since `/status.json`
+and the RUNBOOK name the minimum release; the release notes say so too. Neutrality clean.
 
 Engineering's doors, for Sherlock2's door confirmation (format shapes with no product meaning
 beyond u207 and the answers above): the ruling's `sources` member, the bundle extension's
