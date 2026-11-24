@@ -315,7 +315,9 @@ def loop_settle(deal_id: str, payment_ref: str, out_path: str, check_id: str = "
     ``out_path`` for the seller. ``payment_ref`` is the reference the caller observed on the rail (a Lightning
     payment hash); this tool drives no rail and moves no money. A check that pauses returns the card the user
     must see (``say``) and ``paused: true``: show it as it is, then seal their answer with ``loop_deal_approve``
-    and call again with the ``check_id``."""
+    and call again with the ``check_id``.
+    The result's ``person_signature: missing`` means the person has not signed this record. Say "settled, as the
+    agent's records show"; never say the user signed it."""
     done = node().pay(deal_id, payment_ref, _path(out_path), check_id)
     return _out(ok=True, step="06", file=out_path, **done)
 
@@ -331,7 +333,9 @@ def loop_deal_approve(deal_id: str, check_id: str, choice: str, said: str) -> st
 @_tool
 def loop_deal_received(deal_id: str, amount_minor: int, payment_ref: str, out_path: str) -> str:
     """The seller's payee leg: what it received (an amount in minor units and the payment reference it observed),
-    written to ``out_path`` for the buyer. Keep the buyer's payer leg first (``loop_deal_reconcile``)."""
+    written to ``out_path`` for the buyer. Keep the buyer's payer leg first (``loop_deal_reconcile``).
+    The result's ``person_signature: missing`` means the person has not signed this record. Say "settled, as the
+    agent's records show"; never say the user signed it."""
     done = node().received(deal_id, amount_minor, payment_ref, _path(out_path))
     return _out(ok=True, step="06", file=out_path, **done)
 
@@ -339,15 +343,19 @@ def loop_deal_received(deal_id: str, amount_minor: int, payment_ref: str, out_pa
 @_tool
 def loop_deal_deliver(deal_id: str, out_path: str, observed: str = "delivered", check_id: str = "") -> str:
     """The seller's delivery: a commit review, then the act, written to ``out_path`` for the buyer. A review that
-    pauses is answered as for ``loop_settle``."""
+    pauses is answered as for ``loop_settle``.
+    The result's ``person_signature: missing`` means the person has not signed this record. Say "settled, as the
+    agent's records show"; never say the user signed it."""
     done = node().deliver(deal_id, _path(out_path), observed, check_id)
     return _out(ok=True, step="06", file=out_path, **done)
 
 
 @_tool
 def loop_deal_close(deal_id: str, status: str, out_path: str) -> str:
-    """Say how the deal's payment row went on this side: ``received`` (met) or ``not_received`` (not met). The
-    statement is written to ``out_path`` for the other side."""
+    """Say how the deal's two rows went on this side (``paid_as_agreed``, owed by the buyer, and ``delivered``,
+    owed by the seller). ``received``: both met. ``not_received``: as the buyer, ``delivered`` not met (paid, got
+    nothing); as the seller, ``paid_as_agreed`` not met (not paid). The statement is written to ``out_path`` for
+    the other side."""
     done = node().statement(deal_id, status, _path(out_path))
     return _out(ok=True, step="06", file=out_path, **done)
 
@@ -490,6 +498,7 @@ def loop_register_card(out_path: str) -> str:
                            "--anchor", staple["anchor"]["digest"], "--holder", n.key_id,
                            "--service", _path(service), "--out", _path(out_path)],
                           env={**os.environ, "HOME": str(n.home), "XDG_CONFIG_HOME": str(n.home / ".config")}, capture_output=True, timeout=300, check=False)
+    Path(card).unlink(missing_ok=True)
     if done.returncode != 0:
         try:
             why = json.loads(done.stdout).get("error")

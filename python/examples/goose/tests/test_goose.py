@@ -227,3 +227,20 @@ def test_a_payment_resumed_with_another_reference_is_refused(pair):
     paid = buyer.pay(deal, "reference-a", str(tmp / "leg.json"), paused["check_id"])
     assert paid["leg"] == "payer"
     assert paid["person_signature"] == "missing", "the leg says the person's signatures are still to come, and the tool says so"
+    # a call that stopped after the leg was sealed (its file never written) is called again and writes it again
+    (tmp / "leg.json").unlink()
+    again = buyer.pay(deal, "reference-a", str(tmp / "leg.json"), paused["check_id"])
+    assert again["digest"] == paid["digest"] and (tmp / "leg.json").exists()
+
+
+def test_an_intent_sealed_before_its_index_was_noted_is_not_a_dead_end(pair):
+    """A call that stopped after sealing the deal's first intent (the one that opens it) and before noting it."""
+    buyer, seller, deal, offer, tmp = pair
+    said = buyer._file("intent.json", {"verbatim": "buy tokens", "allowed": ["pay"]})
+    opening = buyer._file("opening.json", {"type": "purchase", "who": {"name": "the seller", "domain": "the seller.invalid"},
+                                           "recourse": {"rail": "lightning", "refundable": False}})
+    buyer._run("note", "--deal", deal, "--kind", "intent", "--input", said, "--opening", opening)
+    assert not buyer.notes(gn.DEAL_INTENT)
+    assert buyer._intent(deal, "buy tokens", "lightning", "the seller", "purchase", ["pay"], 50) == "", \
+        "the intent is sealed and its digest is not printed again: the agreement goes without citing it"
+    assert not buyer.notes(gn.DEAL_INTENT)

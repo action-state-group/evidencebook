@@ -96,7 +96,7 @@ payment reference is a value you observed.
 The final review of an act (`deal check`) pauses when the user must answer: a price the agent picked, a rail
 with no card protection. `loop_settle` and `loop_deal_deliver` then return `paused: true` and the card in `say`.
 Show it as it is, seal only what the user answers (`loop_deal_approve`), and call the tool again with the
-`check_id`. The scripted run plays the user.
+`check_id`. A leg or an act the tool seals returns `person_signature: missing` until the person has signed it: say "settled, as the agent's records show", never that the user signed. The scripted run plays the user: its answers are the script's, and its records say what the script said, not what a person consented to.
 
 A deal is admitted by `capsule-engine admission evaluate` over the pack in `admission-pack.json` (capsule-engine's
 `ladder` conformance pack), for this price and currency. The node seals the decision (`deal admit`) and the agreement

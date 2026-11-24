@@ -63,8 +63,9 @@ def _seed_key(path: Path) -> Ed25519PrivateKey:
 
 
 def _leg(done: dict) -> dict:
-    """What a verb that seals a leg or an act says, kept whole where a reader relies on it: Go says an act
-    is not to be relied on until the person's signatures it names are held (``person_signature: missing``)."""
+    """What a verb that seals a leg or an act says, kept whole where a reader relies on it: ``person_signature:
+    missing`` means no act carries the person's own signature yet, so "settled" is read from the agent's records, which
+    the person has not signed (``person_signs`` names what they would sign)."""
     return {k: done[k] for k in ("leg", "digest", "person_signature", "person_signs", "first_act_gate") if k in done}
 
 
@@ -282,13 +283,20 @@ class Node:
         # the amount is in major units: this node's deals are in currencies with two minor digits
         card = hashlib.sha256(b"{}").hexdigest()  # no card was read: the digest of the empty document
         refs = {"asks": [], "answers": [], "card_digest": card}
-        decided = engine("admission", "evaluate", "--pack", str(PACK), "--input", self._file("engine-in.json", inputs),
-                         "--admit", self._file("engine-refs.json", refs))
-        return decided
+        files = (self._file("engine-in.json", inputs), self._file("engine-refs.json", refs))
+        try:
+            return engine("admission", "evaluate", "--pack", str(PACK), "--input", files[0], "--admit", files[1])
+        finally:
+            for f in files:
+                Path(f).unlink(missing_ok=True)
 
     def _admit(self, deal_id: str, peer: str, terms: dict) -> str:
         """Seal the engine's decision for the deal, once: a retry finds it (the engine's output differs at every
         run, and ``deal admit`` takes one decision per deal)."""
+        with self._lock:
+            return self._admit_once(deal_id, peer, terms)
+
+    def _admit_once(self, deal_id: str, peer: str, terms: dict) -> str:
         done = next((r["statement"]["admit"] for r in self.notes(DEAL_ADMIT) if r["statement"]["deal_id"] == deal_id), None)
         if done:
             return done
@@ -331,6 +339,11 @@ class Node:
 
     def _intent(self, deal_id: str, asked: str, rail: str, who: str, kind: str, allowed: list[str],
                 limit: int | None, refundable: bool = False) -> str:
+        with self._lock:
+            return self._intent_once(deal_id, asked, rail, who, kind, allowed, limit, refundable)
+
+    def _intent_once(self, deal_id: str, asked: str, rail: str, who: str, kind: str, allowed: list[str],
+                     limit: int | None, refundable: bool) -> str:
         sealed = next((r["statement"]["intent"] for r in self.notes(DEAL_INTENT)
                        if r["statement"]["deal_id"] == deal_id), None)
         if sealed:
@@ -340,8 +353,16 @@ class Node:
             said["max_total_minor"] = limit
         opening = {"type": kind, "who": {"name": who, "domain": f"{who[:12]}.invalid"},
                    "recourse": {"rail": rail, "refundable": refundable}}
-        intent = self._run("note", "--deal", deal_id, "--kind", "intent", "--input", self._file("intent.json", said),
-                           "--opening", self._file("opening.json", opening))["intent"]
+        try:
+            intent = self._run("note", "--deal", deal_id, "--kind", "intent", "--input", self._file("intent.json", said),
+                               "--opening", self._file("opening.json", opening))["intent"]
+        except Refused as exc:
+            if "already open" not in str(exc):
+                raise
+            # a call stopped after sealing the deal's first intent and before noting its digest, which capsulectl
+            # does not print again (a second intent with the same words changes nothing, and is refused): the
+            # intent is sealed, so the agreement goes without citing it
+            return ""
         self.note(DEAL_INTENT, {"deal_id": deal_id, "intent": intent}, once="deal_id", subject_ref=deal_id)
         return intent
 
@@ -371,7 +392,7 @@ class Node:
         self._admit(deal_id, ctx["peer"], terms)
         intent = self._intent(deal_id, ctx["asked"], ctx["rail"], "the seller", "purchase", ["pay"], ctx["price_minor"],
                               ctx["refundable"])
-        done = self._run("agree", ctx["offer"], "--intent", intent, "--out", out)
+        done = self._run("agree", ctx["offer"], *(["--intent", intent] if intent else []), "--out", out)
         return {"deal_id": deal_id, "agreement": done["agreement"]}
 
     @staticmethod
@@ -444,8 +465,8 @@ class Node:
         try:
             self._run("settle", "--deal", deal_id, "--sent", "--check", check_id, "--payment-ref-type", "ln.payment_hash")
         except Refused as exc:
-            if "--sent" not in str(exc) and "in flight" not in str(exc):
-                raise  # else a retry of a payment already counted as in flight
+            if not any(w in str(exc) for w in ("in flight", "is used")):
+                raise  # else a retry: the payment is counted as in flight, or its leg is sealed and is written again
         leg = self._run("settle", "--deal", deal_id, "--check", check_id, "--status", "settled", "--out", out)
         return {"deal_id": deal_id, **_leg(leg)}
 
