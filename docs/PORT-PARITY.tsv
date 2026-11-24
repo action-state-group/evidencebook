@@ -1,6 +1,7 @@
 package	kind	symbol	feature	rust	python
 .	func	AttachCardReceipt	card-registration	frozen #618	frozen #619
 .	func	BuildCardStatement	card-registration	frozen #618	frozen #619
+.	func	ChainPredecessorFromBook	window-books	frozen #798	frozen #799
 .	func	CheckCardRegistered	card-registration	frozen #618	frozen #619
 .	func	CheckHistoryCard2	standard-history	ported	ported
 .	func	CheckStandardHistoryMaterial	standard-history	frozen #648	frozen #647
@@ -46,6 +47,7 @@ package	kind	symbol	feature	rust	python
 .	func	RegisterCard	card-registration	frozen #618	frozen #619
 .	func	SamePayloadCommitments	reconcile-halves	ported	frozen #643
 .	func	StatusOfClose	reconcile-halves	frozen #644	frozen #643
+.	func	SuccessorSince	window-books	frozen #798	frozen #799
 .	func	SyncedFile	originals-and-stores	frozen #640	frozen #639
 .	func	VerifyBundle	evidence-bundle	frozen #636	frozen #635
 .	func	VerifyBundleAnswer	evidence-bundle	frozen #636	frozen #635
@@ -85,8 +87,10 @@ package	kind	symbol	feature	rust	python
 .	type	BatchEntry	shelf	ported	ported
 .	type	BeforeStampProvider	shelf	ported	ported
 .	type	Book	originals-and-stores	ported	ported
+.	type	BookCloseStatement	window-books	frozen #798	frozen #799
 .	type	BookFact	shelf	ported	ported
 .	type	BookStatusProvider	shelf	ported	ported
+.	type	BookSuccessor	window-books	frozen #798	frozen #799
 .	type	Bundle	evidence-bundle	frozen #636	frozen #635
 .	type	BundleCheckpoint	substrates	frozen #650	frozen #649
 .	type	BundleClaims	evidence-bundle	frozen #636	frozen #635
@@ -103,6 +107,7 @@ package	kind	symbol	feature	rust	python
 .	type	CardStatementRegistrar	card-registration	frozen #618	frozen #619
 .	type	ChainBoundary	window-books	frozen #798	frozen #799
 .	type	ChainFinding	window-books	frozen #798	frozen #799
+.	type	ChainPredecessor	window-books	frozen #798	frozen #799
 .	type	ChainTail	window-books	frozen #798	frozen #799
 .	type	ChainWindow	window-books	frozen #798	frozen #799
 .	type	Checkpoint	substrates	ported	ported
@@ -298,6 +303,7 @@ package	kind	symbol	feature	rust	python
 .	type	WitnessReceipt	originals-and-stores	ported	ported
 .	type	WitnessRow	substrates	frozen #650	ported
 .	var	DefaultReceiveBounds	shelf	ported	ported
+.	var	ErrBookClosed	sentinel-errors	not needed	not needed
 .	var	ErrBusy	sentinel-errors	not needed	not needed
 .	var	ErrClockBehind	sentinel-errors	not needed	not needed
 .	var	ErrCorrupt	sentinel-errors	not needed	not needed
