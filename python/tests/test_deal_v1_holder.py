@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -643,3 +644,149 @@ def test_report_gives_up_on_a_book_that_keeps_moving(tmp_path, monkeypatch):
     with pytest.raises(BusyError):
         sp.report(log, cp)
     assert len(sizes) >= 6, "three reads, each sized before and after"
+
+
+# -- the case book (evidencebook#615, Go's case_book_test.go) --------------------------------------
+
+def _case_scenario(tmp_path, monkeypatch, upto: int = 8):
+    """The name-rulings scenario with an adjudicator that checkpoints with
+    its record key (Go's newAdjudicator): the parties after the first ``upto``
+    steps (8 ends with the adjudicator's ruling sealed, 7 before it), the
+    ruling's step and the seller's agreement."""
+    real = seed
+    monkeypatch.setattr(sys.modules[__name__], "seed",
+                        lambda label: real("adjudicator record key") if label == "adjudicator checkpoint key"
+                        else real(label))
+    c = case("name-rulings")
+    parties = replay(c, tmp_path, upto)
+    return parties, c["steps"][7], c["steps"][5]
+
+
+def test_case_log_id():
+    offer, other = "a" * 64, "b" * 64
+    key, other_key = "1" * 64, "2" * 64
+    i = holder.case_log_id(offer, key)
+    assert i == holder.case_log_id(offer, key)
+    assert i.startswith(holder.CASE_LOG_PREFIX) and len(i) == len("case/") + 32
+    bytes.fromhex(i[len("case/"):])
+    assert i != holder.case_log_id(other, key)
+    assert i != holder.case_log_id(offer, other_key)
+    assert holder.case_log_id("ab", "c") != holder.case_log_id("a", "bc")
+    # Go's pinned value (case_book_test.go).
+    assert i == "case/fe02461334fc17ef81a8494d07d28608"
+
+
+def test_the_transcripts_case_log_is_the_computed_one(tmp_path, monkeypatch):
+    parties, ruling, agreement = _case_scenario(tmp_path, monkeypatch)
+    ag = agreement["record"]["body"]
+    key = ag["adjudicator"]["key_id"]
+    assert ruling["log"] == holder.case_log_id(ag["offer"]["digest"], key)
+    assert key == parties["adjudicator"].signer.public_key().hex()
+
+
+def test_a_ruling_on_another_log_is_refused(tmp_path, monkeypatch):
+    parties, ruling, _ = _case_scenario(tmp_path, monkeypatch, 7)
+    adj, seller = parties["adjudicator"], parties["seller"]
+    adj.tick()
+    entry = entry_of(ruling["record"])
+    rec = adj.shelf.open("case/" + hashlib.sha256(b"another case log").hexdigest()[:32]).append(entry)
+    book = adj.shelf.open("case/" + hashlib.sha256(b"another case log").hexdigest()[:32])
+    stored = book._stored[rec.record_id]
+    pair = sent.book_pair(jcs(stored.capsule), stored.envelope, stored.header, jcs(ruling["record"]))
+    res = seller.shelf.receive(pair, None)
+    assert res.refusals and not res.record.stored
+
+
+def test_a_case_books_proof_binds_to_the_adjudicator_key(tmp_path, monkeypatch):
+    parties, ruling, _ = _case_scenario(tmp_path, monkeypatch, 7)
+    adj, seller = parties["adjudicator"], parties["seller"]
+    adj.tick()
+    replay_step = case("name-rulings")["steps"][7]
+    book = adj.shelf.open(replay_step["log"])
+    rec = book.append(entry_of(replay_step["record"]))
+    stored = book._stored[rec.record_id]
+    assert rec.record_id == replay_step["out"]["record_id"]
+    pair = sent.book_pair(jcs(stored.capsule), stored.envelope, stored.header, jcs(replay_step["record"]))
+    adj.tick()
+    adj.cadence.stamp(adj.now)
+    proof = adj.cadence.stamp_proof(rec.record_id, 0, "counterparty")
+    res = seller.shelf.receive(pair, StampProof.from_value(json.loads(jcs(proof.value()))))
+    assert res.proof is not None and res.proof.accepted, res.proof.refused if res.proof else None
+    sender, ok = seller.profile.proof_sender(adj.signer.public_key().hex(), replay_step["log"])
+    assert ok and sender == adj.signer.public_key().hex()
+    # Under a checkpoint key that is not the adjudicator's record key, it binds to nothing.
+    assert seller.profile.proof_sender("0" * 64, replay_step["log"]) == ("", False)
+
+
+def test_held_ruling(tmp_path, monkeypatch):
+    parties, ruling, _ = _case_scenario(tmp_path, monkeypatch)
+    seller, buyer = parties["seller"], parties["buyer"]
+    adj_key = parties["adjudicator"].signer.public_key().hex()
+    rec = decode(jcs(ruling["record"]))
+    d = v1.digest(rec)
+    deal = rec.block["deal_id"]
+    assert holder.held_ruling(seller.shelf, deal, adj_key, d) == (None, False), "not received yet: unavailable"
+    seller.shelf.receive(bytes.fromhex(case("name-rulings")["steps"][8]["pair"]), None)
+    read, found = holder.held_ruling(seller.shelf, deal, adj_key, d)
+    assert found and read.record.record_type == "ruling"
+    assert holder.held_ruling(seller.shelf, deal, buyer.signer.public_key().hex(), d) == (None, False)
+    assert holder.held_ruling(seller.shelf, "deal-ffffffffffffffff", adj_key, d) == (None, False)
+
+
+def test_the_adjudicator_takes_the_parties_books_after_its_ruling(tmp_path, monkeypatch):
+    c = case("name-rulings")
+    parties, ruling, agreement = _case_scenario(tmp_path, monkeypatch, 7)
+    adj = parties["adjudicator"]
+    seller_agreement = bytes.fromhex(agreement["out"]["pair"])
+    # Another adjudicator, which ruled on nothing, takes none of it.
+    stranger = Party("stranger", tmp_path / "stranger")
+    assert stranger.shelf.receive(seller_agreement, None).refusals
+    # Not yet ruled: the seller's agreement is refused.
+    assert adj.shelf.receive(seller_agreement, None).refusals
+    # Seal the ruling, then the seller's agreement is taken (and a third key's is not).
+    adj.tick()
+    book = adj.shelf.open(c["steps"][7]["log"])
+    book.append(entry_of(ruling["record"]))
+    res = adj.shelf.receive(seller_agreement, None)
+    assert not res.refusals and res.record.stored
+    intruder = Party("intruder", tmp_path / "intruder")
+    ag = decode(jcs(agreement["record"]))
+    ibook = intruder.shelf.open("deal/c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0")
+    rec = ibook.append(entry_of(agreement["record"]))
+    st = ibook._stored[rec.record_id]
+    pair = sent.book_pair(jcs(st.capsule), st.envelope, st.header, jcs(agreement["record"]))
+    assert adj.shelf.receive(pair, None).refusals, "a key the ruling does not name"
+    assert ag is not None
+
+
+def test_a_forked_case_book_makes_no_checkpoint_claim(tmp_path, monkeypatch):
+    """Go's TestForwardedRulingShowsAFork, its proof-sender half: a judge
+    that gave the holder two different first rulings of the case log is
+    forked, and no proof of that log binds to it."""
+    parties, ruling, _ = _case_scenario(tmp_path, monkeypatch, 7)
+    adj, seller = parties["adjudicator"], parties["seller"]
+    key = adj.signer.public_key().hex()
+    log = ruling["log"]
+
+    def sealed(rec: dict) -> bytes:
+        adj.tick()
+        book = adj.shelf.open(log)
+        r = book.append(entry_of(rec))
+        st = book._stored[r.record_id]
+        return sent.book_pair(jcs(st.capsule), st.envelope, st.header, jcs(rec))
+
+    pair_a = sealed(ruling["record"])
+    adj.tick()
+    adj.cadence.stamp(adj.now)
+    first_id = adj.shelf.open(log).records()[0].record_id
+    proof = StampProof.from_value(json.loads(jcs(adj.cadence.stamp_proof(first_id, 0, "counterparty").value())))
+    res = seller.shelf.receive(pair_a, proof)
+    assert res.proof.accepted
+    assert seller.profile.proof_sender(key, log) == (key, True)
+
+    other = json.loads(json.dumps(ruling["record"]))
+    other["body"].update({"against": "buyer", "value": "met"})
+    adj.reopen_as(adj)  # the same key on a new shelf: the fork
+    pair_b = sealed(other)
+    seller.shelf.receive(pair_b, None)
+    assert seller.profile.proof_sender(key, log) == ("", False)
