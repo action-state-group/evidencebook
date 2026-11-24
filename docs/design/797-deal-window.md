@@ -1,17 +1,18 @@
 # evidencebook#797: a window on a capsulectl-deal shelf
 
-Status: draft for the plan review (round 0). Written 2026-11-23 CST at main `375e1b8a`. It
-reuses #689's window books ([689-window-books.md](689-window-books.md)) and adds no second
-window mechanism.
+Status: revised after the plan review's round 0 (Kimi, and one Claude stand-in for Codex, who is
+out until 2026-11-28); §8 holds the findings and answers. One what question is open for
+Sherlock2 (§4). Written 2026-11-23 CST at main `375e1b8a`. It reuses #689's window books
+([689-window-books.md](689-window-books.md)) and adds no second window mechanism.
 
 ## Problem
 
 #689 fixes a time window on a holder's shelf and splits report-side records into window books
 chained by `previous` (§1, §2, §5 there). Its windowed shelf holds window books only
-(`shelf.go:68`, `attachWindow` refuses any other log id, `window_book.go:606-607`), refuses the
-facts migration (`shelf_stamp.go:165-169`) and so the journal (`Shelf.Journal` needs a migrated
-shelf, `shelf.go:264-267`). capsulectl-deal needs all three: one book per deal
-(`deal/<id>`, `deal_books.go`), the shelf's journal for every x-deal-v1 journal record
+(`attachWindow` refuses any other log id, `window_book.go:606-607`), refuses the facts migration
+(`shelf_stamp.go:165-169`) and so the journal (`Shelf.Journal` needs a migrated shelf,
+`shelf.go:264-267`). capsulectl-deal needs all three: one book per deal (`deal/<32 hex>` for an
+x-deal-v1 deal, `deal_v1_book.go:105-113`), the shelf's journal for every x-deal-v1 journal record
 (`appendV1Journal`, `deal_v1_events.go:365`), and the facts cadence (`deal set-version x-deal-v1
 --migrate`, `deal_v1.go:239`, `:499`). So a deal holder judged by a Terms Pack has no window today,
 and the tau2 demo opens one deal profile per window (evidencebook-skills
@@ -34,134 +35,197 @@ one book per deal. Steven, 2026-11-21 call: the split rule is chosen up front.
 
 ```go
 // Journal makes the window books the shelf's journal (evidencebook#797):
-// Base is "journal", each window's journal is the window book
-// "journal/<label>", and the shelf also holds placed books (§3), the cadence
-// and the journal facts. Without it a windowed shelf holds window books only.
+// each window's journal is the window book "journal/<label>", and the shelf
+// also holds its other books (deal, node and case books), the cadence and
+// book facts. Without it a windowed shelf holds window books only.
 Journal bool
 ```
 
+- `Base` must be `JournalLogID` and `Grace` must be 0 when it is set (refused otherwise). No
+  grace: #807's grace admits only a close/v1 Close, which x-deal-v1 has no form of
+  (`deal_v1.go:124-133`), so a grace would only hold back each window's final checkpoint.
 - It is written with the window in `shelf_window.journal` when the file is created and compared
-  on every reopen, as `Grace` is (#807). `Base` must be `JournalLogID` when it is set.
-- A file created with it is shelf **version 5**, so a build that knows versions up to 4 refuses
-  it rather than opening a deal book as a window book or skipping the placement check.
-- It is created already on book facts: the fresh file's `shelf_migration` row is `done` in the
-  creating transaction (there is no unmigrated cadence log to carry over), and `Migrate` on it
-  returns nil. `Migrate` on a #689 windowed shelf without `Journal` stays refused.
-- A store that exists is never windowed: as in #689, a file can gain no policy. A deal holder
-  starts a windowed store with a new profile; converting an existing deal store is not this item.
+  on every reopen, as `Grace` is; `ReadShelfWindow` (`window_book.go:761-805`) reads it, so a host
+  reopens with the stored policy. The version rule at `window_book.go:241` becomes: `Journal`
+  gives shelf **version 5**, else grace above 0 gives 4, else 3. A build that knows up to 4 refuses
+  a version 5 file rather than refusing its deal books one by one.
+- It is created already on book facts: the creating transaction writes the `shelf_migration` row
+  as `done` (there is no unmigrated cadence log to carry over), so `Cadence.Migrated` is true and
+  `deal set-version x-deal-v1 --migrate` skips `Migrate`. `Migrate` on a #689 windowed shelf
+  without `Journal` stays refused.
+- A store that exists is never windowed (#689: a file can gain no policy). Converting an
+  existing deal store is not this item.
 
 ## 2. The journal per window (R3)
 
 - `Shelf.Journal(ctx)` on a journal-windowed shelf rolls (as `Shelf.Current`) and returns the
-  current window's journal book. Every journal append (`appendV1Journal`, `sendV1`) therefore
-  lands in the window of its commit time, and a closed window takes none (#689 §2 admission,
-  #807 grace: in grace a journal window takes only what #807 admits; an x-deal-v1 journal record
-  goes to the current window).
-- The window books are #689's: `window_open` with `previous`, the shelf's disclosure policy
-  re-stated, `window_close` and the final checkpoint; the chain (`Shelf.WindowChain`,
-  `VerifyWindowChain`) is unchanged. A year of journal hands over as one chain.
-- Each window journal book is a log of kind `journal` (so `Shelf.Open` refuses it, as it refuses
-  the journal today) and has its own journal fact in the cadence; a closed window is `Ended`, so it
-  leaves the live set once its final checkpoint is witnessed (#689 §2, Cadence).
-- **Reading the whole journal.** x-deal-v1 reads the journal in order across deals and time:
-  authorization reads intents and confirmed proposals in journal order and refuses an `at` that
-  decreases (PROFILE.md §8), and a standing intent can be months old. `Shelf.JournalRecords(ctx)`
-  returns every window's records, windows in chain order, each in log order, with the window book
-  that holds it; `ResolveJournalPayload(ctx, recordID, digest)` reads a payload from the right
-  book. On an unwindowed shelf both read the one journal. capsulectl's readers
-  (`journalHolds`, `journalRecord`, `v1DealJournal`, the admit and check paths) move to them, so
-  nothing in capsulectl reads `Records(ctx, JournalLogID)` any more. Concatenation in chain order
-  keeps the journal's order and its non-decreasing `at`, since a window book admits only records
-  timed inside its window.
-- **x-deal-v1 text.** PROFILE.md §8 "the journal" gains one sentence: on a windowed shelf the
-  journal is its window books read in chain order, and the order rules apply across them.
+  current window's journal book, so every journal append lands in the window of its commit time.
+  Window journal books are of kind `journal` and open only through the journal API
+  (`Journal`, `JournalView`, `WindowBook`); `Shelf.Open` refuses them, as it refuses the journal.
+- The window books are #689's: `window_open` with `previous`, the disclosure policy re-stated,
+  `window_close` and the final checkpoint. The chain (`Shelf.WindowChain`, `VerifyWindowChain`)
+  is unchanged but for `window_close/v2` (§3). A year of journal hands over as one chain.
+- **One ordered journal read.** Journal readers today take one `*Book` and one seq space:
+  capsulectl's `journalHolds`, `journalRecord`, `v1DealJournal` and the admit path; and in
+  `dealprofile/xdealv1`, `ReceiveProfile.ours` (a `journalSeen` watermark, `receive.go:394-435`),
+  `StatusProvider`'s offer lookup and `ownBook` (`status_provider.go:95`, `:185`, `:228-243`) fed
+  by `StatusInput.Journal` (`shelf_stamp.go:72`, filled by `existingJournalLocked`,
+  `:861-869`), and `ReportSnapshot` (`report.go:634-640`). The root package adds
+  `Shelf.JournalView(ctx)`, a read-only view over every window's journal book in chain order with
+  one seq space (window N's records follow window N-1's close record), offering what those readers
+  call on a `*Book`: `Size`, `Query` by seq, `ResolvePayload`, and the records list. It is
+  append-only: a window closes before the next opens and a closed window takes no record
+  (grace 0), so a seq never moves and `journalSeen` stays valid. On an unwindowed shelf the view
+  is the one journal. `StatusInput.Journal`, `ExistingJournal` and the readers above move to a
+  small interface both satisfy; `existingJournalLocked` returns the view on a windowed shelf
+  without creating or rolling anything.
+- **Journal facts.** `factFor` decides a journal fact by `shelf_logs.kind = 'journal'`, not by the
+  log id `journal` (`shelf_stamp.go:451`), so each window's journal gets a journal fact, whose
+  size stays hidden as #461 §2.2 requires.
+- **Leaving the live set.** The root package exports `Shelf.WindowEnded(ctx, logID)`: true for a
+  closed window book. capsulectl's cadence `Ended` predicate (`deal_shelf.go:152-179`) asks it
+  for a `journal/<label>` id, so a closed window leaves the live set once its final checkpoint is
+  witnessed (#689 §2, Cadence).
+- **Order across windows.** Appends are serialized and each rolls first, so the view keeps the
+  order records were committed in. Window admission bounds the Capsule's `committed_at`, not the
+  x-deal-v1 block's `at`, which is read earlier (`deal_v1.go:266`): a record with `at` 23:59:59
+  can land in the next window, and a crash-recovered record (`deal_v1_events.go:84-104`) carries
+  its earlier `at`. PROFILE.md §8's rule (the journal read in order, `at` never decreasing) is
+  checked on the view as it is on one journal today; windows add no new case and no new
+  guarantee. **x-deal-v1 text.** PROFILE.md §8 gains one sentence: on a windowed shelf the journal
+  is its window journals read in chain order, and the order rules apply across them.
 
 ## 3. Deal books placed in a window (R2)
 
-- `Shelf.Place(ctx, logID) (*Book, Window, error)` makes a new book placed in the current window
-  (after a roll): it seals a `window_place` record (`window_place/v1`: `log_id`, `label`) in that
-  window's journal book, then records `shelf_window_placed (log_id PRIMARY KEY, label)` in the
-  same order #689 uses for its recovery: a place record without the row gets the row on the next
-  open; a row is never written without the record. Placing a log id twice returns the first
-  placement.
-- On a journal-windowed shelf, `Shelf.Open` opens a placed book or a window journal book by its
-  kind, and refuses any other log id (`ErrInvalid`, "not placed in a window"), so no deal book
-  exists outside a window.
-- capsulectl-deal places a deal's book when it seals the agreement (`agree`, the deal book's seq
-  1, `PROFILE.md` §3 table) and its results book (`deal/<id>/results`) with it, so a deal is in
-  the window its agreement was sealed in and stays there as it runs past the window's end, as the
-  demo does today. Later records of the deal go to its own book whatever the date; the deal's
-  journal records (checks, approvals, messages) go to the window of their own time.
-- The agreement's `committed_at` must fall in the placing window. The deal clock is the shelf's
-  `Now` and `Place` rolls first, so this holds unless the record carries an earlier time
-  (`inFlight`, a received agreement): then `Place` refuses with `ErrWindowClosed`.
-- `window_close` gains `placed`: the sorted log ids placed in the window. The close record is in
-  the window's final tree, so the chain alone lists every deal book of a range; a verifier reading
-  a chain checks `placed` equals the window's `window_place` records only when it holds the
-  window book (the chain carries the close, not the place records). An older reader that ignores
-  `placed` loses nothing: `window_close` was holder statement only.
-- A deal book is not chained: its own checkpoints and the cadence's facts cover it as today. The
-  window says which deals were agreed in it, not that a deal is finished.
+- `Shelf.Place(ctx, logID) (*Book, Window, error)` places a new, empty book in the current window
+  (after a roll): it seals a `window_place` record (`window_place/v1`: `log_id`) in that window's
+  journal, then writes `shelf_window_placed (log_id PRIMARY KEY, label)`. A place record without
+  its row gets the row on the next open; a row is never written without the record. Placing a
+  book that is placed and holds records returns its window. Placing one that is still empty in an
+  earlier window (a crash between `Place` and the agreement, then a retry after the boundary)
+  places it again in the current window; the latest place record counts.
+- capsulectl-deal calls `Place` for a v1 deal book just before it appends the agreement (the
+  deal book's seq 1, PROFILE.md §3), outside the in-flight record time, so the agreement's
+  `committed_at` is in the placing window. A received agreement is not in an own book
+  (`shelf_received`), so it is not placed. A deal stays in the window its agreement was sealed in
+  as it runs past the window's end. Its later deal-book records go to its own book; its journal
+  records (checks, approvals, messages) go to the window of their own time.
+- No book is refused for being unplaced: node books (`deal node`, the Goose node,
+  `deal_node.go:30-40`) and adjudicator case books (`case/<hash>`, `deal_v1_entries.go:170-178`)
+  open as today and are not windowed. Placement is what a deal agreement does, not a gate.
+- `window_close/v2` adds `placed`: the sorted log ids whose latest place record is in the window
+  and whose book holds its seq 1 at the close. The close is in the window's final tree, so the
+  chain alone lists the deals of a range. `VerifyWindowChain` reads `window_close/v1` and `/v2`;
+  a build that knows only v1 refuses a v2 close (strict decode, `window_chain.go:388-393`), so a
+  verifier of a deal shelf's chain needs this build.
+- A deal book is not chained: its own checkpoints and the cadence's facts cover it as today.
 
 ## 4. A Terms Pack report over windows (R4)
 
-Unchanged from #689 §4-§5, with the journal windows as the window books: the requester asks each
-journal window in the range by the pack's digest, pinning its final checkpoint; the holder
-answers through `Shelf.Respond`, which routes by pin and seals the `evidence_request_answered`
-record in the current window's journal; the requester runs `RecordWindowChain`,
-`ReportFromWindows`, and anyone runs `VerifyReportCoverage`, which names every gap.
+The #689 path, with the journal windows as the window books: the requester asks each journal
+window in the range by the pack's digest, pinning its final checkpoint; the holder answers with
+`Shelf.Respond` (routes by pin; the `evidence_request_answered` record goes in the current
+window's journal); the requester runs `RecordWindowChain` and `ReportFromWindows`; anyone runs
+`VerifyReportCoverage`, which names every gap.
 
-- capsulectl-deal: `deal respond` (today `b.Respond` on the book `--book` names,
-  `deal_node_request.go:161`) calls `Shelf.Respond` on a journal-windowed shelf and refuses
-  `--book`; `deal window list|roll|chain|publish` are the #689 verbs over the journal windows,
-  sharing capsulectl-book's code where it already exists (#828, #837) rather than copying it.
-- The requester side and the coverage verb stay capsulectl-book's (`book report derive --chain`,
-  `book report coverage`), since a requester's report lives in its own book.
-- What a Terms Pack sees on a deal shelf is the journal: offers, admissions, intents, checks,
-  approvals, verdicts and the journey overlay (messages, claims, evidence citations). Deal-book
-  records (agreement, perform, settle) are not in a window's answer; the per-deal x-deal-v1 report
-  (`deal report`, PROFILE.md §10) stays the report on a deal book.
+**Open what (Sherlock2, asked before PR 1).** A window's journal holds offers, admissions,
+intents, checks, approvals, verdicts and the journey overlay (messages, claims, evidence
+citations). The agreement, perform, settle and statement records are in each deal's own book. So
+what must a Terms Pack report over windows on a deal shelf cover?
+
+- (a) **The journal windows only.** #689's verifier unchanged. Coverage says nothing about the
+  deals' own records; every printed coverage line states that limit.
+- (b) **The journal windows and each deal placed in them.** The requester also asks each deal
+  book in a window's `placed` once, at its latest checkpoint; `VerifyReportCoverage` names a
+  placed deal with no answer (`deal <log id> of window 2026-11 has no answer`). A deal book is not
+  bounded by the window, so its answer covers the whole deal, including records after the window.
+
+The engineering recommendation is (b): the deal's own acts are what a Terms Pack judges a deal
+holder on, and (a) would pass coverage while leaving every act out. The build follows the answer.
+
+capsulectl-deal: `deal window list|roll|chain|publish` (the #689 verbs over the journal windows,
+sharing capsulectl-book's code where #828 and #837 put it rather than copying it) and `deal window
+respond --request FILE --pack FILE...`, which registers the given compiled packs on the shelf
+(`Shelf.RegisterDerivation`) and answers through `Shelf.Respond`. `deal node respond` and
+`deal respond` are unchanged. The requester side and the coverage verb stay capsulectl-book's
+(`book report derive --chain`, `book report coverage`).
 
 ## 5. capsulectl-deal
 
-- `deal init --window <day|week|month|quarter|year|none> [--grace <duration>]` creates the
-  store windowed (journal mode, `Since` the current period's start). Default: `none` in this item,
-  so no existing script changes; the printed line when set is #689's ("window: month (calendar
-  months, UTC), closes 7 days after it ends, fixed for this store"). Whether the default should
-  become `month` for new deal profiles is Sherlock2's what (below).
-- `deal set-version x-deal-v1 --migrate` on a windowed store finds it already migrated.
-- A windowed store has no legacy (x-deal-v0) deal: v0 verbs that open a legacy log are refused on
-  it with a hint, because their logs are not placed books.
+- `deal init --window <day|week|month|quarter|year|none>` creates the shelf with the policy
+  before anything else writes the file (`openOwnedTarget` and `MarkOwned` write it first today,
+  `deal.go:1203-1212`, and #689 fixes a policy only on a fresh file), then the rest as today.
+  Default `none`. With a period it prints "window: month (calendar months, UTC), fixed for this
+  store". Whether `month` should become the default for a new deal profile is part of the what
+  ask.
+- `openShelf` (`deal_shelf.go:85-100`) reads the stored policy (`ReadShelfWindow`) and passes it,
+  so every verb opens a windowed store.
+- A windowed store has no x-deal-v0 deal: v0 verbs that open a legacy log are refused on it with a
+  hint. The clock stepping back over a boundary refuses journal writes with #689's
+  `ErrClockBehind` message.
 
 ## 6. Owner, doors, ports, PRs
 
-- Owner: evidencebook (root package: policy member, version 5, `Place`, journal reads;
-  `capsulectl/internal/deal`: the verbs; `dealprofile/x-deal-v1/PROFILE.md`: one sentence in §8
-  and the placement in §3). No AAC wire change; capsule-cli unchanged.
-- Doors, engineering's unless Sherlock2 says otherwise: shelf version 5 and its columns; record
-  types `window_place`, `window_place/v1`; `window_close.placed`. User-visible behavior for
-  Sherlock2's what: `deal init --window`, its default and printed line, and the windowed journal's
-  effect on what a Terms Pack answer holds (§4 last bullet).
-- Not in this item: converting an existing deal store; Rust and Python ("Frozen port: ..."
-  issues, Ethan 2026-11-22); the Mesh plugin; the Goose node.
-- PRs, after #828, #836 and #837 merge (they touch the window code and docs): (1) root package
-  §1-§3 with tests; (2) capsulectl-deal §4-§5 and the profile text. Then an evidencebook-skills
-  issue (or note on #219) for `window.py` to switch to one windowed deal profile.
+- Owner: evidencebook: the root package (policy member, version 5, `Place`, `JournalView`,
+  `WindowEnded`, journal facts by kind, `window_close/v2`), `dealprofile/xdealv1` (readers on the
+  view), `capsulectl/internal/deal` (verbs) and `dealprofile/x-deal-v1/PROFILE.md` (§3 placement,
+  §8 one sentence). No AAC wire change; capsule-cli unchanged.
+- Doors, engineering's unless Sherlock2 says otherwise: shelf version 5 and its column; record type
+  `window_place` (`window_place/v1`); `window_close/v2`. User-visible what for Sherlock2: what a
+  report over windows covers (§4), `deal init --window` and its default.
+- Not in this item: converting an existing deal store; Rust and Python ("Frozen port: ..." issues,
+  Ethan 2026-11-22); the Mesh plugin; the Goose node.
+- PRs, after #828, #836 and #837 merge: (1) root package and `dealprofile/xdealv1` §1-§4 with
+  tests; (2) capsulectl-deal §4-§5 and the profile text. Then the tau2 demo's switch, filed in
+  evidencebook-skills.
 
 ## 7. Tests
 
-- Policy: `Journal` written and compared; reopen without it, or with another `Base`, refused;
-  version 5; created migrated; `Migrate` nil on it and still refused on a #689 windowed shelf.
-- Journal: an append before and after a boundary lands in each window; `JournalRecords` across
-  three windows in order, including an empty window; `ResolveJournalPayload` from a closed window;
-  a crash between a window's open and its first journal record.
-- Place: placed in the current window; `Open` of an unplaced id refused; a place record without
-  its row recovered on reopen; placing twice returns the first window; an agreement timed before
-  the current window refused; `window_close.placed` lists the window's deals; an empty window's
-  `placed` is empty.
-- Report: two journal windows answered by pack digest, one record answered in a later window,
-  coverage passing; a missing window named.
-- capsulectl-deal: `deal init --window month` prints the line; offer, agree, check and perform
-  across a month boundary under a fixed clock: the deal stays in its window, its check lands in the
-  next window's journal, authorization reads the intent from the earlier window; `deal window
-  chain` over the two windows verifies; `deal respond` routes by pin.
+- Policy: `Journal` written, compared and read back by `ReadShelfWindow`; reopen without it
+  refused; `Base` other than `journal` or a grace refused; version 5; created migrated; `Migrate`
+  refused on a #689 windowed shelf.
+- Journal: appends before and after a boundary land in each window; the view over three windows
+  (one empty) in order with one seq space; `ResolvePayload` from a closed window; a receive cache
+  built before a roll reads the new window's records; a crash between a window's open and its
+  first journal record; a recovered record with an earlier `at` behaves as on one journal.
+- Facts: a stamp across a boundary gives each window's journal a journal fact (size hidden) and
+  each v1 deal book its profile and status, with the offer in an earlier window; a closed,
+  witnessed window leaves the live set.
+- Place: the current window; a place record without its row recovered; a placed, written book
+  returns its window; an empty book placed in an earlier window placed again; node and case books
+  open unplaced; `window_close/v2.placed` lists the window's deals, empty for an empty window; a
+  v1 chain still verifies.
+- Report (per the what): two windows answered by pack digest, coverage passing; a missing window
+  named; under (b), a placed deal with no answer named.
+- capsulectl-deal: `deal init --window month` creates the window and prints the line; a reopen
+  uses it; offer, agree, check and perform across a month boundary under a fixed clock (the deal
+  stays in its window, its check lands in the next window's journal, authorization reads the
+  intent from the earlier window); `deal report` on a windowed store; `deal window chain` over the
+  two windows verifies; `deal window respond` with an unregistered pack refused and a registered
+  one answered; node verbs work; a v0 verb refused with its hint.
+
+## 8. Plan review, round 0
+
+Kimi (session `session_ac6cc308-a190-4bb8-bf42-d8a5c7920afa`) and one Claude stand-in for Codex
+(`claude-opus-5-5`, session `e1ddd070-6dcc-46a4-bc57-79435229a34c`), on `f0ab6617`. Every finding
+was checked in code and accepted; none declined.
+
+| Finding (raised by) | Sev | Answer |
+|---|---|---|
+| xdealv1's journal readers (receive cache, status provider, report) and `StatusInput.Journal` miss a windowed journal: facts say profile "none", `deal report` fails (both) | P1 | §2 one ordered journal read; §6 owner; §7 tests |
+| window journals would get book facts that show their size (stand-in) | P1 | §2 journal facts by kind |
+| the `Open` gate breaks node and case books; `deal node respond` rewired by mistake (both) | P1 | §3 no gate; §4 a new `deal window respond` |
+| a journal-only report passes coverage while leaving every deal act out (stand-in) | P1 | §4 open what, asked before PR 1 |
+| `deal init` writes the file before the shelf opens, so the policy would be refused (Kimi) | P2 | §5 |
+| `Place` crash and retry across a boundary; wrong error named (stand-in) | P2 | §3 |
+| closed journal windows never leave the live set (both) | P2 | §2 `WindowEnded` |
+| §2 and §3 disagree on `Open` (both) | P2 | §2 |
+| results book placement is dead (v1 has no terms result) (stand-in) | P2 | dropped |
+| grace adds only delay on a deal shelf (both) | P2 | §1 grace 0 |
+| `placed` breaks older strict verifiers (Kimi) | P2 | §3 `window_close/v2` |
+| the `at` ordering argument conflates header and block time (both) | P2 | §2 reworded; §7 test |
+| the policy's source on reopen (Kimi) | P3 | §1, §5 `ReadShelfWindow` |
+| no pack registration for respond (Kimi) | P3 | §4 |
+| version 5 vs the grace version check; clock stepping back (stand-in) | P3 | §1, §5 |
+
+review: rounds 1, accepted 15, declined 0, pre-existing 0; classes: missing reader migration, privacy leak in facts, scope gate breaks callers, coverage gap, write order, crash recovery, live-set growth, doc contradiction, dead machinery, compatibility, wrong invariant; record: this section
