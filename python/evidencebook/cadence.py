@@ -42,6 +42,7 @@ __all__ = [
     "CADENCE_DEPTH", "CADENCE_EXTENSION", "WITNESS_VERIFIED", "WITNESS_NOT_CHECKED", "WITNESS_INVALID",
     "BatchEntry", "Cadence", "CadenceConfig", "CadenceTick", "LegacyCadence", "StampBatch", "StandardHistoryAnchor",
     "TickLeaf", "TickLeaves", "TickResult", "WitnessCheck", "WitnessReceipt", "WitnessRejected", "derived_fillers", "padding_record_id",
+    "verify_witness_receipt_for_reader", "verify_witness_receipt_time",
 ]
 
 #: The tree's fixed depth: every path is 16 hashes.
@@ -433,6 +434,38 @@ def verify_witness_receipt(statement: bytes, receipt: WitnessReceipt,
     if status == "withheld":
         return WitnessCheck(WITNESS_NOT_CHECKED, reason), VerifiedReceipt()
     return WitnessCheck(WITNESS_INVALID, reason), VerifiedReceipt()
+
+
+def verify_witness_receipt_time(statement: bytes, receipt: WitnessReceipt,
+                                directory: Any) -> tuple[WitnessCheck, str, datetime | None]:
+    """Verifies a witness receipt for a signed cadence checkpoint statement
+    under ``directory``, as Go's ``VerifyWitnessReceiptTime`` (Go
+    ``witness_receipt.go``): the check :meth:`Cadence.witnessed` applies to
+    the holder's own checkpoints, so a reader can check a receipt another
+    party sent for its checkpoint. It returns the check; the key id of the
+    directory row it verified under (never one the receipt carries; ``""``
+    unless verified); and the receipt's registration time, the ``iat`` of its
+    protected CWT claims, when it verified and carries one, else ``None``
+    (a receipt with no ``iat`` gives no time, never a guessed one). A
+    receipt takes the witness's URL without a trailing slash, and needs all
+    three parts, else it is invalid with no error. Raises
+    :class:`InvalidError` when the statement itself does not verify."""
+    receipt = receipt.trimmed()
+    if not receipt.ts_url or not receipt.entry_hash or not receipt.receipt:
+        return (WitnessCheck(WITNESS_INVALID, "a receipt needs its receipt, its entry hash and its witness's URL"),
+                "", None)
+    check, v = verify_witness_receipt(statement, receipt, directory)
+    if check.state != WITNESS_VERIFIED or v.registered_at is None:
+        return check, v.key_id, None
+    return check, v.key_id, datetime.fromtimestamp(v.registered_at, tz=timezone.utc)
+
+
+def verify_witness_receipt_for_reader(statement: bytes, receipt: WitnessReceipt,
+                                      directory: Any) -> tuple[WitnessCheck, str]:
+    """Go's ``VerifyWitnessReceipt``: :func:`verify_witness_receipt_time`
+    without the registration time."""
+    check, key_id, _ = verify_witness_receipt_time(statement, receipt, directory)
+    return check, key_id
 
 
 # -- the configuration ------------------------------------------------------------------

@@ -52,3 +52,6 @@ from .report_bundle import ReportBook, ReportBundle, verify_report_bundle
 from .report_verify import STAGE_REPORT, ReportRead, report_pair, verify_report
 from .naming import book_entry, name_all_rulings, name_rulings
 from .status_provider import StatusProvider
+from .case import (
+    STAGE_CASE, Case, CaseCopy, RulingConflictError, SealedRuling, check_case, check_case_record, seal_ruling,
+)
