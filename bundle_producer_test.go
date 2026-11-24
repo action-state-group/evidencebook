@@ -3,12 +3,14 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -512,6 +514,30 @@ func TestBundleWithItsDisclosureRecordedElsewhereWritesNothing(t *testing.T) {
 	if bundle.Disclosure.RecordID != "" {
 		t.Fatalf("a disclosure record was returned: %s", bundle.Disclosure.RecordID)
 	}
+	// The entry it hands back is the disclosure record, ready for another
+	// book: it names the bundle and its anchor and cites what it discloses.
+	entry := bundle.DisclosureEntry
+	if entry == nil || entry.RecordType != RecordTypeDisclosure {
+		t.Fatalf("disclosure entry %+v", entry)
+	}
+	var stated DisclosureStatement
+	if err := json.Unmarshal(entry.Statement, &stated); err != nil {
+		t.Fatal(err)
+	}
+	if stated.BundleDigest != bundle.Digest || stated.Anchor != anchor.ID {
+		t.Fatalf("statement %+v, bundle %s", stated, bundle.Digest)
+	}
+	cited := map[string]bool{}
+	for _, l := range entry.Links {
+		cited[l.Target] = l.Type == Cites
+	}
+	if !cited[records[1].RecordID] {
+		t.Fatalf("the root %s is not cited: %+v", records[1].RecordID, entry.Links)
+	}
+	other, _ := linkedBook(t)
+	if _, err := other.Append(ctx, *entry); err != nil {
+		t.Fatalf("another book takes the entry: %v", err)
+	}
 	if got := book.Size(); got != size {
 		t.Fatalf("the book grew from %d to %d", size, got)
 	}
@@ -524,5 +550,17 @@ func TestBundleWithItsDisclosureRecordedElsewhereWritesNothing(t *testing.T) {
 	}
 	if _, err := book.Bundle(ctx, BundleRequest{Root: records[1].RecordID, DisclosureRecordedElsewhere: true}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("no anchor: %v, want ErrInvalid", err)
+	}
+	// It is exactly the record the book appends without the flag.
+	appended, err := book.Bundle(ctx, BundleRequest{Root: records[1].RecordID, At: &anchor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appended.DisclosureEntry != nil {
+		t.Fatal("a bundle that records its disclosure hands back no entry")
+	}
+	h := appended.Disclosure.Header
+	if h.EpistemicType != entry.EpistemicType || entry.EpistemicType != ProducerClaim || !bytes.Equal(h.Statement, entry.Statement) || !reflect.DeepEqual(h.Links, entry.Links) {
+		t.Fatalf("appended %+v, entry %+v", h, entry)
 	}
 }
