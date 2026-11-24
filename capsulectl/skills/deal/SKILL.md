@@ -485,8 +485,40 @@ capsulectl --profile deal deal dispute --deal ID --row ROW --out dispute.json
 `--forum` picks one of the agreement's forums (it may be left out when there
 is only one); `--withdraw` takes back your open dispute on the row. The user
 sends the file to the other side. What goes to the referee is the user's
-to make, not yours. The ruling is the referee's own record, which
-reaches you as a file to `deal receive`.
+to make, not yours.
+
+The ruling is the referee's own record, which reaches you as a file. Keep it,
+and write the statement that enters it in the user's book:
+
+```sh
+capsulectl --profile deal deal receive ruling.json --out naming.json
+```
+
+The user sends `naming.json` to the other side, before anything later they
+send: the other side counts none of the user's later records until it holds
+it. The output says when the ruling was stamped (`stamped_at`). "unknown"
+means the file carries no receipt from a witness the agreement names. The
+ruling still counts. A referee whose key is a party's is still flagged, but a
+shared operator through a controller binding cannot be checked until a receipt
+arrives.
+When it says `"independence": "not independent (shared operator)"`, tell the
+user that line as it is: the referee's key is a party's, or bound to one.
+Never say a referee is independent. A controller binding the user holds, such
+as one the referee's operator publishes, is checked with `--binding FILE`.
+
+To challenge a ruling the user holds, by the digest `deal receive` printed:
+
+```sh
+capsulectl --profile deal deal dispute --deal ID --challenge RULING --grounds grounds.txt --out challenge.json
+```
+
+The grounds stay with the user; only their SHA-256 is sealed. A challenge
+changes no row's status. The user sends the file like a dispute.
+
+The other side's copy (`deal report --share counterparty --bundle`), when it
+arrives, is kept with `deal receive copy.json`. Rulings it carries reach the
+user too, so a referee who gave each side a different ruling shows as two
+records for one place.
 
 ### Evidence that arrives later
 
@@ -815,7 +847,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates the profile: its store, signing and checkpoint seeds (mode 0600) and its cadence log. Prints `public_key`, the key the other side names in an offer's `to`. |
 | `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). An offer with `"to": null` is to a party that keeps no signed records: nothing to send. |
 | `deal offer cancel OFFER --out FILE` / `deal offer decline OFFER --out FILE` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
-| `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof) and says whether it counts yet. Seals nothing. |
+| `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof, a ruling, or the other side's copy) and says whether it counts yet. A ruling is entered in the user's book: `--out FILE` writes the statement to send, and the output gives `stamped_at` and, when it applies, `"independence": "not independent (shared operator)"` (`--binding`, `--revocation` add the user's own). Otherwise it seals nothing. |
 | `deal admit --deal ID --input FILE` | Seals capsule-engine's admission decision (`capsule-engine admission evaluate --admit FILE`) for the deal; only `"admits_deal": true` is accepted. |
 | `deal note --deal ID --kind intent --input FILE [--opening FILE]` | Seals what the user asked; the deal's first intent carries `--opening`. Other kinds on x-deal-v1: `searched`, `options`, `recommended`, `chose`, `couldnt`, `message`, `claim`, `evidence`, `change`, `disclosure`, and `approval` (`--check CHECK_ID --choice OPTION --said WORDS --shown-card FILE`). |
 | `deal agree OFFER --out FILE [--intent DIGEST]` | Seals your agreement as the first record of your deal book and writes the file to send. The side the offer was sent to agrees first; the offerer agrees once it holds that agreement. On your own offer to no key, you agree alone, at once. |
@@ -825,7 +857,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal settle --deal ID --received N --receive-fee N --status S --payment-ref-type T --payment-ref R [--payment-ref-network N] --out FILE` | What you received: your payee leg (`--payment-ref-network` on x402). `--reverses LEG` makes a leg a refund of a leg of your own book; `--supersedes LEG` replaces an earlier observation. |
 | `deal perform --deal ID --act ACT --check CHECK_ID --observed HOW --out FILE` | An act other than a payment (a delivery), on a passing commit check. |
 | `deal statement --deal ID --statement ROW=VALUE --out FILE` | How a row went: `met`, `not_met` or `cannot_tell`. |
-| `deal dispute --deal ID --row ROW --out FILE [--forum F] [--withdraw]` | Disputes a row before the agreement's referee, or takes it back. |
+| `deal dispute --deal ID --row ROW --out FILE [--forum F] [--withdraw]` | Disputes a row before the agreement's referee, or takes it back. `--challenge RULING --grounds FILE` challenges a ruling the user holds; only the grounds' SHA-256 is sealed. |
 | `deal tick` | The checkpoint cadence's poll. Prints `state` (`ticked` or `not_due`) and `due`. Schedule `cll checkpoint cadence --wait-up-to 5m` every 5 minutes (Setup). |
 | `deal settlement --deal ID` | Each payment row's check over both sides' legs you hold, as your records read it now. |
 | `deal report --deal ID [--bundle FILE] [--out FILE] [--share counterparty --to NAME]` | Each row's status, read at your last checkpoint. `--bundle` writes an Evidence Bundle; `--share counterparty` makes it the copy for the other side, put on record first; `--out` seals the report. |

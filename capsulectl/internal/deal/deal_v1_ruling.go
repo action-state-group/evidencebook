@@ -147,9 +147,13 @@ checkpoint key is set when the profile is made. Make the adjudicator's profile
 with one key for both:
   capsulectl --profile NAME deal init --dir DIR --signing-key-file KEY --checkpoint-key-file KEY
 KEY is the key file you sign records with, so the key id your agreements name
-stays. A profile that has checkpointed with another key cannot switch to it: make
-a new one, with another name and --dir, leave the old store as it is, and seal
-nothing more with it (one key, one live store).
+stays; a new adjudicator makes one first, and gives the parties the public key
+it prints:
+  capsulectl key generate --output KEY
+A profile that has checkpointed with another key cannot switch to it: make a
+new one, with another name and --dir, leave the old store as it is, and seal
+nothing more with it (one key, one live store). Your stamps go to the
+profile's witness as every checkpoint does: hashes only.
 
 The file carries your witness receipts for the stamp, which tell a party when
 the ruling was stamped, and any controller bindings you give (--binding).
