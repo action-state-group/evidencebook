@@ -217,8 +217,8 @@ func initSQLiteStore(ctx context.Context, db *sql.DB, window *WindowPolicy) erro
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
 			return err
-		case version != ShelfVersion && version != ShelfVersionFacts && version != ShelfVersionWindow && version != ShelfVersionWindowGrace:
-			return fmt.Errorf("%w: shelf file version %d (this build opens versions %d to %d)", ErrUnsupported, version, ShelfVersion, ShelfVersionWindowGrace)
+		case version != ShelfVersion && version != ShelfVersionFacts && version != ShelfVersionWindow && version != ShelfVersionWindowGrace && version != ShelfVersionWindowPredecessor:
+			return fmt.Errorf("%w: shelf file version %d (this build opens versions %d to %d)", ErrUnsupported, version, ShelfVersion, ShelfVersionWindowPredecessor)
 		default:
 			versioned = true
 		}
@@ -246,10 +246,7 @@ func initSQLiteStore(ctx context.Context, db *sql.DB, window *WindowPolicy) erro
 	if !versioned {
 		created := int64(ShelfVersion)
 		if window != nil {
-			created = ShelfVersionWindow
-			if window.Grace > 0 {
-				created = ShelfVersionWindowGrace
-			}
+			created = shelfVersionFor(window)
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO shelf_meta (id, version) VALUES (1, ?)`, created); err != nil {
 			return err

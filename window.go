@@ -30,14 +30,25 @@ type WindowPolicy struct {
 	Period WindowPeriod
 	// Base is the start of every window book's log id: "<base>/<label>".
 	Base string
-	// Since is the first window's start. It must be the start of a period,
-	// so the first window is an ordinary one.
+	// Since is the first window's start. It is the start of a period, so the
+	// first window is an ordinary one, unless the shelf continues a
+	// predecessor book: then it is the moment after the predecessor closed,
+	// in whole seconds, and the first window runs from it to the next period
+	// start (a partial window, evidencebook#808).
 	Since time.Time
 	// Grace is how long after a window ends its book still takes a close/v1
 	// Close for a period inside it (evidencebook#807); the window closes,
 	// and its final checkpoint exists, when the grace ends. Zero is no
 	// grace. It must be shorter than the period's shortest length.
 	Grace time.Duration
+	// Predecessor is the final tree of the JSONL book a converted store
+	// continues (evidencebook#808): the first window's open record names it
+	// as its previous, and a chain carries the book's close record so the
+	// run is checked across the conversion. Nil for a store created empty.
+	Predecessor *WindowTree
+	// PredecessorPolicy is the disclosure policy in force when the
+	// predecessor closed, which the first window opens with; nil for none.
+	PredecessorPolicy *DisclosurePolicy
 }
 
 // Window is one window of a policy: its label and its half-open bounds
@@ -201,7 +212,20 @@ func (wp WindowPolicy) validate() error {
 	if wp.Base == "" || strings.ContainsAny(wp.Base, "\x00") {
 		return fmt.Errorf("%w: a window policy names its base log id", ErrInvalid)
 	}
-	if wp.Since.IsZero() || !wp.Since.Equal(wp.Period.start(wp.Since)) {
+	switch {
+	case wp.Since.IsZero():
+		return fmt.Errorf("%w: the window policy names its since", ErrInvalid)
+	case wp.Predecessor != nil:
+		p := wp.Predecessor
+		if p.LogID == "" || strings.HasPrefix(p.LogID, wp.Base+"/") || p.Entries == 0 || !hex64.MatchString(p.Root) {
+			return fmt.Errorf("%w: a window policy's predecessor names a log outside the shelf, its entries and its root", ErrInvalid)
+		}
+		if !wp.Since.Equal(wp.Since.Truncate(time.Second)) {
+			return fmt.Errorf("%w: the window policy's since (%s) is not a whole second", ErrInvalid, wp.Since.UTC().Format(time.RFC3339Nano))
+		}
+	case wp.PredecessorPolicy != nil:
+		return fmt.Errorf("%w: a predecessor's policy needs its predecessor", ErrInvalid)
+	case !wp.Since.Equal(wp.Period.start(wp.Since)):
 		return fmt.Errorf("%w: the window policy's since (%s) is not the start of a %s", ErrInvalid, wp.Since.UTC().Format(time.RFC3339), wp.Period)
 	}
 	if wp.Grace < 0 || wp.Grace >= wp.Period.shortest() || wp.Grace%time.Second != 0 {
@@ -210,5 +234,28 @@ func (wp WindowPolicy) validate() error {
 	return nil
 }
 
-// first is the policy's first window.
-func (wp WindowPolicy) first() Window { return wp.Period.WindowAt(wp.Since) }
+// first is the policy's first window: from Since, which is a period start
+// unless the shelf continues a predecessor (a partial window).
+func (wp WindowPolicy) first() Window {
+	w := wp.Period.WindowAt(wp.Since)
+	w.Start = wp.Since.UTC()
+	return w
+}
+
+// window is the window a label names under the policy: the label's period,
+// except that the first window of a shelf continuing a predecessor starts
+// at Since. Every reader of a window's bounds goes through it.
+func (wp WindowPolicy) window(label string) (Window, error) {
+	w, err := wp.Period.ParseWindow(label)
+	if err != nil {
+		return Window{}, err
+	}
+	if w.Start.Before(wp.Since) && w.End.After(wp.Since) {
+		w.Start = wp.Since.UTC()
+	}
+	return w, nil
+}
+
+// Partial reports whether w starts after its period's start: the first
+// window of a store that continues a predecessor book.
+func (p WindowPeriod) Partial(w Window) bool { return !w.Start.Equal(p.start(w.Start)) }
