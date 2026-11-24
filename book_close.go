@@ -67,6 +67,12 @@ func (b *Book) CloseForWindows(ctx context.Context, base string, period WindowPe
 		b.mu.Unlock()
 		return nil, fmt.Errorf("%w: a window book is closed by its shelf", ErrInvalid)
 	}
+	// A close a substrate failure left pending is the book's last record
+	// once flushed: resume it rather than close twice.
+	if err := b.flushPendingLocked(ctx); err != nil {
+		b.mu.Unlock()
+		return nil, err
+	}
 	if n := len(b.log); n == 0 || b.log[n-1].Header.RecordType != RecordTypeBookClose {
 		if n == 0 {
 			b.mu.Unlock()
@@ -164,6 +170,10 @@ func (b *Book) finalOfClosed(ctx context.Context) (Checkpoint, error) {
 func (b *Book) Closed() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// A close left pending by a substrate failure counts once flushed; a
+	// flush that fails again leaves the log as it was, and the next append
+	// retries it (and is refused after a close it commits).
+	_ = b.flushPendingLocked(context.Background())
 	n := len(b.log)
 	return n > 0 && b.log[n-1].Header.RecordType == RecordTypeBookClose
 }

@@ -508,16 +508,17 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if b.released {
 		return Record{}, ErrReleased
 	}
+	if err := b.flushPendingLocked(ctx); err != nil {
+		return Record{}, err
+	}
 	// A book closed into a windowed store takes nothing after its close:
 	// the record is its last, which a chain checks (evidencebook#808).
+	// Checked after the flush, so a close left pending counts.
 	if n := len(b.log); n > 0 && b.log[n-1].Header.RecordType == RecordTypeBookClose {
 		return Record{}, fmt.Errorf("%w: book %s is closed: its last record is its book_close, and it continues in a windowed store", ErrBookClosed, b.id)
 	}
 	if entry.RecordType == RecordTypeBookClose && !b.closing {
 		return Record{}, fmt.Errorf("%w: a book_close record is written only by CloseForWindows", ErrInvalid)
-	}
-	if err := b.flushPendingLocked(ctx); err != nil {
-		return Record{}, err
 	}
 	fieldOpenings, fieldCommitments, err := fieldOriginals(entry.Fields)
 	if err != nil {

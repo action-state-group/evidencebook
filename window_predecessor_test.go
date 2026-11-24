@@ -480,3 +480,132 @@ func TestAPredecessorOfAnotherStoreIsNamed(t *testing.T) {
 	swapped.Predecessor = p
 	assertFinding(t, swapped, VerifyChainOptions{CheckpointKey: shelfCheckpointKey(sf)}, "the predecessor book's close names another successor than this store (month windows under \"acme\" from "+chain.Since+")")
 }
+
+// A close the substrate failed to commit is resumed, never followed by a
+// record or a second close.
+func TestAClosePendingAfterASubstrateFailureIsTheLastRecord(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "acme", 7)
+	cfg := f.config(t)
+	flaky := &flakySubstrate{Substrate: cfg.Substrate}
+	cfg.Substrate = flaky
+	book, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = book.Release() })
+	mustAppend(t, book, observation("deal", "before-1"))
+	if _, err := book.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	flaky.failures = 1 // the book_close's substrate append
+	if _, err := book.CloseForWindows(ctx, "acme", WindowMonth, 0); err == nil {
+		t.Fatal("the close went through a failing substrate")
+	}
+	if _, err := book.Append(ctx, observation("deal", "after")); !errors.Is(err, ErrBookClosed) {
+		t.Fatalf("append after a pending close: %v", err)
+	}
+	if _, err := book.CloseForWindows(ctx, "acme", WindowMonth, 0); err != nil {
+		t.Fatal(err)
+	}
+	closes := 0
+	for _, r := range book.logLocked() {
+		if r.Header.RecordType == RecordTypeBookClose {
+			closes++
+		}
+	}
+	if closes != 1 || !book.Closed() {
+		t.Fatalf("%d closes", closes)
+	}
+}
+
+// A reopened closed book refuses appends; a raw book_close is refused.
+func TestAClosedBookRefusesAppendsAfterReopen(t *testing.T) {
+	ctx := context.Background()
+	bf := newFixture(t, "acme", 7)
+	old := bf.open(t)
+	mustAppend(t, old, observation("deal", "before-1"))
+	if _, err := old.Append(ctx, Entry{RecordType: RecordTypeBookClose, EpistemicType: ProducerClaim, Links: []Link{}, Statement: json.RawMessage(`{}`)}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a raw book_close: %v", err)
+	}
+	if _, err := old.CloseForWindows(ctx, "acme", WindowMonth, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Release(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := bf.open(t)
+	if _, err := reopened.Append(ctx, observation("deal", "after")); !errors.Is(err, ErrBookClosed) {
+		t.Fatalf("append after reopen: %v", err)
+	}
+}
+
+// A converted store with a grace: the v3 chain carries boundaries too, and
+// the shelf reopens with its stored policy.
+func TestAConvertedStoreWithAGrace(t *testing.T) {
+	ctx := context.Background()
+	old, _, sf, shelf, policy := convertedShelfGrace(t)
+	book, _, err := shelf.Current(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, book, observation("deal", "after-1"))
+	first := WindowMonth.WindowAt(policy.Since)
+	setClock(sf.clock, WindowMonth.Next(first).Start.Add(24*time.Hour))
+	if _, err := shelf.Roll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	setClock(sf.clock, WindowMonth.Next(first).Start.Add(10*24*time.Hour))
+	if _, err := shelf.Roll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	predecessor, err := ChainPredecessorFromBook(ctx, old, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain, err := shelf.WindowChain(ctx, first.Label, first.Label, WindowChainOptions{Predecessor: predecessor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chain.V != WindowChainVersionPredecessor || chain.Windows[0].Boundary == nil {
+		t.Fatalf("chain v %d boundary %v", chain.V, chain.Windows[0].Boundary != nil)
+	}
+	if texts := findingTexts(chain, VerifyChainOptions{CheckpointKey: shelfCheckpointKey(sf)}); len(texts) > 0 {
+		t.Fatalf("findings %v", texts)
+	}
+	if err := shelf.Release(); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := ReadShelfWindow(ctx, sf.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf.cfg.Window = stored
+	reopened, err := OpenSQLiteShelf(ctx, sf.cfg)
+	if err != nil {
+		t.Fatalf("reopen with the stored policy: %v", err)
+	}
+	_ = reopened.Release()
+	// A predecessor on a version 2 chain is refused, not ignored.
+	v2 := chain
+	v2.V = WindowChainVersion
+	if texts := findingTexts(v2, VerifyChainOptions{CheckpointKey: shelfCheckpointKey(sf)}); len(texts) == 0 {
+		t.Fatal("a v2 chain carrying a predecessor passed")
+	}
+}
+
+func convertedShelfGrace(t *testing.T) (*Book, *bookFixture, *shelfFixture, *Shelf, *WindowPolicy) {
+	t.Helper()
+	ctx := context.Background()
+	bf := newFixture(t, "acme", 7)
+	old := bf.open(t)
+	mustAppend(t, old, observation("deal", "before-1"))
+	policy, err := old.CloseForWindows(ctx, "acme", WindowMonth, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf := newShelfFixture(t)
+	sf.cfg.Window = policy
+	setClock(sf.clock, policy.Since.Add(time.Minute))
+	return old, bf, sf, sf.open(t), policy
+}

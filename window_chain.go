@@ -384,8 +384,8 @@ func VerifyWindowChain(chain WindowChain, opts VerifyChainOptions) ([]VerifiedWi
 		fail("", "to: %v", err)
 		return nil, findings
 	}
-	if chain.Predecessor != nil && !first.Start.Equal(since) {
-		fail("", "the chain carries a predecessor book but does not start at the store's first window")
+	if chain.Predecessor != nil && (!continues || !first.Start.Equal(since)) {
+		fail("", "the chain carries a predecessor book but is not a version %d chain from the store's first window", WindowChainVersionPredecessor)
 		return nil, findings
 	}
 	if first.Start.Before(since) {
@@ -419,7 +419,7 @@ func VerifyWindowChain(chain WindowChain, opts VerifyChainOptions) ([]VerifiedWi
 		}
 		verified = append(verified, v)
 		prior = &verified[len(verified)-1]
-		expected = chain.Period.Next(Window{Label: expected.Label, Start: chain.Period.start(expected.Start), End: expected.End})
+		expected = chain.Period.Next(expected)
 	}
 	if !expected.Start.After(last.Start) {
 		fail(expected.Label, "chain breaks at %s: the chain ends before %s", expected.Label, chain.To)
