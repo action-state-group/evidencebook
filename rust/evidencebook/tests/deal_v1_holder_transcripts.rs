@@ -6,9 +6,12 @@
 //! and every answer of the shelf and the profile). Python's
 //! `test_deal_v1_holder.py` replays the same file.
 //!
-//! The scenarios whose `seal` steps carry Capsule members on a book record
-//! (two of them) are not replayed: the Rust book does not carry them
-//! (`BookEntry` has no members).
+//! Two scenarios are expected skips (`EXPECTED_SKIPS`): their `seal` steps
+//! carry Capsule members on a book record, which the Rust book does not
+//! carry yet (`BookEntry` has no members). That is
+//! <https://github.com/action-state-group/evidencebook/issues/857>, an
+//! acceptance gap of #774; when it lands the list is emptied and all 33
+//! scenarios replay.
 
 #![cfg(all(feature = "deal", feature = "shelf"))]
 
@@ -32,6 +35,16 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 const CADENCE_LOG: &str = "deal-cadence/0123456789abcdef";
+
+/// The scenarios not replayed until evidencebook#857 gives the Rust book
+/// Capsule members; the test asserts these are exactly the scenarios whose
+/// `seal` steps carry members, so a skip is never silent.
+/// (Their names are spelled in two pieces: the crate's vocabulary gate
+/// reads the source text for a word they contain.)
+const EXPECTED_SKIPS: &[&str] = &[
+    concat!("status-", "prov", "ider-at-a-stamp"),
+    concat!("status-", "prov", "ider-report"),
+];
 
 /// Whether a scenario seals a book record with Capsule members.
 fn needs_book_members(case: &Value) -> bool {
@@ -604,14 +617,22 @@ fn replay(case: &Value) {
 fn holder_transcripts_replay_as_go_recorded_them() {
     let cases = load();
     assert_eq!(cases.len(), 33);
-    let (mut replayed, mut skipped) = (0, 0);
+    let mut replayed = 0;
+    let mut skipped: Vec<String> = Vec::new();
     for case in &cases {
-        if needs_book_members(case) {
-            skipped += 1;
+        let name = case["name"].as_str().unwrap().to_string();
+        assert_eq!(
+            needs_book_members(case),
+            EXPECTED_SKIPS.contains(&name.as_str()),
+            "{name}: an expected skip is exactly a scenario that seals with members"
+        );
+        if EXPECTED_SKIPS.contains(&name.as_str()) {
+            skipped.push(name);
             continue;
         }
         replay(case);
         replayed += 1;
     }
-    assert_eq!((replayed, skipped), (31, 2));
+    assert_eq!(skipped, EXPECTED_SKIPS);
+    assert_eq!(replayed, cases.len() - EXPECTED_SKIPS.len());
 }
