@@ -112,7 +112,7 @@ for i in $(seq 0 $((count - 1))); do
 
   # Buyer: the other half of the same deal, under the seller's thread id; checks and pays.
   jq -n --arg item "$item" --arg cur "$currency" --argjson p "$paid" --arg d "$domain" '{type:"purchase",demo:true,channel:"marketplace",
-    intent:{verbatim:("Buy a "+$item+" for up to "+($p|tostring)),party_role:"buyer",asked:{item:$item,quantity:1},max_total_minor:$p,allowed:["pay"]},
+    intent:{verbatim:("Buy a "+$item+" for up to "+($p|tostring)),party_role:"buyer",asked:{item:$item,quantity:1},max_total_minor:$p,allowed:["pay"],confirmed:"yes"},
     who:{name:"Sticker Shop",domain:"seller.example",relay_address:"shop@seller.example"},
     terms:{item:$item,quantity:1,price_minor:$p,currency:$cur},recourse:{rail:"x402",refundable:false}}' >"$f/buyer-open.json"
   side "$buyer_home" open --deal-id "$thread" --records typed --input "$f/buyer-open.json" >/dev/null
