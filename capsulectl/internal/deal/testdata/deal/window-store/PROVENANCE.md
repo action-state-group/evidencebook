@@ -10,7 +10,7 @@ made in real time has only its open window.
 - Generator: `TestWriteWindowStoreFixture` in `capsulectl/internal/deal/deal_window_store_gen_test.go`,
   which sets `cli.DealClock` and runs the commands in process.
 - Command, from `capsulectl/`: `EB_WRITE_WINDOW_STORE=1 go test -run TestWriteWindowStoreFixture ./internal/deal`
-- capsulectl: built from evidencebook commit `14228c6d24147a7afe3c0cea43be496029d40d7a` against capsule-cli `v0.1.0-rc53`.
+- capsulectl: this module (`capsulectl/go.mod`) at the commit that last changed this directory (`git log -1 -- <this directory>`), against capsule-cli `v0.1.0-rc53`.
 - Files: `deal.yaml` is the deal profile with the store directory written as `@STORE@`;
   `store/` holds the SQLite store and its seeds. The seeds are made for this fixture and protect
   nothing.

@@ -77,10 +77,8 @@ func TestWriteWindowStoreFixture(t *testing.T) {
 
 	version, err := exec.Command("go", "list", "-m", "-f", "{{.Version}}", "github.com/action-state-group/capsule-cli").Output()
 	require.NoError(t, err)
-	commit, _ := exec.Command("git", "rev-parse", "HEAD").Output()
 	provenance := []byte(strings.NewReplacer(
 		"@CAPSULE_CLI@", strings.TrimSpace(string(version)),
-		"@COMMIT@", strings.TrimSpace(string(commit)),
 	).Replace(windowStoreProvenance))
 	require.NoError(t, os.WriteFile(filepath.Join(windowStoreFixture, "PROVENANCE.md"), provenance, 0o644))
 }
@@ -123,7 +121,7 @@ const windowStoreProvenance = "" +
 	"- Generator: `TestWriteWindowStoreFixture` in `capsulectl/internal/deal/deal_window_store_gen_test.go`,\n" +
 	"  which sets `cli.DealClock` and runs the commands in process.\n" +
 	"- Command, from `capsulectl/`: `EB_WRITE_WINDOW_STORE=1 go test -run TestWriteWindowStoreFixture ./internal/deal`\n" +
-	"- capsulectl: built from evidencebook commit `@COMMIT@` against capsule-cli `@CAPSULE_CLI@`.\n" +
+	"- capsulectl: this module (`capsulectl/go.mod`) at the commit that last changed this directory (`git log -1 -- <this directory>`), against capsule-cli `@CAPSULE_CLI@`.\n" +
 	"- Files: `deal.yaml` is the deal profile with the store directory written as `@STORE@`;\n" +
 	"  `store/` holds the SQLite store and its seeds. The seeds are made for this fixture and protect\n" +
 	"  nothing.\n" +
