@@ -1605,12 +1605,20 @@ fn deal_status_report_with_book() {
     }
 }
 
-/// A handshake whose agreement names `adjudicator`, and its final ruling
-/// against the seller, ready to seal on the deal's case log (Go
-/// `caseBookHolder`).
-fn case_book_holder(adjudicator: Party) -> (Handshake, Party, Value, String) {
+/// A handshake between `buyer` and `seller` whose agreement names
+/// `adjudicator` (`edit` changes it further), and its final ruling against
+/// the seller, ready to seal on the deal's case log (Go `caseBookHolder`).
+fn case_book_holder_of(
+    buyer: Party,
+    seller: Party,
+    adjudicator: Party,
+    edit: impl FnOnce(&mut Value),
+) -> (Handshake, Party, Value, String) {
     let key = adjudicator.key();
-    let h = handshake(|a| a["body"]["adjudicator"]["key_id"] = json!(key));
+    let h = handshake_of(buyer, seller, |a| {
+        a["body"]["adjudicator"]["key_id"] = json!(key);
+        edit(a);
+    });
     let mut ruling = fixture("case-book/01-ruling.json");
     ruling["body"]["keys"] = json!({"buyer": h.buyer.key(), "seller": h.seller.key()});
     ruling["body"]["read"] = json!({"buyer": null, "seller": h.agreement_id});
@@ -1618,6 +1626,15 @@ fn case_book_holder(adjudicator: Party) -> (Handshake, Party, Value, String) {
     record(&ruling);
     let case_log = case_log_of(&h, &adjudicator);
     (h, adjudicator, ruling, case_log)
+}
+
+fn case_book_holder(adjudicator: Party) -> (Handshake, Party, Value, String) {
+    case_book_holder_of(
+        Party::new("buyer"),
+        Party::new("seller"),
+        adjudicator,
+        |_| {},
+    )
 }
 
 /// A case book's stamp proof is bound to the adjudicator key the agreement
@@ -1663,24 +1680,12 @@ fn case_book_proof_under_another_key_is_refused() {
 /// has no effective ruling (Go `TestForwardedRulingShowsAFork`).
 #[test]
 fn forwarded_ruling_shows_a_fork() {
-    let (h, adjudicator, ruling, case_log) = {
-        let (h, a, r, l) = {
-            let adjudicator = Party::adjudicator("adjudicator");
-            let key = adjudicator.key();
-            let h = handshake_of(Party::with_status("buyer"), Party::new("seller"), |a| {
-                a["body"]["adjudicator"]["key_id"] = json!(key);
-                a["body"]["witnesses"] = json!([]);
-            });
-            let mut ruling = fixture("case-book/01-ruling.json");
-            ruling["body"]["keys"] = json!({"buyer": h.buyer.key(), "seller": h.seller.key()});
-            ruling["body"]["read"] = json!({"buyer": null, "seller": h.agreement_id});
-            ruling["body"]["final"] = json!(true);
-            record(&ruling);
-            let l = case_log_of(&h, &adjudicator);
-            (h, adjudicator, ruling, l)
-        };
-        (h, a, r, l)
-    };
+    let (h, adjudicator, ruling, case_log) = case_book_holder_of(
+        Party::with_status("buyer"),
+        Party::new("seller"),
+        Party::adjudicator("adjudicator"),
+        |a| a["body"]["witnesses"] = json!([]),
+    );
     // The buyer holds both agreements, so its deal has started.
     let mut ba = buyer_agreement(&h, true);
     ba["body"]["witnesses"] = json!([]);
