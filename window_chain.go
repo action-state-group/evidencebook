@@ -120,6 +120,23 @@ type ChainWindow struct {
 	// a grace: the next window's open record names it, and the final tree
 	// must extend it with only late Closes and index roots.
 	Boundary *ChainBoundary `json:"boundary,omitempty"`
+	// Deals are, for a journal window (window_close/v2), its placed deal
+	// books in its close's order, each proved to extend its tree at the
+	// close (evidencebook#797 §4).
+	Deals []ChainDeal `json:"deals,omitempty"`
+}
+
+// ChainDeal is one placed deal book of a journal window in a chain: the
+// signed checkpoint of its tree at the window's close (the tree the close
+// lists), its latest signed checkpoint when the chain was cut, and a CLL
+// consistency proof from the first to the second (empty when they are one
+// tree). A deal's answer in a report over windows is at Latest's tree, so a
+// fork of the book cannot answer for it.
+type ChainDeal struct {
+	LogID       string `json:"log_id"`
+	Closed      []byte `json:"closed"`
+	Latest      []byte `json:"latest"`
+	Consistency []byte `json:"consistency,omitempty"`
 }
 
 // ChainBoundary is a window's boundary in a chain (evidencebook#807): the
@@ -266,6 +283,58 @@ func (s *Shelf) chainWindowLocked(ctx context.Context, row windowRow, opts Windo
 			return ChainWindow{}, err
 		}
 	}
+	if s.cfg.Window.Journal {
+		if out.Deals, err = s.chainDealsLocked(ctx, log[final.Entries-1]); err != nil {
+			return ChainWindow{}, err
+		}
+	}
+	return out, nil
+}
+
+// chainDealsLocked proves each deal a journal window's close lists: its
+// checkpoint at the close, its newest stored checkpoint, and the
+// consistency proof between them.
+func (s *Shelf) chainDealsLocked(ctx context.Context, closing Record) ([]ChainDeal, error) {
+	var cs WindowCloseStatement
+	if err := decodeStrict(closing.Header.Statement, &cs); err != nil {
+		return nil, fmt.Errorf("%w: window close record %s: %v", ErrCorrupt, closing.RecordID, err)
+	}
+	var out []ChainDeal
+	for _, tree := range cs.Placed {
+		book, err := s.openLocked(ctx, tree.LogID)
+		if err != nil {
+			return nil, err
+		}
+		closed, err := finalCheckpoint(ctx, book, tree.Entries, tree.Root)
+		if err != nil {
+			return nil, err
+		}
+		stored, err := book.store.Checkpoints(ctx)
+		if err != nil {
+			return nil, err
+		}
+		latest := closed
+		for _, cp := range stored {
+			if cp.Kind == SubstrateKindCLL && cp.TreeSize > latest.TreeSize {
+				latest = cp
+			}
+		}
+		deal := ChainDeal{LogID: tree.LogID, Closed: bytes.Clone(closed.Statement), Latest: bytes.Clone(latest.Statement)}
+		if latest.TreeSize != closed.TreeSize {
+			cllLog, ok := book.commitments.(*CLLSubstrate)
+			if !ok {
+				return nil, fmt.Errorf("%w: deal book %s is not on a CLL log", ErrUnsupported, tree.LogID)
+			}
+			prover, err := cllLog.cllProver(ctx, latest)
+			if err != nil {
+				return nil, err
+			}
+			if deal.Consistency, err = prover.consistencyProof(closed.TreeSize, latest.TreeSize); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, deal)
+	}
 	return out, nil
 }
 
@@ -337,6 +406,10 @@ type VerifiedWindow struct {
 	// lists as placed in it, each with its tree at the close
 	// (evidencebook#797 §3); nil for version 1.
 	Placed []WindowTree `json:"placed,omitempty"`
+	// Proved is, for each deal in Placed, the latest tree the chain proved
+	// extends its tree at the close, by log id; a deal whose proof failed
+	// (a finding names it) has none.
+	Proved map[string]WindowTree `json:"proved,omitempty"`
 }
 
 // ChainFinding is one failure of a window chain or a report's coverage,
@@ -540,6 +613,10 @@ func verifyChainWindow(chain WindowChain, cw ChainWindow, w Window, since time.T
 	verified := VerifiedWindow{Window: w, Final: WindowTree{LogID: cw.LogID, Entries: cp.Entries, Root: cp.Root}, RecordKey: openKey, Predecessor: predecessor, Partial: chain.Period.Partial(w)}
 	if cs.RecordVersion == WindowCloseVersionV2 {
 		verified.Placed = append([]WindowTree{}, cs.Placed...)
+		verified.Proved = verifyChainDeals(cw, cs.Placed, label, opts, fail)
+	} else if len(cw.Deals) > 0 {
+		fail(label, "window %s carries deals, but its close lists none", label)
+		return VerifiedWindow{}, false
 	}
 	// The close record, in the final tree, names the boundary the window
 	// took: a chain carries exactly that one, so it can neither swap nor
@@ -743,4 +820,44 @@ func windowChainRecord(sr StoredRecord, cp signedCheckpoint, seq uint64, proof [
 		return Header{}, "", fmt.Errorf("%w: not the leaf at %d under the final checkpoint: %v", ErrInvalid, seq, err)
 	}
 	return record.Header, hex.EncodeToString(envelope.PublicKey), nil
+}
+
+// verifyChainDeals checks a journal window's deals against the trees its
+// close lists: one entry per placed book in that order, its closed
+// checkpoint signed by the holder and of that tree, its latest checkpoint
+// signed and of the same log, and the latest tree extending the closed one.
+// It returns the proved latest trees; each failure is a named finding.
+func verifyChainDeals(cw ChainWindow, placed []WindowTree, label string, opts VerifyChainOptions, fail func(string, string, ...any)) map[string]WindowTree {
+	proved := map[string]WindowTree{}
+	if len(cw.Deals) != len(placed) {
+		fail(label, "window %s carries %d deals, and its close lists %d", label, len(cw.Deals), len(placed))
+		return proved
+	}
+	for i, tree := range placed {
+		d := cw.Deals[i]
+		if d.LogID != tree.LogID {
+			fail(label, "window %s's deals are not the ones its close lists", label)
+			return proved
+		}
+		closed, err := readSignedCheckpoint(d.Closed, opts.CheckpointKey)
+		if err != nil || closed.LogID != tree.LogID || closed.Entries != tree.Entries || closed.Root != tree.Root {
+			fail(label, "deal %s of window %s: its checkpoint at the close is not the tree the close lists", tree.LogID, label)
+			continue
+		}
+		latest, err := readSignedCheckpoint(d.Latest, opts.CheckpointKey)
+		if err != nil || latest.LogID != tree.LogID {
+			fail(label, "deal %s of window %s: its latest checkpoint is not of its log under the holder's key", tree.LogID, label)
+			continue
+		}
+		extends := latest.TreeSize == closed.TreeSize && latest.Root == closed.Root && len(d.Consistency) == 0
+		if latest.TreeSize > closed.TreeSize {
+			extends = consistencySizes(d.Consistency, closed.TreeSize, latest.TreeSize) && checkCLLConsistency(closed.commitment, latest.commitment, d.Consistency) == nil
+		}
+		if !extends {
+			fail(label, "deal %s of window %s: its latest tree does not extend its tree at the close", tree.LogID, label)
+			continue
+		}
+		proved[tree.LogID] = WindowTree{LogID: tree.LogID, Entries: latest.Entries, Root: latest.Root}
+	}
+	return proved
 }

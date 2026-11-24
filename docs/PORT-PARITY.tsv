@@ -106,6 +106,7 @@ package	kind	symbol	feature	rust	python
 .	type	CardRegisteredReport	card-registration	frozen #618	frozen #619
 .	type	CardStatementRegistrar	card-registration	frozen #618	frozen #619
 .	type	ChainBoundary	window-books	frozen #798	frozen #799
+.	type	ChainDeal	window-books	frozen #844	frozen #845
 .	type	ChainFinding	window-books	frozen #798	frozen #799
 .	type	ChainPredecessor	window-books	frozen #798	frozen #799
 .	type	ChainTail	window-books	frozen #798	frozen #799

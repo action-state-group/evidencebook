@@ -160,10 +160,17 @@ what must a Terms Pack report over windows on a deal shelf cover?
 - (b) **The journal windows and each deal placed in them.** The requester also asks each deal
   book in a window's `placed` once, at its latest checkpoint; `VerifyReportCoverage` names a
   placed deal with no answer (`deal <log id> of window 2026-11 has no answer`), or with an answer
-  anchored below its tree at the close (fewer entries, or the same entries and another root), so a
-  holder cannot answer from an early checkpoint and leave out what followed (Sherlock2's review of
-  #846; the coordinator chose the recorded tree over a time floor, which would rest on the holder's
-  clock). A deal book is not
+  at any tree but the one the chain proves for it ("deal X of window W is answered at a tree of n
+  records that is not the tree its window's chain proves"). The chain carries, per placed deal
+  (`ChainWindow.Deals`), the deal's signed checkpoint at the close (the tree the close lists), its
+  latest signed checkpoint when the chain is cut, and a CLL consistency proof between them, as a
+  window's grace boundary carries one (`ChainBoundary.Consistency`); `VerifyWindowChain` checks
+  them. So a holder can neither answer from an early checkpoint and leave out what followed nor
+  answer from a fork (Sherlock2's review of #846; the coordinator chose the recorded tree over a
+  time floor, which would rest on the holder's clock, and the proof over an answer pinned at the
+  close tree, which would drop the deal's acts after the window). The member is optional and only
+  on journal chains, whose `window_close/v2` older verifiers already refuse, so the chain's
+  version does not change. A deal book is not
   bounded by the window, so its answer covers the whole deal, including records after the window.
   It needs three root-package changes beyond (a): `Shelf.Respond` routes a pin on a placed deal
   book's checkpoint to that book (today `answeringBookLocked` looks only through window rows,
