@@ -816,3 +816,118 @@ fn seal_sent_returns_a_pending_record_with_its_capsule() {
         sent.record.seq
     );
 }
+
+fn members_entry(members: &[(&str, Value)]) -> BookEntry {
+    let mut e = BookEntry::new("deal_step", EpistemicType::ProducerClaim);
+    e.payloads = vec![SENT_RECORD.as_bytes().to_vec()];
+    e.members = members
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.clone()))
+        .collect();
+    e
+}
+
+// A book entry's members are further top-level members of its record's
+// Capsule: the record id and signature cover them, the header does not, the
+// sealed record verifies with them, and a reopened shelf reads the record
+// back (Go `Entry.Members`).
+#[test]
+fn a_book_entry_carries_capsule_members() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shelf.db");
+    let (shelf, _c, _) = migrated(&path);
+    let book = shelf.open("deal/members").unwrap();
+    let leg = json!({"amount": {"assetCode": "USD", "assetScale": 2, "value": "6000"}, "status": "settled"});
+    let plain = book.append(&members_entry(&[])).unwrap();
+    let with = book
+        .append(&members_entry(&[
+            ("settlement", leg.clone()),
+            ("another_member", json!(1)),
+        ]))
+        .unwrap();
+    let doc: Value = serde_json::from_slice(&with.capsule).unwrap();
+    assert_eq!(doc["settlement"], leg);
+    assert_eq!(doc["another_member"], json!(1));
+    let plain_doc: Value = serde_json::from_slice(&plain.capsule).unwrap();
+    assert!(plain_doc.get("settlement").is_none());
+    // The header commits what the book wrote, not the members.
+    assert!(with.header.get("settlement").is_none());
+    assert_eq!(doc["capsule_id"], json!(with.record_id));
+    // The record verifies as the sealing wrote it, members included.
+    let sealed = crate::seal::SealedRecord {
+        record_id: with.record_id.clone(),
+        header: with.header_bytes.clone(),
+        capsule: with.capsule.clone(),
+        body: {
+            let mut d = doc.clone();
+            d.as_object_mut().unwrap().remove("capsule_id");
+            canonical::jcs(&d).unwrap()
+        },
+        envelope: with.envelope.clone(),
+    };
+    let signer = super::record_time_tests::key("signer")
+        .verifying_key()
+        .to_bytes();
+    sealed.verify(&signer).unwrap();
+    // A reopened shelf reads it back.
+    shelf.release().unwrap();
+    let again = open(&path);
+    let reread = again
+        .open("deal/members")
+        .unwrap()
+        .record_by_seq(2)
+        .unwrap();
+    assert_eq!(reread.record_id, with.record_id);
+    assert_eq!(reread.capsule, with.capsule);
+}
+
+// A member that is a base-profile name, the record header's own member, null,
+// or badly named is refused as the caller's input, and nothing is appended
+// (Go `book.go` Seal: `ErrInvalid`).
+#[test]
+fn a_book_entry_refuses_members_a_capsule_cannot_carry() {
+    let dir = tempfile::tempdir().unwrap();
+    let (shelf, _c, _) = migrated(&dir.path().join("shelf.db"));
+    let book = shelf.open("deal/members").unwrap();
+    for (name, value) in [
+        ("action_id", json!("x")),
+        ("capsule_id", json!("x")),
+        ("evidence_record_header", json!({})),
+        ("Upper", json!(1)),
+        ("null_member", Value::Null),
+    ] {
+        let e = book.append(&members_entry(&[(name, value)])).unwrap_err();
+        assert!(matches!(e, ShelfError::Invalid(_)), "{name}: {e}");
+    }
+    assert_eq!(book.size(), 0);
+}
+
+// seal_sent's `members` argument is the standalone Capsule's; a journal
+// record's own Capsule carries none, so an entry that sets members is refused
+// (Go `SealSent` clears `entry.Members` before the journal append).
+#[test]
+fn seal_sent_refuses_entry_members_and_the_journal_capsule_has_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let (shelf, _c, _) = migrated(&dir.path().join("shelf.db"));
+    let journal = shelf.journal().unwrap();
+    let before = journal.size();
+    let e = shelf
+        .seal_sent(
+            &members_entry(&[("settlement", json!({"n": 1}))]),
+            &BTreeMap::new(),
+            "deal-0123456789abcdef/sent",
+        )
+        .unwrap_err();
+    assert!(matches!(e, ShelfError::Invalid(_)), "{e}");
+    assert_eq!(journal.size(), before);
+    let members = BTreeMap::from([("deal_carried".to_string(), json!({"n": 1}))]);
+    let sent = shelf
+        .seal_sent(
+            &sent_entry(SENT_RECORD),
+            &members,
+            "deal-0123456789abcdef/sent",
+        )
+        .unwrap();
+    let journal_capsule: Value = serde_json::from_slice(&sent.record.capsule).unwrap();
+    assert!(journal_capsule.get("deal_carried").is_none());
+}

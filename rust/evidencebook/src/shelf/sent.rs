@@ -77,6 +77,11 @@ impl Shelf {
                 "a sent record carries exactly one payload, its record".into(),
             ));
         };
+        if !entry.members.is_empty() {
+            return Err(ShelfError::Invalid(
+                "a sent record's journal Capsule carries no members: its Capsule's are the members argument".into(),
+            ));
+        }
         if members.contains_key(RECORD_HEADER_MEMBER) {
             return Err(ShelfError::Invalid(format!(
                 "a sent Capsule carries no {RECORD_HEADER_MEMBER}"

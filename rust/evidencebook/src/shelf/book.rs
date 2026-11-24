@@ -58,6 +58,15 @@ pub struct BookEntry {
     pub statement: Value,
     /// Payload bytes, kept as originals `payload-1`, `payload-2`, ...
     pub payloads: Vec<Vec<u8>>,
+    /// Further top-level members of the record's Capsule, by name, each a
+    /// JSON value (a profile's own member, such as the settlement leg
+    /// draft-mih-agent-settlement-records puts there; Go `Entry.Members`).
+    /// The Capsule's id and signature cover them; the header does not, and
+    /// a base-profile name or [`RECORD_HEADER_MEMBER`] is refused. Only a
+    /// record the book seals carries them: [`super::Shelf::seal_sent`] refuses
+    /// them, since its journal record's Capsule carries none (its own
+    /// `members` argument is the standalone Capsule's).
+    pub members: BTreeMap<String, Value>,
 }
 
 impl BookEntry {
@@ -74,6 +83,7 @@ impl BookEntry {
             event_time_claim: None,
             statement: Value::Null,
             payloads: Vec::new(),
+            members: BTreeMap::new(),
         }
     }
 }
@@ -603,14 +613,22 @@ impl BookCore {
         } else {
             &self.shared.developer
         };
-        let sealed = seal::seal_record(
+        let sealed = seal::seal_record_with_members(
             &header,
+            &entry.members,
             &Producer {
                 operator: &self.shared.operator,
                 developer,
                 signer: self.shared.signer.as_ref(),
             },
-        )?;
+        )
+        .map_err(|e| match e {
+            // A member the Capsule cannot carry is the caller's input.
+            seal::SealRecordError::Invalid(why) => {
+                ShelfError::Invalid(format!("seal the record: {why}"))
+            }
+            other => ShelfError::Seal(other),
+        })?;
         // Originals are written after sealing, with the record they belong
         // to, in one put: the artifact store never holds bytes no record
         // commits.
@@ -722,7 +740,7 @@ fn header_map(header: &[u8]) -> Result<Map<String, Value>, ShelfError> {
 
 /// The top-level Capsule member through which a capsule its caller sealed
 /// carries its own record header (Go `RecordHeaderMember`).
-pub const RECORD_HEADER_MEMBER: &str = "evidence_record_header";
+pub const RECORD_HEADER_MEMBER: &str = seal::RECORD_HEADER_MEMBER;
 
 /// Re-derive a record from its durable form and check that the header bytes
 /// are canonical and are what the capsule commits (Go `decodeStored`): as

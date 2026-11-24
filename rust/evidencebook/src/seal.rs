@@ -237,6 +237,12 @@ fn canonical_header(header: &Header) -> Result<Vec<u8>, SealRecordError> {
     Ok(canonical::jcs(&value)?)
 }
 
+/// The top-level Capsule member through which a capsule its caller sealed
+/// carries its own record header (Go `RecordHeaderMember`). A book record
+/// the book seals commits its header through `agent_input_digest` instead,
+/// so no member an entry adds may be this one.
+pub const RECORD_HEADER_MEMBER: &str = "evidence_record_header";
+
 /// The top-level member names the base profile defines (capsule-emit Go
 /// `baseMembers`), including the ones never written here and the local-only
 /// envelope fields `capsule_id` derivation strips: no extension may use one.
@@ -346,9 +352,17 @@ fn fyi_capsule(
 fn record_capsule(
     header: &Header,
     header_bytes: &[u8],
+    members: &BTreeMap<String, Value>,
     operator: &str,
     developer: &str,
 ) -> Result<(Vec<u8>, String, Vec<u8>), SealRecordError> {
+    // A record the book seals commits its header through
+    // `agent_input_digest`, never also inline (sealing and verifying alike).
+    if members.contains_key(RECORD_HEADER_MEMBER) {
+        return Err(invalid(format!(
+            "{RECORD_HEADER_MEMBER} is the record header's member, not a Capsule member an entry adds"
+        )));
+    }
     // Each link is also a reference, with no citation_purpose: a link type
     // is an Evidence Layer link type, carried and committed in the header.
     let references: Vec<Value> = header
@@ -361,7 +375,7 @@ fn record_capsule(
         &capsule_timestamp(&header.committed_at),
         &sha256_hex(header_bytes),
         references,
-        &BTreeMap::new(),
+        members,
         operator,
         developer,
     )
@@ -400,10 +414,29 @@ pub fn seal_record(
     header: &Header,
     producer: &Producer<'_>,
 ) -> Result<SealedRecord, SealRecordError> {
+    seal_record_with_members(header, &BTreeMap::new(), producer)
+}
+
+/// [`seal_record`] with further top-level members of the record's Capsule,
+/// by name (Go `Entry.Members`, sealed by `Book.seal`): the Capsule's id and
+/// signature cover them, the header does not. A name that is a base-profile
+/// member or [`RECORD_HEADER_MEMBER`], a null value, or a name that is not
+/// lowercase letters, digits and underscores is refused. With no members
+/// this is exactly [`seal_record`].
+pub fn seal_record_with_members(
+    header: &Header,
+    members: &BTreeMap<String, Value>,
+    producer: &Producer<'_>,
+) -> Result<SealedRecord, SealRecordError> {
     let header_bytes = canonical_header(header)?;
     public_key_of(producer.signer)?;
-    let (body, record_id, capsule) =
-        record_capsule(header, &header_bytes, producer.operator, producer.developer)?;
+    let (body, record_id, capsule) = record_capsule(
+        header,
+        &header_bytes,
+        members,
+        producer.operator,
+        producer.developer,
+    )?;
     let envelope = producer_envelope(&record_id, producer.signer)?;
     Ok(SealedRecord {
         record_id,
@@ -478,7 +511,9 @@ impl SealedRecord {
     /// over that id, signed by `public_key` and verified strictly. Any other
     /// capsule fails, including one that also carries its header inline (Go
     /// `AppendCapsule`), which a Go book refuses as committing its header
-    /// twice.
+    /// twice. The capsule may carry further members
+    /// ([`seal_record_with_members`]); they are read back from it and
+    /// checked as the sealing checks them.
     pub fn verify(&self, public_key: &[u8; 32]) -> Result<(), SealRecordError> {
         let mismatch =
             |why: &str| SealRecordError::Mismatch(format!("record {}: {why}", self.record_id));
@@ -490,9 +525,23 @@ impl SealedRecord {
         let capsule: Value = serde_json::from_slice(&self.capsule)
             .map_err(|_| mismatch("the capsule is not JSON"))?;
         let named = |member: &str| capsule.get(member).and_then(Value::as_str).unwrap_or("");
-        let (body, record_id, expected) =
-            record_capsule(&header, &self.header, named("operator"), named("developer"))
-                .map_err(|e| mismatch(&format!("no record capsule of this header: {e}")))?;
+        // The Capsule's further members: every top-level name that is not a
+        // base-profile member (the record capsule adds nothing else).
+        let members: BTreeMap<String, Value> = capsule
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(k, _)| !BASE_MEMBERS.contains(&k.as_str()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let (body, record_id, expected) = record_capsule(
+            &header,
+            &self.header,
+            &members,
+            named("operator"),
+            named("developer"),
+        )
+        .map_err(|e| mismatch(&format!("no record capsule of this header: {e}")))?;
         if expected != self.capsule || body != self.body || record_id != self.record_id {
             return Err(mismatch(
                 "the capsule is not the record capsule of this header",
