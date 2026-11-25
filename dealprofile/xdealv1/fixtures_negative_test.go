@@ -108,7 +108,7 @@ func negatives() []negative {
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { set(b, "action", "teleport") }},
 		// Schema: a journal record another record cites carries its own
-		// nonce (§3), so the citing record's digest tests no guess.
+		// nonce (PROFILE §5), so the citing record's digest tests no guess.
 		{name: "neg-admit-without-nonce", description: "an admit, which an agreement cites, carries its nonce", base: nAdmit, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { del(b, "nonce") }},

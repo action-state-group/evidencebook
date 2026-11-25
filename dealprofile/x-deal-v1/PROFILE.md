@@ -417,8 +417,8 @@ certifies what the approval already says, no more: on a `user` approval, the per
 on an `agent_card` approval, that the person answered the card the agent composed, which, as in
 x-deal-v0 §6 rule 6, is not consent in the person's own words.
 
-**The first-act gate** (Steven, `docs/design/461-deal-profile.md` §7.2). A party's first `perform`
-or payer `settle` of a deal is refused until the counterparty's stamp proof covers the
+**The first-act gate** (Steven, `docs/design/461-deal-profile.md` §7.1 and §7.2). A party's first
+`perform` or payer `settle` of a deal is refused until the counterparty's stamp proof covers the
 counterparty's agreement, on both sides, whether or not the agreement names a witness
 (`xdealv1.ReceiveProfile.GateAct`, over `CanAct`). A payee leg, a statement and any later act are
 never gated. The offerer stamps its agreement at once when its first act waits on the acceptor's,
