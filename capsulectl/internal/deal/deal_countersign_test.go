@@ -246,8 +246,9 @@ func TestDealRemoteCheckerOnlyAddsAndFallsBack(t *testing.T) {
 
 	// The slow checker answers only once the test releases it (or after a
 	// minute), so a check that waited for it could not return first: the
-	// bound below is that minute, not the 2 s cut-off plus the check's own
-	// work, which a loaded machine stretches (evidencebook#905).
+	// bound below (30 s) sits well under that minute, not at the 2 s cut-off
+	// plus the check's own work, which a loaded machine stretches
+	// (evidencebook#905).
 	release := make(chan struct{})
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
