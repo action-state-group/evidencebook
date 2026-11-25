@@ -13,9 +13,9 @@ ledger-cloud main `9e52270`. File references are to those commits; `PROFILE.md` 
   "gets four books": each side sends its own book and the book it received from the other, so a
   silent counterparty is still covered by the other side's copy. A request from the adjudicator
   defaults to full disclosure ("I think so. That's right.", 00:14:23). Ops records it as a
-  DECISION: `action-state-ops` `evidence-network/inbox.md:596` (u207,
+  DECISION: `action-state-ops` `evidence-network/inbox.md:596` (Steven, 2026-11-24,
   buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=0c3bb8740ccff751e35f940c3f3ae6805708176b18c49d17f9f6e0661158edf8).
-- **Steven rules the what**: §6 records his rulings (2026-11-24, u211). **Ethan decides the how and the order**: §5.
+- **Steven rules the what**: §6 records his rulings (2026-11-24). **Ethan decides the how and the order**: §5.
 - Out of this note: deploys and spend (Steven's), and evidencebook#833's files.
 
 The four books of one deal, named the way this note uses them:
@@ -104,9 +104,9 @@ rows withheld and no counterparty prefix. The full answer holds:
    the deal book only, not the journal: journal records stay out as today, except those the
    relied-on records already cite. Two standing rulings hold unchanged: the private floor
    (`intent.min_total_minor` and its openings, a journal member) never goes to an adjudicator
-   copy, which keeps the max only (u547, ops `company-oss/inbox.md:795`); and the claims a
+   copy, which keeps the max only (Steven, 2026-10-20, capsule-cli#286; ops `company-oss/inbox.md:795`); and the claims a
    seller's agent made without authority go on an adjudicator copy only by the seller's explicit
-   opt-in, default off, reading "not shared" when absent (u615, `company-oss/inbox.md:944`;
+   opt-in, default off, reading "not shared" when absent (Steven, 2026-11-19, evidencebook-deal#207, `company-oss/inbox.md:944`;
    `--include-agent-claims`, `capsulectl/internal/deal/commands.go:76-84`). Full disclosure here
    means the whole deal book and the held copy, not those.
 2. **The held copy**: every record of the other side's book the party holds for the deal that
@@ -305,7 +305,7 @@ Operator: `request` (seal the request in the adjudicator's journal, then publish
 
 ## 5. PRs and their order
 
-Each PR is reviewed under the usual rules; Steven ruled on §6 on 2026-11-24 (u211), so they may start.
+Each PR is reviewed under the usual rules; Steven ruled on §6 on 2026-11-24, so they may start.
 
 1. **evidencebook, Go**: PROFILE.md and the schema (`sources`; the extension's `records` and
    `received`; the full-copy derivation token), `VerifyReportBundle`'s full-copy checks,
@@ -332,26 +332,27 @@ Each PR is reviewed under the usual rules; Steven ruled on §6 on 2026-11-24 (u2
 
 Steven accepted Sherlock2's recommendation on all five questions on 2026-11-24 ("yes i agree on
 these recs", buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9e8836b14b0026311c43ba5eddc2df7ecd1abb01fd0252c5769a088bff69c6aa&thread=440510368f48f25851cb3b3476a5d116f1b9acb9bb41833b3fb55b5a74faaddb).
-Ops records it as a DECISION refining u207: `action-state-ops` `evidence-network/inbox.md:607`
-(u211). The recommendation he accepted is
+Ops records it as a DECISION refining the 2026-11-24 call's ruling (§0): `action-state-ops`
+`evidence-network/inbox.md:607`. The recommendation he accepted is
 buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=4f37c6bfa53b02847a3ebeb5cbfd882472d257f67fc2d86589dbae9e9d3e0a7d&thread=440510368f48f25851cb3b3476a5d116f1b9acb9bb41833b3fb55b5a74faaddb.
 
 1. **Full disclosure contents.** A party's answer gives the adjudicator its whole deal book and
    every record of the other side's book it received (§2.2), without the other side's consent
-   beyond the agreement's adjudicator term. Forwarding the received copy is within u207: those
-   records were already sent to the counterparty. u547 and u615 are unchanged; agent claims and
-   the floor are journal-only (PROFILE.md:123), so a whole deal book cannot carry them.
+   beyond the agreement's adjudicator term. Forwarding the received copy is within the 2026-11-24
+   ruling (§0): those records were already sent to the counterparty. The rulings on capsule-cli#286
+   and evidencebook-deal#207 are unchanged; agent claims and the floor are journal-only
+   (PROFILE.md:123), so a whole deal book cannot carry them.
 2. **Ruling against a silent side.** A ruling may go against a silent side, but it may turn only on
    records that side signed itself. Its page says "delivery not shown", names the books shown and
    not shown, and names the source that timed each deciding record (§3.1). The silent side's
-   remedy is a challenge with its own book within the 30-day challenge window (ledger-cloud
-   `ledger_cloud/adjudicator/RUNBOOK.md:74`).
+   remedy is a challenge with its own book within the challenge window (30 days when ruled, ledger-cloud
+   `ledger_cloud/adjudicator/RUNBOOK.md:74`; 7 days since Steven's later ruling of 2026-11-24).
 3. **A fork.** When a side's own book and the copy the other side holds differ at one position
    (§2.3), the branch the counterparty received governs, since the signer showed it to its
    counterparty and the counterparty relied on it. The ruling records `fork_at`, both branches are
    kept and shown, and the page says plainly "the signer's book forked at N".
 4. **The answer deadline.** 7 days, counted from when the request is published, with that time
-   printed on the page. It is a service constant stated in the practice statement, as the 30-day
+   printed on the page. It is a service constant stated in the practice statement, as the
    challenge window is, and stays out of the neutral spec.
 5. **Hosting.** Option A now: Steven runs the ledger-cloud adjudicator on his own machine
    (directory store, no spend); option B only when he chooses (§4.1). Before any cloud move he
@@ -360,6 +361,6 @@ buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=4f37c6bfa53b02847
 
 **Doors**, confirmed by Sherlock2 in the same recommendation: the ruling's `sources` member, the
 bundle extension's `records` and `received`, and the full-copy derivation token are format only,
-with no product meaning beyond u207 and the rulings above. The forced reader upgrade of §3.2
+with no product meaning beyond the 2026-11-24 ruling and the rulings above. The forced reader upgrade of §3.2
 affects users and is acceptable because `/status.json`, the RUNBOOK and the release notes name
 the minimum reader release. Neutrality: none of this is on a public surface.

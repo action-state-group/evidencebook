@@ -123,7 +123,7 @@ New tables, all in the same file:
   is two witnesses to the library) and the library treats the name as an opaque string; how an
   agreement names its witnesses is the profile's (step 5). `key_id` is the directory key the receipt verified under (the key the directory
   row binds to that URL, never one the receipt carries), kept so a later naming by key reads the
-  rows already held. An x-deal-v1 agreement names its witnesses by key id (Steven, #482 Q1, u604),
+  rows already held. An x-deal-v1 agreement names its witnesses by key id (Steven, #482 Q1),
   so `RecordTimeByKey`, `ReceivedRecordTimeByKey` and `HandoverTimes.RecordTimeByKey` match this
   column instead of the URL; `registered_at` is the receipt's protected `iat` in Unix seconds.
   The same witness's receipt again replaces the held one only when it gives an earlier time or
@@ -250,7 +250,7 @@ It does not check the journal's chain or ask for its openings, and the journal c
 completeness and no tally. It returns each book's latest fact and opening, the coverage start, and
 two separate answers: **recomputed** (everything above passed), and **witnessed** (the anchor has
 a receipt from a named witness with a registration time). A shelf with no witness is a supported
-default (u186): its signed shelf checkpoint is a valid anchor, the result is recomputed and
+default (Steven, 2026-11-01): its signed shelf checkpoint is a valid anchor, the result is recomputed and
 unwitnessed, and every row status computed from it is local. A **dropped book**, a `book_id` in the
 handover whose latest fact a card does not count, is caught by the count: counting the card again
 from the returned latest facts gives a different card, which fails. Counting is
