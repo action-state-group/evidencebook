@@ -27,7 +27,7 @@
 
 use crate::store::{CheckpointedLog, ConsistencyParts};
 use cll::checkpoint::{
-    checkpoint_to_cose, try_sign_checkpoint_digest, CheckpointRecord, CheckpointSigner,
+    cut_checkpoint, try_sign_checkpoint_digest, CheckpointRecord, CheckpointSigner,
     Signature as CllSignature, SignerError, WitnessRecord,
 };
 use cll::mmr::{
@@ -546,8 +546,8 @@ impl CllSubstrate {
             return Err(SubstrateError::EmptyMmr);
         }
 
-        let (prev_size, prev_root) = match &self.last_checkpoint {
-            None => (0u64, String::new()),
+        let prev_size = match &self.last_checkpoint {
+            None => 0u64,
             Some(prev) => {
                 if current_size <= prev.mmr_size {
                     return Err(SubstrateError::RollbackSize {
@@ -564,48 +564,29 @@ impl CllSubstrate {
                         recorded_root: prev.root.clone(),
                     });
                 }
-                (prev.mmr_size, prev.root.clone())
+                prev.mmr_size
             }
         };
 
-        let new_peak_hashes = self.peak_hashes(current_size)?;
-        let root = hex::encode(root_from_peaks(&new_peak_hashes));
+        // The cut is checkpointed-local-log's (`cut_checkpoint`); the root
+        // at `prev_size` was checked above to be the recorded one, so the
+        // cut's `prev_root` is it. This store keeps the JSON record, so it
+        // signs the record's digest, and keeps the COSE statement
+        // best-effort (`cadence_seconds` omitted, as the Python reference
+        // omits it).
         let adapter = SignerAdapter(signer);
-        let mut cp = CheckpointRecord {
-            v: 1,
-            kind: CHECKPOINT_KIND.to_string(),
-            log_id: log_id.to_string(),
-            mmr_size: current_size,
-            root,
+        let cut = cut_checkpoint(
+            &self.node_store,
+            current_size,
             prev_size,
-            prev_root,
-            key_id: adapter.key_id(),
-            timestamp: timestamp.to_string(),
-            signature: String::new(),
-            witnesses: Vec::new(),
-        };
-        cp.signature = try_sign_checkpoint_digest(&cp, &adapter).log_err()?;
-
-        // COSE wire form, best-effort: `cadence_seconds` is omitted, as the
-        // Python reference omits it.
-        let prev_peak_hashes = if prev_size > 0 {
-            Some(self.peak_hashes(prev_size)?)
-        } else {
-            None
-        };
-        let consistency = if prev_size > 0 {
-            Some(consistency_proof(&self.node_store, prev_size, current_size).log_err()?)
-        } else {
-            None
-        };
-        let (cose, cose_error) = match checkpoint_to_cose(
-            &cp,
+            log_id,
+            timestamp,
             &adapter,
-            &new_peak_hashes,
-            prev_peak_hashes.as_deref(),
-            consistency.as_ref(),
-            None,
-        ) {
+        )
+        .log_err()?;
+        let mut cp = cut.record;
+        cp.signature = try_sign_checkpoint_digest(&cp, &adapter).log_err()?;
+        let (cose, cose_error) = match cut.statement {
             Ok(bytes) => (Some(bytes), None),
             Err(err) => (None, Some(err.to_string())),
         };
@@ -794,6 +775,80 @@ mod tests {
     ) -> Result<Checkpoint, SubstrateError> {
         let p = s.prepare_checkpoint(leaves, "log", "2026-09-27T00:00:00.000Z", key)?;
         s.commit_checkpoint(p)
+    }
+
+    /// The cut before it moved to checkpointed-local-log's `cut_checkpoint`,
+    /// kept as the reference: the record and COSE statement this store
+    /// built itself.
+    fn old_prepare(
+        s: &CllSubstrate,
+        leaves: u64,
+        timestamp: &str,
+        signer: &dyn Signer,
+    ) -> (Checkpoint, Vec<u8>) {
+        use cll::checkpoint::checkpoint_to_cose;
+        let current_size = node_count(leaves);
+        let (prev_size, prev_root) = s
+            .last_checkpoint
+            .as_ref()
+            .map_or((0, String::new()), |p| (p.mmr_size, p.root.clone()));
+        let peaks = s.peak_hashes(current_size).unwrap();
+        let adapter = SignerAdapter(signer);
+        let mut cp = CheckpointRecord {
+            v: 1,
+            kind: CHECKPOINT_KIND.to_string(),
+            log_id: "log".to_string(),
+            mmr_size: current_size,
+            root: hex::encode(root_from_peaks(&peaks)),
+            prev_size,
+            prev_root,
+            key_id: adapter.key_id(),
+            timestamp: timestamp.to_string(),
+            signature: String::new(),
+            witnesses: Vec::new(),
+        };
+        cp.signature = try_sign_checkpoint_digest(&cp, &adapter).unwrap();
+        let prev_peaks = (prev_size > 0).then(|| s.peak_hashes(prev_size).unwrap());
+        let proof = (prev_size > 0)
+            .then(|| consistency_proof(&s.node_store, prev_size, current_size).unwrap());
+        let cose = checkpoint_to_cose(
+            &cp,
+            &adapter,
+            &peaks,
+            prev_peaks.as_deref(),
+            proof.as_ref(),
+            None,
+        )
+        .unwrap();
+        (Checkpoint::from_log(cp), cose)
+    }
+
+    /// Same input, same bytes (Sherlock2's condition on the shared cut): the
+    /// shared cut gives this store the checkpoint and COSE statement its own
+    /// build gave, for a first checkpoint, one extending it, and a one-leaf
+    /// extension.
+    #[test]
+    fn the_shared_cut_gives_the_bytes_the_old_cut_gave() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = SigningKey::from_bytes(&[9u8; 32]);
+        let ts = "2026-11-25T08:00:00Z";
+        let mut s = open(dir.path());
+        let mut appended = 0u8;
+        for leaves in [1u64, 4, 5] {
+            while u64::from(appended) < leaves {
+                s.append(&id(appended)).unwrap();
+                appended += 1;
+            }
+            let (want_cp, want_cose) = old_prepare(&s, leaves, ts, &key);
+            let prepared = s.prepare_checkpoint(leaves, "log", ts, &key).unwrap();
+            assert_eq!(prepared.checkpoint, want_cp, "{leaves} leaves");
+            assert_eq!(
+                prepared.cose.as_deref(),
+                Some(want_cose.as_slice()),
+                "{leaves}"
+            );
+            s.commit_checkpoint(prepared).unwrap();
+        }
     }
 
     #[test]
