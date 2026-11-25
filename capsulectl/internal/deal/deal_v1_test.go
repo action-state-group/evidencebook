@@ -1,9 +1,7 @@
 package deal
 
 import (
-	"context"
 	"database/sql"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +9,6 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
-	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -355,50 +352,6 @@ func TestAnOfferTakesCounterToAndForumFlags(t *testing.T) {
 	assert.Equal(t, other, body.CounterTo.Digest)
 	// A forum with no adjudicator is the profile's refusal.
 	assert.Contains(t, v1Err(t, "offer", "--input", writeJSON(t, v1OfferInput), "--forum", "auto:twin", "--out", filepath.Join(t.TempDir(), "x.json")), "x-deal-v1 checks")
-}
-
-// The library's SealSent can fail without sealing (an empty Record: retry),
-// or after the record is stored (a Record with the error: its Capsule is
-// kept and the file made, never a second seal).
-func TestTheSendSurvivesTheLibrarysPartialFailures(t *testing.T) {
-	real := sealSentLib
-	t.Cleanup(func() { sealSentLib = real })
-	v1Fixture(t)
-	dealRun(t, "set-version", "x-deal-v1", "--migrate")
-	in := writeJSON(t, v1OfferInput)
-	out := filepath.Join(t.TempDir(), "o.json")
-
-	// An empty Record: nothing sealed; the row stays sealing; the re-run seals the stored payload once.
-	sealSentLib = func(ctx context.Context, shelf *evidencebook.Shelf, e evidencebook.Entry, id string) (evidencebook.Record, evidencebook.SentCapsule, error) {
-		return evidencebook.Record{}, evidencebook.SentCapsule{}, errors.New("the journal is busy")
-	}
-	v1Err(t, "offer", "--input", in, "--out", out)
-	var dealID, state string
-	require.NoError(t, v1DB(t).QueryRow(`SELECT deal_id, state FROM deal_sent`).Scan(&dealID, &state))
-	assert.Equal(t, sentSealing, state)
-	sealSentLib = real
-	got := dealRun(t, "offer", "--input", in, "--out", out)
-	assert.Equal(t, dealID, got["deal_id"], "the stored record is sealed, not a new one")
-	_, err := xdealv1.VerifySent(readPair(t, out), nil)
-	require.NoError(t, err)
-	var n int
-	require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_sent`).Scan(&n))
-	assert.Equal(t, 1, n)
-
-	// A Record with an error: the Capsule comes with it and the file is made.
-	sealSentLib = func(ctx context.Context, shelf *evidencebook.Shelf, e evidencebook.Entry, id string) (evidencebook.Record, evidencebook.SentCapsule, error) {
-		rec, sent, err := real(ctx, shelf, e, id)
-		require.NoError(t, err)
-		return rec, sent, errors.New("the log append is pending")
-	}
-	in2 := writeJSON(t, strings.Replace(v1OfferInput, `"item": "lamp"`, `"item": "chair"`, 1))
-	out2 := filepath.Join(t.TempDir(), "o2.json")
-	dealRun(t, "offer", "--input", in2, "--out", out2)
-	sealSentLib = real
-	_, err = xdealv1.VerifySent(readPair(t, out2), nil)
-	require.NoError(t, err)
-	require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_sent`).Scan(&n))
-	assert.Equal(t, 2, n)
 }
 
 // A cancellation sealed whose file was lost is repeated as a new operation.

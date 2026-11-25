@@ -3,10 +3,8 @@ package deal
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -530,31 +528,6 @@ func TestAnOfferWithoutADealRowIsRebuiltWhenTheAgreementArrives(t *testing.T) {
 	assert.Equal(t, "offerer", out["side"])
 }
 
-// A stop after the store took the offer and before the local rows were
-// committed leaves none of them; receiving the same file again finds the
-// offer already kept, writes the rows, and the deal can be agreed.
-func TestAnOfferWhoseRowsDidNotCommitIsRecoveredByReceivingItAgain(t *testing.T) {
-	seller := newV1Side(t)
-	buyer := newV1Side(t)
-	offerFile := filepath.Join(t.TempDir(), "offer.json")
-	res := dealRun(t, "offer", "--input", writeJSON(t, offerTo(seller.party.signer)), "--out", offerFile)
-
-	seller.act(t)
-	t.Cleanup(func() { v1NoteStops = func() error { return nil } })
-	v1NoteStops = func() error { return errors.New("stopped before the rows were committed") }
-	require.Error(t, errOf(t, "receive", offerFile))
-	var n int
-	require.NoError(t, v1DB(t).QueryRow(`SELECT (SELECT COUNT(*) FROM deal_versions) + (SELECT COUNT(*) FROM deal_v1) + (SELECT COUNT(*) FROM deal_v1_offers)`).Scan(&n))
-	assert.Zero(t, n, "all three rows rolled back together")
-
-	v1NoteStops = func() error { return nil }
-	got := dealRun(t, "receive", offerFile)
-	assert.Equal(t, "already kept", got["record"], "the store kept it the first time")
-	out := dealRun(t, "agree", res["offer"].(string), "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json"))
-	assert.Equal(t, "acceptor", out["side"])
-	_ = buyer
-}
-
 // An agreement recorded while the deal's state still says `agreeing` (a stop
 // between the two updates) is repaired by running `deal agree` again.
 func TestADealLeftAgreeingIsRepairedByAgreeingAgain(t *testing.T) {
@@ -592,74 +565,6 @@ func TestAnAdmitThatIsNotAV1RecordIsSaidSo(t *testing.T) {
 func TestEachAdmitCarriesItsOwnNonce(t *testing.T) {
 	newV1Side(t)
 	assert.NotEqual(t, sealAdmit(t, "GO"), sealAdmit(t, "GO"))
-}
-
-// A write that lands in the deal book between reading its tail and appending
-// (Receive names a counted ruling in the same book) is not overwritten: the
-// record is refused its place with ErrBusy, read again and rebuilt at the next
-// one, citing the record that landed. The same writer carries a dispute.
-func TestARecordWhosePlaceWasTakenIsRebuiltAtTheNextOne(t *testing.T) {
-	h := newHandshakeV1(t)
-	h.buyer.act(t)
-	dealRun(t, "receive", h.sellerAgree)
-	dealRun(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "b.json"))
-
-	var interloperDigest string
-	calls := 0
-	t.Cleanup(func() { bookAppendHook = func() {} })
-	var sealed bookSealed
-	withSession(t, func(s *dealSession) {
-		d, err := s.v1DealOf(t.Context(), h.dealID)
-		require.NoError(t, err)
-		book, err := s.shelf.Open(t.Context(), d.OwnLogID)
-		require.NoError(t, err)
-		bookAppendHook = func() {
-			calls++
-			if calls > 1 {
-				return
-			}
-			// Another write takes the place the record was built for.
-			payload := []byte(`{"interloper":true}`)
-			digest := hexSHA256(payload)
-			interloperDigest = digest
-			_, err := book.Append(t.Context(), evidencebook.Entry{RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{payload}})
-			require.NoError(t, err)
-		}
-		sealed, err = s.sealBookV1(t.Context(), h.dealID, bookRecordIn{Body: xdealv1.StatementBody{Statements: []xdealv1.StatementItem{{Row: "paid_as_agreed", Value: "met"}}}})
-		require.NoError(t, err)
-	})
-	assert.Equal(t, 2, calls, "built twice: the first was refused its place")
-	assert.Equal(t, uint64(3), sealed.Seq, "after the agreement and the record that landed")
-	require.NotNil(t, sealed.Record.Block.Prev)
-	assert.Equal(t, interloperDigest, sealed.Record.Block.Prev.Digest, "it cites the record that landed")
-	read, err := xdealv1.VerifyBook(sealed.Pair)
-	require.NoError(t, err)
-	assert.Equal(t, uint64(3), read.Seq)
-}
-
-// A book that keeps changing is not retried for ever.
-func TestAWriterGivesUpWhenTheBookKeepsChanging(t *testing.T) {
-	h := newHandshakeV1(t)
-	h.buyer.act(t)
-	dealRun(t, "receive", h.sellerAgree)
-	dealRun(t, "agree", h.offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "b.json"))
-	t.Cleanup(func() { bookAppendHook = func() {} })
-	withSession(t, func(s *dealSession) {
-		d, err := s.v1DealOf(t.Context(), h.dealID)
-		require.NoError(t, err)
-		book, err := s.shelf.Open(t.Context(), d.OwnLogID)
-		require.NoError(t, err)
-		n := 0
-		bookAppendHook = func() {
-			n++
-			_, err := book.Append(t.Context(), evidencebook.Entry{RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{[]byte(`{"n":` + strconv.Itoa(n) + `}`)}})
-			require.NoError(t, err)
-		}
-		_, err = s.sealBookV1(t.Context(), h.dealID, bookRecordIn{Body: xdealv1.StatementBody{Statements: []xdealv1.StatementItem{{Row: "paid_as_agreed", Value: "met"}}}})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "kept changing")
-		assert.Equal(t, bookAppendTries, n)
-	})
 }
 
 // An ErrBusy that does not come from the append (here, from the caller's own

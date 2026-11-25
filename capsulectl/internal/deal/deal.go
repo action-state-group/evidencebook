@@ -26,6 +26,7 @@ import (
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
+	dealapi "github.com/action-state-group/evidencebook/deal"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
@@ -81,6 +82,9 @@ type dealSession struct {
 	// v1Profile is the x-deal-v1 receive profile the shelf was opened with, set
 	// only for a verb that took v1ReceiveContext (deal_v1_book.go).
 	v1Profile *xdealv1.ReceiveProfile
+	// store is the x-deal-v1 deal store (evidencebook's package deal), opened
+	// by the first v1 verb (deal_v1_store.go).
+	store *dealapi.Store
 	// shelf is the deal store's one writer (deal_shelf.go), open from
 	// openDealSession until close; legacy is the current deal's log on it,
 	// and cadence the profile's cadence once opened.
