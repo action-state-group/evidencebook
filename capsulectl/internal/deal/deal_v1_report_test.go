@@ -71,7 +71,7 @@ func TestAV1ReportRefusals(t *testing.T) {
 	h.buyer.act(t)
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID), "the next cadence tick covers it")
-	for flag, want := range map[string]string{"--html": "has no page yet", "--share": "needs --out FILE or --bundle FILE, and --to",
+	for flag, want := range map[string]string{"--share": "needs --out FILE or --bundle FILE, and --to",
 		"--email": "receipt email", "--from-bundle": "countersignatures", "--directory": "countersignatures"} {
 		arg := filepath.Join(t.TempDir(), "x")
 		if flag == "--share" {

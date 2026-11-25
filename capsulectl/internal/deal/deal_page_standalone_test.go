@@ -19,18 +19,41 @@ import (
 // buildVerifiedBundleContext: renderEvidenceGraph hands the context to the
 // registry it is given before it renders anything but its checking bar, and
 // this registry keeps it and stops the render there.
-const verifiedContextJS = `async function verifiedContext(context, EG, bundle) {
+const verifiedContextJS = `// inertElement is a DOM node that takes every call and draws nothing: the
+// runtime draws its frame (header, checking bar) before the registry is asked.
+function inertElement() {
+  const lists = new Set(["childNodes", "children"]);
+  const plain = new Set(["dataset", "style"]);
+  const handler = {
+    get(target, prop) {
+      if (prop === "then" || typeof prop === "symbol") return undefined;
+      if (lists.has(prop)) return [];
+      if (plain.has(prop)) return (target[prop] ??= {});
+      if (prop === "textContent" || prop === "innerHTML") return "";
+      if (prop === "querySelectorAll" || prop.startsWith("getElementsBy")) return () => [];
+      // No tree around it: a walk up or along ends at once.
+      if (/^(parent|first|last|next|previous|closest$|querySelector$)/.test(prop)) return typeof target[prop] === "function" ? target[prop] : (prop === "closest" || prop === "querySelector" ? () => null : null);
+      if (prop in target) return target[prop];
+      return inertElement();
+    },
+    set(target, prop, value) { target[prop] = value; return true; },
+    apply() { return inertElement(); },
+  };
+  return new Proxy(function () {}, handler);
+}
+async function verifiedContext(context, EG, bundle) {
   if (vm.runInContext("typeof document", context) === "undefined")
-    vm.runInContext("globalThis.document = { createElement: () => ({ dataset: {}, append() {} }) };", context);
+    context.document = inertElement();
   const stop = new Error("context captured");
   let captured;
   const registry = { resolve(ctx) { captured = ctx; throw stop; } };
   try {
-    await EG.renderEvidenceGraph(bundle, { childNodes: [], replaceChildren() {} }, undefined, { registry });
+    await EG.renderEvidenceGraph(bundle, inertElement(), undefined, { registry });
   } catch (err) {
     if (err !== stop) throw err;
   }
-  if (captured === undefined) throw new Error("the runtime built no verified context");
+  // undefined: the page refused the copy before asking any module
+  // (capsule-viewer#415: its own standalone report check failed).
   return captured;
 }
 `
@@ -86,6 +109,10 @@ if (edit === "stripped") {
 }
 (async () => {
   const ctx = await verifiedContext(context, EG, bundle);
+  if (ctx === undefined) {
+    process.stdout.write(JSON.stringify({ presentation: "refused by the page", refusal: "refused by the page before any module" }));
+    return;
+  }
   const resolution = await EG.resolvePresentation(ctx);
   const v = ctx.verification;
   const out = {

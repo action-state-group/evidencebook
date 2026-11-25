@@ -42,6 +42,9 @@ type dealReader struct {
 	anchored bool
 	cadence  aacbundle.ClaimResult
 	dealSeen bool
+	// proof is verify's --stamp-proof, for an x-deal-v1 copy's witnessed
+	// member (deal_v1_witnessed.go); nil when none was given.
+	proof *entryProof
 }
 
 // newDealReader is the factory the plugin passes the core.
@@ -66,6 +69,11 @@ func (r *dealReader) Read(ctx *cli.ExtensionContext, kind string) (map[string]an
 		}
 		r.dealSeen = true
 		entry := DealReportEntry(ctx.Value, ctx.Result)
+		// The witness time of the copy's own book, from a proof beside it:
+		// reported only, never a claim, so the verdict is unchanged.
+		if r.proof != nil && kind == DealProfileV1 && entry["report"] == "standalone" {
+			entry["witnessed"] = v1Witnessed(ctx.Value, r.proof, ctx.Directory)
+		}
 		// A v1 report words its own as_of: its time is the holder's
 		// computation time, not the checkpoint's.
 		if entry["report"] == "standalone" && kind == DealProfile {
@@ -138,12 +146,25 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 			continue
 		}
 		core := c.RunE
+		c.Flags().String(stampProofFlag, "", "With --bundle on your own x-deal-v1 copy: the proof file deal checkpoint proof wrote for it; the copy's x-deal-v1 entry reports witnessed (verified, failed, or withheld when no --witness-directory is given), which never changes the verdict")
 		c.RunE = func(c *cobra.Command, args []string) error {
 			bundle, _ := c.Flags().GetString("bundle")
+			proofPath, _ := c.Flags().GetString(stampProofFlag)
 			if bundle == "" || otherVerifyInput(c) {
+				if proofPath != "" {
+					return cli.InputError("--" + stampProofFlag + " goes with --bundle")
+				}
 				return core(c, args)
 			}
-			return cli.VerifyBundleFileWith(c, bundle, newDealReader)
+			reader := newDealReader
+			if proofPath != "" {
+				proof, err := readStampProof(proofPath)
+				if err != nil {
+					return err
+				}
+				reader = func() cli.ExtensionReader { return &dealReader{proof: proof} }
+			}
+			return cli.VerifyBundleFileWith(c, bundle, reader)
 		}
 	}
 	return root

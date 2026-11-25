@@ -47,8 +47,12 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	f := c.Flags()
 	readOnly, _ := f.GetBool("read-only")
 	switch {
-	case f.Changed("html"):
-		return cli.InputError("--html renders an x-deal-v0 deal's page; an x-deal-v1 report has no page yet: deal report prints it, --out seals it to a file, and --bundle writes it with your deal book")
+	case f.Changed("html") && (f.Changed("out") || f.Changed("bundle") || f.Changed("withheld")):
+		return cli.InputError("--html writes your own copy's receipt page; it does not take --out, --bundle or --withheld")
+	case f.Changed("witness-directory") && !f.Changed("html"):
+		return cli.InputError("--witness-directory checks the witness time your --html page says; use it with --html")
+	case f.Changed("html") && f.Changed("share") && f.Lookup("share").Value.String() != dealprofile.AudienceKeep:
+		return cli.InputError("--html writes your own copy's receipt page; a copy for someone else goes to --bundle with --share")
 	case f.Changed("email"):
 		return cli.InputError("--email writes an x-deal-v0 deal's receipt email; it does not apply to an x-deal-v1 report")
 	case f.Changed("from-bundle") || f.Changed("directory"):
@@ -65,10 +69,10 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 		return cli.InputError("--withheld writes the bundle you ask a countersigner to sign (`countersign request`); it is not a copy for the other side or an adjudicator: drop --share")
 	case f.Changed("out") && f.Changed("bundle"):
 		return cli.InputError("--out writes the sealed report and --bundle the Evidence Bundle that carries it: choose one")
-	case readOnly && (f.Changed("out") || f.Changed("bundle") || f.Changed("share") || f.Changed("to")):
-		return cli.InputError("--read-only writes nothing: it takes no --out, --bundle, --share or --to")
+	case readOnly && (f.Changed("out") || f.Changed("bundle") || f.Changed("html") || f.Changed("share") || f.Changed("to")):
+		return cli.InputError("--read-only writes nothing: it takes no --out, --bundle, --html, --share or --to")
 	}
-	for _, name := range []string{"out", "bundle"} {
+	for _, name := range []string{"out", "bundle", "html"} {
 		if v, _ := f.GetString(name); f.Changed(name) && strings.TrimSpace(v) == "" {
 			return cli.InputError("--" + name + " names the file to write; it cannot be empty")
 		}
@@ -123,9 +127,15 @@ func runV1Report(c *cobra.Command) (err error) {
 	}
 	dealID, _ := c.Flags().GetString("deal")
 	out, _ := c.Flags().GetString("out")
-	asBundle := false
+	asBundle, asPage := false, false
 	if b, _ := c.Flags().GetString("bundle"); b != "" {
 		out, asBundle = b, true
+	}
+	// --html writes your own copy's receipt page: the bundle --bundle writes,
+	// drawn by capsule-viewer with this binary's own verify report beside it
+	// (v1ReportPage).
+	if h, _ := c.Flags().GetString("html"); h != "" {
+		out, asBundle, asPage = h, true, true
 	}
 	p, err := cli.Selected(c)
 	if err != nil {
@@ -262,6 +272,17 @@ func runV1Report(c *cobra.Command) (err error) {
 				return err
 			}
 			file, kind = append(bundle, '\n'), "bundle"
+			if asPage {
+				proof, dirPath, err := s.v1PageWitness(ctx, c, d, bundle)
+				if err != nil {
+					return err
+				}
+				page, err := v1ReportPage(ctx, bundle, dealVerifyCommand(out), proof, dirPath)
+				if err != nil {
+					return err
+				}
+				file, kind = page, "page"
+			}
 		}
 		var record func() error
 		if shared {
@@ -299,7 +320,10 @@ func runV1Report(c *cobra.Command) (err error) {
 			return err
 		}
 		result["sealed_report"], result["file"] = digest, out
-		if asBundle {
+		switch {
+		case asPage:
+			result["html"] = out
+		case asBundle:
 			result["bundle"] = out
 		}
 	}
