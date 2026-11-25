@@ -295,16 +295,22 @@ func clickedReceiptText(t *testing.T, page []byte) string {
 	return strings.Join(strings.Fields(stdhtml.UnescapeString(text)), " ")
 }
 
-// The real deal view, in a real browser, opens the carried receipt under the
-// claim of its deal and verifies it, and a receipt the share policy holds
-// reads as held: Sherlock2's settled sentence, not "no record".
+// capsule-viewer's receipt module, in a real browser, opens the carried
+// receipt under the claim of its deal and verifies it (the page checks the
+// copy's standalone report itself, capsule-viewer#398), and a receipt the
+// share policy holds reads as held: Sherlock2's settled sentence, not "no
+// record".
 func TestTheBrowserOpensACarriedReceiptAndReadsAHeldOne(t *testing.T) {
 	carried, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "receipt": json.RawMessage(mustRead(t, dealReceipt))}}))
 	require.NoError(t, err)
 	text := clickedReceiptText(t, carried)
 	assert.Contains(t, text, "Close receipt", "the control opened")
-	assert.Contains(t, text, "Receipt · deal-134fae85882ad8bf", "the deal view drew the carried receipt")
-	assert.Contains(t, text, "Your copy only · not fully checked", "at the strength the receipt has: the other side's record is not in it")
+	assert.Contains(t, text, "Checked in this browser by the page's verifier", "the receipt module drew the carried receipt with its top line")
+	assert.Contains(t, text, "Shared copy", "carried in a report, the owner's copy reads as a shared copy")
+	assert.Contains(t, text, "Nothing from their side is in this receipt.", "at the strength the receipt has: the other side's record is not in it")
+	assert.NotContains(t, text, "This page has no viewer for this kind of receipt")
+	assert.Contains(t, text, "This page checked it itself: signed by the deal's last step, matching its Capsule, and made at this deal's checkpoint.", "the page says it checked the copy's standalone report itself (capsule-viewer#410)")
+	assert.NotContains(t, text, "This page did not check the signature itself", "no line credits capsulectl with a check the page made")
 	assert.Contains(t, text, "10 of 10 checks passed · 6 top-level records", "the page verified the receipt bundle it carries")
 	assert.NotContains(t, text, "Receipt not carried with this page")
 
