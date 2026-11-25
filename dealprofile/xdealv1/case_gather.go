@@ -130,7 +130,7 @@ type openingRead struct {
 // Per side, the sources are its own book (its full answer, else its opening
 // copy's records) and the copy the other side held. Where two of them hold
 // different records at a position, the side's book forked there: the copy
-// the other side held governs (Steven's ruling 3, u211), both are kept, and
+// the other side held governs (Steven's ruling 3, design 861 §6), both are kept, and
 // fork_at records the lowest position shown to differ. With no held copy
 // and a fork between the side's own opening copy and its full answer, no
 // branch is shown as received, so the book is read only up to the position
@@ -398,7 +398,7 @@ func heldBranch(full FullCopy, named []string) ([]BookRead, []BookRead, uint64, 
 
 // gatherSide reads one side's book from its sources (GatherCase). A fork
 // at a position the copy the other side held reaches is settled by that copy
-// (Steven's ruling 3, u211): the held branch is read there. A fork past it
+// (Steven's ruling 3, design 861 §6): the held branch is read there. A fork past it
 // (the holder's copy stops at a fork it received both branches of, or the
 // side's own copies differ beyond what the holder holds) is settled by
 // nothing, so no branch is read from that position on, and what lies past

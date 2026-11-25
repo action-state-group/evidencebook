@@ -123,7 +123,7 @@ func TestStartFromBooksVectors(t *testing.T) {
 
 	d = newBookDeal(t, ws, true, "")
 	add("untimed-before", "both agree, the offerer's agreement untimed, T before agree_by: started, local", seller(d, stBefore), startedLocally)
-	add("untimed-after-not-named", "the same, T after agree_by, never named: counted, started locally (u608)", seller(d, stAfter), startedLocally)
+	add("untimed-after-not-named", "the same, T after agree_by, never named: counted, started locally (evidencebook#570)", seller(d, stAfter), startedLocally)
 	add("offerer-side-untimed", "the offerer computes the same from its own book and the acceptor's agreement",
 		StartBooks{At: stBefore, Offer: d.offer, Own: d.buyer, Counterpart: d.seller}, startedLocally)
 	acceptorOnly := StartBooks{At: stBefore, Offer: d.offer, Own: d.seller}

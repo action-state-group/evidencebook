@@ -34,7 +34,7 @@ const (
 	// ProofHeld: the counterparty runs the layer and the holder holds a stamp
 	// proof covering its agreement. ProofNotYet: it runs the layer and no
 	// such proof has arrived yet. ProofNoLayer: the counterparty runs no
-	// layer, so it sends no stamp proof and the deal is unguarded (u611).
+	// layer, so it sends no stamp proof and the deal is unguarded (design 461 §7.2).
 	ProofHeld    = "held"
 	ProofNotYet  = "not_yet"
 	ProofNoLayer = "no_layer"
