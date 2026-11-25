@@ -439,7 +439,14 @@ func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead
 		}
 		for _, against := range [][]BookRead{full, held} {
 			if at := openingDiff(op, against); at > 0 {
-				fork(at, nil)
+				// The opening copy's branch from there is kept beside the other.
+				var kept []BookRead
+				for seq, b := range op.records {
+					if seq >= at {
+						kept = append(kept, b)
+					}
+				}
+				fork(at, kept)
 			}
 		}
 	}

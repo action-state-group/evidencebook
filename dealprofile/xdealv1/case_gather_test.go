@@ -397,7 +397,7 @@ func TestGatherSideForks(t *testing.T) {
 		{name: "the own copies differ past the held copy: neither is read past the fork", own: own(a1, a2, x3, x4), hasOwn: true,
 			holder: holder(a1, a2), hasHolder: true,
 			op: openingRead{records: map[uint64]BookRead{1: a1, 3: y3}, size: 3, last: "y3"}, hasOpening: true,
-			book: []string{"a1", "a2"}, forked: []string{"x3", "x4"}, forkAt: 3, ownLast: "x4", heldLast: "a2"},
+			book: []string{"a1", "a2"}, forked: []string{"x3", "y3", "x4"}, forkAt: 3, ownLast: "x4", heldLast: "a2"},
 		{name: "the sender forked at its first record and the holder named neither", own: own(a1, a2), hasOwn: true,
 			holder: answerRead{forked: []BookRead{a1, b1}, forkAt: 1, full: FullCopy{LogID: "deal/x", Own: []BookRead{br("h1", 1, "")}}}, hasHolder: true,
 			book: nil, forked: []string{"a1", "b1", "a2"}, forkAt: 1, ownLast: "a2"},
@@ -407,10 +407,10 @@ func TestGatherSideForks(t *testing.T) {
 		{name: "the held copy alone", holder: holder(a1, a2), hasHolder: true, book: []string{"a1", "a2"}, heldLast: "a2"},
 		{name: "the opening copy and the full answer differ, nothing held: neither past it", own: own(a1, a2, x3), hasOwn: true,
 			op: openingRead{records: map[uint64]BookRead{1: a1, 3: y3}, size: 3, last: "y3"}, hasOpening: true,
-			book: []string{"a1", "a2"}, forked: []string{"x3"}, forkAt: 3, ownLast: "x3"},
+			book: []string{"a1", "a2"}, forked: []string{"x3", "y3"}, forkAt: 3, ownLast: "x3"},
 		{name: "the opening copy differs from the held copy: the held copy governs", holder: holder(a1, a2, y3), hasHolder: true,
 			op: openingRead{records: map[uint64]BookRead{1: a1, 3: x3}, size: 3, last: "x3"}, hasOpening: true,
-			book: []string{"a1", "a2", "y3"}, forkAt: 3, ownLast: "x3", heldLast: "y3"},
+			book: []string{"a1", "a2", "y3"}, forked: []string{"x3"}, forkAt: 3, ownLast: "x3", heldLast: "y3"},
 		{name: "neither source", book: nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -486,14 +486,25 @@ func TestSealGatheredRuling(t *testing.T) {
 	require.NoError(t, err)
 	c := g.Case
 	c.Read.Seller = NullOf[string]()
+	none := *c.Sources
+	none.Seller = SellerSources{Own: NullOf[string](), HeldByBuyer: NullOf[string]()}
+	c.Sources = &none
 	_, err = SealRuling(context.Background(), f.adjudicator.shelf, c, c.RulingOf(ValueNotMet, Some(RoleSeller), nil, true, ""), gatherAt("13:00"))
 	assert.ErrorContains(t, err, "none of whose records the case read")
+	// A side that forked at its first record, its branches kept as evidence,
+	// may be ruled against: those are its own records.
+	forked := none
+	forked.Seller.ForkAt = 1
+	c.Sources = &forked
+	sealed, err := SealRuling(context.Background(), f.adjudicator.shelf, c, c.RulingOf(ValueNotMet, Some(RoleSeller), nil, false, ""), gatherAt("13:00"))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), sealed.Seq)
 
 	amount := int64(500)
 	remedy := &RulingRemedy{Kind: "refund", AmountMinor: &amount, Currency: "USD", Due: "2026-11-10T00:00:00Z"}
-	sealed, err := SealRuling(context.Background(), f.adjudicator.shelf, g.Case, g.RulingOf(ValueNotMet, Some(RoleSeller), remedy, true, ""), gatherAt("13:00"))
+	sealed, err = SealRuling(context.Background(), f.adjudicator.shelf, g.Case, g.RulingOf(ValueNotMet, Some(RoleSeller), remedy, true, ""), gatherAt("13:00"))
 	require.NoError(t, err)
-	assert.Equal(t, uint64(1), sealed.Seq)
+	assert.Equal(t, uint64(2), sealed.Seq)
 }
 
 const caseGatherDir = "../../testdata/deal-v1/case-gather"

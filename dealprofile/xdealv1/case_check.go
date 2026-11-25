@@ -296,11 +296,13 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 		return SealedRuling{}, caseErr("the ruling names other rules than the agreement's")
 	case !sameSources(body.Sources, c.Sources):
 		return SealedRuling{}, caseErr("the ruling's sources are not what the case read")
-	case c.Sources != nil && body.Against.V != nil && readOf(c.Read, *body.Against.V).V == nil:
+	case c.Sources != nil && body.Against.V != nil && !shownOf(c, *body.Against.V):
 		// Steven's ruling 2 (u211): a ruling against a side turns only on
-		// records that side signed, so with none of its records read there is
-		// nothing it may turn on. What a finding turned on is the
-		// adjudicator's; this is the part the library can check.
+		// records that side signed, so with none of its records shown there is
+		// nothing it may turn on. Records kept as fork evidence count: they
+		// are the side's own, and the fork is its own equivocation. What a
+		// finding turned on is the adjudicator's; this is the part the
+		// library can check.
 		return SealedRuling{}, caseErr("the ruling goes against the %s, none of whose records the case read", *body.Against.V)
 	}
 	wantBody, err := bodyBytes(body)
@@ -377,6 +379,20 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 		return sealedAt(ctx, book, stored, rec, size+1, bookID, false)
 	}
 	return SealedRuling{}, fmt.Errorf("%w: the case book kept changing while the ruling was sealed", evidencebook.ErrBusy)
+}
+
+// shownOf reports whether the case shows any record of role's book: one
+// read, a source shown, or a fork whose branches are kept as evidence.
+func shownOf(c Case, role string) bool {
+	if readOf(c.Read, role).V != nil {
+		return true
+	}
+	if role == RoleBuyer {
+		b := c.Sources.Buyer
+		return b.Own.V != nil || b.HeldBySeller.V != nil || b.ForkAt > 0
+	}
+	s := c.Sources.Seller
+	return s.Own.V != nil || s.HeldByBuyer.V != nil || s.ForkAt > 0
 }
 
 // readOf is the read of role's book.

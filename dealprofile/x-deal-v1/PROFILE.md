@@ -256,8 +256,8 @@ of that side's own book, and `held_by_*` the last of the copy of it the other si
 different records, 0 for none. A page shows a `null` source as "not shown to the adjudicator",
 never as refused. `read` keeps its meaning: the last record of each side's book read, from any
 source. A ruling whose case gathered full answers (`xdealv1.GatherCase`) carries `sources`, and
-`xdealv1.SealRuling` refuses one against a side none of whose records the case read (Steven's
-ruling 2, u211). That is the part of "a ruling against a silent side turns only on records that
+`xdealv1.SealRuling` refuses one against a side of which the case shows no record: none read,
+no source shown and no fork whose branches it kept (Steven's ruling 2, u211). That is the part of "a ruling against a silent side turns only on records that
 side signed" the library can check; what a finding turned on is the adjudicator's. x-deal-v1
 records are closed, so a reader from before `sources` refuses a ruling that carries it.
 
