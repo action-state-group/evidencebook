@@ -744,3 +744,87 @@ func TestReceivedHistoryStapleIsReadAgainAtTheSend(t *testing.T) {
 	assert.Contains(t, v1Err(t, append(sent, "--checkpoint-key", ck+","+strings.Repeat("ab", 32))...), "is not the History check")
 	dealRun(t, append(sent, "--checkpoint-key", ck)...)
 }
+
+// A --checkpoint-key with no --history is refused, on a check and on a
+// send, never silently dropped.
+func TestReceivedHistoryOrphanCheckpointKeyIsRefused(t *testing.T) {
+	h := openedV1(t)
+	checker := recordingChecker(t, checkerPrints("allow", ""))
+	assert.Contains(t, v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit), "--checkpoint-key", historyHolderKey),
+		"--checkpoint-key goes with --history")
+	assert.Empty(t, checkerInputs(t, checker))
+
+	hb, check := buyerCheckedFor(t, paymentOffer, 6000, v1LnHash)
+	assert.Contains(t, v1Err(t, "settle", "--deal", hb.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash", "--checkpoint-key", historyHolderKey),
+		"--checkpoint-key goes with --history")
+}
+
+// A valid history_card/1 staple, signed by the holder's own key with the
+// library's /1 card signer (Cadence.HistoryCard), is refused as /1: staples
+// are read as history_card/2 only. No checker runs, nothing is sealed.
+func TestReceivedHistoryRefusesAValidCard1Staple(t *testing.T) {
+	dealFixture(t)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	retailDeal(t)
+	*now = now.Add(2 * time.Minute)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	var request, reply []byte
+	withSession(t, func(s *dealSession) {
+		cadence, _, err := s.cadenceOf(t.Context())
+		require.NoError(t, err)
+		st, err := cadence.HistoryCard(t.Context(), 0)
+		require.NoError(t, err)
+		request, reply = st.Request.Octets, st.Reply.Octets
+	})
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	key, err := cli.PrivateKey(p.Signing)
+	require.NoError(t, err)
+	holder := hex.EncodeToString(key.Public().(ed25519.PublicKey))
+	raw, err := json.Marshal(map[string]any{"history": "history_card/1",
+		"request": map[string]any{"media_type": "application/json", "octets_text": string(request)},
+		"reply":   map[string]any{"media_type": "application/json", "octets_text": string(reply)}})
+	require.NoError(t, err)
+	card1 := writeJSON(t, string(raw))
+	// It is a valid /1 card: StapleVerdict reads it as history_card/1.
+	result, err := cli.StapleVerdict(mustRead(t, card1), []string{holder}, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"history_card/1"}, result.Derivations)
+
+	h := openedV1(t)
+	checker := recordingChecker(t, checkerPrints("allow", ""))
+	before, _ := journalTypes(t, h.dealID)
+	assert.Contains(t, v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
+		"--history", card1, "--counterparty-key", holder), "is a history_card/1 staple: a stapled card is read as history_card/2 only")
+	assert.Empty(t, checkerInputs(t, checker))
+	after, _ := journalTypes(t, h.dealID)
+	assert.Equal(t, before, after)
+}
+
+// stapleCard's boundaries on StapleVerdict's own result: one /2 card under
+// the key passes; several cards (no node publishes a commitment with more
+// than one: `commitment publish` staples one), a /1 card, another kind, a
+// result under another key, or no card at all are refused; a card with no
+// readable derivation that failed is left to stapleBinding.
+func TestReceivedHistoryStapleCardBoundaries(t *testing.T) {
+	key := strings.Repeat("ab", 32)
+	ok := cli.StapleResult{Derivations: []string{"history_card/2"}, CounterpartyKey: key}
+	require.NoError(t, stapleCard("f", ok, key))
+	for name, tc := range map[string]struct {
+		result cli.StapleResult
+		want   string
+	}{
+		"two cards":     {cli.StapleResult{Derivations: []string{"history_card/2", "history_card/2"}, CounterpartyKey: key}, "staples 2 cards"},
+		"no card":       {cli.StapleResult{CounterpartyKey: key}, "staples 0 cards"},
+		"a /1 card":     {cli.StapleResult{Derivations: []string{"history_card/1"}, CounterpartyKey: key}, "read as history_card/2 only"},
+		"another kind":  {cli.StapleResult{Derivations: []string{"standard_history/3"}, CounterpartyKey: key}, "is not a History this check reads"},
+		"another key":   {cli.StapleResult{Derivations: []string{"history_card/2"}, CounterpartyKey: strings.Repeat("cd", 32)}, "not attributable"},
+		"unread, clean": {cli.StapleResult{Derivations: []string{""}, CounterpartyKey: key}, "is not a History this check reads"},
+	} {
+		err := stapleCard("f", tc.result, key)
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), tc.want, name)
+	}
+	assert.NoError(t, stapleCard("f", cli.StapleResult{Derivations: []string{""}, Outcome: cli.ErrHistoryNotAccepted, CounterpartyKey: key}, key),
+		"a failed card with no derivation is refused by stapleBinding, with its findings")
+}

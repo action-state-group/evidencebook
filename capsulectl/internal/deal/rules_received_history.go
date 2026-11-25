@@ -101,8 +101,10 @@ func readReceivedHistory(c *cobra.Command) (*receivedHistory, error) {
 	keys, _ := c.Flags().GetStringSlice("counterparty-key")
 	checkpointKeys, _ := c.Flags().GetStringSlice("checkpoint-key")
 	switch {
-	case len(paths) == 0 && len(keys) == 0:
+	case len(paths) == 0 && len(keys) == 0 && len(checkpointKeys) == 0:
 		return nil, nil
+	case len(paths) == 0 && len(keys) == 0:
+		return nil, cli.InputError("--checkpoint-key goes with --history: it is the key a stapled card's checkpoints are verified under")
 	case len(paths) == 0:
 		return nil, cli.InputError("--counterparty-key goes with --history: it is the key the counterparty's History is verified under")
 	case len(keys) == 0:
@@ -207,18 +209,8 @@ func verifyReceivedStaple(path string, raw []byte, keys, checkpointKeys []string
 	} else if err != nil {
 		return receivedHistoryDoc{}, err
 	}
-	switch {
-	case len(result.Derivations) != 1:
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " staples " + fmt.Sprint(len(result.Derivations)) + " cards: a check reads one stapled card")
-	case result.Derivations[0] == historyCardStaple1:
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a " + historyCardStaple1 + " staple: a stapled card is read as " + historyCardStaple2 + " only")
-	case result.Derivations[0] == "" && (result.Outcome == nil || errors.Is(result.Outcome, cli.ErrPartial)):
-		// No derivation and nothing failed: no card this check reads.
-		return receivedHistoryDoc{}, notRead
-	case result.Derivations[0] != historyCardStaple2 && result.Derivations[0] != "":
-		return receivedHistoryDoc{}, notRead
-	case result.CounterpartyKey != keys[0]:
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not verified under --counterparty-key, so it is not attributable to this counterparty")
+	if err := stapleCard(path, result, keys[0]); err != nil {
+		return receivedHistoryDoc{}, err
 	}
 	binding, err := stapleBinding(path, result)
 	if err != nil {
@@ -229,6 +221,28 @@ func verifyReceivedStaple(path string, raw []byte, keys, checkpointKeys []string
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " cannot be handed to the rules checker: " + err.Error())
 	}
 	return receivedHistoryDoc{Kind: historyCardStaple2, RequestBinding: binding, Document: document}, nil
+}
+
+// stapleCard refuses a staple that is not one history_card/2 read under key:
+// several cards, a history_card/1 (staples are /2 only), a card of another
+// kind, or a result under another key. A card with no readable derivation
+// that failed a check is left to stapleBinding, which says why.
+func stapleCard(path string, result cli.StapleResult, key string) error {
+	notRead := cli.InputError("--history " + path + " is not a History this check reads: want a " + receivedHistoryKind + " History or a stapled " + historyCardStaple2)
+	switch {
+	case len(result.Derivations) != 1:
+		return cli.InputError("--history " + path + " staples " + fmt.Sprint(len(result.Derivations)) + " cards: a check reads one stapled card")
+	case result.Derivations[0] == historyCardStaple1:
+		return cli.InputError("--history " + path + " is a " + historyCardStaple1 + " staple: a stapled card is read as " + historyCardStaple2 + " only")
+	case result.Derivations[0] == "" && (result.Outcome == nil || errors.Is(result.Outcome, cli.ErrPartial)):
+		// No derivation and nothing failed: no card this check reads.
+		return notRead
+	case result.Derivations[0] != historyCardStaple2 && result.Derivations[0] != "":
+		return notRead
+	case result.CounterpartyKey != key:
+		return cli.InputError("--history " + path + " is not verified under --counterparty-key, so it is not attributable to this counterparty")
+	}
+	return nil
 }
 
 // stapleBinding reads a staple's verdict as design §5.2 does: accepted is
