@@ -591,13 +591,16 @@ func (p *ReceiveProfile) Admit(ctx context.Context, r evidencebook.ReceivedRecor
 		return true, nil
 	}
 	if a, held := o.agreement(r.DealID); held {
-		// The counterparty of our deal, on a book that answers the same offer.
-		return a.CounterpartyKey.V != nil && *a.CounterpartyKey.V == r.SenderKey && gag.Offer.Digest == a.Offer.Digest, nil
+		// The counterparty of our deal, on a book that answers the same offer
+		// from the other role: an agreement of our own role is not the other
+		// half of this deal, and holding it would read as stamped by both
+		// (evidencebook#884).
+		return a.CounterpartyKey.V != nil && *a.CounterpartyKey.V == r.SenderKey && gag.Offer.Digest == a.Offer.Digest && gag.Role != a.Role, nil
 	}
 	// At an offerer holding only its offer: the acceptor's book answers it,
-	// from the key it was sent to.
+	// from the key it was sent to, in the role the offer did not take.
 	of, offer, ok := o.offerByDigest(gag.Offer.Digest)
-	return ok && offer.Block.DealID == r.DealID && of.To.V != nil && *of.To.V == r.SenderKey, nil
+	return ok && offer.Block.DealID == r.DealID && of.To.V != nil && *of.To.V == r.SenderKey && gag.Role != of.Role, nil
 }
 
 // heldGenesis is the record held at position 1 of logID from senderKey, read
