@@ -321,13 +321,13 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 	switch {
 	case errors.Is(err, xdealv1.ErrRulingConflict):
 		return cli.InputError("row " + f.row + " of deal " + f.dealID + " already has your final ruling, which differs from this one: the first final ruling is the one that applies")
+	case errors.Is(err, evidencebook.ErrBusy):
+		return fmt.Errorf("%w: %v; run the command again", cli.ErrConflict, err)
 	case err != nil && gathered != nil && f.against.Present && !f.against.IsNull() && gathered.Side(*f.against.V).Read.IsNull() && len(gathered.Side(*f.against.V).Forked) == 0:
 		// Steven's ruling 2 (u211): a ruling against a side turns only on
 		// records that side signed, so a side none of whose records was read
 		// cannot be ruled against.
 		return cli.InputError("the ruling goes against the " + *f.against.V + ", but no record the " + *f.against.V + " signed was read: neither its own book nor the copy the other side held was shown, so a ruling cannot rest on its records")
-	case errors.Is(err, evidencebook.ErrBusy):
-		return fmt.Errorf("%w: %v; run the command again", cli.ErrConflict, err)
 	case err != nil:
 		var se *xdealv1.StageError
 		if errors.As(err, &se) {

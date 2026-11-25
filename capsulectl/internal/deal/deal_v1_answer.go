@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
@@ -61,9 +62,16 @@ func isAdjudicatorCopyRequest(members map[string]json.RawMessage) bool {
 // The request is unsigned, so the answer is only ever the copy for the
 // adjudicator the agreement names, whoever passed the request on. Every
 // answer or refusal of a deal this profile holds is linked by an answer
-// record in the journal, sealed before the file is written.
+// record in the journal, appended just before the file is written. The
+// request is the request file's bytes with surrounding white space taken
+// off: those exact bytes are the file's request member, and their SHA-256
+// is the request digest everywhere (the refusal, the journal's answer, the
+// requests log). A deal this profile holds on x-deal-v0 is refused
+// derivation_unsupported.
 func (s *dealSession) respondAdjudicatorCopy(c *cobra.Command, p cli.Profile, raw []byte, requester, path string, signer evidencebook.Signer) error {
 	ctx := c.Context()
+	raw = bytes.TrimSpace(raw)
+	requester = strings.ToLower(strings.TrimSpace(requester))
 	requestDigest := cli.BytesDigest(raw)
 	answered := map[string]interface{}{"request_digest": requestDigest, "requester": requester, "derivation": xdealv1.DerivationAdjudicatorCopy}
 	dealID := ""
@@ -113,6 +121,20 @@ func (s *dealSession) respondAdjudicatorCopy(c *cobra.Command, p cli.Profile, ra
 	if !cli.DealIDPattern.MatchString(id) {
 		return refuse(evidencebook.ReasonNoSuchSubject)
 	}
+	v1, err := s.isV1Deal(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !v1 {
+		var holds int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM deal_keys WHERE deal_id=?`, id).Scan(&holds); err != nil {
+			return err
+		}
+		if holds > 0 {
+			return refuse(evidencebook.ReasonDerivationUnsupported)
+		}
+		return refuse(evidencebook.ReasonNoSuchSubject)
+	}
 	d, err := s.v1DealOf(ctx, id)
 	if err != nil {
 		return err
@@ -148,19 +170,26 @@ func (s *dealSession) respondAdjudicatorCopy(c *cobra.Command, p cli.Profile, ra
 	if err != nil {
 		return err
 	}
-	digest, err := s.sealV1Answer(ctx, dealID, requestDigest, answerOutcomeEvidence, file)
-	if err != nil {
+	// Everything that can fail on its own runs before the file is linked
+	// into place: the disclosure record, the journal's answer and the
+	// requests log, so none says "answered" for a file that is not there.
+	var exchangeID string
+	before := func() error {
+		if err := rec(); err != nil {
+			return err
+		}
+		digest, err := s.sealV1Answer(ctx, dealID, requestDigest, answerOutcomeEvidence, file)
+		if err != nil {
+			return err
+		}
+		answered["outcome"], answered["answer_record"] = evidencebook.OutcomeArtifact, digest
+		exchangeID, err = s.recordExchange(ctx, dealID, dealExchangeAnswered, "", answered)
 		return err
 	}
-	answered["outcome"], answered["answer_record"] = evidencebook.OutcomeArtifact, digest
-	if err := writeNewFileAfter(path, file, rec); err != nil {
+	if err := writeNewFileAfter(path, file, before); err != nil {
 		return err
 	}
-	id2, err := s.recordExchange(ctx, dealID, dealExchangeAnswered, "", answered)
-	if err != nil {
-		return err
-	}
-	return cli.Output(c, cli.EvidenceRespondResult{RecordID: id2, RequestDigest: requestDigest, Outcome: evidencebook.OutcomeArtifact, Relationship: evidencebook.RelationshipIdentified, Output: path})
+	return cli.Output(c, cli.EvidenceRespondResult{RecordID: exchangeID, RequestDigest: requestDigest, Outcome: evidencebook.OutcomeArtifact, Relationship: evidencebook.RelationshipIdentified, Output: path})
 }
 
 // fullAnswer builds the answer document for deal d's adjudicator (key

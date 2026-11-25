@@ -33,10 +33,20 @@ func requestCommand() *cobra.Command {
 // respondCommand is `capsulectl deal respond`: answer the other party's
 // request for a deal's copy with the counterparty copy, and record it.
 func respondCommand() *cobra.Command {
-	return cli.EvidenceRespondCommand(func(c *cobra.Command, p cli.Profile, in cli.EvidenceRespondInput) error {
+	cmd := cli.EvidenceRespondCommand(func(c *cobra.Command, p cli.Profile, in cli.EvidenceRespondInput) error {
 		if in.PolicyPath != "" {
 			return cli.InputError("--policy is the evidence book's share policy; a deal profile serves the counterparty copy, so it does not apply")
 		}
 		return dealRespond(c, p, in.Request, in.Requester, in.Output)
 	})
+	cmd.Long += `
+
+An x-deal-v1 deal's adjudicator asks for the deal with derivation
+deal_adjudicator_copy/1 (subject: the deal id as correlation). Its answer is
+the whole: your deal book, the copy of the other side's book you hold, and
+your book's stamps, in one file to send to the adjudicator, recorded in your
+journal. There is no part-answer, and the private floor and the agent's claims
+are never in it. --requester is the adjudicator's key id the agreement names;
+a request from anyone else is refused.`
+	return cmd
 }
