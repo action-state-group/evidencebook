@@ -144,6 +144,13 @@ change first.
 For a composition whose root is not a deal composition, `canRender` is false and the page
 resolves as it does today. A deal composition that fails V0 is refused, never drawn.
 
+An x-deal-v1 deal is different (evidencebook#850): its other half arrives by push (`deal agree`
+writes `{record, stamp_proof}`), with no Evidence Request behind it, so it cannot be a
+`composed/v1` member, and `deal request`, `respond` and `compose` do not serve v1 deals. A v1
+keep copy carries the other party's half in its own extension, `x-deal-v1-counterparty-half`
+(x-deal-v1 PROFILE §10, "The counterparty's half"): their agreement as an Evidence Bundle of their
+deal book, with the stamp proof that covers it. This note's D1 to D4 stay the x-deal-v0 design.
+
 Rejected:
 
 - **A new extension in the single-book bundle carrying the other half.** It changes the

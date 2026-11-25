@@ -523,6 +523,39 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   rows, nothing ties the pairs to rows. Rust has `deal::v1::verify_report_bundle` and Python
   `evidencebook.deal.v1.verify_report_bundle` (evidencebook#598). The vectors
   are in `testdata/deal-v1/report-bundle/`.
+- **The counterparty's half** (evidencebook#850; Sherlock2's ruling on evidencebook-skills#242,
+  confirmed for this object on evidencebook#850). The holder's own copy (`keep`), and no other,
+  may carry the bundle extension `x-deal-v1-counterparty-half`: `{"bundle": <Evidence Bundle>,
+  "stamp_proof": <stamp proof>}`. It is the object the holder's History card reads for "stamped
+  by both": the counterparty's agreement, the record at seq 1 of its deal book, and the stamp
+  proof it sent that covers it. `bundle` is an Evidence Bundle of the counterparty's deal book,
+  rooted at that agreement and anchored on the book checkpoint the stamp proof carries, built by
+  the holder from the records it received (`evidencebook.ForeignBundle`): every record up to that
+  checkpoint is carried, and only the agreement's header and payload are disclosed.
+  `xdealv1.HeldCounterpartyHalf` builds it from the holder's shelf, from the largest held proof
+  that covers their agreement (as the card reads it), and gives none when the counterparty keeps
+  no book, no such proof is held, or a record it covers is no longer held. A half is carried only
+  once it verifies. `xdealv1.VerifyCounterpartyHalf` reads it against the holder's agreement (the
+  extension's `book.agreement`): the bundle verifies in full on a checkpoint signed by the
+  checkpoint key their agreement names; its root is the first record of that log, an agreement
+  of the holder's deal and offer, of the other role, signed by the counterparty key the holder's
+  agreement names; the stamp proof verifies under the same checkpoint key on the shelf log their
+  agreement names, is of their agreement, and its book checkpoint is byte for byte the bundle's
+  anchor.
+  - A half that passes shows that the counterparty signed this deal's agreement and stamped it
+    in its own book. It does not show that they confirmed any later record (their close,
+    settlement or report), and a page never words it as a countersignature, which is another
+    party's signature over the bundle (countersign/v1). The copy speaks as of their checkpoint: a
+    fork of their log found later is not visible in it.
+  - A copy whose half does not verify, or that is not the holder's own copy, is INVALID to an
+    x-deal-v1 reader (`capsulectl deal verify --bundle` reports `counterparty_half` as
+    `verified`, `failed` or `absent`), since the holder assembled it. The kind is a private,
+    unregistered `x-` kind (AAC REGISTRY §14), so a neutral bundle verifier leaves it
+    uninterpreted and does not enforce this. Anyone holding the copy can strip the half; the
+    copy then reads `absent`.
+  - The witness receipt for the holder's own checkpoint, the other part of the #242 ruling, is
+    not this extension (evidencebook-skills#242).
+  - Go only for now (docs/PORT-PARITY.tsv).
 
 - **The full adjudicator copy** (evidencebook#861, `docs/design/861-four-books.md`). An
   adjudicator's evidence request for a deal names the derivation `deal_adjudicator_copy/1`

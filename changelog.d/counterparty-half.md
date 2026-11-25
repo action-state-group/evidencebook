@@ -1,0 +1,4 @@
+### Added: the other party's half in an x-deal-v1 keep copy (#850)
+
+- `ForeignBundle` builds an Evidence Bundle of a book log the caller holds but does not own, from the records it received and the owner's own signed checkpoint, through the same producer a book's own bundle uses: every record up to the checkpoint is carried and only the root is disclosed.
+- `xdealv1.HeldCounterpartyHalf`, `MakeCounterpartyHalf` and `VerifyCounterpartyHalf` build and check the bundle extension `x-deal-v1-counterparty-half`: the counterparty's agreement, as such a bundle of their deal book, with the stamp proof that covers it. It is the object the History card reads for "stamped by both", so a receipt made from the copy and the card read one rule. It shows their signed, stamped agreement, not that they confirmed a later record. PROFILE §10 says who may carry it (the holder's own copy only) and what a reader checks.
