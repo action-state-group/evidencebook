@@ -78,15 +78,11 @@ type dealRules struct {
 	// ReceivedHistory binds, by digest, the counterparty's verified History
 	// the run read (`deal check --history`, capsule-cli#327 §5.4): set when
 	// the checker was started with it, whatever it answered, and sealed on
-	// an x-deal-v1 verdict as its received_history member (v1Record).
+	// an x-deal-v1 verdict as its received_history member (v1Record). Its
+	// AloneDeny marks a deny the checker gave only given the History, which
+	// the check asks about instead (D1 condition 1, effectiveRulesVerdict);
+	// Verdict keeps the checker's deny, so the bound input re-checks.
 	ReceivedHistory *xdealv1.ReceivedHistoryDigests `json:"received_history,omitempty"`
-	// HistoryAloneDeny is set when the checker denied given the History and
-	// did not deny without it (or could not answer without it): History
-	// alone never makes the verdict NO (D1 condition 1, capsule-cli#327
-	// design §3), so the check asks instead (effectiveRulesVerdict). The
-	// checker's own deny stays in Verdict and is sealed as given, so a
-	// re-run of the bound input reproduces it.
-	HistoryAloneDeny bool `json:"history_alone_deny,omitempty"`
 	// Notice is the checker's one line for the person (external-check-result/v0
 	// notice), as the run reported it. Only the run that was given received
 	// cards is read for it (receivedNotice); json:"-" keeps it out of every
@@ -457,7 +453,7 @@ func rulesDifferences(r *dealRules) []dealDifference {
 	if r == nil {
 		return nil
 	}
-	if r.HistoryAloneDeny && r.Verdict == "deny" {
+	if historyAloneDeny(r) {
 		// Read as the escalation condition 1 allows, with a line saying why.
 		asked := *r
 		asked.Verdict = effectiveRulesVerdict(r)
@@ -528,13 +524,19 @@ const historyAloneText = "Your rules would refuse this only because of the count
 // effectiveRulesVerdict is the rules verdict a check acts on: the checker's,
 // except a deny History alone caused, which asks (escalate).
 func effectiveRulesVerdict(r *dealRules) string {
-	if r != nil && r.HistoryAloneDeny && r.Verdict == "deny" {
+	switch {
+	case r == nil:
+		return ""
+	case historyAloneDeny(r):
 		return "escalate"
 	}
-	if r == nil {
-		return ""
-	}
 	return r.Verdict
+}
+
+// historyAloneDeny is whether r is a deny the checker gave only given the
+// counterparty's History.
+func historyAloneDeny(r *dealRules) bool {
+	return r.Verdict == "deny" && r.ReceivedHistory != nil && r.ReceivedHistory.AloneDeny
 }
 
 func compactJSON(raw json.RawMessage) string {

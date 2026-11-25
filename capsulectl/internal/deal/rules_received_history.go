@@ -278,7 +278,7 @@ func runRulesGivenHistory(ctx context.Context, p cli.Profile, role string, input
 	rules.ReceivedHistory = boundHistory(rules, h, inputSHA256)
 	if rules.Status == "evaluated" && rules.Verdict == "deny" {
 		without := runRulesChecker(ctx, p, role, input, history)
-		rules.HistoryAloneDeny = without.Status != "evaluated" || without.Verdict != "deny"
+		rules.ReceivedHistory.AloneDeny = without.Status != "evaluated" || without.Verdict != "deny"
 	}
 	return rules, nil
 }

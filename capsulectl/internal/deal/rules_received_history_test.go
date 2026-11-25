@@ -423,6 +423,8 @@ func TestReceivedHistoryAloneNeverDenies(t *testing.T) {
 				assert.Equal(t, "pause", b.Result)
 				require.NotNil(t, b.Rules)
 				assert.Equal(t, "deny", b.Rules.Verdict, "the sealed rules are the checker's, re-checkable")
+				require.NotNil(t, b.ReceivedHistory)
+				assert.True(t, b.ReceivedHistory.AloneDeny, "the verdict says the deny was the History's alone")
 			}
 		}
 	})
@@ -483,11 +485,11 @@ func TestReceivedHistoryAtTheSendNeedsACheckThatReadOne(t *testing.T) {
 // the same condition (rulesChange reads the effective verdict).
 func TestReceivedHistoryAloneNeverDeniesAtTheSend(t *testing.T) {
 	orig := &dealRules{Status: "evaluated", Verdict: "allow"}
-	now := dealRules{Status: "evaluated", Verdict: "deny", HistoryAloneDeny: true}
+	now := dealRules{Status: "evaluated", Verdict: "deny", ReceivedHistory: &xdealv1.ReceivedHistoryDigests{AloneDeny: true}}
 	refuse, verdict, _ := rulesChange(orig, now)
 	assert.True(t, refuse, "an escalation the check did not have still stops the send")
 	assert.Equal(t, "rules: escalate", verdict, "but as a question, never a deny")
-	now.HistoryAloneDeny = false
+	now.ReceivedHistory.AloneDeny = false
 	_, verdict, _ = rulesChange(orig, now)
 	assert.Equal(t, "denied by your rules", verdict)
 }
