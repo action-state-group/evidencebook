@@ -47,8 +47,12 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	f := c.Flags()
 	readOnly, _ := f.GetBool("read-only")
 	switch {
-	case f.Changed("html"):
-		return cli.InputError("--html renders an x-deal-v0 deal's page; an x-deal-v1 report has no page yet: deal report prints it, --out seals it to a file, and --bundle writes it with your deal book")
+	case f.Changed("html") && (f.Changed("out") || f.Changed("bundle") || f.Changed("withheld")):
+		return cli.InputError("--html writes your own copy's receipt page; it does not take --out, --bundle or --withheld")
+	case f.Changed("html") && f.Changed("share"):
+		if share, _ := f.GetString("share"); share != dealprofile.AudienceKeep {
+			return cli.InputError("--html writes your own copy's receipt page; a copy for someone else goes to --bundle with --share")
+		}
 	case f.Changed("email"):
 		return cli.InputError("--email writes an x-deal-v0 deal's receipt email; it does not apply to an x-deal-v1 report")
 	case f.Changed("from-bundle") || f.Changed("directory"):
@@ -123,9 +127,15 @@ func runV1Report(c *cobra.Command) (err error) {
 	}
 	dealID, _ := c.Flags().GetString("deal")
 	out, _ := c.Flags().GetString("out")
-	asBundle := false
+	asBundle, asPage := false, false
 	if b, _ := c.Flags().GetString("bundle"); b != "" {
 		out, asBundle = b, true
+	}
+	// --html writes your own copy's receipt page: the bundle --bundle writes,
+	// drawn by capsule-viewer with this binary's own verify report beside it
+	// (v1ReportPage).
+	if h, _ := c.Flags().GetString("html"); h != "" {
+		out, asBundle, asPage = h, true, true
 	}
 	p, err := cli.Selected(c)
 	if err != nil {
@@ -262,6 +272,13 @@ func runV1Report(c *cobra.Command) (err error) {
 				return err
 			}
 			file, kind = append(bundle, '\n'), "bundle"
+			if asPage {
+				page, err := v1ReportPage(ctx, bundle, dealVerifyCommand(out))
+				if err != nil {
+					return err
+				}
+				file, kind = page, "page"
+			}
 		}
 		var record func() error
 		if shared {
@@ -299,7 +316,10 @@ func runV1Report(c *cobra.Command) (err error) {
 			return err
 		}
 		result["sealed_report"], result["file"] = digest, out
-		if asBundle {
+		switch {
+		case asPage:
+			result["html"] = out
+		case asBundle:
 			result["bundle"] = out
 		}
 	}
