@@ -317,7 +317,9 @@ the digest could try each likely content against it.
   `received_history` (capsule-cli#327, design `327-received-history.md` section 5.4): optional
   and closed, `history_sha256` (each document's SHA-256 over its bytes as received, in the order
   the checker was given them, at most two) and `input_sha256` (the SHA-256 of the JCS form of the
-  checker input's `received_history` member). It binds what the verdict read by digest, never by
+  checker input's `received_history` member). A verdict that carries it has `rules` a checker was
+  started on: `evaluated`, or `not_evaluated` for any cause but `checker_unavailable` and
+  `checker_changed`, where no run read the History. It binds what the verdict read by digest, never by
   content, and is read, like `nonce`, beside v0's closed `body_verdict`, never inside it. A
   verdict is a journal record, so it is in no deal-book copy, shared copy or adjudicator copy. A
   reader that predates the member refuses a verdict that carries it: Go, Rust and Python read it

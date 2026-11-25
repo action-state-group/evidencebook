@@ -1688,7 +1688,37 @@
       "required": [
         "nonce"
       ],
-      "description": "v0's body_verdict, received_history when the rules checker read the counterparty's History, and nonce. The record checks validate the body without received_history and nonce against v0's body_verdict, which is closed, so they are not merged here."
+      "if": {
+        "required": [
+          "received_history"
+        ]
+      },
+      "then": {
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "evaluated",
+                  "not_evaluated"
+                ]
+              },
+              "cause": {
+                "not": {
+                  "enum": [
+                    "checker_unavailable",
+                    "checker_changed"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "v0's body_verdict, received_history when the rules checker read the counterparty's History, and nonce. The record checks validate the body without received_history and nonce against v0's body_verdict, which is closed, so they are not merged here. A verdict with received_history has rules a checker was started on: evaluated, or not evaluated for a cause other than checker_unavailable and checker_changed, where no run read the History."
     },
     "received_history": {
       "type": "object",

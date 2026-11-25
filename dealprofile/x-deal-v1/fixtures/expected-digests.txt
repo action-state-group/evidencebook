@@ -13,8 +13,8 @@ b68c65d286586eb8e067ee025ac2748b5a5875a41d4d1cd0730071c41920a085  appendix-a/buy
 d69f3b3f5ec5cd7438a65b9ed8a8420893599ffd6e8b5ad3553c7c8f2a7e8bb3  appendix-a/buyer-journal/04-admit-go.json
 c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737  appendix-a/buyer-journal/05-offer.json
 c92275672ad7d9779c5d0ad2d5702da4f6f235ca73c3a5c5e0a39d736005013b  appendix-a/buyer-journal/06-check-pay.json
-81541ec6a7d8b0e462fdeef4929127ac10a0d850544a32d59f3b456e8f8d16b6  appendix-a/buyer-journal/07-verdict-pass.json
-137b76d3523626f7caf30ddcce8854a29006152a010f8da59752e339591780d2  appendix-a/buyer-journal/08-approval-proceed.json
+35544ac049d9274577d609ed1acdb4fe73ae2cf07239585202ee93da48d118ca  appendix-a/buyer-journal/07-verdict-pass.json
+0d9393bd8c044a3b89aecc22c4aa1c78af80dd6eac1156eb54b6011ec693b31c  appendix-a/buyer-journal/08-approval-proceed.json
 6b267a988b8c8a740551218ff0edb570dc63a33a41a0b09ac4d2ef81054c7a8e  appendix-a/case-book/01-ruling.json
 6f7d98688119855aeb41ce4339aca260b1785162003fc3ff53850cd24c9333c3  appendix-a/case-book/02-ruling-final.json
 0e91d7532b004e190000bee64a29a3b15c21cfb979c137fbba30da5335ee0215  appendix-a/seller-book/01-agreement.json
@@ -31,6 +31,8 @@ f2285b5d306d7cdd814e0f114e80e47442b30cd9182bd7628f77d52d8e16c48e  appendix-a/sel
 6eac4921b41aab6fc5215aa3f2301b430f609ef07675cb4a09848c1cae526915  appendix-a/seller-journal/05-approval-proceed.json
 0806248b4bd341563497ff3cb63d751226e47ffd8a653c1bc79957b4b0b3e326  not-started/buyer-journal/01-cancellation.json
 c31f6c58740c552b9cd5e30ffb753f98d03c135315dfcbb77a122e3550a78657  not-started/seller-journal/01-decline.json
+c262941f40ac2c5274240f608ab3de5c43da90df61a554f8455e121374a0c756  received-history/buyer-journal/01-check-pay.json
+683d4e2ae2b4a8545977474dfce4b753364057cf96d854171c368c638a3198ad  received-history/buyer-journal/02-verdict-pass.json
 3c2613884182520e6f1466e80e2ef863f8d9e88df7dfa21063c6ecd8f3da4c26  settled/buyer-book/06-refund-received.json
 2e01f0c4ca13cddd7ee0889250d8617462ee8b001dfe1efa6be2c404142d2578  settled/buyer-book/07-withdrawal.json
 7aec6a1c5eec181ec95ea2c6707494a406b321eccfada4edc92a7f1a53a9a440  settled/seller-book/05-refund.json

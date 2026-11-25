@@ -2,21 +2,35 @@
   "fixture": "neg-received-history-empty",
   "expect": "invalid",
   "description": "a verdict's received_history that names no History",
-  "base": "appendix-a/buyer-journal/07-verdict-pass.json",
+  "base": "received-history/buyer-journal/02-verdict-pass.json",
   "check": "record",
   "expected_stage": "schema",
   "expected_error_contains": "",
   "record": {
     "body": {
-      "card_commitment": "7b9f6fe06aa834704172546896e1750d2bd7f9525ac52d2c7dbac0b75f3c7263",
+      "card_commitment": "55f4b314d79b15176a4a85923076131cf2ac2b7db2a7e8854d5ae8d6ae13d38b",
       "differences": [],
-      "nonce": "3d71e7a94efde455dec1c49ff84556237e52277549167d0d178b04683ca1b2b0",
+      "nonce": "180b7fe0711e837951e7e8ccdff483f38127f0a7cd9fbb76713749fa74f39303",
       "options": [],
       "received_history": {
         "history_sha256": [],
-        "input_sha256": "8e9427c813c58bb47bf9b2e5b1738db9d8c32aca727e0b80c7f55d545743433b"
+        "input_sha256": "1276b2dd2b1276ebb74f4b405b3f102a840bf622401a7e19ba67408a0bc29324"
       },
-      "result": "pass"
+      "result": "pass",
+      "rules": {
+        "checker_sha256": "2e56bdbe9d64bc822095e8b8f55e7178c738a9d558f144e2c7c961a30575800b",
+        "definition_digest": "ab2b8bb769970f96daa8aa6f4042df6a9feaaa53b44f7148af67b1afda99a954",
+        "findings": [],
+        "history": {
+          "acts": 0,
+          "complete": true,
+          "days": 30
+        },
+        "ruleset_id": "example-rules/1.0.0",
+        "status": "evaluated",
+        "tier": "recomputed",
+        "verdict": "allow"
+      }
     },
     "x-deal-v1": {
       "at": "2026-11-01T10:11:00Z",
@@ -26,7 +40,7 @@
       "record_type": "verdict",
       "refs": [
         {
-          "digest": "c92275672ad7d9779c5d0ad2d5702da4f6f235ca73c3a5c5e0a39d736005013b",
+          "digest": "c262941f40ac2c5274240f608ab3de5c43da90df61a554f8455e121374a0c756",
           "digest_alg": "SHA-256",
           "rel": "checks",
           "type": "deal-record"

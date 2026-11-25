@@ -198,21 +198,12 @@ func (a *appendixA) approvedCheck(dir, n, line, action, paymentRef, approver str
 	card := label("card of " + check.Digest)
 	vb := journalBlock(TypeVerdict, at(1), true)
 	vb.Refs = []RelRef{rel("checks", check)}
-	body := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: card}, Nonce: label("VerdictBody nonce " + dir + " " + n)}
-	story := "The verdict on that one check: pass."
-	if action == "pay" {
-		// The buyer's rules read the seller's verified History before
-		// paying (capsule-cli#327): the verdict binds it by digest. The
-		// seller's verdicts read none, so both forms are here.
-		body.ReceivedHistory = &ReceivedHistoryDigests{HistorySHA256: []string{label("seller's History")}, InputSHA256: label("received_history input of " + check.Digest)}
-		story = "The verdict on that one check: pass, by rules that also read the seller's verified History, bound by digest."
-	}
-	verdict := a.add(fixture{Path: dir + "/" + next(n, 1) + "-verdict-pass.json", Line: line, Story: story,
-		Record: Record{Block: vb, Body: body}})
+	verdict := a.add(fixture{Path: dir + "/" + next(n, 1) + "-verdict-pass.json", Line: line, Story: "The verdict on that one check: pass.",
+		Record: Record{Block: vb, Body: &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: card}, Nonce: label("VerdictBody nonce " + dir + " " + n)}}})
 	ab := journalBlock(TypeApproval, at(2), true)
 	ab.Refs = []RelRef{rel("approves", verdict)}
 	approval := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: approver}, Nonce: label("ApprovalBody nonce " + dir + " " + n)}
-	story = "The owner's standing intent answers the passing verdict: proceed."
+	story := "The owner's standing intent answers the passing verdict: proceed."
 	if approver == "user" {
 		approval.SaidCommitment, approval.CardCommitment = label("owner said "+check.Digest), card
 		story = "The owner answers the card: proceed."
@@ -364,6 +355,22 @@ func buildAppendixA(t *testing.T) *appendixA {
 		Record: Record{Block: journalBlock(TypeAgree, "2026-11-01T09:40:00Z", true), Body: &AgreeBody{Kind: KindDecline, Offer: offer, Reason: ReasonOther}}})
 	a.add(fixture{Path: "not-started/buyer-journal/01-cancellation.json", Line: "last paragraph", Story: "The seller agreed and the buyer changed its mind: it cancels its own offer.",
 		Record: Record{Block: journalBlock(TypeAgree, "2026-11-01T09:50:00Z", true), Body: &AgreeBody{Kind: KindCancellation, Offer: offer}}})
+
+	// Outside Appendix A: a buyer's pay check whose rules also read the
+	// seller's verified History (capsule-cli#327, evidencebook#666). The
+	// verdict carries the evaluated rules and binds the History by digest.
+	const rh = "received-history/buyer-journal"
+	rcb := &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay", AmountMinor: amount(6000), Currency: fxCurrency}, PaymentRef: "pay-ref-7732", Nonce: label("check nonce " + rh)}
+	rcheck := a.add(fixture{Path: rh + "/01-check-pay.json", Line: "none (capsule-cli#327)", Story: "A pay check whose rules checker is also handed the seller's verified History.",
+		Record: Record{Block: journalBlock(TypeCheck, "2026-11-01T10:10:00Z", true), Body: rcb}})
+	rvb := journalBlock(TypeVerdict, "2026-11-01T10:11:00Z", true)
+	rvb.Refs = []RelRef{rel("checks", rcheck)}
+	a.add(fixture{Path: rh + "/02-verdict-pass.json", Line: "none (capsule-cli#327)", Story: "The verdict: pass, by rules that also read the seller's verified History, which it binds by digest, never by content.",
+		Record: Record{Block: rvb, Body: &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: label("card of " + rcheck.Digest),
+			Rules: &dealprofile.VerdictBodyRules{Status: "evaluated", RulesetID: "example-rules/1.0.0", DefinitionDigest: label("ruleset definition"), CheckerSHA256: label("rules checker"),
+				Verdict: "allow", Tier: "recomputed", History: &dealprofile.VerdictBodyRulesHistory{Days: 30, Acts: 0, Complete: true}, Findings: []dealprofile.VerdictBodyRulesFindingsItem{}}},
+			ReceivedHistory: &ReceivedHistoryDigests{HistorySHA256: []string{label("seller's History")}, InputSHA256: label("received_history input of " + rcheck.Digest)},
+			Nonce:           label("VerdictBody nonce " + rh)}}})
 	return a
 }
 
