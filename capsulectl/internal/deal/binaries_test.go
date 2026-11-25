@@ -68,4 +68,7 @@ func removeInstalled() {
 	if installed.dir != "" {
 		_ = os.RemoveAll(installed.dir)
 	}
+	if everydayEnginePath != "" {
+		_ = os.RemoveAll(filepath.Dir(everydayEnginePath))
+	}
 }

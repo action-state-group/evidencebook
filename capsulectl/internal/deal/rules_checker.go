@@ -1005,24 +1005,12 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 				scope.Complete = false
 				continue
 			}
-			record, err := s.v1CapsuleWithInput(a.id, evs)
-			if err != nil || record == nil {
+			record, complete := s.v1HistoryAct(a.deal, a.id, evs)
+			if !complete {
 				scope.Complete = false
-				continue
 			}
-			// Who the act was with, as a v0 act carries it below: the payee
-			// keyed per profile and the counterparty its check sealed, so a
-			// rule keyed on an earlier payment to this merchant reads a v1
-			// payment too (evidencebook#890).
-			if check := v1ActCheck(evs, a.id); check != "" {
-				if cp := v1CheckCounterpartyProfile(evs, check); cp != nil {
-					record["counterparty_profile"] = cp
-				}
-				if sealed, err := s.v1CapsuleWithInput(check, evs); err == nil && sealed != nil {
-					if party := sealedCounterparty(sealed); party != nil {
-						record["counterparty"] = party
-					}
-				}
+			if record == nil {
+				continue
 			}
 			history = append(history, record)
 			continue
@@ -1168,6 +1156,39 @@ func v1ActCheck(events []sealedEvent, actID string) string {
 		return ""
 	}
 	return verdict.Check.Snapshot
+}
+
+// v1HistoryAct is an earlier x-deal-v1 act as the rules history gives it:
+// the v0-shaped record of its own deal's events, with who the act was with,
+// as a v0 act carries it (rulesHistory): the payee keyed per profile and the
+// counterparty its check sealed, so a rule keyed on an earlier payment to this
+// merchant reads a v1 payment too (evidencebook#890). Both records are built
+// under the act's own deal key, never the key of the deal being checked, so
+// their per-deal fingerprints are the ones that deal sealed. complete is false
+// when the act, or the check it rests on, cannot be read; record is nil when
+// the act cannot.
+func (s *dealSession) v1HistoryAct(dealID, actID string, evs []sealedEvent) (record map[string]interface{}, complete bool) {
+	defer func(key []byte) { s.dkey = key }(s.dkey)
+	s.dkey = dealprofile.DealKey(s.secret, dealID)
+	record, err := s.v1CapsuleWithInput(actID, evs)
+	if err != nil || record == nil {
+		return nil, false
+	}
+	check := v1ActCheck(evs, actID)
+	if check == "" {
+		return record, true
+	}
+	if cp := v1CheckCounterpartyProfile(evs, check); cp != nil {
+		record["counterparty_profile"] = cp
+	}
+	sealed, err := s.v1CapsuleWithInput(check, evs)
+	if err != nil || sealed == nil {
+		return record, false
+	}
+	if party := sealedCounterparty(sealed); party != nil {
+		record["counterparty"] = party
+	}
+	return record, true
 }
 
 // v1CheckCounterpartyProfile is the payee keyed per profile that a v1

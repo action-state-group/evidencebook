@@ -219,6 +219,7 @@ func TestEverydayLimitsOnAV1Deal(t *testing.T) {
 		assert.Contains(t, diffs, "r05-spending-limits#7d: the 7-day total with this purchase is over the 7-day limit you set (limit 10000; value 12000)")
 		assert.NotContains(t, diffs, "r05-spending-limits#per_purchase")
 		assert.NotContains(t, diffs, "r06-new-merchant", "this merchant was paid before")
+
 	})
 
 	t.Run("a limits file that is gone", func(t *testing.T) {
@@ -291,4 +292,40 @@ func TestEverydayLimitsCheckedBeforeTheOfferIsSent(t *testing.T) {
 			assert.Contains(t, string(raw), `"amount_minor":6000`, "the payment counts toward the weekly limit")
 		})
 	})
+}
+
+// An earlier x-deal-v1 act in the rules history is built under its own
+// deal's key: the counterparty of the check it rests on carries the per-deal
+// fingerprints that deal sealed, whichever deal is checked now,
+// and the payee keyed per profile beside them. The earlier act here rests on
+// a passing check's verdict alone (no approval).
+func TestAV1HistoryActKeepsItsOwnDealsFingerprints(t *testing.T) {
+	h := agreedBoth(t, everydayOffer)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, everydayIntent), "--opening", writeJSON(t, v1Opening))
+	checker := stubChecker(t, "rules-pass", checkerPrints("allow", passFinding))
+	pinChecker(t, map[string]any{"command": []string{checker}})
+	input := func() map[string]any {
+		var in map[string]any
+		require.NoError(t, json.Unmarshal(mustRead(t, checker+".input"), &in))
+		return in
+	}
+	header := func(record map[string]any) any {
+		return record["agent_input"].(map[string]any)["x-deal-v0"].(map[string]any)["counterparty"]
+	}
+	first := everydayPayCheck(t, h.dealID, 6000, v1LnHash)
+	require.Equal(t, "pass", first["verdict"], "%v", first)
+	sealedA := input()["record"].(map[string]any)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", first["check_id"].(string), "--sent", "--payment-ref-type", "ln.payment_hash")
+
+	g := againWith(t, h)
+	everydayPayCheck(t, g.dealID, 6000, strings.Repeat("cd", 32))
+	in := input()
+	history := in["history"].([]any)
+	require.Len(t, history, 1)
+	act := history[0].(map[string]any)
+	assert.Equal(t, header(sealedA), act["counterparty"], "the check's counterparty, as deal A sealed it")
+	assert.NotEqual(t, header(in["record"].(map[string]any)), act["counterparty"], "deal B's per-deal fingerprints differ")
+	assert.Equal(t, sealedA["counterparty_profile"], act["counterparty_profile"], "the payee keyed per profile")
+	assert.NotNil(t, act["counterparty_profile"])
 }
