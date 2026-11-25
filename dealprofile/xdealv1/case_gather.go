@@ -69,7 +69,8 @@ type CaseSide struct {
 	ForkAt uint64
 	Forked []BookRead
 	// ShownPast is records of this side that the other side's opening copy
-	// carries past the book read: shown to the adjudicator, but not read.
+	// carries past the end of the book read: shown to the adjudicator, but not
+	// read.
 	ShownPast []BookRead
 }
 
@@ -222,8 +223,7 @@ func GatherCase(dispute []byte, opening []CaseCopy, answers []CaseAnswer, adjudi
 		own, hasOwn := ansBy[role]
 		holder, hasHolder := ansBy[other]
 		op, hasOpening := openRead[role]
-		side := gatherSide(role, keyOf[role], own, hasOwn, holder, hasHolder, op, hasOpening)
-		reconcileShown(&side, openRead[other].shown)
+		side := gatherSide(role, keyOf[role], own, hasOwn, holder, hasHolder, op, hasOpening, openRead[other].shown)
 		if role == RoleBuyer {
 			g.Buyer = side
 			g.Read.Buyer = side.Read
@@ -430,7 +430,7 @@ func branchNamed(held map[string]BookRead, named []string, role string) ([]BookR
 // side's own copies differ beyond what the holder holds) is settled by
 // nothing, so no branch is read from that position on, and what lies past
 // it is kept as fork evidence.
-func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead, hasHolder bool, op openingRead, hasOpening bool) CaseSide {
+func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead, hasHolder bool, op openingRead, hasOpening bool, shown map[uint64][]BookRead) CaseSide {
 	side := CaseSide{Role: role, Key: key, Own: NullOf[string](), Held: NullOf[string]()}
 	var forks []uint64
 	fork := func(at uint64, kept []BookRead) {
@@ -477,6 +477,35 @@ func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead
 			}
 		}
 	}
+	// The records of this side the other side's opening copy carries
+	// (evidencebook#944): one that differs from a source at its seq, or two at
+	// one seq, is a fork like any other, so the same rule below caps the book.
+	// Another signer's record at that seq is of another book.
+	mine := map[uint64][]BookRead{}
+	for seq, rs := range shown {
+		for _, b := range rs {
+			if b.KeyID == key {
+				mine[seq] = append(mine[seq], b)
+			}
+		}
+	}
+	forkedShown := map[uint64]bool{}
+	for _, seq := range slices.Sorted(maps.Keys(mine)) {
+		rs := mine[seq]
+		differs := len(rs) > 1
+		for _, against := range [][]BookRead{full, held} {
+			if seq <= uint64(len(against)) && against[seq-1].RecordID != rs[0].RecordID {
+				differs = true
+			}
+		}
+		if b, ok := op.records[seq]; hasOpening && ok && b.RecordID != rs[0].RecordID {
+			differs = true
+		}
+		if differs {
+			fork(seq, rs)
+			forkedShown[seq] = true
+		}
+	}
 	var book []BookRead
 	switch {
 	case heldGoverns:
@@ -519,6 +548,16 @@ func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead
 		holderTimes = &SideTimes{Times: holder.times, BookID: holder.full.Own[0].RecordID, Keys: holder.keys, Chain: held, LogID: holder.full.LogID}
 	}
 	side.Book = CaseRecordTimes(book, ownTimes, holderTimes)
+	// A record of this side shown past the end of the book read is shown, not read.
+	var lastSeq uint64
+	if len(book) > 0 {
+		lastSeq = book[len(book)-1].Seq
+	}
+	for _, seq := range slices.Sorted(maps.Keys(mine)) {
+		if seq > lastSeq && !forkedShown[seq] {
+			side.ShownPast = append(side.ShownPast, mine[seq]...)
+		}
+	}
 	side.Read = NullOf[string]()
 	switch {
 	case len(held) == 0 && len(full) == 0 && hasOpening && unsettled == 0:
@@ -527,36 +566,6 @@ func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead
 		side.Read = Some(book[len(book)-1].RecordID)
 	}
 	return side
-}
-
-// reconcileShown compares a side's book read with the records of that side
-// the other side's opening copy carries (evidencebook#944): a record there that
-// differs from the book's at its seq, or two of them at one seq, is a fork, kept
-// in Forked with ForkAt its lowest position; a record past the book read is kept
-// in ShownPast, since the book read does not reach it.
-func reconcileShown(side *CaseSide, shown map[uint64][]BookRead) {
-	bySeq := map[uint64]string{}
-	for _, r := range side.Book {
-		bySeq[r.Read.Seq] = r.Read.RecordID
-	}
-	for _, seq := range slices.Sorted(maps.Keys(shown)) {
-		for _, b := range shown[seq] {
-			if b.KeyID != side.Key {
-				continue // not this side's record
-			}
-			id, read := bySeq[seq]
-			switch {
-			case len(shown[seq]) > 1 || read && id != b.RecordID:
-				if side.ForkAt == 0 || seq < side.ForkAt {
-					side.ForkAt = seq
-				}
-				side.Forked = append(side.Forked, b)
-			case !read:
-				side.ShownPast = append(side.ShownPast, b)
-			}
-		}
-	}
-	side.Forked = uniqueBySeq(side.Forked)
 }
 
 // uniqueBySeq is records once each, in seq then record id order.
