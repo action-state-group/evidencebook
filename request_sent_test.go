@@ -175,7 +175,7 @@ func TestRequestSentWithCommitment(t *testing.T) {
 	}
 
 	before := len(book.records)
-	for name, bad := range map[string]string{"an array": `[1]`, "null": `null`, "a string": `"x"`, "not JSON": `{"digest":`, "empty": ``} {
+	for name, bad := range map[string]string{"an array": `[1]`, "null": `null`, "a string": `"x"`, "not JSON": `{"digest":`, "empty": ``, "a duplicate member": `{"digest":"a","digest":"b"}`} {
 		if _, err := book.RequestSentWithCommitment(ctx, request("c3"), "responder", json.RawMessage(bad)); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%s: %v, want ErrInvalid", name, err)
 		}

@@ -185,8 +185,11 @@ pub fn request_sent(
 /// held from the responder when it asked (such as the commitment the
 /// responder advertised, kept so a later fetch never changes what the ask is
 /// judged against), in the record's statement beside the request (Go
-/// `Book.RequestSentWithCommitment`). The book keeps it as given and never
-/// reads or checks it; `None` records none.
+/// `Book.RequestSentWithCommitment`). The book keeps its members and values
+/// as given (the sealed header is JCS, as in Go) and never reads or checks
+/// it, so the record does not vouch for it: a page or verifier presents it
+/// as what the requester held, never as a checked claim. `None` records
+/// none.
 pub fn request_sent_with_commitment(
     book: &mut dyn Book,
     octets: &[u8],

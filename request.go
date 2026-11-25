@@ -30,8 +30,11 @@ type RequestStatement struct {
 	// Commitment is a JSON object the requester held from the responder when
 	// it asked, such as the commitment the responder advertised, kept so a
 	// later fetch never changes what the ask is judged against. The book
-	// keeps it as given and never reads or checks it. Absent when none was
-	// held (RequestSentWithCommitment).
+	// keeps its members and values as given (the sealed header is JCS, so
+	// member order and whitespace are not kept) and never reads or checks
+	// it, so the record does not vouch for it: a page or verifier presents
+	// it as what the requester held, never as a checked claim. Absent when
+	// none was held (RequestSentWithCommitment).
 	Commitment json.RawMessage `json:"commitment,omitempty"`
 }
 
@@ -113,10 +116,13 @@ func (b *Book) RequestSentWithCommitment(ctx context.Context, request Message, r
 	return b.recordRequest(ctx, statement, check.request.Nonce)
 }
 
-// isJSONObject reports whether raw is one well-formed JSON object.
+// isJSONObject reports whether raw is one well-formed JSON object, read as
+// a request is (evidencerequest.DecodeJSON): a duplicate member is refused,
+// so the sealed record keeps the object as given.
 func isJSONObject(raw json.RawMessage) bool {
-	trimmed := bytes.TrimLeft(raw, " \t\r\n")
-	return json.Valid(raw) && len(trimmed) > 0 && trimmed[0] == '{'
+	value, err := evidencerequest.DecodeJSON(raw)
+	_, object := value.(map[string]any)
+	return err == nil && object
 }
 
 // recordRequest commits statement, whose request octets are as transmitted,
