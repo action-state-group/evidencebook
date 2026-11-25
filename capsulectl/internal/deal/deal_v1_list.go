@@ -122,6 +122,9 @@ func (s *dealSession) v1ListingOf(ctx context.Context, p cli.Profile, dealID str
 			for _, r := range book {
 				l.times = append(l.times, r.Block.At)
 			}
+			if l.OwnLegs, err = s.v1OwnLegs(ctx, d, book); err != nil {
+				return dealListing{}, false, fmt.Errorf("deal %s: %w", dealID, err)
+			}
 		}
 	}
 	if in != nil {
@@ -298,4 +301,64 @@ func shortKey(k string) string {
 		return k[:16]
 	}
 	return k
+}
+
+// v1OwnLeg is one of the profile's own payment legs on an x-deal-v1 deal:
+// which leg (payer or payee), its status (pending, settled or failed) and
+// its payment reference's type, as the leg's settlement member records them.
+// It carries no reference value, amount or counterparty (Sherlock2,
+// evidencebook#921: the listing stays local and never enters a disclosure,
+// share or bundle). A host counts its own settlements from these: the
+// Goose loop node's settlement disclosure maps the type to a rail.
+type v1OwnLeg struct {
+	Leg            string `json:"leg"`
+	Status         string `json:"status"`
+	PaymentRefType string `json:"payment_ref_type"`
+}
+
+// v1OwnLegs are the latest observation of each payment the deal's own book
+// (book, in sequence order) holds a leg for: a leg a later own leg
+// supersedes is left out, and so are refund and remedy legs (reverses,
+// remedy_for), which are not the deal's payment. It reads the book only,
+// so it needs no checkpoint.
+func (s *dealSession) v1OwnLegs(ctx context.Context, d *v1Deal, book []xdealv1.Record) ([]v1OwnLeg, error) {
+	superseded := map[string]bool{}
+	for _, r := range book {
+		if b, ok := settleOf(r); ok && b.Supersedes != nil {
+			superseded[b.Supersedes.Digest] = true
+		}
+	}
+	var out []v1OwnLeg
+	for i, r := range book {
+		b, ok := settleOf(r)
+		if !ok || b.Reverses != nil || b.RemedyFor != nil {
+			continue
+		}
+		digest, err := xdealv1.Digest(r)
+		if err != nil {
+			return nil, err
+		}
+		if superseded[digest] {
+			continue
+		}
+		raw, err := s.ownSettleMember(ctx, d, i+1)
+		if err != nil {
+			return nil, err
+		}
+		var m struct {
+			Status     string `json:"status"`
+			PaymentRef *struct {
+				Type string `json:"type"`
+			} `json:"payment_ref"`
+		}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return nil, fmt.Errorf("%w: the leg at %d of the deal book has no settlement member that reads", cli.ErrConflict, i+1)
+		}
+		leg := v1OwnLeg{Leg: b.Leg, Status: m.Status}
+		if m.PaymentRef != nil {
+			leg.PaymentRefType = m.PaymentRef.Type
+		}
+		out = append(out, leg)
+	}
+	return out, nil
 }

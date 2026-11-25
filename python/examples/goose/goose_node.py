@@ -39,7 +39,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ctl import Ctl, Refused, engine
 
 __all__ = ["Node", "Refused", "NODE_BOOK", "JOINED", "ADMITTED", "DEAL_CONTEXT", "DEAL_WORDS", "MODEL_CALL", "ASKED_TYPE",
-           "SETTLED", "SETTLEMENT_DISCLOSURE"]
+           "SETTLEMENT_DISCLOSURE"]
 
 NODE_BOOK = "goose/node"
 #: The record types of the node book. They are this node's own names (capsulectl refuses a library name).
@@ -48,12 +48,10 @@ JOINED, ADMITTED, DEAL_CONTEXT, MODEL_CALL = "goose_joined", "goose_admitted", "
 #: bundle may disclose (loop_deal_bundle), so the words never leave with it.
 DEAL_WORDS, DEAL_INTENT, DEAL_ADMIT = "goose_deal_words", "goose_deal_intent", "goose_deal_admit"
 ASKED_TYPE = "goose_asked"
-#: This node's own payment leg sealed as settled (its deal, the deal's rail, which leg, the leg's digest), counted by
-#: the settlement disclosure (:mod:`settlement`); and each disclosure it signed.
-SETTLED, SETTLEMENT_DISCLOSURE = "goose_settled", "goose_settlement_disclosure"
-#: The payment reference every leg this node seals names, and the rail that reference is on: a settlement's rail is
-#: the one its leg's reference names, not the deal's context (an x-deal-v1 offer names no rail).
-PAYMENT_REF_TYPE, LEG_RAIL = "ln.payment_hash", "lightning"
+#: Each settlement disclosure the node signed (:mod:`settlement`).
+SETTLEMENT_DISCLOSURE = "goose_settlement_disclosure"
+#: The payment reference every leg this node seals names (a Lightning payment hash).
+PAYMENT_REF_TYPE = "ln.payment_hash"
 #: The admission pack the node's deal admissions run (capsule-engine's ladder pack, its conformance vector).
 PACK = Path(__file__).resolve().parent / "admission-pack.json"
 #: The one payment row of a Goose deal, and how long after the offer the buyer has to pay and the deal to settle.
@@ -484,7 +482,6 @@ class Node:
             if not any(w in str(exc) for w in ("in flight", "is used")):
                 raise  # else a retry: the payment is counted as in flight, or its leg is sealed and is written again
         leg = self._run("settle", "--deal", deal_id, "--check", check_id, "--status", "settled", "--out", out)
-        self._settled(deal_id, leg)
         return {"deal_id": deal_id, **_leg(leg)}
 
     def received(self, deal_id: str, amount_minor: int, payment_ref: str, out: str) -> dict:
@@ -492,15 +489,7 @@ class Node:
         leg = self._run("settle", "--deal", deal_id, "--received", str(amount_minor), "--receive-fee", "0",
                            "--status", "settled", "--payment-ref-type", PAYMENT_REF_TYPE,
                            "--payment-ref", payment_ref, "--out", out)
-        self._settled(deal_id, leg)
         return {"deal_id": deal_id, **_leg(leg)}
-
-    def _settled(self, deal_id: str, leg: dict) -> None:
-        """Note this node's own leg sealed as settled, on the rail its payment reference names. A call cut short after
-        the leg was sealed and before this note is called again with the same arguments, as every tool is: the verb
-        finds the sealed leg and writes it again, and the note is made then (found, not made twice, after that)."""
-        self.note(SETTLED, {"deal_id": deal_id, "rail": LEG_RAIL, "leg": leg["leg"], "digest": leg["digest"]},
-                  once="digest", subject_ref=deal_id)
 
     def deliver(self, deal_id: str, out: str, observed: str = "delivered", check_id: str = "") -> dict:
         """The seller's act (delivery): a commit review, then the act, written to ``out`` for the buyer."""

@@ -348,7 +348,7 @@ def _settled(pair):
     return paused["check_id"]
 
 
-def test_a_node_counts_the_leg_it_sealed_once_and_only_on_its_rail(pair):
+def test_a_node_counts_its_latest_settled_leg_once_and_only_on_its_rail(pair, monkeypatch):
     import settlement as st
 
     buyer, seller, deal, offer, tmp = pair
@@ -359,15 +359,17 @@ def test_a_node_counts_the_leg_it_sealed_once_and_only_on_its_rail(pair):
     seller.receive(str(tmp / "leg.json"))
     seller.received(deal, 50, "reference-a", str(tmp / "payee.json"))
     assert st.disclosure(seller, "lightning", 1)["settlements"] == 1
-    # a call written again (its file lost) finds its note: still one settlement, one note
+    # a call written again (its file lost) finds the sealed leg: still one settlement each
     buyer.pay(deal, "reference-a", str(tmp / "leg2.json"), check_id)
     seller.received(deal, 50, "reference-a", str(tmp / "payee2.json"))
     assert [st.disclosure(n, "lightning", 1)["settlements"] for n in (buyer, seller)] == [1, 1]
-    assert len(buyer.notes(gn.SETTLED)) == 1 and len(seller.notes(gn.SETTLED)) == 1
-    # the count filter: a settled note on another rail never enters this rail's count (capsule-emit#408)
-    buyer.note(gn.SETTLED, {"deal_id": "deal-fedcba9876543210", "rail": "mock", "leg": "payer", "digest": "0" * 64},
-               once="digest")
-    assert [st.disclosure(buyer, r, 1)["settlements"] for r in ("lightning", "mock", "other")] == [1, 1, 0]
+    # the rail is the reference type's, through the table: a type mapped elsewhere leaves this rail's count, and a
+    # type the table does not know counts on no rail (Sherlock2's conditions on #921 and capsule-emit#408)
+    monkeypatch.setattr(st, "RAILS", {"ln.payment_hash": "mock"})
+    assert [st.disclosure(buyer, r, 1)["settlements"] for r in ("lightning", "mock")] == [0, 1]
+    monkeypatch.setattr(st, "RAILS", {})
+    assert [st.disclosure(buyer, r, 1)["settlements"] for r in ("lightning", "mock")] == [0, 0]
+    monkeypatch.undo()
     # an unaccepted offer beside the paid deal stops nothing
     buyer.open_deal(seller.key_id, "more tokens", 50, "USD", "lightning", "buy more", False, str(tmp / "offer2.json"))
     assert st.disclosure(buyer, "lightning", 1)["settlements"] == 1
@@ -397,18 +399,14 @@ def test_the_tool_writes_the_signed_disclosure(node, tmp_path, monkeypatch):
     assert not (tmp_path / "e.json").exists()
 
 
-def test_a_settlement_is_on_the_rail_its_leg_names_never_the_deals_context(pair, tmp_path):
-    """Sherlock2's rail-scope condition on #921: an x-deal-v1 offer names no rail, so a leg's rail is its reference's."""
+def test_a_deal_opened_on_another_rail_enters_neither_sides_count(pair, tmp_path):
+    """An x-deal-v1 offer names no rail: a deal counts on the rail its legs' reference is on, never the deal's context."""
     import settlement as st
 
     buyer, seller, deal, offer, tmp = pair
     _settled(pair)
     seller.receive(str(tmp / "leg.json"))
     seller.received(deal, 50, "reference-a", str(tmp / "payee.json"))
-    for n in (buyer, seller):
-        assert [r["statement"]["rail"] for r in n.notes(gn.SETTLED)] == [gn.LEG_RAIL]
-        assert [st.disclosure(n, r, 1)["settlements"] for r in ("lightning", "mock")] == [1, 0]
-    # a deal the buyer opened on another rail never reaches a leg, so it enters no count on either side
     other = buyer.open_deal(seller.key_id, "tokens", 50, "USD", "mock", "buy on mock", False, str(tmp / "offer-mock.json"))
     seller.respond(str(tmp / "offer-mock.json"), "sell tokens", str(tmp / "s-mock.json"))
     buyer.receive(str(tmp / "s-mock.json"))
@@ -419,8 +417,9 @@ def test_a_settlement_is_on_the_rail_its_leg_names_never_the_deals_context(pair,
         assert [st.disclosure(n, r, 1)["settlements"] for r in ("lightning", "mock")] == [1, 0]
 
 
-def test_a_leg_sealed_without_its_note_is_counted_once_the_call_is_made_again(pair):
-    """A call cut short after the verb sealed the leg (or a leg sealed before this version): the retry notes it."""
+def test_a_leg_sealed_before_the_disclosure_existed_is_counted(pair):
+    """A profile that settled on an earlier Goose node (d3ad8fa2, before this tool): its legs are in its deal book, so
+    the count reads them with nothing to replay. Here the leg is sealed through the verbs alone, as that node did."""
     import settlement as st
 
     buyer, seller, deal, offer, tmp = pair
@@ -430,9 +429,6 @@ def test_a_leg_sealed_without_its_note_is_counted_once_the_call_is_made_again(pa
     seller.receive(str(tmp / "b.json"))
     paused = buyer.pay(deal, "reference-a", str(tmp / "leg.json"))
     buyer.approve(deal, paused["check_id"], "proceed", "yes")
-    # the verbs pay runs, without the note: the leg is sealed and nothing counts it yet
     buyer._run("settle", "--deal", deal, "--sent", "--check", paused["check_id"], "--payment-ref-type", gn.PAYMENT_REF_TYPE)
     buyer._run("settle", "--deal", deal, "--check", paused["check_id"], "--status", "settled", "--out", str(tmp / "leg.json"))
-    assert st.disclosure(buyer, "lightning", 1)["settlements"] == 0
-    buyer.pay(deal, "reference-a", str(tmp / "leg.json"), paused["check_id"])
-    assert st.disclosure(buyer, "lightning", 1)["settlements"] == 1 and len(buyer.notes(gn.SETTLED)) == 1
+    assert st.disclosure(buyer, "lightning", 1)["settlements"] == 1

@@ -278,3 +278,38 @@ func v1Time(t *testing.T, s string) time.Time {
 	require.NoError(t, err)
 	return ts
 }
+
+// own_legs lists each payment's latest own leg, with its status and the
+// payment reference's type only, and needs no checkpoint (evidencebook#921):
+// the buyer's one payer leg; the seller's pending observation superseded by
+// a settled one shows only the settled one; a refund leg is not the deal's
+// payment and is left out. A deal with no leg has none.
+func TestAV1ListShowsTheLatestOwnLegOfEachPayment(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	deals, _ := v1List(t)
+	assert.NotContains(t, deals[h.dealID], "own_legs", "no leg yet")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+	deals, _ = v1List(t)
+	assert.Equal(t, "not_checkpointed", deals[h.dealID]["state"], "the book is past its checkpoint")
+	assert.Equal(t, []any{map[string]any{"leg": "payer", "status": "settled", "payment_ref_type": "ln.payment_hash"}},
+		deals[h.dealID]["own_legs"])
+
+	h.seller.act(t)
+	pending := payeeLeg(t, h, "pending")
+	deals, _ = v1List(t)
+	assert.Equal(t, []any{map[string]any{"leg": "payee", "status": "pending", "payment_ref_type": "ln.payment_hash"}},
+		deals[h.dealID]["own_legs"])
+	received := payeeLeg(t, h, "settled", "--supersedes", pending)
+	cancel := sellerCancelChecks(t, h)()
+	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received, "--sent",
+		"--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32))
+	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received, "--status", "settled",
+		"--out", filepath.Join(t.TempDir(), "refund.json"))
+	deals, _ = v1List(t)
+	assert.Equal(t, []any{map[string]any{"leg": "payee", "status": "settled", "payment_ref_type": "ln.payment_hash"}},
+		deals[h.dealID]["own_legs"], "the latest observation of the payment; the refund is not listed")
+	out, err := invoke(t, "", "--profile", "deal", "deal", "list")
+	require.NoError(t, err, out)
+	assert.NotContains(t, out, "ln.payment_hash", "the plain table does not show the legs")
+}
