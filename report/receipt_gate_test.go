@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
+	aacverify "github.com/action-state-group/agent-action-capsule/go/verify"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/receipt"
 )
@@ -107,4 +109,32 @@ func TestTheRealReceiptModulesTakeTheirReceipts(t *testing.T) {
 	assert.Error(t, checkReceiptBundle("d1", r(sellerKeep), []moduleManifest{manifests[receipt.Unilateral]}))
 	assert.NoError(t, checkReceiptBundle("d1", r(meshPayer), all))
 	assert.NoError(t, checkReceiptBundle("d1", r(sellerKeep), all))
+}
+
+// Only a producer selection is admitted on the page verdict. A bundle the
+// page verdict would otherwise tolerate (here, membership failed only by
+// records outside any checkpoint) is not admitted unless its coverage reads
+// as a selection, and a selection with any other unmet claim is not either.
+func TestOnlyAProducerSelectionIsAdmittedOnThePageVerdict(t *testing.T) {
+	pass := aacbundle.ClaimResult{Status: "pass", Findings: []string{}}
+	selection := aacbundle.ClaimResult{Status: "withheld", Findings: []string{"selection_not_checkable"}}
+	verified := aacbundle.VerificationResult{GraphClosure: pass, IntervalCoverage: selection, PerRecordMembership: pass}
+	assert.True(t, admittedSelection(verified))
+
+	notSelection := verified
+	notSelection.IntervalCoverage = aacbundle.ClaimResult{Status: "withheld", Findings: []string{"range_proof_missing"}}
+	assert.False(t, admittedSelection(notSelection))
+	complete := verified
+	complete.IntervalCoverage = pass
+	assert.False(t, admittedSelection(complete), "a complete bundle the page gate refused is not admitted here")
+
+	closure := verified
+	closure.GraphClosure = aacbundle.ClaimResult{Status: "fail", Findings: []string{"missing_parent"}}
+	assert.False(t, admittedSelection(closure))
+	membership := verified
+	membership.PerRecordMembership = aacbundle.ClaimResult{Status: "fail", Findings: []string{"membership_proof_invalid"}}
+	assert.False(t, admittedSelection(membership))
+	capsule := verified
+	capsule.CapsuleResults = map[string]aacverify.VerificationResult{"c": {OK: false}}
+	assert.False(t, admittedSelection(capsule))
 }

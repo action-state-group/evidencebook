@@ -287,24 +287,43 @@ func checkReceiptBundle(deal string, r Receipt, modules []moduleManifest) error 
 }
 
 // receiptPageGate is the verdict of the page that opens a carried receipt:
-// capsule-cli's page gate, or, for a producer-selected bundle (a Mesh node's
-// receipt: its interval coverage is withheld as selection_not_checkable, by
-// design), agent-action-capsule's page verdict, which the page runtime and
-// the receipt modules apply (bundle.VerifyBundleForPage and bundle.Verified;
-// capsule-viewer#386). Any other bundle the page gate refuses stays refused,
-// with its reason.
+// capsule-cli's page gate, or, for a producer-selected bundle only (a Mesh
+// node's receipt: its interval coverage is withheld as
+// selection_not_checkable, by design), agent-action-capsule's page verdict,
+// which the page runtime and the receipt modules apply
+// (bundle.VerifyBundleForPage and bundle.Verified; capsule-viewer#386). Any
+// other bundle the page gate refuses stays refused, with its reason.
 func receiptPageGate(value map[string]interface{}) error {
 	gate := cli.PageGate(value)
 	if gate == nil {
 		return nil
 	}
-	if !aacbundle.Verified(aacbundle.VerifyBundleForPage(value)) {
+	if !admittedSelection(aacbundle.VerifyBundleForPage(value)) {
 		return gate
 	}
 	if shown, total, ok := cli.ReportRowsShown(value); ok && (total == 0 || shown < total) {
 		return gate
 	}
 	return nil
+}
+
+// admittedSelection says whether a page verdict admits a bundle the page
+// gate refused: only a producer selection (interval coverage withheld as
+// selection_not_checkable, as agent-action-capsule's producerSelection reads
+// it) that the page verdict calls verified. A bundle that is not a selection
+// is never admitted here, whatever else the page verdict tolerates.
+func admittedSelection(result aacbundle.VerificationResult) bool {
+	coverage := result.IntervalCoverage
+	if coverage.Status != "withheld" {
+		return false
+	}
+	selection := false
+	for _, finding := range coverage.Findings {
+		if finding == "selection_not_checkable" {
+			selection = true
+		}
+	}
+	return selection && aacbundle.Verified(result)
 }
 
 // profilesOf are the profiles a bundle's root declares, as the viewer's
