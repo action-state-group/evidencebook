@@ -216,11 +216,7 @@ impl Checkpoint {
         }
     }
 
-    /// The log's checkpoint record as this crate's checkpoint: the same
-    /// fields and witness records, member for member. For a caller that
-    /// keeps its own checkpointed-local-log and serves it through
-    /// [`CheckpointedLog::stated_checkpoints`].
-    pub fn from_log(cp: CheckpointRecord) -> Self {
+    pub(crate) fn from_log(cp: CheckpointRecord) -> Self {
         Self {
             v: cp.v,
             kind: cp.kind,
@@ -370,9 +366,9 @@ pub enum SubstrateError {
 
 /// The inclusion path (sibling hashes, leaf upward) of the leaf at
 /// `leaf_index` in the MMR of `mmr_size` nodes held by `nodes`: what
-/// [`CheckpointedLog::inclusion_path`] returns. Public for a caller that keeps
-/// its own checkpointed-local-log node store and implements that trait over it.
-pub fn inclusion_path(
+/// [`CheckpointedLog::inclusion_path`] returns, for the substrate and the
+/// shelf's log alike.
+pub(crate) fn inclusion_path(
     nodes: &impl NodeReader,
     leaf_index: u64,
     mmr_size: u64,
@@ -384,8 +380,8 @@ pub fn inclusion_path(
 /// What a consistency proof from the MMR of `from` nodes to the MMR of `to`
 /// nodes held by `nodes` is made of: the old peaks, each one's path into the
 /// new MMR, and the new peaks. What [`CheckpointedLog::consistency_parts`]
-/// returns; public for the same callers as [`inclusion_path`].
-pub fn consistency_parts(
+/// returns, for the same callers as [`inclusion_path`].
+pub(crate) fn consistency_parts(
     nodes: &impl NodeReader,
     from: u64,
     to: u64,
@@ -937,9 +933,9 @@ mod tests {
     }
 
     #[test]
-    fn the_public_proof_parts_read_any_node_store_as_the_substrate_does() {
-        // A caller with its own node store (the Mesh plugin's in-memory index)
-        // gets, from the same nodes, what this substrate serves.
+    fn the_shared_proof_parts_read_any_node_store_as_the_substrate_does() {
+        // Another node store holding the same nodes (the shelf's in-memory
+        // one) gets what this substrate serves.
         let dir = tempfile::tempdir().unwrap();
         let key = SigningKey::from_bytes(&[9u8; 32]);
         let mut s = open(dir.path());

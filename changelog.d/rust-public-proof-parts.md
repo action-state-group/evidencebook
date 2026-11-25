@@ -1,2 +1,0 @@
-<!-- changelog: rust/evidencebook/CHANGELOG.md -->
-- New public `substrate::inclusion_path` and `substrate::consistency_parts`, over any checkpointed-local-log node store, and `Checkpoint::from_log` is public: a caller that keeps its own checkpointed-local-log and implements `CheckpointedLog` over it (the Mesh plugin) calls these instead of a copy. `CllSubstrate` and the shelf's log use them too. No output changes (Mesh-LLM/capsules-plugin#368, row B5).
