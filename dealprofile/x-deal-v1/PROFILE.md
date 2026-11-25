@@ -300,14 +300,14 @@ one private payment-ref type, `x-deal-v1.merchant_order` (Settlement Records -01
 - a generic verifier does not recognize the type and reads a pair of legs under it as `unjoined`
   (Settlement Records -01), so such a pair is not matched against each other.
 
-**A journal record whose digest leaves the holder carries its own secret** (Steven's ruling: the
-admission decision, and what the person checked, stay in the person's own book). A journal record
-whose digest leaves the holder MUST carry a member of its own that nobody else can guess. A secret
-in a record it cites does not count, since the cited digest may itself be known: an act shows its
-check's digest. A digest leaves the holder when it is cited by a sent or deal-book record, signed
-beside a record (section 8's person's signatures over an approval, a `confirm_limits` and the
-first intent), or disclosed. Otherwise whoever holds the digest could try each likely content
-against it.
+**A journal record whose digest leaves the holder carries its own secret**
+(`docs/design/461-deal-profile.md` §3.3: the admission decision, and what the person checked, stay
+in the person's own book). A journal record whose digest leaves the holder MUST carry a member of
+its own that nobody else can guess. A secret in a record it cites does not count, since the cited
+digest may itself be known: an act shows its check's digest. A digest leaves the holder when it
+is cited by a sent or deal-book record, signed beside a record (section 8's person's signatures
+over an approval, a `confirm_limits` and the first intent), or disclosed. Otherwise whoever holds
+the digest could try each likely content against it.
 - `admit`, `check`, `verdict` and `approval` carry `nonce`: a fresh random 256-bit value, 64
   lowercase hex, drawn for each record with `xdealv1.NewNonce` (`crypto/rand`) and never
   reused. `verdict` and `approval` are v0's bodies plus `nonce`, read against v0's closed bodies

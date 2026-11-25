@@ -769,7 +769,7 @@
       "items": {
         "$ref": "#/$defs/witness"
       },
-      "description": "The witnesses, each key id once; possibly empty (capsule-cli#519)."
+      "description": "The witnesses, each key id once; possibly empty (docs/design/461-deal-profile.md §4.1)."
     },
     "remedy_for": {
       "type": "object",
