@@ -284,19 +284,44 @@ type RulingRead struct {
 	Seller Null[string] `json:"seller"`
 }
 
+// RulingSources is a ruling's OPTIONAL sources member (evidencebook#861,
+// docs/design/861-four-books.md §3.2): per side, the last record id the
+// adjudicator read from that side's own book and from the copy of it the
+// other side held, null for a source not shown, and the position at which
+// the two differ (0 for none).
+type RulingSources struct {
+	Buyer  BuyerSources  `json:"buyer"`
+	Seller SellerSources `json:"seller"`
+}
+
+// BuyerSources is the buyer's book's sources in a ruling (RulingSources).
+type BuyerSources struct {
+	Own          Null[string] `json:"own"`
+	HeldBySeller Null[string] `json:"held_by_seller"`
+	ForkAt       int64        `json:"fork_at"`
+}
+
+// SellerSources is the seller's book's sources in a ruling (RulingSources).
+type SellerSources struct {
+	Own         Null[string] `json:"own"`
+	HeldByBuyer Null[string] `json:"held_by_buyer"`
+	ForkAt      int64        `json:"fork_at"`
+}
+
 // RulingBody is a ruling record's body (§3.3; design §8). Against is
 // REQUIRED and is buyer, seller or null. Forum is the process that ruled
 // (#482 Q4).
 type RulingBody struct {
-	Row         string        `json:"row"`
-	Keys        RulingKeys    `json:"keys"`
-	Against     Null[string]  `json:"against"`
-	Value       string        `json:"value"`
-	Remedy      *RulingRemedy `json:"remedy,omitzero"`
-	Read        RulingRead    `json:"read"`
-	Forum       string        `json:"forum"`
-	RulesDigest string        `json:"rules_digest"`
-	Final       bool          `json:"final"`
+	Row         string         `json:"row"`
+	Keys        RulingKeys     `json:"keys"`
+	Against     Null[string]   `json:"against"`
+	Value       string         `json:"value"`
+	Remedy      *RulingRemedy  `json:"remedy,omitzero"`
+	Read        RulingRead     `json:"read"`
+	Sources     *RulingSources `json:"sources,omitzero"`
+	Forum       string         `json:"forum"`
+	RulesDigest string         `json:"rules_digest"`
+	Final       bool           `json:"final"`
 }
 
 // AskBody is an ask record's body: an evidence request the library's

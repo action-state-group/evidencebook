@@ -1507,6 +1507,24 @@
     "omitzero": true
    }
   ],
+  "dealprofile/xdealv1.BuyerSources": [
+   {
+    "name": "own",
+    "type": {
+     "null": "string"
+    }
+   },
+   {
+    "name": "held_by_seller",
+    "type": {
+     "null": "string"
+    }
+   },
+   {
+    "name": "fork_at",
+    "type": "int64"
+   }
+  ],
   "dealprofile/xdealv1.CheckBody": [
    {
     "name": "action",
@@ -2520,6 +2538,15 @@
     }
    },
    {
+    "name": "sources",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.RulingSources"
+     }
+    },
+    "omitzero": true
+   },
+   {
     "name": "forum",
     "type": "string"
    },
@@ -2576,6 +2603,38 @@
    {
     "name": "due",
     "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.RulingSources": [
+   {
+    "name": "buyer",
+    "type": {
+     "struct": "dealprofile/xdealv1.BuyerSources"
+    }
+   },
+   {
+    "name": "seller",
+    "type": {
+     "struct": "dealprofile/xdealv1.SellerSources"
+    }
+   }
+  ],
+  "dealprofile/xdealv1.SellerSources": [
+   {
+    "name": "own",
+    "type": {
+     "null": "string"
+    }
+   },
+   {
+    "name": "held_by_buyer",
+    "type": {
+     "null": "string"
+    }
+   },
+   {
+    "name": "fork_at",
+    "type": "int64"
    }
   ],
   "dealprofile/xdealv1.SettleBody": [

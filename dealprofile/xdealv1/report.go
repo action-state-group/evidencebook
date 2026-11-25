@@ -98,13 +98,17 @@ type ReportBooks struct {
 // ReportCopy is what one copy names: its audience, a fresh nonce (64
 // lowercase hex), the referee an adjudicator's copy is handed to, the time
 // as_of the statuses are computed at (RFC 3339 UTC to the second) and the
-// producer's text (as v0's report body; nil is {}).
+// producer's text (as v0's report body; nil is {}). Full asks for a full
+// adjudicator copy (evidencebook#861): the bundle extension's book then also
+// carries the whole deal book and the held copy of the other side's book
+// (report_full.go); only an adjudicator's copy is full.
 type ReportCopy struct {
 	Audience string
 	Nonce    string
 	Referee  string
 	AsOf     string
 	Text     map[string]any
+	Full     bool
 }
 
 // Report is the v1 report payload (design §9).
@@ -645,7 +649,16 @@ func (p *StatusProvider) ReportSnapshot(ctx context.Context, logID string, c Rep
 			return ReportSnapshot{}, err
 		}
 		if stable {
-			r, b, err := reportWithBook(rb, c, pairs)
+			var in fullInputs
+			if ag, _ := asAgree(rb.Books.Own[0].Record.Body); c.Full && rb.Counterpart != nil && ag.CounterpartyKey.V != nil {
+				if in.held, err = p.Shelf.HeldByDeal(ctx, rb.Books.Own[0].Record.Block.DealID); err != nil {
+					return ReportSnapshot{}, err
+				}
+				if in.proofs, err = p.Shelf.HeldProofs(ctx, *ag.CounterpartyKey.V, rb.Counterpart.LogID); err != nil {
+					return ReportSnapshot{}, err
+				}
+			}
+			r, b, err := reportWithBook(rb, c, pairs, in)
 			if err != nil {
 				return ReportSnapshot{}, err
 			}

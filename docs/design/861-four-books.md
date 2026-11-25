@@ -88,9 +88,9 @@ other bundle and requests that too") becomes a check, not a second round trip:
 
 **The request.** An evidence request (AAC `evidencerequest.Request`, agent-action-capsule go
 v0.24.0, `evidencerequest/request.go:185-202`) with subject `{"correlation": "<deal_id>"}`
-(`SubjectCorrelation`, AAC `evidencerequest/request.go:52`) and a derivation token the x-deal-v1 profile defines for
-"the deal's full adjudicator copy" (its exact token is fixed in PR 1 against the request draft's
-token rule). The request has no selective form: full disclosure is what the request asks, not a
+(`SubjectCorrelation`, AAC `evidencerequest/request.go:52`) and the derivation token the x-deal-v1 profile defines for
+"the deal's full adjudicator copy", `deal_adjudicator_copy/1` (PR 1; a profile token in the
+request draft's `name/N` form, as AAC's own `history_card/2` and `standard_history/1`). The request has no selective form: full disclosure is what the request asks, not a
 flag the party sets. The responder answers in full or refuses (`policy_declined`), and a refusal
 is recorded as a refusal. Nothing in this request lets a party answer with part of its book.
 
@@ -109,12 +109,14 @@ rows withheld and no counterparty prefix. The full answer holds:
    opt-in, default off, reading "not shared" when absent (u615, `company-oss/inbox.md:944`;
    `--include-agent-claims`, `capsulectl/internal/deal/commands.go:76-84`). Full disclosure here
    means the whole deal book and the held copy, not those.
-2. **The held copy**: the counted prefix of the other side's book the party holds (records
-   stored past a gap are not counted and not sent), from the store (`Shelf.HeldByDeal`,
-   `shelf_held.go:34`), and **every** stamp proof the party holds for that log
-   (`Shelf.HeldProofs`, `shelf_held.go:92`) with the witness receipts behind them. Each record and
-   proof is signed by the other side, so the answering party cannot alter them, only leave some
-   out (§3.1 says what that can do).
+2. **The held copy**: every record of the other side's book the party holds for the deal that
+   chains from seq 1, both branches of a fork it holds included (records stored past a gap are
+   not sent), from the store (`Shelf.HeldByDeal`, `shelf_held.go:34`), and every stamp proof the
+   party holds for that log that those records recompute (`Shelf.HeldProofs`,
+   `shelf_held.go:92`). Each record and proof is signed by the other side, so the answering party
+   cannot alter them, only leave some out (§3.1 says what that can do). The store keeps no witness
+   receipt for a proof it received (`store_sqlite.go:120-133`; design note 461 §12, Q8), so the
+   held copy carries none (PR 1's plan review, evidencebook#861).
 3. **Every book fact of the own book up to the checkpoint**, each with its stamp proof, its
    witness receipts and its **link opening**. A received record's time is the earliest named
    registration of the shelf checkpoint covering the holder's first fact whose `last_received`
@@ -124,8 +126,8 @@ rows withheld and no counterparty prefix. The full answer holds:
    result (`docs/design/461-deal-profile.md:1709-1717`).
 
 Format: two new members of the x-deal-v1 bundle extension's `book`, `records` (the whole book, by
-record id) and `received` (`{"log_id", "records", "proofs", "receipts"}`), and `facts` (each fact
-with its stamp proof, receipts and link opening) beside the bundle.
+record id) and `received` (`{"log_id", "records", "proofs"}`), and `facts` (each fact with its
+stamp proof, receipts and link opening, `evidencebook.BookEvidence`) beside the bundle.
 
 `VerifyReportBundle` gains the checks for a full copy: the own records chain by `prev` from the
 agreement to the checkpoint; every `received` record is signed by the agreement's
@@ -139,9 +141,13 @@ Record times come from these bytes with no shelf. Own records reuse the resolver
 with their receipts, no shelf): PR 1 lets it be built from a book's facts and stamp proofs as
 well as from a whole-shelf `Handover`, which an adjudicator answer must not carry (it holds
 other books' facts and status openings). Only the received-record time is new,
-`xdealv1.CaseRecordTimes`: the earlier of the sender's held stamp proofs and the holder's
-linking fact, as the profile does today (`shelf_record_time.go:170-174`). The shelf's own
-functions keep their behavior; the vectors of PR 1 check both give one time.
+`xdealv1.CaseRecordTimes`: the earlier of the record's signer's own stamps and the holder's
+linking fact. On main the status times a received record from the holder's stamps only
+(`dealprofile/xdealv1/status_provider.go:270-285`; a time from the sender's own stamps waits for
+Q8), and a received proof carries no receipt, so a silent side's records are timed by the holder's
+linking fact alone. A checkpoint in one book's evidence times a record only through the fact its
+own stamp proof includes, so a time read from it is never earlier than the shelf's. The shelf's
+own functions keep their behavior.
 
 **The earlier selective copy stays.** The copy that opened the case (`POST /v1/cases`, which
 `CheckCase` requires) is kept, not replaced: the adjudicator stores each intake object once
@@ -250,7 +256,7 @@ Vectors in `testdata/deal-v1/` (PR 1), read by Go (Rust and Python are frozen, �
   not reach; a received record not signed by `counterparty_key`; a fact chain with a gap.
 - A fork between B-own and B-held (`fork_at` set), and an own book that the held copy only
   extends (the longer read, `fork_at` 0).
-- A seller proof left out: the `perform` time moves later, never earlier.
+- A fact or receipt of the holder's left out: the `perform` time moves later, never earlier.
 - A reader before `sources` refuses a ruling that carries it (the closed-record rule).
 
 ledger-cloud's end-to-end run (PR 3) repeats acceptance 5 with two real capsulectl-deal parties.

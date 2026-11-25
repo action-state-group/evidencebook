@@ -1430,6 +1430,88 @@
             }
           }
         },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "buyer",
+            "seller"
+          ],
+          "properties": {
+            "buyer": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "own",
+                "held_by_seller",
+                "fork_at"
+              ],
+              "properties": {
+                "own": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/record_id"
+                    }
+                  ]
+                },
+                "held_by_seller": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/record_id"
+                    }
+                  ]
+                },
+                "fork_at": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            "seller": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "own",
+                "held_by_buyer",
+                "fork_at"
+              ],
+              "properties": {
+                "own": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/record_id"
+                    }
+                  ]
+                },
+                "held_by_buyer": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/record_id"
+                    }
+                  ]
+                },
+                "fork_at": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        },
         "rules_digest": {
           "$ref": "#/$defs/hex64"
         },

@@ -535,6 +535,7 @@ type reportCopy struct {
 	Referee  string         `json:"referee,omitempty"`
 	AsOf     string         `json:"as_of"`
 	Text     map[string]any `json:"report,omitempty"`
+	Full     bool           `json:"full,omitempty"`
 }
 
 func TestReportVectorsReplay(t *testing.T) {

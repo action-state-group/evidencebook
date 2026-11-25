@@ -245,9 +245,21 @@ adjudicator, `adjudicator` is that adjudicator's key id, and `forum` is one of t
 **`ruling`.** `row`, `keys` (`buyer`, `seller`), `against` (`buyer`, `seller` or `null`), `value`
 (`met` or `not_met`), `remedy` (`kind`, `amount_minor` and `currency` together, `due`), `read` (per
 side, the last record id of that side's deal book the adjudicator read, or `null` for a book it did
-not read), `forum`, `rules_digest`, `final`. Read
+not read), `forum`, `rules_digest`, `final`, and OPTIONAL `sources` (evidencebook#861). Read
 against the deal's agreement (`xdealv1.CheckRuling`): `forum` is one of the agreement's `forums`.
 That the agreement's adjudicator signed it is the reader's, from the ruling's Capsule.
+`sources` names what the adjudicator read each side's book from when it gathered full answers
+(section 10, "The full adjudicator copy"): `{"buyer": {"own", "held_by_seller", "fork_at"},
+"seller": {"own", "held_by_buyer", "fork_at"}}`. `own` is the last record id the adjudicator read
+of that side's own book, and `held_by_*` the last of the copy of it the other side held, each
+`null` for a source not shown. `fork_at` is the lowest position at which two of those sources hold
+different records, 0 for none. A page shows a `null` source as "not shown to the adjudicator",
+never as refused. `read` keeps its meaning: the last record of each side's book read, from any
+source. A ruling whose case gathered full answers (`xdealv1.GatherCase`) carries `sources`, and
+`xdealv1.SealRuling` refuses one against a side none of whose records the case read (Steven's
+ruling 2, u211). That is the part of "a ruling against a silent side turns only on records that
+side signed" the library can check; what a finding turned on is the adjudicator's. x-deal-v1
+records are closed, so a reader from before `sources` refuses a ruling that carries it.
 
 **`ask`, `answer`.** `ask` holds `request` (the digest ref of the library's request document) and
 `to` (`counterparty` or `adjudicator`); `answer` holds `request`, `outcome` (`evidence`,
@@ -511,6 +523,41 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   rows, nothing ties the pairs to rows. Rust has `deal::v1::verify_report_bundle` and Python
   `evidencebook.deal.v1.verify_report_bundle` (evidencebook#598). The vectors
   are in `testdata/deal-v1/report-bundle/`.
+
+- **The full adjudicator copy** (evidencebook#861, `docs/design/861-four-books.md`). An
+  adjudicator's evidence request for a deal names the derivation `deal_adjudicator_copy/1`
+  (`xdealv1.DerivationAdjudicatorCopy`) and the subject `{"correlation": "<deal_id>"}`. It has no
+  selective form: the party answers with its full copy or refuses. The full copy is an
+  adjudicator's copy whose extension's `book` also carries `records`, every record of the party's
+  deal book by record id, and `received`, `{"log_id", "records", "proofs"}`: every record it holds
+  from the other side's deal book for the deal that chains from seq 1 (both branches of a fork it
+  holds), and the stamp proofs it holds from the other side for that log that those records
+  recompute. A party that holds none of the other side's book sends `{"log_id": "", "records": {},
+  "proofs": []}`, so "not held" stays apart from "not shown". Beside the bundle it sends its deal
+  book's facts, each with its stamp proof, link opening and the witness receipts held for that
+  proof's shelf checkpoint (`evidencebook.BookEvidence`), and no status opening. The private floor
+  and the agent claims are journal records, so a full deal book carries neither (u547, u615
+  unchanged). `xdealv1.StatusProvider.ReportWithBook` builds it (`ReportCopy.Full`),
+  `xdealv1.VerifyFullCopy` checks it (and `VerifyReportBundle` applies the same checks to any copy
+  that carries `records`): the records chain from the agreement to `rests_on.own`; the received
+  records are the counterparty's, of this deal and offer, and chain from seq 1; every own `seen`
+  is a received record; every held proof is the counterparty's and recomputed by the received
+  records. The earlier selective copy that opened a case is kept beside the full answer.
+- **Gathering four books** (`xdealv1.GatherCase`). The adjudicator reads each side's book from its
+  own full answer, its case-opening copy, and the copy the other side held, and checks each
+  answer's book facts (`evidencebook.VerifyBookEvidence`): each fact's book checkpoint is
+  recomputed by the answer's records, and each link opening names a record the answer's held copy
+  carries at that position. The branch of a held copy read is the one the holder's book names as
+  received. Where two sources of one side hold different records at a position, the side's book
+  forked there: the copy the other side held governs, both are kept, and `fork_at` records it
+  (Steven's ruling 3, u211). With no held copy, a fork between the side's opening copy and its full
+  answer reads neither branch past it. Otherwise the longer source is read. Each record read is
+  timed by its signer's own stamps and by the holder's linking facts, the earlier of the two, and
+  the case says which timed it ("time from the other side's held proofs" for the second). A
+  received stamp proof carries no witness receipts yet (design note 461, Q8), so a silent side's
+  records are timed by the holder's facts only. A shelf checkpoint in a fact's evidence times a
+  record only through that fact, so leaving out a fact or a receipt can make a time later, never
+  earlier. The vectors are in `testdata/deal-v1/case-gather/`.
 
 ## 11. Not defined here yet
 
