@@ -384,6 +384,8 @@ func TestGatherSideForks(t *testing.T) {
 		book, forked      []string
 		forkAt            uint64
 		ownLast, heldLast string
+		shown             map[uint64][]BookRead
+		past              []string
 	}{
 		{name: "own and held fork at 3: the held copy governs", own: own(a1, a2, x3), hasOwn: true, holder: holder(a1, a2, y3), hasHolder: true,
 			book: []string{"a1", "a2", "y3"}, forked: []string{"x3"}, forkAt: 3, ownLast: "x3", heldLast: "y3"},
@@ -412,9 +414,27 @@ func TestGatherSideForks(t *testing.T) {
 			op: openingRead{records: map[uint64]BookRead{1: a1, 3: x3}, size: 3, last: "x3"}, hasOpening: true,
 			book: []string{"a1", "a2", "y3"}, forked: []string{"x3"}, forkAt: 3, ownLast: "x3", heldLast: "y3"},
 		{name: "neither source", book: nil},
+		// evidencebook#944: the other side's opening copy shows this side's records
+		{name: "shown records the sources agree with change nothing", own: own(a1, a2, x3), hasOwn: true, holder: holder(a1, a2), hasHolder: true,
+			shown: map[uint64][]BookRead{2: {a2}, 3: {x3}}, book: []string{"a1", "a2", "x3"}, ownLast: "x3", heldLast: "a2"},
+		{name: "a shown record past the held copy differs from the own book: neither is read past it", own: own(a1, a2, x3, x4), hasOwn: true,
+			holder: holder(a1, a2), hasHolder: true, shown: map[uint64][]BookRead{3: {y3}},
+			book: []string{"a1", "a2"}, forked: []string{"x3", "y3", "x4"}, forkAt: 3, ownLast: "x4", heldLast: "a2"},
+		{name: "a shown record differs where the held copy reaches: the held copy governs", own: own(a1, a2, y3), hasOwn: true,
+			holder: holder(a1, a2, y3), hasHolder: true, shown: map[uint64][]BookRead{3: {x3}},
+			book: []string{"a1", "a2", "y3"}, forked: []string{"x3"}, forkAt: 3, ownLast: "y3", heldLast: "y3"},
+		{name: "the own book alone and a shown fork: the book stops before it", own: own(a1, a2, x3, x4), hasOwn: true,
+			shown: map[uint64][]BookRead{2: {br("a2x", 2, "a1")}},
+			book:  []string{"a1"}, forked: []string{"a2", "a2x", "x3", "x4"}, forkAt: 2, ownLast: "x4"},
+		{name: "two shown records at one seq", own: own(a1, a2), hasOwn: true, shown: map[uint64][]BookRead{3: {x3, y3}},
+			book: []string{"a1", "a2"}, forked: []string{"x3", "y3"}, forkAt: 3, ownLast: "a2"},
+		{name: "a shown record past the book read", own: own(a1, a2), hasOwn: true, shown: map[uint64][]BookRead{3: {x3}},
+			book: []string{"a1", "a2"}, ownLast: "a2", past: []string{"x3"}},
+		{name: "another signer's record at a seq", own: own(a1, a2), hasOwn: true,
+			shown: map[uint64][]BookRead{2: {{RecordID: "ruling", Seq: 2, KeyID: "adjudicator"}}}, book: []string{"a1", "a2"}, ownLast: "a2"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := gatherSide(RoleSeller, "k", tc.own, tc.hasOwn, tc.holder, tc.hasHolder, tc.op, tc.hasOpening)
+			s := gatherSide(RoleSeller, "k", tc.own, tc.hasOwn, tc.holder, tc.hasHolder, tc.op, tc.hasOpening, tc.shown)
 			assert.Equal(t, tc.book, ids(s.Book))
 			assert.Equal(t, tc.forkAt, s.ForkAt)
 			var forked []string
@@ -422,6 +442,11 @@ func TestGatherSideForks(t *testing.T) {
 				forked = append(forked, b.RecordID)
 			}
 			assert.Equal(t, tc.forked, forked)
+			var past []string
+			for _, b := range s.ShownPast {
+				past = append(past, b.RecordID)
+			}
+			assert.Equal(t, tc.past, past)
 			for _, c := range []struct {
 				got  Null[string]
 				want string
@@ -748,4 +773,102 @@ func TestReadOpeningForked(t *testing.T) {
 	assert.ElementsMatch(t, []string{f.b2, otherID}, recordIDs(op.forked))
 	assert.Contains(t, op.records, uint64(1))
 	assert.NotContains(t, op.records, uint64(2))
+}
+
+// evidencebook#944, on the path #943's review found: the seller states
+// not_met at seq 3; the buyer's full answer holds the seller's book only
+// through seq 2, and its opening copy relies on a different seller record at
+// seq 3 (met). The seller's held copy is read, so only the reconciliation of
+// the opening copy finds the fork; without it DecideCase would decide on the
+// seller's own not_met.
+func TestGatherCaseFindsAForkInTheOtherSidesOpeningCopy(t *testing.T) {
+	f := newFourBooks(t)
+	dir, err := shelfscript.Directory()
+	require.NoError(t, err)
+	h := f.h
+	book := mustOpen(t, h.seller, h.sellerLog)
+	s2 := readBack(t, book, 2).Record
+	s2d, err := Digest(s2)
+	require.NoError(t, err)
+	ad, err := Digest(h.agreement)
+	require.NoError(t, err)
+	stmt := func(at, value string) Record {
+		b := journalBlock(TypeStatement, at, true)
+		b.Seq, b.Seen, b.Prev, b.AgreementRef = 3, Some(f.b1), ref(0), ref(0)
+		*b.Prev, *b.AgreementRef = RefTo(s2d), RefTo(ad)
+		r := Record{Block: b, Body: &StatementBody{Statements: statements(item("delivered", value))}}
+		require.NoError(t, Check(r))
+		return r
+	}
+	s3, _ := h.seller.seal(h.sellerLog, stmt("2026-11-01T12:40:00Z", ValueNotMet))
+	witnessedStamp(t, h.seller, gatherAt("12:45"))
+
+	// The same seller key seals a different seq 3 (met) on another shelf.
+	q := newParty(t, "seller fork")
+	q.cfg.Signer = h.seller.cfg.Signer
+	originals, err := evidencebook.OpenOriginalsFile(context.Background(), filepath.Join(q.dir, "originals2.jsonl"), "x-deal-v1", h.seller.cfg.Signer.PublicKey())
+	require.NoError(t, err)
+	q.cfg.Originals, q.cfg.Path = originals, filepath.Join(q.dir, "fork.db")
+	q.open()
+	q.seal(h.sellerLog, readBack(t, book, 1).Record)
+	q.seal(h.sellerLog, s2)
+	otherID, otherPair := q.seal(h.sellerLog, stmt("2026-11-01T12:41:00Z", ValueMet))
+	require.NotEqual(t, s3, otherID)
+
+	_, pair, x := holderBundle(t, h.buyer, "buyer", f.buyerLog, copyAt(gatherAsOf, dealprofile.AudienceAdjudicator))
+	x.Book.ReliedOn[otherID] = otherPair
+	opening := CaseCopy{Report: pair, Extension: extJSON(t, x)}
+	buyer := f.answer(t, h.buyer, "buyer", f.buyerLog)
+	seller := f.answer(t, h.seller, "seller", h.sellerLog)
+
+	g, err := GatherCase(f.dispute, []CaseCopy{opening}, []CaseAnswer{buyer, seller}, f.adjudicator.key(), dir)
+	require.NoError(t, err)
+	assert.Equal(t, f.s2, *g.Seller.Held.V, "the buyer holds the seller's book through seq 2")
+	assert.Equal(t, s3, *g.Seller.Own.V)
+	assert.Equal(t, uint64(3), g.Seller.ForkAt)
+	assert.Contains(t, recordIDs(g.Seller.Forked), otherID)
+	assert.Equal(t, int64(3), g.Sources.Seller.ForkAt, "the ruling's sources name the fork")
+	d := DecideCase(g, Null[string]{})
+	assert.Nil(t, d.Decisive)
+	assert.Equal(t, "the seller's book has two versions from record 3", d.NeedsPerson)
+
+	// Without the opening copy, the same answers decide on the seller's own not_met.
+	g, err = GatherCase(f.dispute, nil, []CaseAnswer{buyer, seller}, f.adjudicator.key(), dir)
+	require.NoError(t, err)
+	d = DecideCase(g, Null[string]{})
+	require.NotNil(t, d.Decisive, d.NeedsPerson)
+	assert.Equal(t, s3, d.Decisive.RecordID)
+}
+
+// A fork found through the other side's opening copy caps the book read as
+// any other fork no held copy settles (#943 review, round 3): the seller
+// answers in full, the buyer gives no full answer, and its opening copy shows
+// a different seller seq 2. The read stops at seq 1, the ruling's read with it.
+func TestGatherCaseCapsTheReadAtAShownFork(t *testing.T) {
+	f := newFourBooks(t)
+	dir, err := shelfscript.Directory()
+	require.NoError(t, err)
+	h := f.h
+	book := mustOpen(t, h.seller, h.sellerLog)
+	q := newParty(t, "seller fork")
+	q.cfg.Signer = h.seller.cfg.Signer
+	originals, err := evidencebook.OpenOriginalsFile(context.Background(), filepath.Join(q.dir, "originals2.jsonl"), "x-deal-v1", h.seller.cfg.Signer.PublicKey())
+	require.NoError(t, err)
+	q.cfg.Originals, q.cfg.Path = originals, filepath.Join(q.dir, "fork.db")
+	q.open()
+	q.seal(h.sellerLog, readBack(t, book, 1).Record)
+	other := readBack(t, book, 2).Record
+	other.Block.At = "2026-11-01T11:05:00Z"
+	otherID, otherPair := q.seal(h.sellerLog, other)
+	_, pair, x := holderBundle(t, h.buyer, "buyer", f.buyerLog, copyAt(gatherAsOf, dealprofile.AudienceAdjudicator))
+	x.Book.ReliedOn[otherID] = otherPair
+	opening := CaseCopy{Report: pair, Extension: extJSON(t, x)}
+
+	seller := f.answer(t, h.seller, "seller", h.sellerLog)
+	g, err := GatherCase(f.dispute, []CaseCopy{opening}, []CaseAnswer{seller}, f.adjudicator.key(), dir)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), g.Seller.ForkAt)
+	require.Len(t, g.Seller.Book, 1, "the seller's book is read only up to the fork")
+	assert.Equal(t, g.Seller.Book[0].Read.RecordID, *g.Read.Seller.V)
+	assert.ElementsMatch(t, []string{f.s2, otherID}, recordIDs(g.Seller.Forked))
 }

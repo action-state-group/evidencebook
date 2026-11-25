@@ -68,6 +68,10 @@ type CaseSide struct {
 	Held   Null[string]
 	ForkAt uint64
 	Forked []BookRead
+	// ShownPast is records of this side that the other side's opening copy
+	// carries past the end of the book read: shown to the adjudicator, but not
+	// read.
+	ShownPast []BookRead
 }
 
 // GatheredCase is a case read from up to four sources: the Case SealRuling
@@ -108,6 +112,10 @@ type openingRead struct {
 	// them, which records then leaves out.
 	forkAt uint64
 	forked []BookRead
+	// shown is the other side's records the copy carries (the records its
+	// holder relied on that the other side signed), by seq; a seq carrying two
+	// of them holds both.
+	shown map[uint64][]BookRead
 }
 
 // GatherCase reads a dispute, the case-opening adjudicator copies (as
@@ -137,6 +145,11 @@ type openingRead struct {
 // before it. Otherwise the longer source is read. Each record read is timed
 // by the side's own stamps and by the holder's linking facts, the earlier
 // of the two, and says which (CaseRecordTimes).
+//
+// The other side's opening copy is read for this side too: a record of this
+// side it carries that differs from the book read at its seq, or two at one
+// seq, is a fork (evidencebook#944), and one past the book read is kept in
+// ShownPast, shown but not read.
 func GatherCase(dispute []byte, opening []CaseCopy, answers []CaseAnswer, adjudicatorKey string, witnesses aacwitness.Directory) (GatheredCase, error) {
 	if len(answers) > 2 {
 		return GatheredCase{}, caseErr("a case takes at most two full answers, not %d", len(answers))
@@ -210,7 +223,7 @@ func GatherCase(dispute []byte, opening []CaseCopy, answers []CaseAnswer, adjudi
 		own, hasOwn := ansBy[role]
 		holder, hasHolder := ansBy[other]
 		op, hasOpening := openRead[role]
-		side := gatherSide(role, keyOf[role], own, hasOwn, holder, hasHolder, op, hasOpening)
+		side := gatherSide(role, keyOf[role], own, hasOwn, holder, hasHolder, op, hasOpening, openRead[other].shown)
 		if role == RoleBuyer {
 			g.Buyer = side
 			g.Read.Buyer = side.Read
@@ -236,7 +249,7 @@ func readOpening(c CaseCopy, cc caseCopy) (openingRead, error) {
 	if err != nil {
 		return openingRead{}, err
 	}
-	out := openingRead{records: map[uint64]BookRead{}, size: read.Report.RestsOn.Own.Size, last: cc.last}
+	out := openingRead{records: map[uint64]BookRead{}, size: read.Report.RestsOn.Own.Size, last: cc.last, shown: map[uint64][]BookRead{}}
 	first, err := VerifyBook(x.Book.Agreement)
 	if err != nil {
 		return openingRead{}, err
@@ -247,7 +260,13 @@ func readOpening(c CaseCopy, cc caseCopy) (openingRead, error) {
 		if err != nil {
 			return openingRead{}, err
 		}
-		if b.KeyID != cc.key || b.LogID != first.LogID {
+		if b.KeyID != cc.key {
+			if !slices.ContainsFunc(out.shown[b.Seq], func(x BookRead) bool { return x.RecordID == b.RecordID }) {
+				out.shown[b.Seq] = append(out.shown[b.Seq], b)
+			}
+			continue
+		}
+		if b.LogID != first.LogID {
 			continue
 		}
 		if prev, dup := out.records[b.Seq]; dup && prev.RecordID != b.RecordID {
@@ -411,7 +430,7 @@ func branchNamed(held map[string]BookRead, named []string, role string) ([]BookR
 // side's own copies differ beyond what the holder holds) is settled by
 // nothing, so no branch is read from that position on, and what lies past
 // it is kept as fork evidence.
-func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead, hasHolder bool, op openingRead, hasOpening bool) CaseSide {
+func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead, hasHolder bool, op openingRead, hasOpening bool, shown map[uint64][]BookRead) CaseSide {
 	side := CaseSide{Role: role, Key: key, Own: NullOf[string](), Held: NullOf[string]()}
 	var forks []uint64
 	fork := func(at uint64, kept []BookRead) {
@@ -458,6 +477,35 @@ func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead
 			}
 		}
 	}
+	// The records of this side the other side's opening copy carries
+	// (evidencebook#944): one that differs from a source at its seq, or two at
+	// one seq, is a fork like any other, so the same rule below caps the book.
+	// Another signer's record at that seq is of another book.
+	mine := map[uint64][]BookRead{}
+	for seq, rs := range shown {
+		for _, b := range rs {
+			if b.KeyID == key {
+				mine[seq] = append(mine[seq], b)
+			}
+		}
+	}
+	forkedShown := map[uint64]bool{}
+	for _, seq := range slices.Sorted(maps.Keys(mine)) {
+		rs := mine[seq]
+		differs := len(rs) > 1
+		for _, against := range [][]BookRead{full, held} {
+			if seq <= uint64(len(against)) && against[seq-1].RecordID != rs[0].RecordID {
+				differs = true
+			}
+		}
+		if b, ok := op.records[seq]; hasOpening && ok && b.RecordID != rs[0].RecordID {
+			differs = true
+		}
+		if differs {
+			fork(seq, rs)
+			forkedShown[seq] = true
+		}
+	}
 	var book []BookRead
 	switch {
 	case heldGoverns:
@@ -500,6 +548,16 @@ func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead
 		holderTimes = &SideTimes{Times: holder.times, BookID: holder.full.Own[0].RecordID, Keys: holder.keys, Chain: held, LogID: holder.full.LogID}
 	}
 	side.Book = CaseRecordTimes(book, ownTimes, holderTimes)
+	// A record of this side shown past the end of the book read is shown, not read.
+	var lastSeq uint64
+	if len(book) > 0 {
+		lastSeq = book[len(book)-1].Seq
+	}
+	for _, seq := range slices.Sorted(maps.Keys(mine)) {
+		if seq > lastSeq && !forkedShown[seq] {
+			side.ShownPast = append(side.ShownPast, mine[seq]...)
+		}
+	}
 	side.Read = NullOf[string]()
 	switch {
 	case len(held) == 0 && len(full) == 0 && hasOpening && unsettled == 0:

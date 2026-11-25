@@ -487,6 +487,7 @@ dealprofile/xdealv1	func	CheckCaseRecord	x-deal-v1	frozen #774	ported
 dealprofile/xdealv1	func	CheckDispute	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckRuling	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckSealed	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	DecideCase	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	func	Decode	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Digest	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Encode	x-deal-v1	ported	ported
@@ -552,6 +553,8 @@ dealprofile/xdealv1	type	CheckBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Counterparty	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	CounterpartyHalf	x-deal-v1	frozen #882	frozen #883
 dealprofile/xdealv1	type	Date	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	DecidingRecord	x-deal-v1	frozen #875	frozen #876
+dealprofile/xdealv1	type	Decision	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	type	DisputeBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Entry	x-deal-v1	frozen #774	frozen #858
 dealprofile/xdealv1	type	EntryInput	x-deal-v1	frozen #774	frozen #858
