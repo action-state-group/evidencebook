@@ -78,6 +78,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          scripts/test-release-build-tar.sh
           scripts/release-build.sh v0.0.0-ci "$GITHUB_SHA" "$RUNNER_TEMP/dist"
           core=$(go list -m -f '{{.Version}}' github.com/action-state-group/capsule-cli)
           for launcher in capsulectl-book capsulectl-deal; do
