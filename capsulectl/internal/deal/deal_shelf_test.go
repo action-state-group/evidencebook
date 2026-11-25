@@ -229,7 +229,7 @@ func TestADeliveryThatFailsAfterStoringItsReceiptIsReportedOnTheNextOpen(t *test
 	}
 	s, err := openDealSession(ctx, p)
 	require.NoError(t, err)
-	_, err = s.tick(ctx)
+	_, err = s.tick(ctx, false)
 	require.ErrorIs(t, err, context.Canceled)
 	require.NoError(t, s.close())
 	seen, counter := shelfSeen(t, p)
