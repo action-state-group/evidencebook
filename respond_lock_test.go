@@ -327,10 +327,13 @@ func (s *turnstileStore) waitParked(t *testing.T, n int, bound time.Duration) {
 // answer completes only after a seal landed while it was in flight, exactly
 // flooders answers complete per round, and every seal lands, in order.
 //
-// The one timer, hang, catches a deadlock and is far above any seal or
-// answer on a loaded host under the race detector, where a seal takes up to
-// about two seconds in its own durable writes and never waits on an answer
-// (evidencebook#938). The test asserts no latency, which measures the host.
+// The one timer, hang, catches a deadlock, and load does not reach it. On a
+// loaded host under the race detector a seal takes up to about two and a
+// half seconds in its own durable writes, and it waits only on other seals,
+// never on an answer in progress (evidencebook#938). The longest wait is
+// for the racing seal and the records of the flooders' released answers,
+// one seal each: about 22 seconds there. The test asserts no latency, which
+// measures the host.
 // Like TestRespondDoesNotHoldTheLockWhileAnswering, the single-answer check,
 // it holds answers in their view read, so it shows the lock is not held
 // there. It runs once with strangers (checkpoints, history_card/1 and a
@@ -341,21 +344,23 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 		history  = 40
 		flooders = 8
 		rounds   = 10
-		hang     = time.Minute
+		hang     = 2 * time.Minute
 	)
 	for _, c := range []struct {
 		name      string
 		requester string
 		requests  func(*testing.T, *Book) []Message
+		// refused is the index of the one request refused, -1 for none.
+		refused int
 	}{
-		{"strangers", "", func(t *testing.T, _ *Book) []Message { return strangerRequests(t) }},
+		{"strangers", "", func(t *testing.T, _ *Book) []Message { return strangerRequests(t) }, 2},
 		{"authenticated", "peer-1", func(t *testing.T, book *Book) []Message {
 			return []Message{
 				jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: book.log[0].RecordID}, Coverage: fresh()}),
 				jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationHistoryCard, Coverage: fresh()}),
 				jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "order-0"}, Coverage: fresh()}),
 			}
-		}},
+		}, -1},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -392,16 +397,17 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 							return
 						default:
 						}
-						reply, sealed, err := book.Respond(ctx, requests[i%len(requests)], RespondOptions{AuthenticatedRequester: c.requester, Policy: policyWith("peers")})
+						k := i % len(requests)
+						reply, sealed, err := book.Respond(ctx, requests[k], RespondOptions{AuthenticatedRequester: c.requester, Policy: policyWith("peers")})
 						switch {
 						case err != nil:
 							t.Error(err)
 							return
-						case c.requester == "" && sealed.RecordID != "":
-							t.Errorf("a stranger's answer sealed record %s", sealed.RecordID)
+						case (k == c.refused) != (reply.Refusal != nil) || (k == c.refused) == (reply.Envelope != nil):
+							t.Errorf("request %d: want refused %t, got envelope %t, refusal %+v", k, k == c.refused, reply.Envelope != nil, reply.Refusal)
 							return
-						case c.requester != "" && (reply.Envelope == nil || sealed.RecordID == ""):
-							t.Errorf("want an answer and its sealed record, got refusal %+v", reply.Refusal)
+						case (c.requester == "") != (sealed.RecordID == ""):
+							t.Errorf("request %d by %q: sealed record %q; only an authenticated requester's answer seals one", k, c.requester, sealed.RecordID)
 							return
 						}
 						answered.Add(1)
