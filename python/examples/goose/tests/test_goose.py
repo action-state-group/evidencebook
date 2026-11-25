@@ -170,6 +170,21 @@ def test_a_deal_needs_a_sealed_go_on_the_peer(node, tmp_path):
     assert node.notes(gn.DEAL_CONTEXT) == [], "nothing was sealed"
 
 
+def test_an_offer_carries_its_price_in_its_terms_and_a_mismatched_one_is_refused(pair):
+    """The card's value band reads terms.price_minor (evidencebook#888): the node's offer carries it, equal to the
+    payment row's amount, and the seller refuses an offer whose two differ before it keeps or seals anything."""
+    buyer, seller, deal, offer, tmp = pair
+    sent = json.loads(offer.read_text())
+    body = sent["agent_input"]["body"]
+    assert body["terms"]["price_minor"] == body["terms_rows"]["rows"][0]["owed"]["amount_minor"] == 50
+    body["terms"]["price_minor"] = 49
+    altered = tmp / "altered.json"
+    altered.write_text(json.dumps(sent))
+    with pytest.raises(Refused, match="price_minor"):
+        seller.respond(str(altered), "sell tokens", str(tmp / "s.json"))
+    assert not (tmp / "s.json").exists()
+
+
 def test_a_price_the_pack_does_not_admit_is_refused_with_the_engines_verdict(node, tmp_path):
     node.note(gn.ADMITTED, {"peer": "b" * 64, "decision": "GO"}, once="peer")
     with pytest.raises(Refused, match="no deal"):
