@@ -29,15 +29,22 @@ shard_count=${BASH_REMATCH[2]}
 # CI runs the passes as separate jobs and splits the race pass across several:
 #   CAPSULE_TEST_PASS=race|plain   one pass only (default: both)
 #   CAPSULE_TEST_SHARD=i/n         only the top-level tests in shard i of n
+#   CAPSULE_TEST_PKGS="./a ./b"    only these packages (default ./...); a pull
+#                                  request's race job passes scripts/race-packages.sh's list
 # A shard is every n-th name of the sorted `go test -list` output, so the n
 # shards together run every test; a name two packages share runs in each.
 # Each pass ends with its per-package times and slowest tests, and warns when
 # a package takes longer than CAPSULE_TEST_BUDGET seconds (default 420).
 # One module: the repository root.
 modules=(.)
+read -r -a packages <<<"${CAPSULE_TEST_PKGS:-./...}"
+if ((${#packages[@]} == 0)); then
+  printf 'CAPSULE_TEST_PKGS names no package\n' >&2
+  exit 1
+fi
 run=()
 if ((shard_count > 1)); then
-  listed=$(for m in "${modules[@]}"; do (cd "$m" && go test -list '.*' ./...); done)
+  listed=$(for m in "${modules[@]}"; do (cd "$m" && go test -list '.*' "${packages[@]}"); done)
   names=$(printf '%s\n' "$listed" | grep -E '^(Test|Example|Fuzz)' | sort -u |
     awk -v i="$shard_index" -v n="$shard_count" '(NR - 1) % n == i - 1')
   if [[ -z "$names" ]]; then
@@ -71,10 +78,10 @@ timed() {
 status=0
 for m in "${modules[@]}"; do
   if [[ "$pass" != plain ]]; then
-    (cd "$m" && timed "race $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -race -count=1 -timeout="$race_timeout" ./...) || status=$?
+    (cd "$m" && timed "race $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -race -count=1 -timeout="$race_timeout" "${packages[@]}") || status=$?
   fi
   if [[ "$pass" != race ]]; then
-    (cd "$m" && timed "plain $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -count=1 -timeout=10m ./...) || status=$?
+    (cd "$m" && timed "plain $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -count=1 -timeout=10m "${packages[@]}") || status=$?
   fi
 done
 exit "$status"

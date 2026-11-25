@@ -13,19 +13,56 @@ on:
   push:
     branches: [main]
     paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/card-registration/**", "testdata/staple/**", "testdata/history-card-2/**", "testdata/staple-3/**", "testdata/standard-history-respond/**", "testdata/mesh-history/**", "testdata/row-status/**", "testdata/deal-v1/**", "rowstatus/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+  # Every pull request, so `Rust result` can be a required check; the changes job
+  # skips the rest when the pull request touches none of the push paths.
   pull_request:
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/card-registration/**", "testdata/staple/**", "testdata/history-card-2/**", "testdata/staple-3/**", "testdata/standard-history-respond/**", "testdata/mesh-history/**", "testdata/row-status/**", "testdata/deal-v1/**", "rowstatus/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
 
 permissions:
   contents: read
+
+# A newer push cancels a pull request's run; main's runs queue instead, so a
+# started main run always finishes and reports.
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
     working-directory: rust
 
 jobs:
+  changes:
+    # Whether a pull request touches this workflow's push paths
+    # (.github/scripts/paths-changed.sh); every other event runs everything.
+    name: Rust changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.changes.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A pull request's merge commit and its first parent, the base.
+          fetch-depth: 2
+      - name: Changes
+        id: changes
+        working-directory: ${{ github.workspace }}
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" != pull_request ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          run=$(bash .github/scripts/paths-changed.sh .github/workflows/rust.yml < "$RUNNER_TEMP/changed.txt")
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo ".github/workflows/rust.yml push paths changed: $run" >> "$GITHUB_STEP_SUMMARY"
+
   test:
     name: Rust tests
+    needs: [changes]
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,6 +96,8 @@ jobs:
     # the Mesh plugin's Windows nodes migrate onto it. The shelf's own lock is
     # unix-only, and its tests that need it are too.
     name: Rust shelf on Windows (host-held lock)
+    needs: [changes]
+    if: needs.changes.outputs.run == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,6 +113,8 @@ jobs:
 
   package:
     name: crates.io package check (dry run)
+    needs: [changes]
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -105,6 +146,8 @@ jobs:
 
   interop:
     name: Interop (the History run byte for byte, and the profile verifier over the responder's replies)
+    needs: [changes]
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -204,3 +247,44 @@ jobs:
           for f in artifact-alice-json-nonce-c.bin artifact-bob-cbor-nonce-d.bin; do cmp "$work/rs/$f" "$work/go/$f"; done
           rm -rf "$work"
           done
+
+  result:
+    # One result to require in branch protection: the changes job succeeded and
+    # no job failed or was cancelled (a job it skipped counts as passed).
+    name: Rust result
+    if: always()
+    needs: [changes, test, windows, package, interop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        working-directory: ${{ github.workspace }}
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "changes: $CHANGES; jobs: $RESULTS"
+          test "$CHANGES" = success
+          for r in $RESULTS; do [[ "$r" == success || "$r" == skipped ]]; done
+
+  report-failure:
+    # A red run on main reaches a person the same day: it opens or comments on
+    # one issue. A cancelled run is not reported.
+    name: report a red main run
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, test, windows, package, interop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Report on the issue
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Rust CI failed on main
+          ASSIGNEE: ${{ vars.CI_FAILURE_ASSIGNEE }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/report-failure.sh

@@ -1,20 +1,79 @@
 name: CI
 
+# A pull request runs only the jobs its changes reach (the changes job), the
+# race detector only over the root packages it changes, and the Goose loop only
+# when the loop's own files change: lanes run the rest locally before push.
+# Push to main and the nightly run everything, and a red run there opens or
+# comments on an issue (evidencebook#925).
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 7 * * *'
 
 permissions:
   contents: read
 
+# A newer push cancels a pull request's run; main's runs queue instead, so a
+# started main run always finishes and reports.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    # Which jobs a pull request needs. `root`: any path outside the nested
+    # modules (capsulectl/, report/, each with its own workflow), the changelog
+    # fragments and the other workflows. `race`: the root packages to race
+    # (.github/scripts/race-packages.sh). `goose`: the Goose loop's own files.
+    # Every other event runs everything.
+    name: CI changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      root: ${{ steps.changes.outputs.root }}
+      race: ${{ steps.changes.outputs.race }}
+      goose: ${{ steps.changes.outputs.goose }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A pull request's merge commit and its first parent, the base.
+          fetch-depth: 2
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Changes
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" != pull_request ]]; then
+            printf 'root=true\nrace=./...\ngoose=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          cat "$RUNNER_TEMP/changed.txt"
+          root=false
+          if grep -vqE '^(capsulectl/|report/|changelog\.d/|\.github/workflows/(capsulectl|capsulectl-core-main|rust|report|leak-lint|changelog-fragments|publish-rust|release|prepare-release|tag-release)\.yml$)' "$RUNNER_TEMP/changed.txt"; then
+            root=true
+          fi
+          goose=false
+          if grep -qE '^(python/examples/goose/|test/interop/goose-capsule/|\.github/workflows/ci\.yml$)' "$RUNNER_TEMP/changed.txt"; then
+            goose=true
+          fi
+          race=$(bash .github/scripts/race-packages.sh root < "$RUNNER_TEMP/changed.txt" | paste -sd ' ' -)
+          printf 'root=%s\nrace=%s\ngoose=%s\n' "$root" "$race" "$goose" >> "$GITHUB_OUTPUT"
+          printf 'root jobs: %s; race over: %s; Goose loop: %s\n' "$root" "${race:-nothing}" "$goose" >> "$GITHUB_STEP_SUMMARY"
+
   quality:
     name: Quality
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -44,6 +103,8 @@ jobs:
 
   unit:
     name: Unit tests
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -59,6 +120,8 @@ jobs:
 
   race:
     name: Race tests
+    needs: [changes]
+    if: needs.changes.outputs.race != ''
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -70,10 +133,16 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Race test
-        run: go test -race ./...
+        env:
+          RACE_PACKAGES: ${{ needs.changes.outputs.race }}
+        run: |
+          read -r -a packages <<<"$RACE_PACKAGES"
+          go test -race "${packages[@]}"
 
   verifier-pack:
     name: Third-party verifier pack (every command and value of docs/THIRD-PARTY-VERIFIER.md)
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -92,6 +161,8 @@ jobs:
 
   release-helper:
     name: Release helper tests
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -108,6 +179,8 @@ jobs:
 
   deal-profile:
     name: x-deal-v0 and x-deal-v1 reference checkers over the profiles' fixtures and the chains Go builds
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -165,6 +238,8 @@ jobs:
 
   python-cll-interop:
     name: Python interoperability (bundles both ways, CLL checkpoint and proofs, -00 refusal)
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -207,6 +282,8 @@ jobs:
 
   interop-profile:
     name: Evidence interop profile (the reference verifier over this responder's replies)
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -273,6 +350,8 @@ jobs:
 
   personal-history:
     name: Personal-agent History vectors (reproduce the responder run, then the AAC corpus test)
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -366,6 +445,8 @@ jobs:
     # two writers of one file excluding each other across languages: Go,
     # Python and Rust.
     name: Shelf storage interlock
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -573,6 +654,8 @@ jobs:
     # Rust and Python give the same result, or all refuse, on 100,000 random
     # inputs; the hand-written vectors in testdata/row-status pin the rule.
     name: Row status differential
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -610,6 +693,8 @@ jobs:
     # from mutated books, on 20,000 random inputs; the shared vectors under
     # testdata/deal-v1 pin the profile by hand.
     name: x-deal-v1 differential
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -651,6 +736,8 @@ jobs:
     # each node's step 03 commitment through the loop's checker. The run waits for the cadence ticks a report
     # rests on (about six minutes).
     name: Goose loop reference (scripted run on capsulectl, bundles Go verifies)
+    needs: [changes]
+    if: needs.changes.outputs.goose == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -698,6 +785,8 @@ jobs:
 
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -746,6 +835,8 @@ jobs:
 
   python:
     name: Python package (unit tests, the evidence-request corpus, the profile verifier, the History run byte for byte)
+    needs: [changes]
+    if: needs.changes.outputs.root == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -863,3 +954,43 @@ jobs:
           for f in artifact-alice-json-nonce-c.bin artifact-bob-cbor-nonce-d.bin; do cmp "$work/py/$f" "$work/go/$f"; done
           rm -rf "$work"
           done
+
+  result:
+    # One result to require in branch protection: the changes job succeeded and
+    # no job failed or was cancelled (a job the changes skipped counts as passed).
+    name: CI result
+    if: always()
+    needs: [changes, quality, unit, race, verifier-pack, release-helper, deal-profile, python-cll-interop, interop-profile, personal-history, shelf-interlock, row-status-diff, deal-v1-diff, goose, registry-conformance, python]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "changes: $CHANGES; jobs: $RESULTS"
+          test "$CHANGES" = success
+          for r in $RESULTS; do [[ "$r" == success || "$r" == skipped ]]; done
+
+  report-failure:
+    # A red run on main or the nightly reaches a person the same day: it opens
+    # or comments on one issue. A cancelled run is not reported.
+    name: report a red main or nightly run
+    if: failure() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule')
+    needs: [changes, quality, unit, race, verifier-pack, release-helper, deal-profile, python-cll-interop, interop-profile, personal-history, shelf-interlock, row-status-diff, deal-v1-diff, goose, registry-conformance, python]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Report on the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: CI failed on main or the nightly
+          ASSIGNEE: ${{ vars.CI_FAILURE_ASSIGNEE }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/report-failure.sh

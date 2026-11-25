@@ -11,23 +11,56 @@ on:
   push:
     branches: [main]
     paths: ["report/**", ".github/workflows/report.yml"]
+  # Every pull request, so `report result` can be a required check; the changes job
+  # skips the rest when the pull request touches none of the push paths.
   pull_request:
-    paths: ["report/**", ".github/workflows/report.yml"]
 
 permissions:
   contents: read
 
+# A newer push cancels a pull request's run; main's runs queue instead, so a
+# started main run always finishes and reports.
 concurrency:
   group: report-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
     working-directory: report
 
 jobs:
+  changes:
+    # Whether a pull request touches this workflow's push paths
+    # (.github/scripts/paths-changed.sh); every other event runs everything.
+    name: report changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.changes.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A pull request's merge commit and its first parent, the base.
+          fetch-depth: 2
+      - name: Changes
+        id: changes
+        working-directory: ${{ github.workspace }}
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" != pull_request ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          run=$(bash .github/scripts/paths-changed.sh .github/workflows/report.yml < "$RUNNER_TEMP/changed.txt")
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo ".github/workflows/report.yml push paths changed: $run" >> "$GITHUB_STEP_SUMMARY"
+
   quality:
     name: report quality
+    needs: [changes]
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -52,6 +85,8 @@ jobs:
 
   test:
     name: report tests
+    needs: [changes]
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -70,3 +105,44 @@ jobs:
         env:
           EVIDENCEBOOK_CHROME: /usr/bin/google-chrome
         run: go test -race -count=1 ./...
+
+  result:
+    # One result to require in branch protection: the changes job succeeded and
+    # no job failed or was cancelled (a job it skipped counts as passed).
+    name: report result
+    if: always()
+    needs: [changes, quality, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        working-directory: ${{ github.workspace }}
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "changes: $CHANGES; jobs: $RESULTS"
+          test "$CHANGES" = success
+          for r in $RESULTS; do [[ "$r" == success || "$r" == skipped ]]; done
+
+  report-failure:
+    # A red run on main reaches a person the same day: it opens or comments on
+    # one issue. A cancelled run is not reported.
+    name: report a red main run
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, quality, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Report on the issue
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: report CI failed on main
+          ASSIGNEE: ${{ vars.CI_FAILURE_ASSIGNEE }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/report-failure.sh
