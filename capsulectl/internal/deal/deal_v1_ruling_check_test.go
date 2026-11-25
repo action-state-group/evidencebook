@@ -89,6 +89,17 @@ func TestTheRulingCheckDecidesOnTheDisputedSidesOwnWord(t *testing.T) {
 	decisive, ok = got["decisive"].(map[string]any)
 	require.True(t, ok, "%v", got)
 	assert.Equal(t, recordID, decisive["record_id"])
+
+	// #952 review: a recheck from other sources than the ruling read (the buyer's answer, and with it the copy of the
+	// seller's book it holds, left out) is refused, as is a file that is not a ruling of this case.
+	adj.act(t)
+	args := []string{"ruling", "check", "--deal", h.dealID, "--row", "paid_as_agreed", "--dispute", dispute}
+	assert.Contains(t, v1Err(t, append(args, "--answer", later[1], "--ruling", rulingFile)...), "from other sources than these answers give")
+	assert.Contains(t, v1Err(t, append(args, "--answer", later[0], "--answer", later[1], "--ruling", dispute)...), "not a ruling")
+	assert.Contains(t, v1Err(t, append(args, "--answer", later[0], "--answer", later[1], "--ruling", "")...), "--ruling is empty")
+	assert.Contains(t, v1Err(t, "ruling", "check", "--deal", h.dealID, "--row", "delivered", "--dispute", dispute,
+		"--answer", later[0], "--answer", later[1]), "not delivered")
+	assert.Contains(t, v1Err(t, ruling("not_met", "none", recordID)...), "--against must be seller")
 }
 
 func TestTheRulingCheckRefusals(t *testing.T) {
@@ -102,4 +113,9 @@ func TestTheRulingCheckRefusals(t *testing.T) {
 		"give one or two --answer files")
 	assert.Contains(t, v1Err(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "not_met", "--against", "seller",
 		"--dispute", dispute, "--copy", copyFile, "--decided-by", "rec"), "--decided-by needs the parties' answers")
+	// an empty --decided-by (an agent's unset variable) never turns the check off
+	for _, empty := range []string{"", "  "} {
+		assert.Contains(t, v1Err(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "not_met", "--against", "seller",
+			"--dispute", dispute, "--copy", copyFile, "--decided-by", empty), "--decided-by is empty")
+	}
 }

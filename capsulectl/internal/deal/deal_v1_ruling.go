@@ -112,6 +112,8 @@ func readRulingFlags(c *cobra.Command) (rulingFlags, error) {
 		return f, cli.InputError("give at most two --answer files: each party's answer to your request (`deal respond`)")
 	case len(f.copies)+len(f.answers) == 0:
 		return f, cli.InputError("give each party's copy that opened the case (--copy) or its answer to your request (--answer), at least one")
+	case c.Flags().Changed("decided-by") && f.decidedBy == "":
+		return f, cli.InputError("--decided-by is empty: give the deciding record's id `deal ruling check` printed, or leave the flag out")
 	case f.decidedBy != "" && len(f.answers) == 0:
 		return f, cli.InputError("--decided-by needs the parties' answers (--answer): the check reads the case from their books")
 	}
@@ -261,21 +263,9 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 		}
 		break
 	}
-	raw, err := os.ReadFile(f.dispute)
+	dispute, copies, err := readCaseInputs(f.dispute, f.copies)
 	if err != nil {
-		return cli.InputError("cannot read --dispute " + f.dispute)
-	}
-	var push v1Push
-	if err := json.Unmarshal(raw, &push); err != nil || push.Record == nil {
-		return cli.InputError("--dispute " + f.dispute + " is not a file deal dispute wrote")
-	}
-	var copies []xdealv1.CaseCopy
-	for _, path := range f.copies {
-		cc, err := readCaseCopyFile(path)
-		if err != nil {
-			return err
-		}
-		copies = append(copies, cc)
+		return err
 	}
 	// The case rules are the library's, so every adjudicator applies the
 	// same ones (evidencebook#779). With the parties' full answers, the case
@@ -286,11 +276,11 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 		gathered *xdealv1.GatheredCase
 	)
 	if len(f.answers) == 0 {
-		if cs, err = xdealv1.CheckCase(push.Record, copies, me); err != nil {
+		if cs, err = xdealv1.CheckCase(dispute, copies, me); err != nil {
 			return cli.InputError("the dispute and the copies are not a case for you: " + err.Error())
 		}
 	} else {
-		g, err := s.gatherAnswered(f.dispute, f.copies, f.answers, f.dealID, me)
+		g, err := s.gatherAnswered(dispute, copies, f.answers, f.dealID, me)
 		if err != nil {
 			return err
 		}
