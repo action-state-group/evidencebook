@@ -364,7 +364,7 @@ def test_a_node_counts_the_leg_it_sealed_once_and_only_on_its_rail(pair):
     seller.received(deal, 50, "reference-a", str(tmp / "payee2.json"))
     assert [st.disclosure(n, "lightning", 1)["settlements"] for n in (buyer, seller)] == [1, 1]
     assert len(buyer.notes(gn.SETTLED)) == 1 and len(seller.notes(gn.SETTLED)) == 1
-    # another rail's settlement never enters this rail's count (Sherlock2's condition on capsule-emit#408)
+    # the count filter: a settled note on another rail never enters this rail's count (capsule-emit#408)
     buyer.note(gn.SETTLED, {"deal_id": "deal-fedcba9876543210", "rail": "mock", "leg": "payer", "digest": "0" * 64},
                once="digest")
     assert [st.disclosure(buyer, r, 1)["settlements"] for r in ("lightning", "mock", "other")] == [1, 1, 0]
@@ -395,3 +395,44 @@ def test_the_tool_writes_the_signed_disclosure(node, tmp_path, monkeypatch):
     assert out["ok"] and out["settlements"] == doc["settlements"] == 0 and _verifies(doc)
     assert json.loads(loop_server.loop_settlement_disclosure("lightning", -1, str(tmp_path / "e.json")))["ok"] is False
     assert not (tmp_path / "e.json").exists()
+
+
+def test_a_settlement_is_on_the_rail_its_leg_names_never_the_deals_context(pair, tmp_path):
+    """Sherlock2's rail-scope condition on #921: an x-deal-v1 offer names no rail, so a leg's rail is its reference's."""
+    import settlement as st
+
+    buyer, seller, deal, offer, tmp = pair
+    _settled(pair)
+    seller.receive(str(tmp / "leg.json"))
+    seller.received(deal, 50, "reference-a", str(tmp / "payee.json"))
+    for n in (buyer, seller):
+        assert [r["statement"]["rail"] for r in n.notes(gn.SETTLED)] == [gn.LEG_RAIL]
+        assert [st.disclosure(n, r, 1)["settlements"] for r in ("lightning", "mock")] == [1, 0]
+    # a deal the buyer opened on another rail never reaches a leg, so it enters no count on either side
+    other = buyer.open_deal(seller.key_id, "tokens", 50, "USD", "mock", "buy on mock", False, str(tmp / "offer-mock.json"))
+    seller.respond(str(tmp / "offer-mock.json"), "sell tokens", str(tmp / "s-mock.json"))
+    buyer.receive(str(tmp / "s-mock.json"))
+    buyer.agree(other["deal_id"], str(tmp / "b-mock.json"))
+    with pytest.raises(Refused, match="lightning only"):
+        buyer.pay(other["deal_id"], "reference-m", str(tmp / "leg-mock.json"))
+    for n in (buyer, seller):
+        assert [st.disclosure(n, r, 1)["settlements"] for r in ("lightning", "mock")] == [1, 0]
+
+
+def test_a_leg_sealed_without_its_note_is_counted_once_the_call_is_made_again(pair):
+    """A call cut short after the verb sealed the leg (or a leg sealed before this version): the retry notes it."""
+    import settlement as st
+
+    buyer, seller, deal, offer, tmp = pair
+    seller.respond(str(offer), "sell tokens", str(tmp / "s.json"))
+    buyer.receive(str(tmp / "s.json"))
+    buyer.agree(deal, str(tmp / "b.json"))
+    seller.receive(str(tmp / "b.json"))
+    paused = buyer.pay(deal, "reference-a", str(tmp / "leg.json"))
+    buyer.approve(deal, paused["check_id"], "proceed", "yes")
+    # the verbs pay runs, without the note: the leg is sealed and nothing counts it yet
+    buyer._run("settle", "--deal", deal, "--sent", "--check", paused["check_id"], "--payment-ref-type", gn.PAYMENT_REF_TYPE)
+    buyer._run("settle", "--deal", deal, "--check", paused["check_id"], "--status", "settled", "--out", str(tmp / "leg.json"))
+    assert st.disclosure(buyer, "lightning", 1)["settlements"] == 0
+    buyer.pay(deal, "reference-a", str(tmp / "leg.json"), paused["check_id"])
+    assert st.disclosure(buyer, "lightning", 1)["settlements"] == 1 and len(buyer.notes(gn.SETTLED)) == 1

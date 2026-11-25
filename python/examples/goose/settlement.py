@@ -8,9 +8,12 @@ anyone holding the node's public key checks it offline.
 
 The count comes from the node's own records, never from the rail: each time the node seals its own payment leg as
 settled (the payer leg, :meth:`goose_node.Node.pay`; the payee leg, :meth:`goose_node.Node.received`) it seals a
-``goose_settled`` record in its node book naming the deal and the rail its deal context records (the buyer's chosen
-rail; a seller records lightning, the only rail a Goose node settles on). ``settlements`` is the
-number of distinct deals with such a record on the asked rail. A Goose deal has one payment row and no refund, so one
+``goose_settled`` record in its node book naming the deal and the rail of the leg's payment reference (every leg a Goose
+node seals names ``ln.payment_hash``, so lightning; an x-deal-v1 offer names no rail, so the deal's context is not
+used). ``settlements`` is the number of distinct deals with such a record on the asked rail. Only legs sealed by a node
+with this record are counted: a call cut short after its leg was sealed, or a leg sealed before this version, is
+counted once ``loop_settle`` or ``loop_deal_received`` is called again with the same arguments (the verb finds the
+sealed leg and writes it again). A Goose deal has one payment row and no refund, so one
 deal is one settlement. The legs are the payment reference the node observed, recorded as settled; the node itself
 tests no finality (it does not see a preimage), so the count is what its records say was settled.
 

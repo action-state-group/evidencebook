@@ -372,9 +372,10 @@ def loop_deal_report(deal_id: str, out_path: str, wait_seconds: int = 0) -> str:
 
 @_tool
 def loop_settlement_disclosure(rail: str, through_sequence: int, out_path: str) -> str:
-    """Write this node's signed ``settlement-disclosure/v1`` to ``out_path``: how many deals on ``rail`` (the rail the
-    deals were opened on, e.g. lightning) this node sealed its own payment leg for as settled (``loop_settle``,
-    ``loop_deal_received``), signed with its key. ``through_sequence`` labels the rail's latest ledger sequence you
+    """Write this node's signed ``settlement-disclosure/v1`` to ``out_path``: how many deals this node sealed its own
+    payment leg for as settled on ``rail`` (``loop_settle``, ``loop_deal_received``; every leg names a Lightning payment
+    hash, so its rail is lightning), signed with its key. A leg sealed before this version, or by a call cut short, is
+    counted once that tool is called again with the same arguments. ``through_sequence`` labels the rail's latest ledger sequence you
     observed; it does not filter the count, so pass one that covers this node's settlements. The count is this node's
     records, not the rail's: it carries no amount, counterparty or payment reference, and deals on other rails never
     enter it. The disclosure is also sealed in the node book. Nothing is published, no rail is read and no money moves."""

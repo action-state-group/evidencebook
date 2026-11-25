@@ -101,9 +101,12 @@ Show it as it is, seal only what the user answers (`loop_deal_approve`), and cal
 
 `loop_settlement_disclosure` is step 06's count. It writes the node's signed `settlement-disclosure/v1`
 (`type`, `node`, `key_id`, `rail`, `through_sequence`, `settlements`, `sig`), which the loop compares with the rail's own
-count of final settlements you are a party to. `settlements` is the number of deals on `rail` (the rail the deal was opened
-on) for which your node sealed its own payment leg as settled: the payer leg (`loop_settle`) or the payee leg
-(`loop_deal_received`). It is your node's records, not a ledger view: the node reads no rail and tests no finality, so
+count of final settlements you are a party to. `settlements` is the number of deals for which your node sealed its own
+payment leg as settled on `rail`: the payer leg (`loop_settle`) or the payee leg (`loop_deal_received`). A leg's rail is
+the one its payment reference names; every leg a Goose node seals names `ln.payment_hash`, so its settlements are on
+`lightning` (an x-deal-v1 offer names no rail). Only legs sealed with this version are counted: for a leg sealed earlier,
+or a call cut short after its leg was sealed, call `loop_settle` or `loop_deal_received` again with the same arguments,
+as for any tool cut short; it finds the sealed leg and counts it. It is your node's records, not a ledger view: the node reads no rail and tests no finality, so
 it counts what its records say was settled. A Goose deal has one payment row and no refund, so one deal is one
 settlement. The count is for the asked rail only, and the disclosure carries no amount, counterparty or payment
 reference: each payment reference is on the leg each side signed. `through_sequence` is a label, not a filter: pass the
