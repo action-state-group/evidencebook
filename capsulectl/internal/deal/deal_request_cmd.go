@@ -47,6 +47,10 @@ the whole: your deal book, the copy of the other side's book you hold, and
 your book's stamps, in one file to send to the adjudicator, recorded in your
 journal. There is no part-answer, and the private floor and the agent's claims
 are never in it. --requester is the adjudicator's key id the agreement names;
-a request from anyone else is refused.`
+a request from anyone else is refused. The request is the evidence request
+draft's form, for example {"coverage":{"min_freshness":"<RFC 3339 time>"},
+"derivation":"deal_adjudicator_copy/1","nonce":"<hex>","subject":
+{"correlation":"<deal id>"}}; min_freshness is a bare time or size, and an
+expected_pin cannot be met.`
 	return cmd
 }
