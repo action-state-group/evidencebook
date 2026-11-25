@@ -40,7 +40,9 @@ Each release has, for linux/amd64, linux/arm64 and darwin/arm64:
 - `standard-history-$V.tar.gz`, the History card's files, which `book card`
   pages read;
 - `deal-view-$V.tar.gz`, the deal view's files;
-- `deal-skill-$V.tar.gz`, the deal skill for an agent's host;
+- `deal-skill-$V.tar.gz`, the `skills/deal` tree, the deal skill an agent's host
+  reads; the commands below do not need it, and
+  [actionstate.ai/install](https://actionstate.ai/install) places it for an agent;
 - `SHA256SUMS`;
 - one attestation bundle published under two names,
   `capsulectl-book-$V.sigstore.json` and `capsulectl-deal-$V.sigstore.json`.
@@ -58,7 +60,8 @@ curl -fsSLO "$REL/deal-view-$V.tar.gz"
 curl -fsSLO "$REL/SHA256SUMS"
 curl -fsSLO "$REL/capsulectl-book-$V.sigstore.json"
 sha256sum --ignore-missing -c SHA256SUMS   # macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
-# Each of the four files, with the one bundle (no GitHub sign-in needed):
+# Each of the four files, with the one bundle (with --bundle, capsule-cli's README
+# says no GitHub account or sign-in is needed):
 gh attestation verify "capsulectl-book-$V-$P" --bundle "capsulectl-book-$V.sigstore.json" \
   --repo action-state-group/evidencebook \
   --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml
@@ -66,8 +69,8 @@ gh attestation verify "capsulectl-book-$V-$P" --bundle "capsulectl-book-$V.sigst
 chmod +x "capsulectl-book-$V-$P" "capsulectl-deal-$V-$P"
 capsulectl plugin install "./capsulectl-book-$V-$P"
 capsulectl plugin install "./capsulectl-deal-$V-$P"
-# The archives unpack into the plugin folder, beside the launchers
-# (standard-history-module/ and capsulectl-deal.d/):
+# After the installs, which create the plugin folder, the archives unpack into it
+# beside the launchers (standard-history-module/ and capsulectl-deal.d/):
 tar -xzf "standard-history-$V.tar.gz" -C ~/.local/lib/capsulectl/plugins
 tar -xzf "deal-view-$V.tar.gz" -C ~/.local/lib/capsulectl/plugins
 ```
