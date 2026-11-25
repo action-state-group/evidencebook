@@ -322,7 +322,9 @@ class Node:
         decided = self._decision(peer, terms)
         if not decided.get("admits_deal"):
             raise Refused(f"the engine's decision on this deal is {decided['verdict']}: no deal")
-        offer = {"role": "buyer", "to": peer, "terms": {"item": item, "currency": currency},
+        # The agreed price goes in the terms as well as in the payment row: the History card's value band reads it
+        # from the terms (x-deal-v1 status value), and an offer without it counts as unpriced (evidencebook#888).
+        offer = {"role": "buyer", "to": peer, "terms": {"item": item, "price_minor": price_minor, "currency": currency},
                  "pack_digest": decided["pack"]["digest"], "agree_by": _iso(now + AGREE_WITHIN),
                  "terms_rows": {"rows": [{"id": ROW, "owed_by": "buyer",
                                           "owed": {"amount_minor": price_minor, "currency": currency},
