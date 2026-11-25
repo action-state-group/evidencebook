@@ -50,7 +50,7 @@ func gate(t *testing.T, h *handshake, own []Record, act Record) ActGate {
 	return g
 }
 
-// u610: the first perform or payer settle waits for the counterparty's stamp
+// Design 461 §7.2: the first perform or payer settle waits for the counterparty's stamp
 // proof; a payee leg, a statement and any later act never wait.
 func TestGateActHoldsTheFirstAct(t *testing.T) {
 	h := newHandshake(t, nil)
@@ -77,7 +77,7 @@ func TestGateActHoldsTheFirstAct(t *testing.T) {
 }
 
 // A counterparty without the layer: the first act runs unguarded, and says
-// so (Steven, u611).
+// so (Steven, design 461 §7.2).
 func TestGateActWithoutALayerIsUnguarded(t *testing.T) {
 	h := newHandshake(t, nil)
 	ag, _, _ := gateBook(t, h, false)
@@ -119,7 +119,7 @@ func TestGateActRefusesAnotherBook(t *testing.T) {
 	}
 }
 
-// The gate holds on both sides (u610): the acceptor's first perform waits
+// The gate holds on both sides (design 461 §7.2): the acceptor's first perform waits
 // for the offerer's stamp proof covering the offerer's agreement.
 func TestGateActHoldsTheAcceptor(t *testing.T) {
 	h := newHandshake(t, nil)
@@ -140,7 +140,7 @@ func TestGateActHoldsTheAcceptor(t *testing.T) {
 	assert.Equal(t, ActGate{Gated: true, Allowed: true}, g)
 }
 
-// The gate never reads the witnesses (u610: whether or not a witness is
+// The gate never reads the witnesses (design 461 §7.2: whether or not a witness is
 // named), and a holder with no agreement of the deal is refused.
 func TestGateActWithoutWitnessesAndWithoutAnAgreement(t *testing.T) {
 	h := newHandshake(t, nil)

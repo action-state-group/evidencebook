@@ -172,7 +172,7 @@ func TestBuildReportAudiences(t *testing.T) {
 
 // Sherlock2's card notes (#526 and #528 reviews): counterparty_kind null
 // for a page to show "not stated"; counterparty_proof reads the layer and the
-// held proof together (u611's no-layer marking); rulings_unnamed beside an
+// held proof together (the no-layer marking, design 461 §7.2); rulings_unnamed beside an
 // open outcome; a status fact that is not current says so.
 func TestBuildReportCardMembers(t *testing.T) {
 	_, full := appendixAStatus(t)
@@ -447,7 +447,7 @@ func TestReportVectors(t *testing.T) {
 	add("not-started", reportBooks(t, notStarted(t)), keepCopy("2026-11-05T12:00:00Z"))
 
 	// Both agreed and nothing more: the offerer's agreement has no time and the
-	// acceptor never named it, T after agree_by. The deal counts (u608): rows
+	// acceptor never named it, T after agree_by. The deal counts (evidencebook#570): rows
 	// are listed and the start is local.
 	silent := heldAt(b, "2026-11-05T12:00:00Z")
 	silent.Own = []StatusRecord{silent.Own[0]}

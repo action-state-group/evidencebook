@@ -363,7 +363,7 @@ func ids(book []CaseRecord) []string {
 	return out
 }
 
-// A side's book from its sources (Steven's ruling 3, u211): where its own
+// A side's book from its sources (Steven's ruling 3, design 861 §6): where its own
 // book and the copy the other side held differ, the held copy governs and
 // both are kept; where one extends the other, the longer is read; with no
 // held copy, a fork between the side's opening copy and its full answer
@@ -476,7 +476,7 @@ func TestHeldBranch(t *testing.T) {
 }
 
 // A gathered ruling may not go against a side none of whose records the
-// case read (Steven's ruling 2, u211), and a ruling with a remedy amount
+// case read (Steven's ruling 2, design 861 §6), and a ruling with a remedy amount
 // seals.
 func TestSealGatheredRuling(t *testing.T) {
 	f := newFourBooks(t)

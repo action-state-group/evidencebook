@@ -7,13 +7,13 @@ import (
 	"fmt"
 )
 
-// The first-act gate (Steven, u610; design §7.2): a holder's first perform or
+// The first-act gate (Steven; design 461 §7.2): a holder's first perform or
 // payer settle of a deal is refused until the counterparty's stamp proof
 // covers the counterparty's agreement (CanAct), on both sides, whether or not
 // the agreement names a witness. A payee leg and a statement are never gated,
 // nor is any act after the first. A deal whose counterparty runs no layer has
 // no counterparty agreement or proof to wait for: its first act goes ahead,
-// unguarded, and is not refused (Steven, u611). The receipt and the card say
+// unguarded, and is not refused (Steven, design 461 §7.2). The receipt and the card say
 // the other side sent no stamp proof, counted from the holder's receipt only;
 // the status value carries that as counterparty_layer false.
 
@@ -44,7 +44,7 @@ type ActGate struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
-// GateAct applies the first-act gate (u610) to an act the holder is about to
+// GateAct applies the first-act gate (design 461 §7.2) to an act the holder is about to
 // seal. It refuses input that is not the holder's book of the act's deal:
 // an empty book, one that does not open with the agreement the holder has
 // sealed for that deal (the counterparty's would invert counterparty_layer),

@@ -61,7 +61,7 @@ func TestStartVectors(t *testing.T) {
 		stBoth(SideAcceptor, stBefore), startedLocally)
 	add("untimed-offerer-side", "the offerer computes the same from its own book and the acceptor's agreement",
 		stBoth(SideOfferer, stBefore), startedLocally)
-	add("untimed-after-agree-by", "the same, T after agree_by, not named: counted, started locally (u608)",
+	add("untimed-after-agree-by", "the same, T after agree_by, not named: counted, started locally (evidencebook#570)",
 		stBoth(SideAcceptor, stAfter), startedLocally)
 	add("untimed-after-agree-by-offerer-side", "the offerer computes the same from its own book and the acceptor's agreement",
 		stBoth(SideOfferer, stAfter), startedLocally)

@@ -763,7 +763,7 @@ type CanActInput struct {
 }
 
 // A holder refuses its first perform or payer settle until CanAct is true
-// (Steven, u610); GateAct applies that. CanAct does not apply to a deal whose
+// (Steven, design 461 §7.2); GateAct applies that. CanAct does not apply to a deal whose
 // counterparty runs no layer (design §4.7), which holds no counterpart
 // agreement, so CanAct is false there and GateAct marks the act unguarded. A
 // stamp proof shows the counterparty stamped its book; only a named

@@ -37,9 +37,10 @@ type ActAuthorization struct {
 	// which covers its checks ref, the check's digest) and its
 	// card_commitment, which a person's approval must carry equal to the
 	// verdict's: a signature over it binds the check and the card the person
-	// answered. A person-key signature over this digest (Steven db13b75b,
-	// u599; its member is AAC#627's) travels beside the approval record,
-	// never inside it, so adding it changes no record format.
+	// answered. A person-key signature over this digest (PROFILE §8:
+	// the person's own key, not the agent's; its member is AAC#627's) travels
+	// beside the approval record, never inside it, so adding it changes no
+	// record format.
 	ApprovalDigest string
 	// NeedsPersonSignature says the approval is the person's (approver
 	// "user", or "agent_card": the person answered a card the agent

@@ -68,7 +68,7 @@
     },
     {
       "name": "untimed-after-agree-by",
-      "why": "the same, T after agree_by, not named: counted, started locally (u608)",
+      "why": "the same, T after agree_by, not named: counted, started locally (evidencebook#570)",
       "input": {
         "at": "2026-11-05T12:00:00Z",
         "side": "acceptor",

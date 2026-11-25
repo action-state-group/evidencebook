@@ -297,7 +297,7 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 	case !sameSources(body.Sources, c.Sources):
 		return SealedRuling{}, caseErr("the ruling's sources are not what the case read")
 	case c.Sources != nil && body.Against.V != nil && !shownOf(c, *body.Against.V):
-		// Steven's ruling 2 (u211): a ruling against a side turns only on
+		// Steven's ruling 2 (design 861 §6): a ruling against a side turns only on
 		// records that side signed, so with none of its records shown there is
 		// nothing it may turn on. Records kept as fork evidence count: they
 		// are the side's own, and the fork is its own equivocation. What a

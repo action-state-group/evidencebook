@@ -769,7 +769,7 @@
       "items": {
         "$ref": "#/$defs/witness"
       },
-      "description": "The witnesses, each key id once; possibly empty (u186)."
+      "description": "The witnesses, each key id once; possibly empty (docs/design/461-deal-profile.md §4.1)."
     },
     "remedy_for": {
       "type": "object",
@@ -1641,7 +1641,7 @@
     "forum": {
       "type": "string",
       "pattern": "^(auto:(twin|ref)|(network|rail|external):[a-z0-9][a-z0-9._-]{0,63})$",
-      "description": "The process that resolves a dispute (evidencebook#404, Steven 2026-11-05; carried on dispute and ruling records per Steven's AAC#626 ruling, u603): auto:twin, auto:ref, network:<id>, rail:<program> or external:<class>. Its prefix is the class standard_history/3 counts by_forum (auto, network, rail, external)."
+      "description": "The process that resolves a dispute (evidencebook#404, Steven 2026-11-05; carried on dispute and ruling records per Steven's AAC#626 ruling): auto:twin, auto:ref, network:<id>, rail:<program> or external:<class>. Its prefix is the class standard_history/3 counts by_forum (auto, network, rail, external)."
     },
     "witness": {
       "type": "object",
@@ -1660,7 +1660,7 @@
           "description": "Where to find the witness: a hint only. A moved witness is the same witness."
         }
       },
-      "description": "A witness, named by its verified key id with its URL as a hint (Steven, #482 Q1, u604)."
+      "description": "A witness, named by its verified key id with its URL as a hint (Steven, #482 Q1)."
     },
     "forums": {
       "type": "array",

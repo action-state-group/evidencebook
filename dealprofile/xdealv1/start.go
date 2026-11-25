@@ -168,7 +168,7 @@ func Start(in StartInput) (StartResult, error) {
 	// 7. No time and never named: started, locally, by nothing yet. Before
 	// agree_by that is the offerer still in time; after it the acceptor agreed
 	// and the offerer's agreement shows no lateness, so the deal counts (Steven,
-	// u608: an agreement then silence is counted), and a witnessed time after
+	// evidencebook#570: an agreement then silence is counted), and a witnessed time after
 	// agree_by, or a naming, still settles it either way.
 	return StartResult{State: StateStarted, Local: true}, nil
 }
