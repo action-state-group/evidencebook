@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,6 +68,14 @@ type askedCopy struct {
 // answer under the responder's pinned keys.
 func askFor(t *testing.T, asker, responder dealParty, dealID string, coverage map[string]any) askedCopy {
 	t.Helper()
+	return askForAlteredOnTheWay(t, asker, responder, dealID, coverage, nil)
+}
+
+// askForAlteredOnTheWay is askFor with the response changed by alter, when
+// set, between the responder writing it and the asker recording it: what an
+// on-path party could do to a reply.
+func askForAlteredOnTheWay(t *testing.T, asker, responder dealParty, dealID string, coverage map[string]any, alter func(response map[string]any)) askedCopy {
+	t.Helper()
 	dir := t.TempDir()
 	ask := askedCopy{requestPath: filepath.Join(dir, "request.json"), responsePath: filepath.Join(dir, "response.json")}
 	party(t, asker.config)
@@ -78,6 +87,14 @@ func askFor(t *testing.T, asker, responder dealParty, dealID string, coverage ma
 
 	party(t, responder.config)
 	runJSON(t, "deal", "respond", "--request", ask.requestPath, "--requester", "the asking party", "--output", ask.responsePath)
+	if alter != nil {
+		var response map[string]any
+		require.NoError(t, json.Unmarshal(mustRead(t, ask.responsePath), &response))
+		alter(response)
+		altered, err := json.Marshal(response)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(ask.responsePath, altered, 0o600))
+	}
 
 	party(t, asker.config)
 	recorded := runJSON(t, "deal", "request", "--response", ask.responsePath, "--for", ask.recordID,
@@ -297,6 +314,89 @@ func dealCopiesRoundTrip(t *testing.T) {
 	}
 	assert.Equal(t, "one_sided", composed["joins"].([]any)[0].(map[string]any)["derived"])
 	assert.Equal(t, seller.signer, refusal["observer"], "observed by the responder whose key it verified under")
+}
+
+// A refusal's members outside its signature (detail, and policy_digest,
+// which evidence-interop/0 does not sign), added on the way, still verify when the answer is recorded, but compose never seals them: the
+// composed member carries only what the responder signed, plus key_id and
+// sig, and its signature still verifies (evidencebook#872).
+func TestComposeCarriesOnlyTheSignedRefusal(t *testing.T) {
+	dealFixture(t)
+	id := dealRun(t, "open", "--input", writeJSON(t, crossPartyBuyerOpen))["deal_id"].(string)
+	buyer := thisDealParty(t)
+	own := askFor(t, buyer, buyer, id, map[string]any{"min_freshness": map[string]any{"size": 1}})
+	require.Equal(t, "artifact", own.outcome)
+
+	var signed map[string]any
+	const added = "added on the way, signed by no one"
+	refused := askForAlteredOnTheWay(t, buyer, buyer, id,
+		map[string]any{"expected_pin": map[string]any{"root": strings.Repeat("0", 64), "mmr_size": 1}},
+		func(response map[string]any) {
+			refusal := response["refusal"].(map[string]any)
+			signed = map[string]any{}
+			for k, v := range refusal {
+				signed[k] = v
+			}
+			// The two unsigned members `request --response` accepts; any
+			// other member is refused there and never recorded.
+			refusal["detail"] = added
+			refusal["policy_digest"] = strings.Repeat("a", 64)
+		})
+	require.Equal(t, "refusal", refused.outcome, "the added members are outside the signature, so the refusal still verifies")
+	require.ElementsMatch(t, dealRefusalCarried, mapKeys(signed), "the responder sends exactly the carried members")
+
+	path, err := composeMembers(t, id, own, refused)
+	require.NoError(t, err, path)
+	assert.NotContains(t, string(mustRead(t, path)), added, "nothing unsigned is sealed")
+	member := memberByID(t, composedBlock(t, path), refused.recordID)
+	assert.Equal(t, signed, member["refusal"], "the refusal as the responder signed it")
+	digest, err := canonical.JSONDigest(signed)
+	require.NoError(t, err)
+	assert.Equal(t, digest, member["digest"])
+
+	// What compose keeps verifies again: a kept member other than the one
+	// the record step verified (as a case-folded duplicate key could make
+	// it) or another request is refused, not sealed.
+	_, err = signedRefusal(signed, signed["request_digest"].(string), signed["key_id"])
+	require.NoError(t, err)
+	other := map[string]any{}
+	for k, v := range signed {
+		other[k] = v
+	}
+	other["reason"] = "request_malformed"
+	_, err = signedRefusal(other, signed["request_digest"].(string), signed["key_id"])
+	assert.Error(t, err, "a reason the signature does not cover")
+	_, err = signedRefusal(signed, strings.Repeat("1", 64), signed["key_id"])
+	assert.Error(t, err, "another request")
+	_, err = signedRefusal(signed, signed["request_digest"].(string), strings.Repeat("1", 64))
+	assert.Error(t, err, "another observer")
+
+	result, err := verifyWithDirectory(t, path, "")
+	require.Error(t, err, "a refusal member reads INCOMPLETE")
+	for _, raw := range composedEntry(t, result)["members"].([]any) {
+		if m := raw.(map[string]any); m["id"] == refused.recordID {
+			assert.Equal(t, map[string]any{"status": "verified", "profile": cli.EvidenceBookRefusalProfile}, m["refusal_signature"])
+		}
+	}
+}
+
+// The carried members are the ones evidence-interop/0 signs, as AAC defines
+// them, plus key_id and sig: a change to the signing rule fails here.
+func TestDealRefusalCarriedIsTheSigningBody(t *testing.T) {
+	body, err := evidencerequest.Refusal{RequestDigest: strings.Repeat("0", 64), Reason: "x", IssuedAt: "x",
+		Detail: "x", PolicyDigest: strings.Repeat("0", 64)}.SigningBody()
+	require.NoError(t, err)
+	var members map[string]any
+	require.NoError(t, json.Unmarshal(body, &members))
+	assert.ElementsMatch(t, dealRefusalCarried, append(mapKeys(members), "key_id", "sig"))
+}
+
+func mapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func composedEntry(t *testing.T, result map[string]any) map[string]any {
