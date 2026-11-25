@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	evidencebook "github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -33,6 +34,17 @@ import (
 // withheldBundleMembers are the members the withheld form keeps: the
 // Evidence Bundle v2 core a reader verifies.
 var withheldBundleMembers = []string{"bundle_version", "bundle_kind", "root", "records", "checkpoint", "completeness", "completeness_certificate", "verification"}
+
+// withheldCapsuleMembers are the only top-level members a record Capsule in
+// the withheld form may carry, as Book.seal writes a deal-book record's
+// Capsule: what a countersigner sees of each record. withheldForm refuses a
+// bundle whose Capsules carry any other (an inline record header, or an
+// entry's members as extensions), so the docs' list stays the exact set.
+var withheldCapsuleMembers = []string{
+	"action_id", "action_type", "assurance", "canonicalization_id", "capsule_id", "developer",
+	"format_version", "key_id", "model_attestation", "operator", "references", "signature",
+	"spec_version", "timestamp",
+}
 
 // producerKeyExtension is agent-action-capsule's extension that declares a
 // bundle's producer key. The withheld form keeps it: capsule-cli counts a
@@ -79,6 +91,15 @@ func withheldForm(raw []byte) ([]byte, error) {
 		return nil, errors.New("the deal book's bundle does not declare its producer key")
 	}
 	withheld["extensions"] = map[string]interface{}{producerKeyExtension: pk}
+	records, _ := withheld["records"].([]interface{})
+	for _, r := range records {
+		capsule, _ := r.(map[string]interface{})
+		for member := range capsule {
+			if !slices.Contains(withheldCapsuleMembers, member) {
+				return nil, fmt.Errorf("a record Capsule of the deal book carries %q, which the withheld form does not show a countersigner: refusing to write it", member)
+			}
+		}
+	}
 	completeness, _ := withheld["completeness"].(map[string]interface{})
 	if completeness == nil {
 		return nil, errors.New("the deal book's bundle carries no completeness member")

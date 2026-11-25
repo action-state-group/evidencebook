@@ -12,8 +12,8 @@ whether that counts for it.
 | | Witness (default) | Countersign (manual) |
 |---|---|---|
 | What it proves | The deal's checkpoint, and so the records it covers, existed by the time the witness signed it; a later rewrite of the chain is detectable | A named party signed the digest of one exact Evidence Bundle file |
-| What the third party sees | One checkpoint per tick of the cadence: hashes, a size that grows by the same amount every tick, and a time on the cadence. Never content, how many deals there are, or when they happen | The withheld bundle it is asked to sign: each record of your deal book as its signed Capsule (your profile's operator name, the book's log id and the record's place in it, its time, the signing key, and digests of its contents and of the records it links to, the other side's included), the checkpoint and its proofs. None of the records' contents, no report, none of the other side's records. A countersigner that guesses a record's exact contents can check the guess against its digest |
-| What it covers | Every deal under that checkpoint | Your deal book through one record, as digests; records after it need a new countersignature. Not the report, and not the other side's records |
+| What the third party sees | One checkpoint per tick of the cadence: hashes, a size that grows by the same amount every tick, and a time on the cadence. Never content, how many deals there are, or when they happen | The withheld bundle it is asked to sign: each record of your deal book as its signed Capsule, including your profile's operator name, the book's log id and the record's place in it, its time, the signing key and digests ([COUNTERSIGN.md](COUNTERSIGN.md) lists every member), the checkpoint and its proofs. None of the records' contents, no report, none of the other side's records. A countersigner that guesses a record's exact contents can check the guess against its digest |
+| What it covers | Every deal under that checkpoint | Your deal book up to and including the record the bundle is rooted at, as digests; records after it need a new countersignature. Not the report, and not the other side's records |
 | Who starts it | `capsulectl deal init` sets it up; opt out with `--no-witness` | You, per deal and per bundle; nothing requests one automatically |
 | What the receipt says | "Sealed, witness pending" until the next tick of the cadence, then "Witnessed" (`assurance.rung` is `self_attested` until a receipt verifies, then `witnessed`, or `witnessed_in_part` while steps sealed after the last witnessed tick are uncovered; `witness_state` is `unverified` and the rung stays `self_attested` when a receipt held does not verify) | `deal report` prints `countersign.rung` `countersigned` only when a stored signature verifies and the profile's countersigner directory lists the signer, and `countersigned_in_part` once your deal book has records after the signed one; a signer the directory lacks, or the producer's own key, is not a rung |
 | Choose it when | You want any deal checked by a third party without doing anything, and are content that it learns only checkpoint hashes | A counterparty or auditor needs a named party to have signed this exact bundle, and you accept that party seeing it |
@@ -45,7 +45,7 @@ capsulectl --profile deal countersign request --service COUNTERSIGNER_URL \
 capsulectl --profile deal deal countersign --deal DEAL_ID --bundle bundle.json \
   --directory DIRECTORY
 
-# 4. The report now states it.
+# 4. The report's countersign states the rung and what it covers.
 capsulectl --profile deal deal report --deal DEAL_ID
 ```
 

@@ -57,14 +57,28 @@ this deal), and `deal report --from-bundle FILE --directory DIRECTORY` renders
 the receipt from it.
 
 The withheld bundle carries each record of your deal book as its signed
-Capsule (your profile's operator name, the book's log id and the record's
-place in it, its time, the signing key, and digests of its contents and of
-the records it links to, the other side's included), the checkpoint and its
-proofs, and the profile's signing key as its producer key, so a
-countersignature by that key reads `self_countersigned`. It carries none of
-the records' contents, no report and none of the other side's records, so a
-countersignature over it covers your deal book through one record and not
-the report: the report's `countersign.covers` says so.
+Capsule, the checkpoint and its proofs, and the profile's signing key as its
+producer key, so a countersignature by that key reads `self_countersigned`.
+Each record Capsule carries exactly these members, and `deal report
+--withheld` refuses to write one that carries any other:
+
+| Member | What it shows |
+|---|---|
+| `operator` | your profile's operator name (the profile name) |
+| `developer` | `capsulectl-deal` |
+| `action_id` | the deal book's log id and the record's place in it (`deal/<log>#<n>`) |
+| `action_type` | `fyi` |
+| `timestamp` | when the record was sealed |
+| `key_id`, `signature` | the signing key and its signature over the Capsule |
+| `capsule_id` | the record's digest |
+| `model_attestation` | only `compute_attestation.agent_input_digest`, the digest of the record's header |
+| `references` | the digest of the record before it in the book (absent on the first) |
+| `assurance`, `canonicalization_id`, `format_version`, `spec_version` | fixed values |
+
+It carries none of the records' contents, no report and none of the other
+side's records, so a countersignature over it covers your deal book up to and
+including the record it is rooted at, and not the report: the report's
+`countersign.covers` says so.
 
 ## Kept with the bundle it covers
 

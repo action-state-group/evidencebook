@@ -6,10 +6,12 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	evidencebook "github.com/action-state-group/evidencebook"
 
@@ -172,4 +174,48 @@ func TestAV1SelfCountersignatureIsNotIndependent(t *testing.T) {
 	assert.Empty(t, stamp.Rung)
 	assert.Equal(t, "self_countersigned", stamp.Finding)
 	assert.Empty(t, stamp.Covers)
+}
+
+// Every record Capsule in a withheld bundle carries exactly the members
+// withheldCapsuleMembers lists, on both sides' books and across record kinds
+// (agreement, statement, dispute), and a Capsule with any other member is
+// refused: the docs name that set as what a countersigner sees.
+func TestAV1WithheldCapsulesCarryOnlyTheListedMembers(t *testing.T) {
+	h := agreedBoth(t, oneForum)
+	for _, side := range []v1Side{h.buyer, h.seller} {
+		side.act(t)
+		dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
+	}
+	h.buyer.act(t)
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", filepath.Join(t.TempDir(), "d.json"))
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	seen := map[string]bool{}
+	for _, side := range []v1Side{h.buyer, h.seller} {
+		side.act(t)
+		require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+		file := filepath.Join(t.TempDir(), "w.json")
+		dealRun(t, "report", "--deal", h.dealID, "--bundle", file, "--withheld")
+		records := readBundleFile(t, file)["records"].([]interface{})
+		require.GreaterOrEqual(t, len(records), 2)
+		for _, r := range records {
+			capsule := r.(map[string]interface{})
+			for member := range capsule {
+				assert.Contains(t, withheldCapsuleMembers, member)
+				seen[member] = true
+			}
+			assert.Equal(t, map[string]interface{}{"compute_attestation": map[string]interface{}{"agent_input_digest": capsule["model_attestation"].(map[string]interface{})["compute_attestation"].(map[string]interface{})["agent_input_digest"]}},
+				capsule["model_attestation"], "only the header's digest")
+		}
+	}
+	for _, member := range withheldCapsuleMembers {
+		assert.True(t, seen[member], "listed member %s appears in some Capsule", member)
+	}
+
+	b := readBundleFile(t, withheldV1(t, h))
+	b["records"].([]interface{})[0].(map[string]interface{})["evidence_record_header"] = map[string]interface{}{"record_type": "x"}
+	b["extensions"] = map[string]interface{}{producerKeyExtension: b["extensions"].(map[string]interface{})[producerKeyExtension]}
+	raw, err := json.Marshal(b)
+	require.NoError(t, err)
+	_, err = withheldForm(raw)
+	require.ErrorContains(t, err, `carries "evidence_record_header"`)
 }
