@@ -38,10 +38,20 @@ RAILS = {"ln.payment_hash": "lightning"}
 
 
 def settled_deals(node: gn.Node, rail: str) -> list[str]:
-    """The deals for which this node's latest own leg of the payment is settled on ``rail``, in deal id order."""
-    return [d["deal_id"] for d in node._run("list", "--json")
-            if any(leg.get("status") == "settled" and RAILS.get(leg.get("payment_ref_type")) == rail
-                   for leg in d.get("own_legs") or ())]
+    """The deals for which this node's latest own leg of the payment is settled on ``rail``, in deal id order.
+    Refused when the listing has no ``own_legs`` for an x-deal-v1 deal with a book (a capsulectl-deal from before
+    the member), rather than counting that deal as unsettled and signing a short count."""
+    out = []
+    for d in node._run("list", "--json"):
+        if d.get("version") != "x-deal-v1" or not d.get("log_id"):
+            continue  # an x-deal-v0 deal, or one with no book of its own yet: no leg of this node's
+        if "own_legs" not in d:
+            raise gn.Refused("this capsulectl-deal lists no own_legs, so the count would miss every payment: install "
+                             "a capsulectl-deal that lists them (see the README)")
+        if any(leg.get("status") == "settled" and RAILS.get(leg.get("payment_ref_type")) == rail
+               for leg in d["own_legs"]):
+            out.append(d["deal_id"])
+    return out
 
 
 def disclosure(node: gn.Node, rail: str, through_sequence: int) -> dict:

@@ -122,9 +122,11 @@ func (s *dealSession) v1ListingOf(ctx context.Context, p cli.Profile, dealID str
 			for _, r := range book {
 				l.times = append(l.times, r.Block.At)
 			}
-			if l.OwnLegs, err = s.v1OwnLegs(ctx, d, book); err != nil {
+			legs, err := s.v1OwnLegs(ctx, d, book)
+			if err != nil {
 				return dealListing{}, false, fmt.Errorf("deal %s: %w", dealID, err)
 			}
+			l.OwnLegs = &legs
 		}
 	}
 	if in != nil {
@@ -328,7 +330,7 @@ func (s *dealSession) v1OwnLegs(ctx context.Context, d *v1Deal, book []xdealv1.R
 			superseded[b.Supersedes.Digest] = true
 		}
 	}
-	var out []v1OwnLeg
+	out := []v1OwnLeg{}
 	for i, r := range book {
 		b, ok := settleOf(r)
 		if !ok || b.Reverses != nil || b.RemedyFor != nil {

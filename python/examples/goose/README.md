@@ -31,6 +31,8 @@ variables):
 
 - `capsulectl-deal`, the plugin `capsulectl plugin install` installs from a
   [capsulectl release](../../../capsulectl/README.md) (`GOOSE_CAPSULECTL_DEAL` names another binary);
+  `loop_settlement_disclosure` needs one whose `deal list --json` carries `own_legs` (evidencebook#920, the first
+  capsulectl release after it) and refuses with an older one;
 - `capsule-engine`, [capsule-engine](https://github.com/action-state-group/capsule-engine)'s command (go/v0.6.0
   or later): a deal's admission decision is its `admission evaluate` (`GOOSE_CAPSULE_ENGINE`).
 

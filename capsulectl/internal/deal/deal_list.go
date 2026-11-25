@@ -58,8 +58,10 @@ type dealListing struct {
 	SettledNote    string `json:"settled_note,omitempty"`
 	CheckpointNote string `json:"checkpoint_note,omitempty"`
 	// OwnLegs are an x-deal-v1 deal's own payment legs as its own book
-	// holds them (v1OwnLegs), read without a checkpoint; absent with none.
-	OwnLegs []v1OwnLeg `json:"own_legs,omitempty"`
+	// holds them (v1OwnLegs), read without a checkpoint: an empty list on a
+	// deal with a book and no leg, absent on a deal with no book (and on
+	// x-deal-v0), so a reader tells "no leg" from a listing without it.
+	OwnLegs *[]v1OwnLeg `json:"own_legs,omitempty"`
 	// events are the steps the listing was read from (none for x-deal-v1).
 	events []sealedEvent
 	// times are an x-deal-v1 deal's record times (its offer and own book),

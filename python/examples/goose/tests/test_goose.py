@@ -432,3 +432,40 @@ def test_a_leg_sealed_before_the_disclosure_existed_is_counted(pair):
     buyer._run("settle", "--deal", deal, "--sent", "--check", paused["check_id"], "--payment-ref-type", gn.PAYMENT_REF_TYPE)
     buyer._run("settle", "--deal", deal, "--check", paused["check_id"], "--status", "settled", "--out", str(tmp / "leg.json"))
     assert st.disclosure(buyer, "lightning", 1)["settlements"] == 1
+
+
+def test_the_count_reads_each_legs_reference_type_through_the_table(node, monkeypatch):
+    """Deals whose latest own legs name different reference types: only the type the table maps to the asked rail
+    counts, an unknown type counts on no rail, and a leg not settled (pending, failed) counts nowhere."""
+    import settlement as st
+
+    def leg(status, ref_type):
+        return {"leg": "payer", "status": status, "payment_ref_type": ref_type}
+    listing = [
+        {"deal_id": "deal-0000000000000001", "version": "x-deal-v1", "log_id": "deal/1", "own_legs": [leg("settled", "ln.payment_hash")]},
+        {"deal_id": "deal-0000000000000002", "version": "x-deal-v1", "log_id": "deal/2", "own_legs": [leg("settled", "x402.transaction")]},
+        {"deal_id": "deal-0000000000000003", "version": "x-deal-v1", "log_id": "deal/3", "own_legs": [leg("pending", "ln.payment_hash")]},
+        {"deal_id": "deal-0000000000000004", "version": "x-deal-v1", "log_id": "deal/4", "own_legs": [leg("failed", "ln.payment_hash")]},
+        {"deal_id": "deal-0000000000000005", "version": "x-deal-v1", "log_id": "deal/5", "own_legs": []},
+        {"deal_id": "deal-0000000000000006", "version": "x-deal-v1", "log_id": ""},
+        {"deal_id": "deal-0000000000000007", "kind": "deal", "log_id": "deal/7"},
+    ]
+    real = node._run
+    monkeypatch.setattr(node, "_run", lambda *a: listing if a == ("list", "--json") else real(*a))
+    assert st.settled_deals(node, "lightning") == ["deal-0000000000000001"]
+    assert [st.disclosure(node, r, 1)["settlements"] for r in ("lightning", "base", "x402")] == [1, 0, 0]
+    monkeypatch.setattr(st, "RAILS", {**st.RAILS, "x402.transaction": "base"})
+    assert st.settled_deals(node, "base") == ["deal-0000000000000002"]
+
+
+def test_a_listing_without_own_legs_is_refused_never_signed_as_zero(node, monkeypatch):
+    """A capsulectl-deal from before own_legs lists a deal with a book but no member: the tool refuses and seals
+    nothing, rather than signing a count that misses that deal's payment."""
+    import settlement as st
+
+    old = [{"deal_id": "deal-0000000000000001", "version": "x-deal-v1", "log_id": "deal/1", "state": "settled"}]
+    real = node._run
+    monkeypatch.setattr(node, "_run", lambda *a: old if a == ("list", "--json") else real(*a))
+    with pytest.raises(Refused, match="own_legs"):
+        st.disclosure(node, "lightning", 1)
+    assert not node.notes(gn.SETTLEMENT_DISCLOSURE)
