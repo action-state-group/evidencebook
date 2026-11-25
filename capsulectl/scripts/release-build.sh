@@ -37,19 +37,28 @@ PKG=$CORE/cli
 TARGETS=(linux/amd64 linux/arm64 darwin/arm64)
 LAUNCHERS=(capsulectl-book capsulectl-deal)
 
-# The archives need GNU tar's --sort, --mtime and --owner options; macOS's
-# tar is bsdtar, which refuses them partway through the build.
+# The archives need GNU tar's --format=gnu, --mode and --mtime options; macOS's
+# tar is bsdtar, which refuses them at the first archive.
 is_gnu_tar() { "$1" --version 2> /dev/null | head -n 1 | grep -q 'GNU tar'; }
-if [ -z "${TAR:-}" ]; then
-  if is_gnu_tar tar; then TAR=tar
-  elif command -v gtar > /dev/null && is_gnu_tar gtar; then TAR=gtar
+if [ -n "${TAR:-}" ]; then
+  if ! is_gnu_tar "$TAR"; then
+    echo "release-build.sh: TAR=$TAR is not GNU tar, which the archives need." >&2
+    echo "Unset TAR to let this script find GNU tar (tar, then gtar), or set TAR=gtar after: brew install gnu-tar (macOS)." >&2
+    exit 1
   fi
-fi
-if [ -z "${TAR:-}" ] || ! is_gnu_tar "$TAR"; then
-  echo "release-build.sh: GNU tar is needed for the archives, and ${TAR:-tar} is not GNU tar." >&2
-  echo "On macOS: brew install gnu-tar (it installs gtar, which this script then uses)." >&2
+elif is_gnu_tar tar; then TAR=tar
+elif command -v gtar > /dev/null && is_gnu_tar gtar; then TAR=gtar
+else
+  echo "release-build.sh: GNU tar is needed for the archives, and neither tar nor gtar is GNU tar." >&2
+  echo "On macOS: brew install gnu-tar (it installs gtar, which this script then finds)." >&2
   echo "On Linux: install your distribution's tar package." >&2
   exit 1
+fi
+# RELEASE_BUILD_TAR_ONLY=1 prints the tar it would use and builds nothing
+# (scripts/test-release-build-tar.sh).
+if [ -n "${RELEASE_BUILD_TAR_ONLY:-}" ]; then
+  echo "$TAR"
+  exit 0
 fi
 
 cd "$(dirname "$0")/.."
