@@ -78,6 +78,9 @@ func TestANeverSealedDeclineIsRefusedAfterACancellation(t *testing.T) {
 	_, err = seller.store.DeclineOffer(ctx, offer.Digest, "", "d")
 	require.Error(t, err)
 	sealSent = real
+	var state string
+	require.NoError(t, seller.db.QueryRowContext(ctx, `SELECT state FROM deal_sent WHERE kind=?`, xdealv1.KindDecline).Scan(&state))
+	require.Equal(t, sentSealing, state, "stored, never sealed")
 	_, err = seller.db.ExecContext(ctx, `UPDATE deal_versions SET state='cancelled' WHERE deal_id=?`, offer.DealID)
 	require.NoError(t, err)
 

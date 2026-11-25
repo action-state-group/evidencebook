@@ -15,7 +15,6 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
-	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
 )
 
@@ -261,33 +260,6 @@ func (s *dealSession) journalHolds(ctx context.Context, digest string) (bool, er
 		}
 	}
 	return false, nil
-}
-
-// journalRecord is the x-deal-v1 record the journal holds under payload
-// digest digest (nil when the journal's record there is not one), and
-// whether the journal holds one.
-func (s *dealSession) journalRecord(ctx context.Context, digest string) (rec *xdealv1.Record, held bool, err error) {
-	j, records, err := s.journalRecords(ctx)
-	if err != nil {
-		return nil, false, err
-	}
-	for _, r := range records {
-		for _, c := range r.Header.PayloadCommitments {
-			if c != digest {
-				continue
-			}
-			payload, err := j.ResolvePayload(ctx, r.RecordID, digest)
-			if err != nil {
-				return nil, false, err
-			}
-			r, err := xdealv1.Decode(payload)
-			if err != nil {
-				return nil, true, nil
-			}
-			return &r, true, nil
-		}
-	}
-	return nil, false, nil
 }
 
 // initMigratesStore makes `deal init` start a new store in the new layout; a

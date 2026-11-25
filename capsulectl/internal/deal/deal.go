@@ -83,7 +83,7 @@ type dealSession struct {
 	// only for a verb that took v1ReceiveContext (deal_v1_book.go).
 	v1Profile *xdealv1.ReceiveProfile
 	// store is the x-deal-v1 deal store (evidencebook's package deal), opened
-	// by the first v1 verb (deal_v1_store.go).
+	// by the first x-deal-v1 code that needs it (deal_v1_store.go).
 	store *dealapi.Store
 	// shelf is the deal store's one writer (deal_shelf.go), open from
 	// openDealSession until close; legacy is the current deal's log on it,

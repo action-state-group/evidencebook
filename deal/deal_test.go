@@ -574,6 +574,12 @@ func TestNoteReceivedStopsBeforeCommit(t *testing.T) {
 	d, err := seller.store.Deal(ctx, offer.DealID)
 	require.NoError(t, err)
 	assert.Nil(t, d, "nothing of a stopped note is kept")
+	held, err := seller.store.HeldOffer(ctx, offer.Digest)
+	require.NoError(t, err)
+	assert.Nil(t, held)
+	var n int
+	require.NoError(t, seller.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM deal_versions) + (SELECT COUNT(*) FROM deal_v1) + (SELECT COUNT(*) FROM deal_v1_offers)`).Scan(&n))
+	assert.Zero(t, n, "all three rows rolled back together")
 	noteStops = func() error { return nil }
 	require.NoError(t, seller.store.NoteReceived(ctx, Received{Sent: &sent, Pair: offer.Pair}))
 	d, err = seller.store.Deal(ctx, offer.DealID)

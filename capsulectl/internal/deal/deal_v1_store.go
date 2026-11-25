@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -20,9 +19,12 @@ import (
 
 // The x-deal-v1 deal store is evidencebook's package deal (evidencebook#899):
 // it owns the deal tables (deal_versions, deal_sent, deal_v1, deal_v1_offers,
-// deal_v1_admits) and every writer of a deal's records, so the plugin keeps
-// only its flags, its files and its output. This file opens that store over
-// the session's shelf and maps its errors to the CLI's.
+// deal_v1_admits), the journal send writer and the deal-book writer, and
+// seals the deal.open records (offer, cancellation, decline, admit,
+// agreement). The plugin keeps those verbs' flags, files and output, and for
+// now its own deal_v1_events and deal_v1_sends tables and the bodies of
+// perform, settle, statement and dispute. This file opens the store over the
+// session's shelf and maps its errors to the CLI's.
 
 type (
 	v1Deal       = dealapi.Deal
@@ -32,8 +34,11 @@ type (
 )
 
 // dealStore opens the session's deal store once, on its shelf and its store
-// file. It is opened only by an x-deal-v1 verb (ensureV1Tables), so a store
-// that never holds an x-deal-v1 deal never gains its tables.
+// file. Only x-deal-v1 code calls it (a verb's ensureV1Tables, a reader of a
+// v1 deal, the status provider of a v1 book), so a store that never holds an
+// x-deal-v1 deal never gains its tables. A read session (openDealStoreRead)
+// writes nothing for it: it takes the profile's log id as it is, never saving
+// a new one, since only Agree, a writer's verb, names it.
 func (s *dealSession) dealStore(ctx context.Context) (*dealapi.Store, error) {
 	if s.store != nil {
 		return s.store, nil
@@ -45,20 +50,31 @@ func (s *dealSession) dealStore(ctx context.Context) (*dealapi.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	p, err := s.cadenceProfile()
-	if err != nil {
-		return nil, err
+	logID := s.p.LogID
+	if !s.shared {
+		p, err := s.cadenceProfile()
+		if err != nil {
+			return nil, err
+		}
+		logID = p.LogID
+	} else if logID == "" {
+		logID = readSessionShelfLog
 	}
 	s.store, err = dealapi.Open(ctx, dealapi.Config{
 		Shelf: s.shelf, DB: s.db,
 		SigningKey:    s.key.Public().(ed25519.PublicKey),
 		CheckpointKey: checkpoint.Public().(ed25519.PublicKey),
-		ShelfLogID:    p.LogID,
+		ShelfLogID:    logID,
 		// The deal clock, read each time, as every v1 record's time was.
 		Now: func() time.Time { return cli.DealClock() },
 	})
 	return s.store, err
 }
+
+// readSessionShelfLog stands in for the cadence log id of a read session on a
+// profile that has none yet: the store needs one, and a read session seals no
+// agreement, which is the only record that names it.
+const readSessionShelfLog = "deal-cadence/unset"
 
 // ensureV1Tables opens the deal store, which creates its tables, and the
 // plugin's own v1 tables: the local event list and the payment sends.
@@ -168,12 +184,6 @@ func (s *dealSession) sentOfferPair(ctx context.Context, offerDigest string) ([]
 	return st.OfferPair(ctx, offerDigest)
 }
 
-// ownKeyID is the key this profile's records are signed under, as the other
-// side sees it (lowercase hex).
-func (s *dealSession) ownKeyID() string {
-	return hex.EncodeToString(s.key.Public().(ed25519.PublicKey))
-}
-
 // writeSent writes a sent record's pair to path, or to the command's output
 // with no path, and records it delivered. A file already at path holding the
 // same pair is the earlier run's: it counts as written.
@@ -213,11 +223,4 @@ func agreeOf(r xdealv1.Record) (*xdealv1.AgreeBody, bool) {
 		return &b, true
 	}
 	return nil, false
-}
-
-func oppositeRole(role string) string {
-	if role == xdealv1.RoleBuyer {
-		return xdealv1.RoleSeller
-	}
-	return xdealv1.RoleBuyer
 }

@@ -12,10 +12,10 @@ import (
 // The x-deal-v1 deal book and the records that come from the other side
 // (docs/design/xdealv1-write-path.md, slice 2). A v1 deal book opens at the
 // holder's agreement and holds the deal's records only; its log id is random,
-// never derived from the deal id (§3). This file holds the writer every v1
-// deal-book record goes through (sealBookV1), the local tables that say which
-// deal is which, and the context that opens the shelf's store of received
-// records for the verbs that need it.
+// never derived from the deal id (§3). Its writer and the tables that say
+// which deal is which are evidencebook's package deal (deal_v1_store.go);
+// this file holds the context that opens the shelf's store of received
+// records for the verbs that need it, and the first-act gate.
 
 // v1ReceiveKey marks a context whose session opens the shelf with the x-deal-v1
 // receive profile: `deal receive`, `deal agree` and the first-act gate read the
