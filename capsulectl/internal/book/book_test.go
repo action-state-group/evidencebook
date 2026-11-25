@@ -901,7 +901,7 @@ func TestRequestAndRespondReportTheirRecordWhenOutputFails(t *testing.T) {
 
 	sent := filepath.Join(dir, "ask.sent")
 	require.NoError(t, os.WriteFile(sent, asked.Request, 0o600))
-	out, err = invoke(t, "", "respond", "--profile", "b", "--request", sent, "--requester", "a", "--output", taken)
+	out, _, err = invokeSplit(t, "respond", "--profile", "b", "--request", sent, "--requester", "a", "--output", taken)
 	require.Error(t, err)
 	var answered cli.EvidenceRespondResult
 	require.NoError(t, json.Unmarshal([]byte(out), &answered))

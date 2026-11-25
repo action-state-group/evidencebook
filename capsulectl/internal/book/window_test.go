@@ -239,6 +239,19 @@ func TestAReportOverMonthWindowsThroughTheCommands(t *testing.T) {
 	})
 }
 
+// A windowed store answers through Shelf.Respond, which tells the operator
+// the decided reason of a folded refusal too, on stderr alone (evidencebook#580).
+func TestAWindowedStoreReportsTheDecidedRefusalReasonLocally(t *testing.T) {
+	x := newWindowExchange(t)
+	x.ask("pack", `{"subject":{"full_history":null},"coverage":{"min_freshness":1},"derivation":"`+x.digest+`"}`)
+	stdout, stderr, err := invokeSplit(t, "respond", "--profile", "b", "--request", filepath.Join(x.dir, "pack.sent"), "--requester", "stranger", "--output", filepath.Join(x.dir, "stranger.response"))
+	require.NoError(t, err, stderr)
+	assert.Contains(t, stderr, "refused "+evidencebook.ReasonPolicyDeclined+"; the gate decided "+evidencebook.ReasonNotAuthorized)
+	assert.Contains(t, stdout, `"reason":"`+evidencebook.ReasonPolicyDeclined+`"`)
+	assert.NotContains(t, stdout, evidencebook.ReasonNotAuthorized)
+	assert.NotContains(t, string(storeBytes(t, x.b)), evidencebook.ReasonNotAuthorized)
+}
+
 func TestAWindowedStoreIsCreatedOnceAndKeepsItsWindow(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	bookClock(t, time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC))
