@@ -524,7 +524,8 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   `evidencebook.deal.v1.verify_report_bundle` (evidencebook#598). The vectors
   are in `testdata/deal-v1/report-bundle/`.
 - **The counterparty's half** (evidencebook#850; Sherlock2's ruling on evidencebook-skills#242,
-  confirmed for this object on evidencebook#850). The holder's own copy (`keep`), and no other,
+  confirmed for this object in
+  https://github.com/action-state-group/evidencebook/issues/850#issuecomment-7156504017). The holder's own copy (`keep`), and no other,
   may carry the bundle extension `x-deal-v1-counterparty-half`: `{"bundle": <Evidence Bundle>,
   "stamp_proof": <stamp proof>}`. It is the object the holder's History card reads for "stamped
   by both": the counterparty's agreement, the record at seq 1 of its deal book, and the stamp
@@ -547,12 +548,14 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
     settlement or report), and a page never words it as a countersignature, which is another
     party's signature over the bundle (countersign/v1). The copy speaks as of their checkpoint: a
     fork of their log found later is not visible in it.
-  - A copy whose half does not verify, or that is not the holder's own copy, is INVALID to an
-    x-deal-v1 reader (`capsulectl deal verify --bundle` reports `counterparty_half` as
-    `verified`, `failed` or `absent`), since the holder assembled it. The kind is a private,
+  - An x-deal-v1 reader treats a copy whose half does not verify, or that carries one and is not
+    the holder's own copy, as INVALID, since the holder assembled it, and reports a half that
+    verifies as such. `capsulectl deal verify --bundle` does this from the capsulectl change of
+    evidencebook#850 (part 2), which reports `counterparty_half` as `verified` or `failed` and
+    gives no `counterparty_half` member for a copy without one. The kind is a private,
     unregistered `x-` kind (AAC REGISTRY §14), so a neutral bundle verifier leaves it
     uninterpreted and does not enforce this. Anyone holding the copy can strip the half; the
-    copy then reads `absent`.
+    copy then reads as one without it.
   - The witness receipt for the holder's own checkpoint, the other part of the #242 ruling, is
     not this extension (evidencebook-skills#242).
   - Go only for now (docs/PORT-PARITY.tsv).
