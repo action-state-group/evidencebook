@@ -104,8 +104,9 @@ def start(inp: StartInput) -> StartResult:
     not RFC 3339 UTC to the second and an unknown side; with a counterparty
     that runs the layer, also agree_by that is not such a time, a held
     counterpart agreement whose same_offer_and_rows or
-    offerer_names_acceptor is ``None``, and an offerer that holds no
-    acceptor's agreement, or one citing another offer or rows."""
+    offerer_names_acceptor is ``None``, and an offerer holding an acceptor's
+    agreement that cites another offer or rows. An offerer that holds no
+    acceptor agreement reads as awaiting, then not started (u217)."""
     at = _start_time("at", inp.at)
     if inp.side not in (SIDE_OFFERER, SIDE_ACCEPTOR):
         raise ValueError(f"xdealv1: start: side {_go_quote(inp.side)} is neither offerer nor acceptor")
