@@ -478,6 +478,7 @@ dealprofile/xdealv1	func	CaseRecordTimes	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	func	ChangesDetails	x-deal-v1	frozen #710	frozen #710
 dealprofile/xdealv1	func	Check	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckActs	x-deal-v1	frozen #710	frozen #710
+dealprofile/xdealv1	func	CheckAgreedAt	x-deal-v1	frozen #906	frozen #907
 dealprofile/xdealv1	func	CheckAgreement	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckAuthorizations	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckCase	x-deal-v1	frozen #774	ported
@@ -633,6 +634,7 @@ dealprofile/xdealv1	type	TimedRecord	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	ValueBand	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	VerdictBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Witness	x-deal-v1	ported	ported
+dealprofile/xdealv1	var	ErrAgreedAfterWitnessed	x-deal-v1	not needed	not needed
 dealprofile/xdealv1	var	ErrRulingConflict	x-deal-v1	frozen #774	ported
 dealprofile/xdealv1	var	NoTime	x-deal-v1	ported	frozen #653
 rowstatus	func	Compute	row-status	ported	ported

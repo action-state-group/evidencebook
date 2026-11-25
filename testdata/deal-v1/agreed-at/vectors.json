@@ -1,0 +1,12 @@
+{
+  "rule": "agent-action-capsule spec/standard-history-v0.md §11.2 \"Agreed no later than witnessed\" (#696): agreed_at MUST NOT be later than the deal's first witnessed time by more than 300 seconds",
+  "cases": [
+    {"name": "agreed-before", "why": "agreed an hour before the first witness registration", "agreed_at": "2026-11-05T11:00:00Z", "first_witnessed": "2026-11-05T12:00:00Z", "want": "ok"},
+    {"name": "agreed-equal", "why": "agreed at the registration second", "agreed_at": "2026-11-05T12:00:00Z", "first_witnessed": "2026-11-05T12:00:00Z", "want": "ok"},
+    {"name": "skew-at-allowance", "why": "the holder's clock 300 seconds ahead of the witness's: inside the allowance", "agreed_at": "2026-11-05T12:05:00Z", "first_witnessed": "2026-11-05T12:00:00Z", "want": "ok"},
+    {"name": "skew-past-allowance", "why": "301 seconds after the first witnessed time: not well formed", "agreed_at": "2026-11-05T12:05:01Z", "first_witnessed": "2026-11-05T12:00:00Z", "want": "agreed_after_witnessed"},
+    {"name": "moved-a-month-later", "why": "agreed_at a month after a witness timed the agreement, as a holder moving a deal into a later window would write it", "agreed_at": "2026-12-05T12:00:00Z", "first_witnessed": "2026-11-05T12:00:00Z", "want": "agreed_after_witnessed"},
+    {"name": "offset-time", "why": "agreed_at written with an offset compares as the same instant: 13:04:00+01:00 is 12:04:00Z, inside the allowance", "agreed_at": "2026-11-05T13:04:00+01:00", "first_witnessed": "2026-11-05T12:00:00Z", "want": "ok"},
+    {"name": "malformed", "why": "agreed_at that is no RFC 3339 time is refused, never read as earlier", "agreed_at": "2026-11-05 12:00", "first_witnessed": "2026-11-05T12:00:00Z", "want": "malformed"}
+  ]
+}
