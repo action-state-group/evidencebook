@@ -20,7 +20,6 @@ on:
   pull_request:
     paths:
       - .github/workflows/capsulectl-core-main.yml
-      - .github/scripts/report-failure.sh
       - capsulectl/scripts/check-deal-pages.sh
       - capsulectl/scripts/check-portability.sh
 

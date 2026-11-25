@@ -52,7 +52,7 @@ if ((shard_count > 1)); then
     exit 1
   fi
   printf 'Shard %s: %d top-level tests\n' "$shard" "$(printf '%s\n' "$names" | wc -l)"
-  run=(-run "^($(printf '%s\n' "$names" | paste -sd '|'))\$")
+  run=(-run "^($(printf '%s\n' "$names" | paste -sd '|' -))\$")
 fi
 
 log=$(mktemp)

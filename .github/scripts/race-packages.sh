@@ -50,8 +50,15 @@ cd "$(git rev-parse --show-toplevel)/$module_dir"
 prefix=""
 [[ "$module_dir" == . ]] || prefix="${module_dir%/}/"
 module=$(go list -m)
+# Each go list runs in a checked assignment, so a resolution error fails the
+# script instead of yielding an empty plan.
+listed=$(go list -f '{{.ImportPath}}' ./...)
 declare -A known=()
-while IFS= read -r p; do known["$p"]=1; done < <(go list -f '{{.ImportPath}}' ./...)
+while IFS= read -r p; do [[ -z "$p" ]] || known["$p"]=1; done <<<"$listed"
+if ((${#known[@]} == 0)); then
+  echo "go list found no packages in $module_dir" >&2
+  exit 1
+fi
 
 matches() { # path glob...
   local path=$1 g
@@ -99,19 +106,24 @@ while IFS= read -r path; do
   done
 done
 
+raced=()
 for pkg in "${!known[@]}"; do
   if [[ "$pkg" == "$module" ]]; then rel=.; else rel="./${pkg#"$module"/}"; fi
   if ((${#exclude[@]})) && matches "$rel" "${exclude[@]}"; then
     continue
   fi
   if ((full)); then
-    printf '%s\n' "$rel"
+    raced+=("$rel")
     continue
   fi
+  deps=$(go list -test -deps -f '{{.ImportPath}}' "$rel")
   while IFS= read -r dep; do
+    dep=${dep%% \[*}
+    dep=${dep%.test}
     if [[ -n "${changed[$dep]+x}" ]]; then
-      printf '%s\n' "$rel"
+      raced+=("$rel")
       break
     fi
-  done < <(go list -test -deps -f '{{.ImportPath}}' "$rel" | sed 's/ \[.*\]$//; s/\.test$//' | sort -u)
-done | sort
+  done <<<"$deps"
+done
+((${#raced[@]} == 0)) || printf '%s\n' "${raced[@]}" | sort

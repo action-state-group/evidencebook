@@ -54,6 +54,7 @@ jobs:
           fi
           git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
           run=$(bash .github/scripts/paths-changed.sh .github/workflows/report.yml < "$RUNNER_TEMP/changed.txt")
+          [[ "$run" == true || "$run" == false ]]
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo ".github/workflows/report.yml push paths changed: $run" >> "$GITHUB_STEP_SUMMARY"
 

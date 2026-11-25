@@ -58,15 +58,19 @@ jobs:
           fi
           git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
           cat "$RUNNER_TEMP/changed.txt"
+          # grep exits 0 on a match, 1 on none and 2 on an error, which fails the job.
+          matched() { local st=0; grep "$@" "$RUNNER_TEMP/changed.txt" > /dev/null || st=$?; ((st < 2)) || exit 1; ((st == 0)); }
           root=false
-          if grep -vqE '^(capsulectl/|report/|changelog\.d/|\.github/workflows/(capsulectl|capsulectl-core-main|rust|report|leak-lint|changelog-fragments|publish-rust|release|prepare-release|tag-release)\.yml$)' "$RUNNER_TEMP/changed.txt"; then
+          if matched -vE '^(capsulectl/|report/|changelog\.d/|\.github/workflows/(capsulectl|capsulectl-core-main|rust|report|leak-lint|changelog-fragments|publish-rust|release|prepare-release|tag-release)\.yml$)'; then
             root=true
           fi
           goose=false
-          if grep -qE '^(python/examples/goose/|test/interop/goose-capsule/|\.github/workflows/ci\.yml$)' "$RUNNER_TEMP/changed.txt"; then
+          if matched -E '^(python/examples/goose/|test/interop/goose-capsule/|\.github/workflows/ci\.yml$)'; then
             goose=true
           fi
-          race=$(bash .github/scripts/race-packages.sh root < "$RUNNER_TEMP/changed.txt" | paste -sd ' ' -)
+          # A checked assignment, not a pipeline: a script error fails this job.
+          race=$(bash .github/scripts/race-packages.sh root < "$RUNNER_TEMP/changed.txt")
+          race=${race//$'\n'/ }
           printf 'root=%s\nrace=%s\ngoose=%s\n' "$root" "$race" "$goose" >> "$GITHUB_OUTPUT"
           printf 'root jobs: %s; race over: %s; Goose loop: %s\n' "$root" "${race:-nothing}" "$goose" >> "$GITHUB_STEP_SUMMARY"
 

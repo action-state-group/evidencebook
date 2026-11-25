@@ -4,6 +4,18 @@ Guidance for coding agents working on this repository.
 
 ## Commands
 
+**Before every push, run `scripts/pre-push.sh`** (evidencebook#925). Pull
+requests run only fast checks in CI; this runs, in full, every suite the
+branch's changes reach (`--all`: every suite), including
+`capsulectl/internal/deal` under the race detector in parallel shards, which
+no pull request runs in CI. It prints each suite's time and exits nonzero if
+any failed; push only when it passes. `--all` took 24 minutes on an Apple M5 Pro (18 cores, 2026-11-25, other
+work running): capsulectl 21 minutes in nine parallel shards per pass, the
+root module 8 minutes more when its test cache is cold. The jobs that need a pinned
+Chrome or capsule-engine (deal pages, presentation pass, the Goose loop) run
+on main and the nightly; run them as listed below when you change what they
+cover.
+
 ```bash
 # Go (repository root; the module github.com/action-state-group/evidencebook, Go 1.27)
 test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum
@@ -18,9 +30,6 @@ go test -race ./...
 # capsulectl-book and capsulectl-deal (capsulectl/, a nested module; CI: .github/workflows/capsulectl.yml)
 (cd capsulectl && test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum)
 (cd capsulectl && go vet ./... && go test ./...)
-# internal/deal under the race detector, which no pull request runs in CI (main and the nightly do):
-# run it before pushing a change under capsulectl/; about 20 minutes of CPU, longer on a laptop
-(cd capsulectl && CAPSULE_TEST_PASS=race CAPSULE_TEST_PKGS=./internal/deal bash scripts/test.sh)
 
 # Rust (rust/, a workspace: the crate evidencebook and the unpublished
 # interop programs evidencebook-interop; CI: .github/workflows/rust.yml)
@@ -109,8 +118,9 @@ the change reaches (`.github/scripts/race-packages.sh`), never over
 `capsulectl/internal/deal`; the Goose loop runs only when its own files
 change. Push to main and the nightly (ci.yml and capsulectl.yml) run
 everything, and a red run there opens or comments on one `ci-red` issue per
-workflow (`.github/scripts/report-failure.sh`). `bash
-.github/scripts/ci-scripts_test.sh` tests the planning scripts.
+workflow (`.github/scripts/report-failure.sh`), which the coordinator's
+watchdog routes the same day. `bash .github/scripts/ci-scripts_test.sh` tests
+the planning scripts.
 `leak-lint.yml` scans public material for internal workflow
 text.
 

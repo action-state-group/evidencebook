@@ -20,7 +20,7 @@ name: capsulectl
 on:
   push:
     branches: [main]
-    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", "testdata/live16-ask/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml", ".github/scripts/**"]
+    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", "testdata/live16-ask/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml", ".github/scripts/race-packages.sh", ".github/scripts/paths-changed.sh", ".github/scripts/ci-scripts_test.sh"]
   # Every pull request, so `capsulectl result` can be a required check; the plan
   # job skips the rest when the pull request touches none of the push paths.
   pull_request:
@@ -148,14 +148,18 @@ jobs:
           if [[ "$EVENT" == pull_request ]]; then
             git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
             cat "$RUNNER_TEMP/changed.txt"
-            if [[ "$(bash .github/scripts/paths-changed.sh .github/workflows/capsulectl.yml < "$RUNNER_TEMP/changed.txt")" != true ]]; then
+            # Checked assignments: a script error fails the plan, never skips the jobs.
+            run=$(bash .github/scripts/paths-changed.sh .github/workflows/capsulectl.yml < "$RUNNER_TEMP/changed.txt")
+            [[ "$run" == true || "$run" == false ]]
+            if [[ "$run" == false ]]; then
               echo "run=false" >> "$GITHUB_OUTPUT"
               # The tests job is skipped; its matrix still has to parse.
               echo 'matrix=[{"pass":"plain","shard":"1/1","pkgs":"./..."}]' >> "$GITHUB_OUTPUT"
               echo "No capsulectl input changed." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
-            pkgs=$(bash .github/scripts/race-packages.sh capsulectl < "$RUNNER_TEMP/changed.txt" | paste -sd ' ' -)
+            pkgs=$(bash .github/scripts/race-packages.sh capsulectl < "$RUNNER_TEMP/changed.txt")
+            pkgs=${pkgs//$'\n'/ }
             echo "Race over: ${pkgs:-nothing}" >> "$GITHUB_STEP_SUMMARY"
             matrix=$(jq -cn --arg p "$pkgs" --argjson plain "$plain" \
               '(if $p == "" then [] else [{pass:"race",shard:"1/1",pkgs:$p}] end) + $plain')
