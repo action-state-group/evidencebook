@@ -33,8 +33,9 @@ import (
 // history_card/2 only).
 
 const (
-	// receivedHistoryKind is the one History kind `--history` reads: a
-	// personal_history_basic/1 History (H3), per Steven's u527 (1). Which
+	// receivedHistoryKind is the History kind (H3) `--history` reads beside
+	// a stapled history_card/2: a personal_history_basic/1 History, per
+	// Steven's u527 (1). Which
 	// kind follows Steven's ruling on asg-agent-team-ethan#391, which may
 	// supersede u527 (1); a switch changes this constant and the verifier
 	// call in verifyReceivedHistory.
@@ -49,7 +50,6 @@ const (
 	receivedHistoryNotBound = "NOT_PRESENT"
 	historyCardStaple1      = "history_card/1"
 	historyCardStaple2      = "history_card/2"
-	evidenceCommitment      = "evidence-commitment/1"
 )
 
 // receivedHistoryDoc is one verified document, as the checker reads it.
@@ -65,9 +65,14 @@ type receivedHistoryDoc struct {
 // (design §5.3): one counterparty, the keys it was verified under, and at
 // most one document of each kind, in the order given.
 type receivedHistory struct {
-	About            string               `json:"about"`
-	CounterpartyKeys []string             `json:"counterparty_keys"`
-	Histories        []receivedHistoryDoc `json:"histories"`
+	About            string   `json:"about"`
+	CounterpartyKeys []string `json:"counterparty_keys"`
+	// CheckpointKeys are the keys a stapled card's checkpoints were verified
+	// under (--checkpoint-key), absent when none was given: input_sha256
+	// binds them with the rest, so the verdict says which key vouched for
+	// the card, and a send's re-read must give the same ones.
+	CheckpointKeys []string             `json:"checkpoint_keys,omitempty"`
+	Histories      []receivedHistoryDoc `json:"histories"`
 }
 
 // historySHA256 lists each document's SHA-256, in input order.
@@ -108,7 +113,7 @@ func readReceivedHistory(c *cobra.Command) (*receivedHistory, error) {
 			return nil, cli.InputError("--counterparty-key and --checkpoint-key are raw Ed25519 public keys as 64 lowercase hex characters")
 		}
 	}
-	h := &receivedHistory{About: receivedHistoryAbout, CounterpartyKeys: keys, Histories: []receivedHistoryDoc{}}
+	h := &receivedHistory{About: receivedHistoryAbout, CounterpartyKeys: keys, CheckpointKeys: checkpointKeys, Histories: []receivedHistoryDoc{}}
 	seen := map[string]bool{}
 	kinds := map[string]bool{}
 	for _, path := range paths {
@@ -207,7 +212,10 @@ func verifyReceivedStaple(path string, raw []byte, keys, checkpointKeys []string
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " staples " + fmt.Sprint(len(result.Derivations)) + " cards: a check reads one stapled card")
 	case result.Derivations[0] == historyCardStaple1:
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a " + historyCardStaple1 + " staple: a stapled card is read as " + historyCardStaple2 + " only")
-	case result.Derivations[0] != historyCardStaple2:
+	case result.Derivations[0] == "" && (result.Outcome == nil || errors.Is(result.Outcome, cli.ErrPartial)):
+		// No derivation and nothing failed: no card this check reads.
+		return receivedHistoryDoc{}, notRead
+	case result.Derivations[0] != historyCardStaple2 && result.Derivations[0] != "":
 		return receivedHistoryDoc{}, notRead
 	case result.CounterpartyKey != keys[0]:
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not verified under --counterparty-key, so it is not attributable to this counterparty")

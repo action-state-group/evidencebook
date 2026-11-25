@@ -10,4 +10,5 @@
   - more than one counterparty key is given for it;
   - it staples a `history_card/1`;
   - it staples more than one card.
-- `deal settle --sent` takes the same `--checkpoint-key`.
+- The checker input binds the checkpoint keys too (`checkpoint_keys`, beside `counterparty_keys`), so the verdict's `input_sha256` says which key vouched for the card. `deal settle --sent` takes the same `--checkpoint-key` and refuses any other.
+- A `NOT_PRESENT` History was not made in answer to this deal's request, and it can be replayed, so a ruleset should weigh it accordingly.

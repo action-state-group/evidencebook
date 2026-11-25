@@ -628,8 +628,9 @@ func TestReceivedHistoryRefusesAStapleThatDoesNotVerify(t *testing.T) {
 // runs: `deal standard-history staple` signs the card with the holder's
 // profile key, and the core's `commitment publish` signs the commitment
 // with it. It returns the {history, request, reply} staple, the commitment,
-// the holder's key and the card's checkpoint key.
-func publishedCard2(t *testing.T) (staple, commitment, holder, checkpointKey string) {
+// the staple as the staple verb printed it, the holder's key and the card's
+// checkpoint key.
+func publishedCard2(t *testing.T) (staple, printed, commitment, holder, checkpointKey string) {
 	t.Helper()
 	dealFixture(t)
 	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
@@ -638,7 +639,7 @@ func publishedCard2(t *testing.T) (staple, commitment, holder, checkpointKey str
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	out, err := stapleRun(t)
 	require.NoError(t, err, out)
-	printed := filepath.Join(t.TempDir(), "staple.json")
+	printed = filepath.Join(t.TempDir(), "staple.json")
 	require.NoError(t, os.WriteFile(printed, []byte(out), 0o600))
 	dir := t.TempDir()
 	published, err := invoke(t, "", "commitment", "publish", "--profile", "deal", "--staple", printed,
@@ -662,7 +663,7 @@ func publishedCard2(t *testing.T) (staple, commitment, holder, checkpointKey str
 		"reply":   map[string]any{"media_type": "application/json", "octets_text": string(doc.Staple.Reply)}})
 	require.NoError(t, err)
 	staple = writeJSON(t, string(raw))
-	return staple, commitment, holder, card2CheckpointKey(t, string(doc.Staple.Reply))
+	return staple, printed, commitment, holder, card2CheckpointKey(t, string(doc.Staple.Reply))
 }
 
 // Design §6 test 2, end to end: the commitment a node publishes staples its
@@ -671,10 +672,11 @@ func publishedCard2(t *testing.T) (staple, commitment, holder, checkpointKey str
 // request_binding NOT_PRESENT, and its digests are sealed; the same card
 // stapled with its request reaches it BOUND.
 func TestReceivedHistoryReadsAPublishedCommitment(t *testing.T) {
-	staple, commitment, holder, ck := publishedCard2(t)
+	staple, printed, commitment, holder, ck := publishedCard2(t)
 	for name, tc := range map[string]struct{ path, binding string }{
 		"the published commitment":    {commitment, "NOT_PRESENT"},
 		"the staple with its request": {staple, "BOUND"},
+		"the staple as printed":       {printed, "BOUND"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := openedV1(t)
@@ -687,6 +689,7 @@ func TestReceivedHistoryReadsAPublishedCommitment(t *testing.T) {
 			assert.Equal(t, "history_card/2", doc["kind"])
 			assert.Equal(t, tc.binding, doc["request_binding"])
 			assert.Equal(t, fileSHA256(t, tc.path), doc["sha256"])
+			assert.Equal(t, []any{ck}, inputs[0]["received_history"].(map[string]any)["checkpoint_keys"], "the checkpoint key is bound with the rest")
 			sealed := sealedVerdictHistory(t, h.dealID)
 			require.NotNil(t, sealed)
 			assert.Equal(t, []string{fileSHA256(t, tc.path)}, sealed.HistorySHA256)
@@ -697,4 +700,47 @@ func TestReceivedHistoryReadsAPublishedCommitment(t *testing.T) {
 	recordingChecker(t, checkerPrints("allow", ""))
 	assert.Contains(t, v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
 		"--history", commitment, "--counterparty-key", strings.Repeat("ab", 32), "--checkpoint-key", ck), "is not verified")
+}
+
+// A card whose reply is no signed envelope is refused with the verifier's
+// own findings, not as a document of another kind.
+func TestReceivedHistoryBrokenCardSaysWhy(t *testing.T) {
+	v := card2Vectors(t)["history_card/2"]
+	broken := v
+	broken.Reply = strings.Replace(v.Reply, `"sig":"`, `"sig":"00`, 1)
+	require.NotEqual(t, v.Reply, broken.Reply)
+	h := openedV1(t)
+	checker := recordingChecker(t, checkerPrints("allow", ""))
+	msg := v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
+		"--history", card2Staple(t, broken), "--counterparty-key", v.Holder, "--checkpoint-key", card2CheckpointKey(t, v.Reply))
+	assert.Contains(t, msg, "is not verified")
+	assert.NotContains(t, msg, "is not a History this check reads")
+	assert.Empty(t, checkerInputs(t, checker))
+}
+
+// A send that rests on a check that read a stapled card re-reads the same
+// staple under the same keys; another checkpoint key is refused, and
+// nothing is sent.
+func TestReceivedHistoryStapleIsReadAgainAtTheSend(t *testing.T) {
+	staple, _, _, holder, ck := publishedCard2(t)
+	h := agreedBoth(t, paymentOffer)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, `{"verbatim":"buy the lamp, at most 70 dollars","max_total_minor":7000}`), "--opening", writeJSON(t, v1Opening))
+	recordingChecker(t, checkerPrints("allow", ""))
+	in := fmt.Sprintf(`{"action":"pay","amount_minor":6000,"authorized_max_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"},"payment_ref":%q}`, v1LnHash)
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, in), "--history", staple, "--counterparty-key", holder, "--checkpoint-key", ck)
+	require.Equal(t, "pass", out["verdict"], "%v", out)
+	var check string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		check = checkDigest(t, journal)
+	})
+	sent := []string{"settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash", "--history", staple, "--counterparty-key", holder}
+	assert.Contains(t, v1Err(t, append(sent, "--checkpoint-key", strings.Repeat("ab", 32))...), "is not verified")
+	assert.Contains(t, v1Err(t, sent...), "checkpoint_key was not checked")
+	// The card verifies under this list too, but it is not the one the
+	// check's verdict bound: refused by input_sha256.
+	assert.Contains(t, v1Err(t, append(sent, "--checkpoint-key", ck+","+strings.Repeat("ab", 32))...), "is not the History check")
+	dealRun(t, append(sent, "--checkpoint-key", ck)...)
 }
