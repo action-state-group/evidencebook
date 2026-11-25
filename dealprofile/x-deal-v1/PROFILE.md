@@ -529,8 +529,8 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   (`xdealv1.DerivationAdjudicatorCopy`) and the subject `{"correlation": "<deal_id>"}`. It has no
   selective form: the party answers with its full copy or refuses. An agreement that names an
   adjudicator agrees to answer its `deal_adjudicator_copy/1` request in full; a party that refuses
-  or does not answer leaves the case to proceed without its book, and a ruling may go against it
-  on records it signed itself (evidencebook#898; Steven's rulings 1 and 2, u211). The full copy is an
+  or does not answer leaves the case to proceed without its book, and a ruling may go against it,
+  but only on records it signed itself (evidencebook#898; Steven's rulings 1 and 2, u211). The full copy is an
   adjudicator's copy whose extension's `book` also carries `records`, every record of the party's
   deal book by record id, and `received`, `{"log_id", "records", "proofs"}`: every record it holds
   from the other side's deal book for the deal that chains from seq 1 (both branches of a fork it
