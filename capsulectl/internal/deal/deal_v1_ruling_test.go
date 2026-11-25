@@ -138,7 +138,7 @@ func TestARulingRefusals(t *testing.T) {
 	base := []string{"ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "met", "--against", "none", "--dispute", dispute}
 	assert.Contains(t, v1Err(t, "ruling", "--deal", h.dealID, "--row", "other_row", "--value", "met", "--against", "none", "--dispute", dispute, "--copy", buyerCopy), "the dispute is on row paid_as_agreed")
 	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy, "--copy", buyerCopy)...), "both copies are the buyer's")
-	assert.Contains(t, v1Err(t, base...), "give one or two --copy files")
+	assert.Contains(t, v1Err(t, base...), "at least one")
 	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy, "--remedy-due", "2026-12-01T00:00:00Z")...), "go with --remedy-kind")
 
 	one := dealRun(t, append(base, "--copy", buyerCopy, "--out", filepath.Join(t.TempDir(), "r.json"))...)
