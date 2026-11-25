@@ -57,8 +57,10 @@ this deal), and `deal report --from-bundle FILE --directory DIRECTORY` renders
 the receipt from it.
 
 The withheld bundle carries each record of your deal book as its signed
-Capsule (the record's time, the signing key and digests), the checkpoint and
-its proofs, and the profile's signing key as its producer key, so a
+Capsule (your profile's operator name, the book's log id and the record's
+place in it, its time, the signing key, and digests of its contents and of
+the records it links to, the other side's included), the checkpoint and its
+proofs, and the profile's signing key as its producer key, so a
 countersignature by that key reads `self_countersigned`. It carries none of
 the records' contents, no report and none of the other side's records, so a
 countersignature over it covers your deal book through one record and not
@@ -102,7 +104,9 @@ receipt with no witness signature is self-attested. `not_countersigned` and
 `unverified` name no rung.
 
 The report's `countersign` object carries a rung only when one is reached:
-`rung` is `countersigned`, or absent. Everything else is a `finding`:
+`rung` is `countersigned`, or `countersigned_in_part` (a stored countersignature
+whose bundle ends before the deal's last step, below), or absent. Everything
+else is a `finding`:
 `self_countersigned`, `unresolved_signer`, `not_countersigned`,
 `unverified`, or `unchecked` (the file carries a countersignature that was
 not checked when the page was written). The page shows the `text` and

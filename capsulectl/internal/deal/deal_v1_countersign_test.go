@@ -3,12 +3,15 @@
 package deal
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	evidencebook "github.com/action-state-group/evidencebook"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/stretchr/testify/assert"
@@ -22,6 +25,36 @@ func withheldV1(t *testing.T, h *handshakeV1) string {
 	file := filepath.Join(t.TempDir(), "withheld.json")
 	dealRun(t, "report", "--deal", h.dealID, "--bundle", file, "--withheld")
 	return file
+}
+
+// forgedWithheldBundle is the withheld form of a book that has logID as its
+// id but lives on another shelf, under other keys: it verifies on its own.
+func forgedWithheldBundle(t *testing.T, logID string) string {
+	t.Helper()
+	ctx := t.Context()
+	dir := t.TempDir()
+	signer, err := evidencebook.NewEd25519Signer(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{41}, ed25519.SeedSize)))
+	require.NoError(t, err)
+	originals, err := evidencebook.OpenOriginalsFile(ctx, filepath.Join(dir, "originals.jsonl"), "forger", signer.PublicKey())
+	require.NoError(t, err)
+	shelf, err := evidencebook.OpenSQLiteShelf(ctx, evidencebook.ShelfConfig{Path: filepath.Join(dir, "forger.db"), LockPath: filepath.Join(dir, "forger.lock"),
+		Operator: "forger", Signer: signer, CheckpointKey: ed25519.NewKeyFromSeed(bytes.Repeat([]byte{42}, ed25519.SeedSize)), Originals: originals})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = shelf.Release() })
+	book, err := shelf.Open(ctx, logID)
+	require.NoError(t, err)
+	rec, err := book.Append(ctx, evidencebook.Entry{RecordType: "observation", EpistemicType: evidencebook.ObservedEvent, SubjectRef: "forged", Payloads: [][]byte{[]byte("forged")}})
+	require.NoError(t, err)
+	cp, err := book.Checkpoint(ctx)
+	require.NoError(t, err)
+	bundle, err := book.Bundle(ctx, evidencebook.BundleRequest{Root: rec.RecordID, Payloads: evidencebook.PayloadsAll, At: &cp,
+		DisclosureRecordedElsewhere: true, ProducerKey: signer.PublicKey()})
+	require.NoError(t, err)
+	withheld, err := withheldForm(bundle.JSON)
+	require.NoError(t, err)
+	path := filepath.Join(dir, "forged.json")
+	require.NoError(t, os.WriteFile(path, withheld, 0o600))
+	return path
 }
 
 // --withheld goes with --bundle and only as your own file: it is the bundle
@@ -90,12 +123,17 @@ func TestAV1CountersignRefusesWhatItCannotVouchFor(t *testing.T) {
 	h.buyer.act(t)
 	assert.Contains(t, v1Err(t, "countersign", "--deal", h.dealID, "--bundle", sellers, "--directory", directory), "its log is not this deal's book")
 
-	// A bundle whose checkpoint is not one the book holds.
+	// A bundle edited after it was written does not verify.
 	b := readBundleFile(t, file)
-	cp := b["checkpoint"].(map[string]interface{})
-	cp["cose"] = "AAAA"
-	forged := writeJSONFile(t, "forged.json", b)
-	assert.Contains(t, v1Err(t, "countersign", "--deal", h.dealID, "--bundle", forged, "--directory", directory), "is not this deal's bundle")
+	b["checkpoint"].(map[string]interface{})["cose"] = "AAAA"
+	edited := writeJSONFile(t, "edited.json", b)
+	assert.Contains(t, v1Err(t, "countersign", "--deal", h.dealID, "--bundle", edited, "--directory", directory), "is not this deal's bundle: it does not verify")
+
+	// A bundle that verifies, of a book with this deal's log id kept by
+	// someone else: its checkpoint is not one this deal's book holds.
+	logID := readBundleFile(t, file)["completeness_certificate"].(map[string]interface{})["log_id"].(string)
+	forged := forgedWithheldBundle(t, logID)
+	assert.Contains(t, v1Err(t, "countersign", "--deal", h.dealID, "--bundle", forged, "--directory", directory), "its checkpoint is not one this deal's book holds")
 
 	// No directory, on the command or the profile.
 	assert.Contains(t, v1Err(t, "countersign", "--deal", h.dealID, "--bundle", file), "--directory is required")

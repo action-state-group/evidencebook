@@ -22,8 +22,8 @@ import (
 // Countersigning an x-deal-v1 deal (evidencebook#865). A countersigner is
 // shown the withheld form of the deal book's bundle (`deal report --bundle
 // FILE --withheld`): the book's Capsules up to the report's checkpoint, with
-// the checkpoint, its witness receipts and the proofs that tie them, and no
-// payload, disclosure or extension. capsule-cli's `countersign request`
+// the checkpoint and the proofs that tie them, the producer key, and no
+// payload, disclosure or other extension. capsule-cli's `countersign request`
 // submits only such a bundle. `deal countersign` then checks the bundle is
 // this deal's (its log is the deal's own book, its checkpoint one that book
 // holds, its root a record of it) and keeps every countersignature that
@@ -56,6 +56,13 @@ func (s *dealSession) v1WithheldBundle(ctx context.Context, p cli.Profile, logID
 	if err != nil {
 		return nil, err
 	}
+	return withheldForm(raw)
+}
+
+// withheldForm reduces a verified Evidence Bundle to withheldBundleMembers
+// and its producer-key/v1 extension, states payloads_mode selected, and
+// checks the result as a reader checks it.
+func withheldForm(raw []byte) ([]byte, error) {
 	full, err := cli.DecodeBundleJSON(raw)
 	if err != nil {
 		return nil, err
@@ -67,11 +74,11 @@ func (s *dealSession) v1WithheldBundle(ctx context.Context, p cli.Profile, logID
 		}
 	}
 	exts, _ := full["extensions"].(map[string]interface{})
-	if pk, ok := exts[producerKeyExtension]; ok {
-		withheld["extensions"] = map[string]interface{}{producerKeyExtension: pk}
-	} else {
+	pk, ok := exts[producerKeyExtension]
+	if !ok {
 		return nil, errors.New("the deal book's bundle does not declare its producer key")
 	}
+	withheld["extensions"] = map[string]interface{}{producerKeyExtension: pk}
 	completeness, _ := withheld["completeness"].(map[string]interface{})
 	if completeness == nil {
 		return nil, errors.New("the deal book's bundle carries no completeness member")
@@ -166,6 +173,9 @@ func (s *dealSession) v1BundleCheck(ctx context.Context, raw []byte, d *v1Deal, 
 	if err != nil {
 		return nil, 0, err
 	}
+	// The root's place in the book. A bundle that verifies under a
+	// checkpoint the book holds has its root among the book's records, so
+	// the refusal below is a guard, not a reachable answer.
 	root := fmt.Sprint(b["root"])
 	for _, r := range records {
 		if r.RecordID == root {
