@@ -6,3 +6,9 @@
 - The page carries this binary's own `deal verify --bundle` report of that bundle. It says "capsulectl verify reported its signature check as: pass. This page did not check the signature itself."; a report that does not pass refuses the copy on the page.
 - It takes no `--out`, `--bundle`, `--withheld`, or `--share` other than keep.
 - capsule-viewer go is pinned by commit to capsule-viewer#417, with no release.
+- `deal report --deal D --html FILE --witness-directory W` also checks your own book's witness time. It finds the stamp proof and receipts as `deal checkpoint proof` does and passes them to its own `verify`, beside the copy. The page carries only what verify reported, never the proof (Sherlock2: no witness evidence in any copy, since a stamp proof shows your shelf's checkpoint and position).
+- `deal verify --bundle F --stamp-proof P --witness-directory W` reports, in the copy's x-deal-v1 entry, `witnessed: {status, witness, at}`:
+  - `verified`, with the directory's name for the witness and the receipt's own time;
+  - `withheld`, with no directory or no receipt;
+  - `failed`, when the proof or a receipt does not verify.
+  It never changes the verdict.

@@ -96,57 +96,9 @@ func (s *dealSession) checkpointProof(ctx context.Context, c *cobra.Command, dea
 	if err != nil {
 		return err
 	}
-	last, ok, err := cad.Last(ctx)
+	best, err := bestStampProof(ctx, cad, d.OwnAgreementID, vb, dir, named)
 	if err != nil {
 		return err
-	}
-	// Every finished stamp after the copy's checkpoint covers it while the
-	// book is unchanged; the proof is the newest of them that a named witness
-	// registered, else the newest one with any receipt, else the newest.
-	type candidate struct {
-		proof    evidencebook.StampProof
-		receipts []evidencebook.WitnessReceipt
-		named    int
-	}
-	var best *candidate
-	for n := last.N; ok && n >= 1; n-- {
-		tick, err := cad.Get(ctx, n)
-		if err != nil {
-			return err
-		}
-		if tick.CheckpointSize == 0 || tick.Leaves.Stamp == nil {
-			continue // not a finished stamp: an interrupted tick, or one from before the shelf's stamps
-		}
-		// The adjudicator's audience: the fact's link opening, never its
-		// status opening (OpeningsFor).
-		p, err := cad.StampProof(ctx, d.OwnAgreementID, n, evidencebook.AudienceAdjudicator)
-		if errors.Is(err, evidencebook.ErrNotFound) {
-			break // the book has no fact at this stamp, nor at any older one
-		}
-		if err != nil {
-			return err
-		}
-		v, err := evidencebook.VerifyStampProof(p)
-		if err != nil {
-			return err
-		}
-		if v.BookCheckpoint.TreeSize < vb.Anchor.MMRSize {
-			break // older stamps cover only older checkpoints of the book
-		}
-		if v.BookCheckpoint.Root != vb.Anchor.Root || v.BookCheckpoint.TreeSize != vb.Anchor.MMRSize {
-			continue
-		}
-		receipts, err := cad.Receipts(ctx, p.ShelfCheckpoint)
-		if err != nil {
-			return err
-		}
-		got := candidate{proof: p, receipts: receipts, named: namedReceipts(p.ShelfCheckpoint, receipts, dir, named)}
-		if best == nil || (best.named == 0 && got.named > 0) || (best.named == 0 && len(best.receipts) == 0 && len(got.receipts) > 0) {
-			best = &got
-		}
-		if got.named > 0 {
-			break
-		}
 	}
 	if best == nil {
 		return cli.InputError("no stamp covers the checkpoint your copy rests on yet: run deal tick once one is due, then this again")
@@ -222,4 +174,69 @@ func isProofFile(path string) bool {
 	}
 	var p entryProof
 	return json.Unmarshal(raw, &p) == nil && p.StampProof != nil && len(p.StampProof.ShelfCheckpoint) > 0
+}
+
+// stampCandidate is a stamp proof of the deal book with the witness receipts
+// the shelf holds for its shelf checkpoint, and how many of them verify, under
+// the directory, as from a witness the agreement names.
+type stampCandidate struct {
+	proof    evidencebook.StampProof
+	receipts []evidencebook.WitnessReceipt
+	named    int
+}
+
+// bestStampProof is the proof `checkpoint proof` writes for the checkpoint
+// vb rests on: every finished stamp after that checkpoint covers it while the
+// book is unchanged; it is the newest of them that a named witness registered,
+// else the newest one with any receipt, else the newest. nil when no stamp
+// covers it yet.
+func bestStampProof(ctx context.Context, cad *evidencebook.Cadence, agreementID string, vb evidencebook.VerifiedBundle, dir witness.Directory, named []string) (*stampCandidate, error) {
+	last, ok, err := cad.Last(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Every finished stamp after the copy's checkpoint covers it while the
+	// book is unchanged; the proof is the newest of them that a named witness
+	// registered, else the newest one with any receipt, else the newest.
+	var best *stampCandidate
+	for n := last.N; ok && n >= 1; n-- {
+		tick, err := cad.Get(ctx, n)
+		if err != nil {
+			return nil, err
+		}
+		if tick.CheckpointSize == 0 || tick.Leaves.Stamp == nil {
+			continue // not a finished stamp: an interrupted tick, or one from before the shelf's stamps
+		}
+		// The adjudicator's audience: the fact's link opening, never its
+		// status opening (OpeningsFor).
+		p, err := cad.StampProof(ctx, agreementID, n, evidencebook.AudienceAdjudicator)
+		if errors.Is(err, evidencebook.ErrNotFound) {
+			break // the book has no fact at this stamp, nor at any older one
+		}
+		if err != nil {
+			return nil, err
+		}
+		v, err := evidencebook.VerifyStampProof(p)
+		if err != nil {
+			return nil, err
+		}
+		if v.BookCheckpoint.TreeSize < vb.Anchor.MMRSize {
+			break // older stamps cover only older checkpoints of the book
+		}
+		if v.BookCheckpoint.Root != vb.Anchor.Root || v.BookCheckpoint.TreeSize != vb.Anchor.MMRSize {
+			continue
+		}
+		receipts, err := cad.Receipts(ctx, p.ShelfCheckpoint)
+		if err != nil {
+			return nil, err
+		}
+		got := stampCandidate{proof: p, receipts: receipts, named: namedReceipts(p.ShelfCheckpoint, receipts, dir, named)}
+		if best == nil || (best.named == 0 && got.named > 0) || (best.named == 0 && len(best.receipts) == 0 && len(got.receipts) > 0) {
+			best = &got
+		}
+		if got.named > 0 {
+			break
+		}
+	}
+	return best, nil
 }

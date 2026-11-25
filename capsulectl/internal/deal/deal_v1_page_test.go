@@ -104,7 +104,7 @@ func TestSelfVerifyReport(t *testing.T) {
 		old := selfVerifyBinary
 		selfVerifyBinary = func() (string, error) { return path, nil }
 		defer func() { selfVerifyBinary = old }()
-		return selfVerifyReport(context.Background(), []byte(`{}`))
+		return selfVerifyReport(context.Background(), []byte(`{}`), nil, "")
 	}
 	got, err := run(script("invalid", `echo '{"spec_version":"capsule-cli-result/v1","verdict":"INVALID","bundle_digest":"ab"}'; exit 1`))
 	require.NoError(t, err)
@@ -156,4 +156,88 @@ func TestPresentationV1ReceiptPage(t *testing.T) {
 	assert.Contains(t, got.Text, "capsulectl verify reported its signature check as: pass. This page did not check the signature itself.")
 	assert.NotContains(t, got.Text, "This page checked it itself")
 	assert.Empty(t, got.Errors)
+}
+
+// holderWitnessEvidence lists where a copy carries a stamp proof or witness
+// receipts of the holder's own: anywhere but the other party's half
+// (x-deal-v1-counterparty-half, which the holder received from them).
+func holderWitnessEvidence(t *testing.T, copy []byte) []string {
+	t.Helper()
+	var v any
+	require.NoError(t, json.Unmarshal(copy, &v))
+	var found []string
+	var walk func(v any, path string)
+	walk = func(v any, path string) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, c := range x {
+				p := path + "/" + k
+				if p == "/extensions/x-deal-v1-counterparty-half" {
+					continue
+				}
+				if k == "stamp_proof" || k == "witness_receipts" || k == "shelf_checkpoint" {
+					found = append(found, p)
+				}
+				walk(c, p)
+			}
+		case []any:
+			for _, c := range x {
+				walk(c, path+"[]")
+			}
+		}
+	}
+	walk(v, "")
+	return found
+}
+
+// No copy carries witness evidence of the holder's own (Sherlock2,
+// 2026-11-25: a stamp proof shows the holder's shelf checkpoint and log
+// position): not the keep copy, not the page --html writes with
+// --witness-directory, not a shared or adjudicator's copy, not the withheld
+// bundle a countersigner is shown. The page's verify report carries only
+// the witnessed result.
+func TestAV1NoCopyCarriesWitnessEvidence(t *testing.T) {
+	usePluginVerify(t)
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	dir := t.TempDir()
+	directory := filepath.Join(witnessedVectors, "witnesses.json")
+	abs, err := filepath.Abs(directory)
+	require.NoError(t, err)
+	files := map[string][]string{
+		"keep.json":        {"--bundle"},
+		"page.html":        {"--witness-directory", abs, "--html"},
+		"counterpart.json": {"--share", "counterparty", "--to", "Kettle Shop", "--bundle"},
+		"withheld.json":    {"--withheld", "--bundle"},
+	}
+	for name, flags := range files {
+		path := filepath.Join(dir, name)
+		dealRun(t, append(append([]string{"report", "--deal", h.dealID}, flags...), path)...)
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		if name == "page.html" {
+			m := regexp.MustCompile(`<script type="application/json">([\s\S]*?)</script>`).FindSubmatch(raw)
+			require.NotNil(t, m)
+			assert.Empty(t, holderWitnessEvidence(t, m[1]), name)
+			report := pageVerifyReport(t, raw)
+			for _, e := range report["extensions"].([]any) {
+				if m := e.(map[string]any); m["kind"] == "x-deal-v1" {
+					if w, ok := m["witnessed"].(map[string]any); ok {
+						assert.NotEqual(t, "verified", w["status"], "no witness in these tests")
+					}
+				}
+			}
+			continue
+		}
+		assert.Empty(t, holderWitnessEvidence(t, raw), name)
+	}
+}
+
+// --witness-directory goes with an x-deal-v1 --html page only.
+func TestAV1ReportWitnessDirectoryRefusals(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	w := filepath.Join(witnessedVectors, "witnesses.json")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--witness-directory", w), "use it with --html")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--html", filepath.Join(t.TempDir(), "p.html"), "--witness-directory", filepath.Join(t.TempDir(), "missing.json")), "cannot read --witness-directory")
 }

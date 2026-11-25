@@ -32,8 +32,13 @@ const v1PageVerifyTimeout = 2 * time.Minute
 // ("capsulectl verify reported its signature check as: pass. This page did
 // not check the signature itself."); a report that fails refuses the copy on
 // the page, and the page draws nothing capsulectl did not report.
-func v1ReportPage(ctx context.Context, bundle []byte, verifyCommand string) ([]byte, error) {
-	report, err := selfVerifyReport(ctx, bundle)
+//
+// With proof and dirPath (deal report --witness-directory), verify also gets
+// the stamp proof and the directory, and its x-deal-v1 entry reports the
+// book's witness time (witnessed); the proof stays beside the copy, never in
+// it or on the page (Sherlock2).
+func v1ReportPage(ctx context.Context, bundle []byte, verifyCommand string, proof *entryProof, dirPath string) ([]byte, error) {
+	report, err := selfVerifyReport(ctx, bundle, proof, dirPath)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +77,7 @@ renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined
 // its JSON report (capsule-cli-result/v1). verify exits non-zero for a
 // verdict other than VALID; that report is still the one to carry, so only
 // output that is not such a report is an error.
-func selfVerifyReport(ctx context.Context, bundle []byte) ([]byte, error) {
+func selfVerifyReport(ctx context.Context, bundle []byte, proof *entryProof, dirPath string) ([]byte, error) {
 	exe, err := selfVerifyBinary()
 	if err != nil {
 		return nil, err
@@ -88,7 +93,19 @@ func selfVerifyReport(ctx context.Context, bundle []byte) ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, v1PageVerifyTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, exe, "verify", "--bundle", path)
+	args := []string{"verify", "--bundle", path}
+	if proof != nil && dirPath != "" {
+		raw, err := json.Marshal(proof)
+		if err != nil {
+			return nil, err
+		}
+		proofPath := filepath.Join(dir, "proof.json")
+		if err := os.WriteFile(proofPath, raw, 0o600); err != nil {
+			return nil, err
+		}
+		args = append(args, "--"+stampProofFlag, proofPath, "--witness-directory", dirPath)
+	}
+	cmd := exec.CommandContext(ctx, exe, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	runErr := cmd.Run()

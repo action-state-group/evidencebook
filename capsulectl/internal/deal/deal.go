@@ -2913,6 +2913,9 @@ func dealReportCommand() *cobra.Command {
 		if c.Flags().Changed("out") {
 			return cli.InputError("--out writes an x-deal-v1 deal's sealed report; an x-deal-v0 deal's report goes to --html or --bundle")
 		}
+		if c.Flags().Changed("witness-directory") {
+			return cli.InputError("--witness-directory checks an x-deal-v1 page's witness time; an x-deal-v0 page reads its witness from the bundle")
+		}
 		if c.Flags().Changed("withheld") {
 			return cli.InputError("--withheld writes the bundle a countersigner is shown for an x-deal-v1 deal; an x-deal-v0 deal has no countersign path (countersign is served for x-deal-v1 deals only)")
 		}
@@ -3161,6 +3164,7 @@ func dealReportCommand() *cobra.Command {
 	cmd.Flags().String("out", "", "On an x-deal-v1 deal: also seal the report and write it with its signature to this new file. It counts the other side's records you have received; the other side may hold different records and see a different status. No act on this deal carries the person's own signature yet (the format is still being defined: agent-action-capsule#627), so \"settled\" is computed from the agent's records, which the person has not signed")
 	cmd.Flags().Bool("withheld", false, "On an x-deal-v1 deal, with --bundle: write the withheld form of your deal book's bundle, the file you ask a countersigner to sign (`capsulectl countersign request --bundle FILE`). It carries your deal book's records as signed Capsules, including your operator name, the book's log id, each record's time and digests (COUNTERSIGN.md lists every member), with the checkpoint and its proofs, and none of their contents, the report or the other side's records")
 	cmd.Flags().Bool("read-only", false, "Read the deal as it stands and write nothing: no checkpoint cut, nothing sealed, no file (for a History built over many deals)")
+	cmd.Flags().String("witness-directory", "", "On an x-deal-v1 deal, with --html: a witness directory (witnesses.json) to check your own book's witness time against; the page then says the time capsulectl verify reported, and carries no witness evidence. Without it the page draws no witness time")
 	return cmd
 }
 

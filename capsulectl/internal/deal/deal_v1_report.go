@@ -49,6 +49,8 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	switch {
 	case f.Changed("html") && (f.Changed("out") || f.Changed("bundle") || f.Changed("withheld")):
 		return cli.InputError("--html writes your own copy's receipt page; it does not take --out, --bundle or --withheld")
+	case f.Changed("witness-directory") && !f.Changed("html"):
+		return cli.InputError("--witness-directory checks the witness time your --html page says; use it with --html")
 	case f.Changed("html") && f.Changed("share") && f.Lookup("share").Value.String() != dealprofile.AudienceKeep:
 		return cli.InputError("--html writes your own copy's receipt page; a copy for someone else goes to --bundle with --share")
 	case f.Changed("email"):
@@ -271,7 +273,11 @@ func runV1Report(c *cobra.Command) (err error) {
 			}
 			file, kind = append(bundle, '\n'), "bundle"
 			if asPage {
-				page, err := v1ReportPage(ctx, bundle, dealVerifyCommand(out))
+				proof, dirPath, err := s.v1PageWitness(ctx, c, d, bundle)
+				if err != nil {
+					return err
+				}
+				page, err := v1ReportPage(ctx, bundle, dealVerifyCommand(out), proof, dirPath)
 				if err != nil {
 					return err
 				}
