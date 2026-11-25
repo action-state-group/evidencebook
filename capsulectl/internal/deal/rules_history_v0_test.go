@@ -74,7 +74,7 @@ func breakV0Link(t *testing.T, dealID, kind, path, value string) {
 
 // An intact x-deal-v0 history act carries who it was with, the history is
 // complete, and a payment to the same merchant on another deal reads it: r02
-// and r06 pass.
+// and r06 pass, and the 7-day cap is evaluated.
 func TestAV0HistoryActWithItsCheckIsComplete(t *testing.T) {
 	for _, approved := range []bool{false, true} {
 		dealID, actID := everydayV0Paid(t, approved)
@@ -92,12 +92,13 @@ func TestAV0HistoryActWithItsCheckIsComplete(t *testing.T) {
 	for _, id := range []string{"r02-ordinary-purchase", "r06-new-merchant"} {
 		assert.Equal(t, "pass", rulesFinding(t, out, id)["verdict"], "%s: an earlier payment to this merchant", id)
 	}
+	assert.Equal(t, "pass", rulesFinding(t, out, "r05-spending-limits#7d")["verdict"])
 }
 
 // An x-deal-v0 history act whose chain to its check is broken at any link is
 // kept without who it was with, and the history says it is not complete: the
-// merchant is never read as new without saying so (evidencebook#955), as for
-// v1 (TestAV1HistoryActWithABrokenCheckLinkIsIncomplete).
+// check says its rules were not fully checked (evidencebook#955), as for v1
+// (TestAV1HistoryActWithABrokenCheckLinkIsIncomplete).
 func TestAV0HistoryActWithABrokenCheckLinkIsIncomplete(t *testing.T) {
 	missing := "no-such-capsule"
 	for _, tc := range []struct {
@@ -120,11 +121,15 @@ func TestAV0HistoryActWithABrokenCheckLinkIsIncomplete(t *testing.T) {
 			assert.Equal(t, actID, record["capsule_id"])
 			assert.Nil(t, record["counterparty"])
 
+			// The caps over the week cannot be summed, so the check says so
+			// and puts the payment to the person (u503); before, they passed.
+			// Everyday Rules' r02 and r06 (capsule-engine) read the merchant
+			// as new either way: they do not read the history's completeness.
 			out := againV0(t)
 			assert.Equal(t, false, out["rules"].(map[string]any)["history"].(map[string]any)["complete"])
-			for _, id := range []string{"r02-ordinary-purchase", "r06-new-merchant"} {
-				assert.NotEqual(t, "pass", rulesFinding(t, out, id)["verdict"], id)
-			}
+			assert.Equal(t, "pause", out["verdict"])
+			assert.Equal(t, "not_evaluable", rulesFinding(t, out, "r05-spending-limits#7d")["verdict"])
+			assert.Contains(t, differenceTexts(out), "Your rules were not fully checked: r05-spending-limits#7d: the history of earlier purchases supplied is incomplete")
 		})
 	}
 }
