@@ -7,14 +7,23 @@ name: capsulectl
 # evidencebook-deal (evidencebook#610). It requires this repository's library
 # at a version, never the working tree, so it runs on its own. Its tests do
 # read fixtures from the working tree outside capsulectl/ (report/testdata and
-# testdata/card-registration), which is why those paths are in the filters.
+# testdata/card-registration, testdata/live16-ask), which is why those paths
+# are in the filters.
+#
+# A pull request runs the plain tests and the race detector only over the
+# packages it changes (.github/scripts/race-packages.sh), never internal/deal's
+# race pass (ten shards of about twelve minutes): lanes run that locally before
+# push (CLAUDE.md). Push to main and the nightly run the full race suite, four
+# jobs at a time so pull requests keep runners, and a red run there opens or
+# comments on an issue (evidencebook#925).
 
 on:
   push:
     branches: [main]
-    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml"]
+    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", "testdata/live16-ask/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml", ".github/scripts/race-packages.sh", ".github/scripts/paths-changed.sh"]
+  # Every pull request, so `capsulectl result` can be a required check; the plan
+  # job skips the rest when the pull request touches none of the push paths.
   pull_request:
-    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml"]
   workflow_dispatch:
   schedule:
     # Nightly: every case under the race detector (see the tests job's env).
@@ -23,9 +32,11 @@ on:
 permissions:
   contents: read
 
+# A newer push cancels a pull request's run; main's runs queue instead, so every
+# merge's full race run finishes or is replaced by a newer queued one.
 concurrency:
   group: capsulectl-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
@@ -34,6 +45,8 @@ defaults:
 jobs:
   quality:
     name: capsulectl quality
+    needs: [plan]
+    if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -102,6 +115,57 @@ jobs:
           test "$(cd "$RUNNER_TEMP/dist" && ls | grep -vx SHA256SUMS | sort)" = "$(awk '{print $2}' "$RUNNER_TEMP/dist/SHA256SUMS" | sort)" \
             || { echo "SHA256SUMS does not list exactly the release's files"; exit 1; }
 
+  plan:
+    # Whether this run concerns capsulectl, and which test jobs run: on a pull
+    # request three plain shards and one race job over race-packages.sh's
+    # packages (none when it lists none); otherwise ten race shards and three
+    # plain shards over every package.
+    name: capsulectl plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A pull request's merge commit and its first parent, the base.
+          fetch-depth: 2
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: capsulectl/go.mod
+          cache-dependency-path: capsulectl/go.sum
+      - name: Plan
+        id: plan
+        working-directory: ${{ github.workspace }}
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          plain=$(jq -cn '[range(1;4) | {pass:"plain",shard:"\(.)/3",pkgs:"./..."}]')
+          if [[ "$EVENT" == pull_request ]]; then
+            git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+            cat "$RUNNER_TEMP/changed.txt"
+            # Checked assignments: a script error fails the plan, never skips the jobs.
+            run=$(bash .github/scripts/paths-changed.sh .github/workflows/capsulectl.yml < "$RUNNER_TEMP/changed.txt")
+            [[ "$run" == true || "$run" == false ]]
+            if [[ "$run" == false ]]; then
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              # The tests job is skipped; its matrix still has to parse.
+              echo 'matrix=[{"pass":"plain","shard":"1/1","pkgs":"./..."}]' >> "$GITHUB_OUTPUT"
+              echo "No capsulectl input changed." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            pkgs=$(bash .github/scripts/race-packages.sh capsulectl < "$RUNNER_TEMP/changed.txt")
+            pkgs=${pkgs//$'\n'/ }
+            echo "Race over: ${pkgs:-nothing}" >> "$GITHUB_STEP_SUMMARY"
+            matrix=$(jq -cn --arg p "$pkgs" --argjson plain "$plain" \
+              '(if $p == "" then [] else [{pass:"race",shard:"1/1",pkgs:$p}] end) + $plain')
+          else
+            matrix=$(jq -cn --argjson plain "$plain" '[range(1;11) | {pass:"race",shard:"\(.)/10",pkgs:"./..."}] + $plain')
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   tests:
     # The race detector split by test name across ten jobs, and every case
     # without it across two (scripts/test.sh), as capsulectl-deal ran them in
@@ -110,23 +174,17 @@ jobs:
     # the first shard at 13m45s of the 15-minute limit, so eight; eight left
     # shards at up to 14m on #715's head and one past 15m once its tests moved
     # TestDealTickEveryMinuteFollowsTheJitter (170s) into a shard already
-    # holding two other slow cases (#717's run), so ten.
+    # holding two other slow cases (#717's run), so ten. The plain pass takes
+    # three shards so each finishes in about four minutes. A pull request runs
+    # the plan job's smaller matrix.
+    needs: [plan]
+    if: needs.plan.outputs.run == 'true'
     strategy:
       fail-fast: false
+      # Main and the nightly leave the organization's other runners to pull requests.
+      max-parallel: ${{ github.event_name == 'pull_request' && 16 || 4 }}
       matrix:
-        part:
-          - { pass: race, shard: 1/10 }
-          - { pass: race, shard: 2/10 }
-          - { pass: race, shard: 3/10 }
-          - { pass: race, shard: 4/10 }
-          - { pass: race, shard: 5/10 }
-          - { pass: race, shard: 6/10 }
-          - { pass: race, shard: 7/10 }
-          - { pass: race, shard: 8/10 }
-          - { pass: race, shard: 9/10 }
-          - { pass: race, shard: 10/10 }
-          - { pass: plain, shard: 1/2 }
-          - { pass: plain, shard: 2/2 }
+        part: ${{ fromJSON(needs.plan.outputs.matrix) }}
     name: capsulectl test (${{ matrix.part.pass }} ${{ matrix.part.shard }})
     runs-on: ubuntu-latest
     # The nightly runs every case under the race detector; two cases alone take
@@ -138,6 +196,7 @@ jobs:
       CAPSULE_TEST_RACE_FULL: ${{ github.event_name == 'schedule' && '1' || '' }}
       CAPSULE_TEST_PASS: ${{ matrix.part.pass }}
       CAPSULE_TEST_SHARD: ${{ matrix.part.shard }}
+      CAPSULE_TEST_PKGS: ${{ matrix.part.pkgs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -147,25 +206,33 @@ jobs:
       - name: Tests (${{ matrix.part.pass }}, shard ${{ matrix.part.shard }})
         run: bash scripts/test.sh
 
-  test:
-    # One result to require in branch protection; it keeps the name the
-    # unsharded job had.
-    name: capsulectl tests
+  result:
+    # One result to require in branch protection: the plan succeeded and no
+    # job failed or was cancelled (a job the plan skipped counts as passed).
+    name: capsulectl result
     if: always()
-    needs: [tests]
+    needs: [plan, quality, tests, skill, interop-at-resolved-versions, deal-pages, portability, studio-replay, presentation-pass]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Tests passed
+      - name: Every job passed or was skipped
         # No checkout here, so not the capsulectl/ directory the defaults name.
         working-directory: ${{ github.workspace }}
-        run: test "${{ needs.tests.result }}" = success
+        env:
+          PLAN: ${{ needs.plan.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "plan: $PLAN; jobs: $RESULTS"
+          test "$PLAN" = success
+          for r in $RESULTS; do [[ "$r" == success || "$r" == skipped ]]; done
 
   skill:
     # The capsulectl-book skill (capsulectl/skills/capsulectl-book): its text
     # matches the plugin's verbs, and its demo runs them against capsulectl
     # (at the version go.mod pins) plus capsulectl-book built from this checkout.
     name: capsulectl-book skill
+    needs: [plan]
+    if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -183,6 +250,8 @@ jobs:
     # The Go <-> Python round trip at the versions this module resolves,
     # which can differ from the library's own pins (scripts/interop-resolved.sh).
     name: capsulectl interop at the resolved versions (Go <-> Python)
+    needs: [plan]
+    if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -231,6 +300,8 @@ jobs:
     # and in print in the pinned Chrome and fonts (internal/deal/
     # presentation_golden_test.go, testdata/presentation/known-overflow.json).
     name: deal pages render and check themselves
+    needs: [plan]
+    if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -280,6 +351,8 @@ jobs:
     # A deal's shared copy and exported records stand on their own
     # (capsule-cli#243): see scripts/check-portability.sh.
     name: shared deal copy verifies without the session
+    needs: [plan]
+    if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -297,6 +370,8 @@ jobs:
     # The Terms Pack Studio replay fixture lands in fresh seller and buyer stores
     # (scripts/check-studio-replay.sh).
     name: studio replay fixture lands in both stores
+    needs: [plan]
+    if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -314,6 +389,8 @@ jobs:
     # page opened at 390px, 1280px and in print in the pinned Chrome and
     # fonts, compared semantically.
     name: presentation pass (390px, 1280px, print)
+    needs: [plan]
+    if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -338,3 +415,25 @@ jobs:
           CAPSULECTL_PRESENTATION_PINNED: "1"
           FONTCONFIG_FILE: ${{ github.workspace }}/capsulectl/testdata/presentation/fonts.conf
         run: go test -count=1 -p 1 -v -timeout 10m -run '^TestPresentationPass' ./internal/deal
+
+  report-failure:
+    # A red run on main or the nightly reaches a person the same day: it opens
+    # or comments on one issue. A cancelled run is not reported.
+    name: report a red main or nightly run
+    if: failure() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule')
+    needs: [plan, quality, tests, skill, interop-at-resolved-versions, deal-pages, portability, studio-replay, presentation-pass]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Report on the issue
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: capsulectl CI failed on main or the nightly
+          ASSIGNEE: ${{ vars.CI_FAILURE_ASSIGNEE }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/report-failure.sh

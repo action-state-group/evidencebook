@@ -4,6 +4,18 @@ Guidance for coding agents working on this repository.
 
 ## Commands
 
+**Before every push, run `scripts/pre-push.sh`** (evidencebook#925). Pull
+requests run only fast checks in CI; this runs, in full, every suite the
+branch's changes reach (`--all`: every suite), including
+`capsulectl/internal/deal` under the race detector in parallel shards, which
+no pull request runs in CI. It prints each suite's time and exits nonzero if
+any failed; push only when it passes. `--all` took 24 minutes on an Apple M5 Pro (18 cores, 2026-11-25, other
+work running): capsulectl 21 minutes in nine parallel shards per pass, the
+root module 8 minutes more when its test cache is cold. The jobs that need a pinned
+Chrome or capsule-engine (deal pages, presentation pass, the Goose loop) run
+on main and the nightly; run them as listed below when you change what they
+cover.
+
 ```bash
 # Go (repository root; the module github.com/action-state-group/evidencebook, Go 1.27)
 test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum
@@ -91,13 +103,25 @@ python test/interop/python-cll/verify_bundle.py "$dir/bundle.json"
 CI (`ci.yml`) also runs the evidence interop profile, personal-history and
 registry conformance jobs against pinned agent-action-capsule commits; read
 the job for the exact pins and steps before changing what they cover.
-`rust.yml` runs only when `rust/`, `testdata/refusal-interop/`,
-`testdata/evidence-request/`, `testdata/shelf/`, `testdata/card-registration/`, `testdata/staple/`, `testdata/history-card-2/`, `testdata/standard-history-respond/`, `testdata/row-status/`, `testdata/deal-v1/`, `rowstatus/`, `test/interop/shelf/`, `dealprofile/` (the x-deal-v0 profile the
-crate's `deal` feature implements: its schemas, fixtures and Go package), the
-Go and Python interop programs it compares with (`test/interop/personal-history/`, `test/interop/responder/`,
-`test/interop/python-profile/`, `test/interop/python-personal/`, and the root
-Go package's `*.go`, `go.mod` and `go.sum`), `.github/scripts/check_crate_metadata.py`
-or the workflow itself changes. `leak-lint.yml` scans public material for internal workflow
+`rust.yml`'s jobs run only when a path in its `on.push.paths` list changes
+(`rust/`, the shared vectors under `testdata/`, `rowstatus/`, `dealprofile/`,
+the Go and Python interop programs it compares with, and the root Go package's
+`*.go`, `go.mod` and `go.sum`); `capsulectl.yml` and `report.yml` likewise.
+
+**What a pull request runs in CI (evidencebook#925).** Pull requests run fast
+checks only; run the heavy suites above locally before pushing. Each workflow
+runs on every pull request and skips the jobs its changes do not reach, and
+ends in one aggregate job that passes when every job passed or was skipped:
+`CI result`, `capsulectl result`, `Rust result` and `report result`, the checks
+to require. On a pull request the race detector runs only over the packages
+the change reaches (`.github/scripts/race-packages.sh`), never over
+`capsulectl/internal/deal`; the Goose loop runs only when its own files
+change. Push to main and the nightly (ci.yml and capsulectl.yml) run
+everything, and a red run there opens or comments on one `ci-red` issue per
+workflow (`.github/scripts/report-failure.sh`), which the coordinator's
+watchdog routes the same day. `bash .github/scripts/ci-scripts_test.sh` tests
+the planning scripts.
+`leak-lint.yml` scans public material for internal workflow
 text.
 
 ## Layout
