@@ -392,10 +392,8 @@ impl Log {
         leaf_index: u64,
         mmr_size: u64,
     ) -> Result<Vec<[u8; 32]>, ShelfError> {
-        let nodes = self.nodes()?;
-        let proof = mmr::inclusion_proof(&nodes, leaf_index, mmr_size)
-            .map_err(|e| ShelfError::Log(e.to_string()))?;
-        hashes(&proof.witness)
+        crate::substrate::inclusion_path(&self.nodes()?, leaf_index, mmr_size)
+            .map_err(|e| ShelfError::Log(e.to_string()))
     }
 
     /// The parts of the consistency proof from `from` to `to` nodes.
@@ -404,18 +402,8 @@ impl Log {
         from: u64,
         to: u64,
     ) -> Result<ConsistencyParts, ShelfError> {
-        let nodes = self.nodes()?;
-        let proof =
-            mmr::consistency_proof(&nodes, from, to).map_err(|e| ShelfError::Log(e.to_string()))?;
-        Ok((
-            hashes(&proof.old_peaks)?,
-            proof
-                .witness
-                .iter()
-                .map(|p| hashes(p))
-                .collect::<Result<_, _>>()?,
-            hashes(&proof.new_peaks)?,
-        ))
+        crate::substrate::consistency_parts(&self.nodes()?, from, to)
+            .map_err(|e| ShelfError::Log(e.to_string()))
     }
 
     /// Close the log's connection.
@@ -432,18 +420,6 @@ fn peak_hashes(nodes: &MemoryNodeStore, size: u64) -> Result<Vec<Hash>, ShelfErr
         .iter()
         .map(|&p| mmr::NodeReader::node(nodes, p))
         .collect())
-}
-
-fn hashes(values: &[String]) -> Result<Vec<[u8; 32]>, ShelfError> {
-    values
-        .iter()
-        .map(|v| {
-            hex::decode(v)
-                .ok()
-                .and_then(|b| b.try_into().ok())
-                .ok_or_else(|| ShelfError::Corrupt("a proof hash is not 32 bytes of hex".into()))
-        })
-        .collect()
 }
 
 /// `at` as the log's millisecond time.
