@@ -192,6 +192,9 @@ func (s *dealSession) receiveV1(ctx context.Context, c *cobra.Command, push v1Pu
 			if d, err := xdealv1.Digest(info.book.Record); err == nil {
 				out["ruling"] = d
 			}
+			if rb, ok := info.book.Record.Body.(*xdealv1.RulingBody); ok && rb.Sources != nil {
+				out["sources"] = rulingSourcesWords(*rb.Sources)
+			}
 		}
 	}
 	if res.Record != nil {

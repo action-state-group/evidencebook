@@ -635,7 +635,12 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 	// variant is an unknown member, not the derivation.
 	var members map[string]json.RawMessage
 	var derivation string
-	if json.Unmarshal(raw, &members) == nil && json.Unmarshal(members["derivation"], &derivation) == nil && derivation == evidencebook.DerivationStandardHistory {
+	// An adjudicator's request for an x-deal-v1 deal's full copy is answered
+	// in full or refused, never held (evidencebook#861).
+	if json.Unmarshal(raw, &members) == nil && isAdjudicatorCopyRequest(members) {
+		return s.respondAdjudicatorCopy(c, p, raw, requester, path, signer)
+	}
+	if json.Unmarshal(members["derivation"], &derivation) == nil && derivation == evidencebook.DerivationStandardHistory {
 		check := evidencerequest.ParseRequest(evidencerequest.Message{Octets: raw, MediaType: evidencerequest.MediaTypeJSON})
 		check.Request.Derivation = derivation
 		return s.respondStandardHistory(c, check, raw, requester, path, signer)
