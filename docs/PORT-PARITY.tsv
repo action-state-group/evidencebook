@@ -154,6 +154,7 @@ package	kind	symbol	feature	rust	python
 .	type	Entry	originals-and-stores	ported	ported
 .	type	Envelope	request-reply-respond	ported	ported
 .	type	EpistemicType	originals-and-stores	ported	frozen #639
+.	type	EvaluateOptions	front-door	frozen #903	frozen #904
 .	type	Evidence	shelf	ported	ported
 .	type	EvidenceRef	deal-reconcile	frozen #631	frozen #630
 .	type	EvidenceRequest	request-reply-respond	frozen #131	ported
