@@ -62,6 +62,36 @@ def test_the_run_wrote_the_files_of_the_exchange(run):
     assert json.loads((run / "buyer-history-card.json").read_text())["reply"]["anchor"]["digest"]
 
 
+def _cards(value):
+    """Every standard_history card object in a bundle, whether inline, as JSON text or as base64url JSON."""
+    import base64
+    if isinstance(value, dict):
+        if str(value.get("derivation", "")).startswith("standard_history/") and "bands" in value:
+            yield value
+        for v in value.values():
+            yield from _cards(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _cards(v)
+    elif isinstance(value, str) and len(value) > 20:
+        for decode in (lambda t: t, lambda t: base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)).decode()):
+            try:
+                yield from _cards(json.loads(decode(value)))
+                return
+            except Exception:
+                continue
+
+
+@pytest.mark.parametrize("node", ["buyer", "seller"])
+def test_a_goose_deal_counts_with_a_value_band_on_the_card(run, node):
+    """The offer carries the agreed price in its terms, which the card's value band reads (evidencebook#888): the
+    run's deal of 50 USD minor units is in a band, not counted as unpriced."""
+    cards = list(_cards(json.loads((run / f"{node}-card.json").read_text())))
+    assert cards, "the bundle carries the card"
+    assert any(card["bands"] for card in cards), cards
+    assert json.loads((run / "offer.json").read_text())["agent_input"]["body"]["terms"]["price_minor"] == 50
+
+
 @pytest.mark.skipif(not GO, reason="GOOSE_GO_CHECK is not set")
 def test_go_accepts_the_model_call_capsule(run):
     done = subprocess.run(["go", "run", "./test/interop/goose-capsule", str(run / "buyer-model-call.json")],
@@ -138,6 +168,21 @@ def test_a_deal_needs_a_sealed_go_on_the_peer(node, tmp_path):
         node.open_deal("b" * 64, "item", 50, "USD", "lightning", "buy", False, str(tmp_path / "offer.json"))
     assert not (tmp_path / "offer.json").exists()
     assert node.notes(gn.DEAL_CONTEXT) == [], "nothing was sealed"
+
+
+def test_an_offer_carries_its_price_in_its_terms_and_a_mismatched_one_is_refused(pair):
+    """The card's value band reads terms.price_minor (evidencebook#888): the node's offer carries it, equal to the
+    payment row's amount, and the seller refuses an offer whose two differ before it keeps or seals anything."""
+    buyer, seller, deal, offer, tmp = pair
+    sent = json.loads(offer.read_text())
+    body = sent["agent_input"]["body"]
+    assert body["terms"]["price_minor"] == body["terms_rows"]["rows"][0]["owed"]["amount_minor"] == 50
+    body["terms"]["price_minor"] = 49
+    altered = tmp / "altered.json"
+    altered.write_text(json.dumps(sent))
+    with pytest.raises(Refused, match="price_minor"):
+        seller.respond(str(altered), "sell tokens", str(tmp / "s.json"))
+    assert not (tmp / "s.json").exists()
 
 
 def test_a_price_the_pack_does_not_admit_is_refused_with_the_engines_verdict(node, tmp_path):

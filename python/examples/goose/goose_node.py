@@ -322,7 +322,9 @@ class Node:
         decided = self._decision(peer, terms)
         if not decided.get("admits_deal"):
             raise Refused(f"the engine's decision on this deal is {decided['verdict']}: no deal")
-        offer = {"role": "buyer", "to": peer, "terms": {"item": item, "currency": currency},
+        # The agreed price goes in the terms as well as in the payment row: the History card's value band reads it
+        # from the terms (x-deal-v1 status value), and an offer without it counts as unpriced (evidencebook#888).
+        offer = {"role": "buyer", "to": peer, "terms": {"item": item, "price_minor": price_minor, "currency": currency},
                  "pack_digest": decided["pack"]["digest"], "agree_by": _iso(now + AGREE_WITHIN),
                  "terms_rows": {"rows": [{"id": ROW, "owed_by": "buyer",
                                           "owed": {"amount_minor": price_minor, "currency": currency},
@@ -372,6 +374,8 @@ class Node:
         try:
             offer = json.loads(Path(offer_file).read_text())
             terms, peer = self._offer_terms(offer), offer["record"]["key_id"]
+        except Refused:
+            raise
         except (KeyError, IndexError, TypeError, ValueError):
             raise Refused("not an x-deal-v1 offer file: the offer the buyer's loop_deal_open wrote") from None
         decided = self._decision(peer, terms)  # a refusal here keeps and seals nothing
@@ -406,8 +410,13 @@ class Node:
     def _offer_terms(offer: dict) -> dict:
         body = offer["agent_input"]["body"]
         row = body["terms_rows"]["rows"][0]
-        return {"item": body["terms"]["item"], "price_minor": row["owed"]["amount_minor"],
-                "currency": body["terms"]["currency"], "refundable": False}
+        price = row["owed"]["amount_minor"]
+        if body["terms"].get("price_minor") != price:
+            # the card's value band reads the terms' price, the payment the row's: an offer whose two differ is refused
+            # rather than counted at a price the deal is not paid at (evidencebook#888)
+            raise Refused("the offer's terms.price_minor is not the amount its payment row owes")
+        return {"item": body["terms"]["item"], "price_minor": price, "currency": body["terms"]["currency"],
+                "refundable": False}
 
     def receive(self, file: str) -> dict:
         """Keep a file the other side sent (an offer, an agreement, a leg, an act, a statement) and say
