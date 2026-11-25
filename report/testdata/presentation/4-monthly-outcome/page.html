@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-ysl37Ou5AEXF8bGacYVy4iES2GxXLPXOAScBDj4L3HQ=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-zpwy4068Y9scM1bTDNrSJGth8TPCV6oVS12xGSJ1vMQ='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-SZV2cdIOSRJXONiJmtghJcPguTPexY7OwP48bCVdg0o=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-zpwy4068Y9scM1bTDNrSJGth8TPCV6oVS12xGSJ1vMQ='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Evidence Graph</title>
     <style>
@@ -18193,13 +18193,13 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
   }
   function builtCommit() {
     if (false) return void 0;
-    return commitPrefix("2c6b426edee5cce4d8f81521f39969b9c131df9b");
+    return commitPrefix("ef72c0eb839f84f4356d2f5777f85cf7622cc436");
   }
   var commit = builtCommit();
   var unreleased = false;
   var VIEWER_BUILD = {
     viewer: "@action-state-group/capsule-viewer",
-    viewerVersion: "0.23.1",
+    viewerVersion: "0.26.0",
     verifier: "@action-state-group/agent-action-capsule",
     verifierVersion: "0.16.0",
     cllVersion: "0.4.0",
@@ -29128,9 +29128,14 @@ ${pad.repeat(depth)}`;
   var SETTLE_MS = 100;
   var checkingRenders = /* @__PURE__ */ new WeakMap();
   var RECEIPT_MODULE_IDS = /* @__PURE__ */ new Set([
+    "capsuleviewer.receipt.unilateral/v0",
+    "capsuleviewer.receipt.seller/v0",
+    "capsuleviewer.receipt.bilateral/v0",
+    "capsuleviewer.receipt.deal/v1",
     "capsulectl.deal-view/v0",
     "capsulectl.deal-view-composed/v0"
   ]);
+  var RECEIPT_CARRIER_ATTRIBUTE = "data-receipt-carrier";
   async function openReceipt(text2, panel, options) {
     let bundle;
     try {
@@ -29147,6 +29152,7 @@ ${pad.repeat(depth)}`;
     );
     if (resolution.kind !== "module" || !RECEIPT_MODULE_IDS.has(resolution.module.manifest.id))
       return bundleVerified(context.verification) ? "no-module" : "unverified";
+    panel.setAttribute(RECEIPT_CARRIER_ATTRIBUTE, "report");
     await renderEvidenceGraph(context, panel, void 0, {
       audience: DEFAULT_AUDIENCE,
       format: DEFAULT_FORMAT,
@@ -30218,6 +30224,7 @@ ${pad.repeat(depth)}`;
       "check.key_is_node": "The signing key is the node's published key",
       "check.reply_bound": "The answer is bound to the request it answers",
       "check.witness": "A witness time-stamped these records",
+      "check.line.unregistered": "{status}: {name}. Checkpoint {n} (cut {at}) is not registered with the witness yet.",
       "check.second_signature": "A second party signed this record",
       "check.deal_report": "Each deal was read with its own report, which writes nothing",
       refused: "This page can't show this history: {reasons}"
@@ -30456,6 +30463,36 @@ ${pad.repeat(depth)}`;
         r.refuse(path2, "a passed second-signature slot needs by");
     }
     return { state, by, at, through };
+  }
+  function readUnregistered(r, v, path2, kind, rows) {
+    if (typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
+      return void 0;
+    const o = r.object(v, path2, ["n", "at"], ["n", "at"]);
+    if (!o || !("n" in o) || !("at" in o)) return void 0;
+    const n = r.count(o["n"], `${path2}.n`);
+    const at = r.time(o["at"], `${path2}.at`);
+    if (kind !== "checkpoint") {
+      r.refuse(path2, "names a checkpoint, and only a checkpoint page has them");
+      return void 0;
+    }
+    if (n === void 0 || at === void 0) return void 0;
+    const row2 = rows[n - 1];
+    if (n < 1 || row2 === void 0 || row2.kind !== "checkpoint") {
+      r.refuse(
+        `${path2}.n`,
+        "is not the place of one of this page's rows (1 to the number of rows)"
+      );
+      return void 0;
+    }
+    if (row2.witness.state === "passed") {
+      r.refuse(`${path2}.n`, "names a row whose time-stamp passed");
+      return void 0;
+    }
+    if (row2.cut.ms !== at.ms) {
+      r.refuse(`${path2}.at`, "is not the cut time of row n");
+      return void 0;
+    }
+    return { n, at };
   }
   var EPOCH = { ms: 0 };
   function readRow2(r, v, path2, kind) {
@@ -30697,17 +30734,28 @@ ${pad.repeat(depth)}`;
           "fail",
           "not_run"
         ]);
+        let unregistered;
         if ("values" in co) {
-          const vo = r.object(co["values"], `${path2}.values`, [], []);
-          if (vo && Object.keys(vo).length > 0)
-            r.refuse(
+          if (id === "witness" && status2 === "not_run")
+            unregistered = readUnregistered(
+              r,
+              co["values"],
               `${path2}.values`,
-              "names a placeholder the check's words do not have"
+              kind,
+              rows
             );
+          else {
+            const vo = r.object(co["values"], `${path2}.values`, [], []);
+            if (vo && Object.keys(vo).length > 0)
+              r.refuse(
+                `${path2}.values`,
+                "names a placeholder the check's words do not have"
+              );
+          }
         }
         if (id && checks.some((x) => x.id === id))
           r.refuse(`${path2}.id`, "is listed twice");
-        if (id && status2) checks.push({ id, status: status2 });
+        if (id && status2) checks.push({ id, status: status2, unregistered });
       });
     } else r.refuse("input.checks", "is not a list");
     const periods = [];
@@ -31259,7 +31307,12 @@ ${pad.repeat(depth)}`;
           (c) => el13(
             "li",
             { class: "cvh-check", "data-status": c.status },
-            say("check.line", {
+            c.unregistered ? say("check.line.unregistered", {
+              status: say(`status.${c.status}`),
+              name: say(`check.${c.id}`),
+              n: String(c.unregistered.n),
+              at: minuteOf(c.unregistered.at)
+            }) : say("check.line", {
               status: say(`status.${c.status}`),
               name: say(`check.${c.id}`)
             })

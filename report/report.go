@@ -534,7 +534,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	}
 	options.Charts = charts
 	if view.Receipts != nil {
-		options.Modules = []emitter.Module{view.Receipts.Module}
+		options.Modules = append([]emitter.Module(nil), view.Receipts.Modules...)
 		options.Receipts, options.ReceiptsWithheld, options.ReceiptsNotClosed = receipts.texts, receipts.withheld, receipts.notClosed
 		if options.ReceiptsWithheld == nil {
 			options.ReceiptsWithheld = []string{}

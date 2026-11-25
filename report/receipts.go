@@ -12,15 +12,20 @@ import (
 	"github.com/action-state-group/evidencebook"
 )
 
-// ReceiptModuleID is the module a page opens a plain deal receipt with
-// (capsule-viewer ts/src/evidence-graph-view.ts, RECEIPT_MODULE_IDS). A page
-// carrying receipts with any other module would answer every "Open receipt"
-// with "no module". The viewer also opens a composed receipt with
-// capsulectl.deal-view-composed/v0, but a composed bundle is rooted at the
-// composer's composition record, which names no exchange capsule, so there is
-// nothing yet to bind it to its deal by: it is refused here until that
-// binding exists (agent-action-capsule#674, capsule-viewer#353).
-const ReceiptModuleID = "capsulectl.deal-view/v0"
+// ReceiptModuleIDs are the modules a page opens a plain deal receipt with:
+// capsule-viewer's receipt modules for an x-deal-v0 copy, the owner's or a
+// seller's (capsule-viewer go/receipt, the one receipt renderer,
+// capsule-viewer#383), which the page runtime's RECEIPT_MODULE_IDS lists from
+// capsule-viewer v0.26.0. A page carrying receipts with any other module
+// would answer every "Open receipt" with "no module". A composed receipt is
+// rooted at the composer's composition record, which names no exchange
+// capsule, so there is nothing yet to bind it to its deal by: it is refused
+// here until that binding exists (agent-action-capsule#674,
+// capsule-viewer#353).
+var ReceiptModuleIDs = []string{
+	"capsuleviewer.receipt.unilateral/v0",
+	"capsuleviewer.receipt.seller/v0",
+}
 
 // Receipts are the deal receipts a contract report page carries
 // (capsule-viewer#228, #351): the receipt module the page opens them with and
@@ -34,13 +39,14 @@ const ReceiptModuleID = "capsulectl.deal-view/v0"
 // A deal is the part of a claim id before "::" (a Result whose claim ids have
 // none carries no deal, and Receipts on it is refused).
 type Receipts struct {
-	// Module is the deal view script and its pins. Its manifest names
-	// ReceiptModuleID, and the emitter checks that the manifest pins the
-	// script and stylesheets. A carried bundle must also satisfy the
-	// manifest's requires.bundle_kind, requires.extensions.required,
-	// forbids.extensions and forbids.profiles, as the page's module
-	// resolution reads them, or the page could not open it.
-	Module emitter.Module
+	// Modules are the receipt modules the page carries, each a script and
+	// its pins (capsule-viewer go/receipt's Module). Each manifest names one
+	// of ReceiptModuleIDs, at most once, and the emitter checks that it pins
+	// the script and stylesheets. A carried bundle must satisfy one module's
+	// requires.bundle_kind, requires.extensions.required, forbids.extensions
+	// and forbids.profiles, as the page's module resolution reads them, or the
+	// page could not open it.
+	Modules []emitter.Module
 	// Deals are the receipts handed over, at most one per deal.
 	Deals []Receipt
 	// Gate, when set, is the caller's own check of each carried receipt
@@ -110,9 +116,21 @@ func dealOf(claimID string) (string, bool) {
 // deal has at most one receipt, and each carried bundle of a deal on the page
 // passes the page gate and is one the module takes.
 func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipts, error) {
-	var manifest moduleManifest
-	if err := json.Unmarshal(receipts.Module.Manifest, &manifest); err != nil || manifest.ID != ReceiptModuleID {
-		return checkedReceipts{}, refusef("receipts: the module must carry the manifest of %s, the module a page opens a plain deal receipt with", ReceiptModuleID)
+	var manifests []moduleManifest
+	for _, module := range receipts.Modules {
+		var manifest moduleManifest
+		if err := json.Unmarshal(module.Manifest, &manifest); err != nil || !isReceiptModule(manifest.ID) {
+			return checkedReceipts{}, refusef("receipts: each module must carry the manifest of one of %s, the modules a page opens a plain deal receipt with", strings.Join(ReceiptModuleIDs, ", "))
+		}
+		for _, prior := range manifests {
+			if prior.ID == manifest.ID {
+				return checkedReceipts{}, refusef("receipts: the module %s is given twice", manifest.ID)
+			}
+		}
+		manifests = append(manifests, manifest)
+	}
+	if len(manifests) == 0 {
+		return checkedReceipts{}, refusef("receipts: no receipt module is given, so no receipt could open")
 	}
 	// The deals that cite each capsule.
 	citedBy := make(map[string]map[string]bool)
@@ -174,7 +192,7 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 			out.withheld = append(out.withheld, deal)
 			continue
 		}
-		if err := checkReceiptBundle(deal, r, manifest); err != nil {
+		if err := checkReceiptBundle(deal, r, manifests); err != nil {
 			return checkedReceipts{}, err
 		}
 		if receipts.Gate != nil {
@@ -229,10 +247,20 @@ func (m moduleManifest) accepts(bundleKind string, extensions map[string]interfa
 	return true
 }
 
+// isReceiptModule says whether id is one of ReceiptModuleIDs.
+func isReceiptModule(id string) bool {
+	for _, known := range ReceiptModuleIDs {
+		if id == known {
+			return true
+		}
+	}
+	return false
+}
+
 // checkReceiptBundle holds one carried receipt to what the page then shows:
-// it passes the page gate (the verdict a deal page is written under) and the
+// it passes the page gate (the verdict a deal page is written under) and a
 // module the page carries takes it.
-func checkReceiptBundle(deal string, r Receipt, module moduleManifest) error {
+func checkReceiptBundle(deal string, r Receipt, modules []moduleManifest) error {
 	value, err := cli.DecodeBundleJSON([]byte(r.Bundle))
 	if err != nil {
 		return refusef("receipts: the receipt bundle of deal %q does not decode: %s", deal, cli.SafeError(err))
@@ -242,10 +270,15 @@ func checkReceiptBundle(deal string, r Receipt, module moduleManifest) error {
 	}
 	extensions, _ := value["extensions"].(map[string]interface{})
 	kind, _ := value["bundle_kind"].(string)
-	if !module.accepts(kind, extensions, profilesOf(value)) {
-		return refusef("receipts: the receipt bundle of deal %q is not one the %s module draws (its kind, extensions or root profile do not meet the module's requires and forbids)", deal, module.ID)
+	profiles := profilesOf(value)
+	ids := make([]string, 0, len(modules))
+	for _, module := range modules {
+		if module.accepts(kind, extensions, profiles) {
+			return nil
+		}
+		ids = append(ids, module.ID)
 	}
-	return nil
+	return refusef("receipts: the receipt bundle of deal %q is not one the page's receipt modules (%s) draw (its kind, extensions or root profile do not meet their requires and forbids)", deal, strings.Join(ids, ", "))
 }
 
 // profilesOf are the profiles a bundle's root declares, as the viewer's

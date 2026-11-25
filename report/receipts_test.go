@@ -13,6 +13,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
+	"github.com/action-state-group/capsule-viewer/go/receipt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,9 +27,11 @@ const (
 	settlementReceipt = "testdata/settlement-receipts/receipt.json"
 )
 
-// receiptModule is a stand-in for the deal view: a script with a manifest
+// receiptModule is a stand-in for a receipt module: a script with a manifest
 // that names a receipt module and pins the script and one stylesheet, as the
-// real one's does (capsulectl owns the real one).
+// real ones do (capsule-viewer go/receipt owns them). It requires nothing, so
+// any receipt bundle passes its match; the real manifests' requires are
+// checked in TestAReceiptTheModuleDoesNotTakeIsRefused.
 func receiptModule(t *testing.T, id string) emitter.Module {
 	t.Helper()
 	code := []byte(`/* receipt module stand-in */`)
@@ -44,7 +47,7 @@ func receiptModule(t *testing.T, id string) emitter.Module {
 
 func settlementView(t *testing.T, receipts ...Receipt) View {
 	t.Helper()
-	return View{Card: "settlement", ContractReport: true, Receipts: &Receipts{Module: receiptModule(t, ReceiptModuleID), Deals: receipts}}
+	return View{Card: "settlement", ContractReport: true, Receipts: &Receipts{Modules: []emitter.Module{receiptModule(t, ReceiptModuleIDs[0])}, Deals: receipts}}
 }
 
 // exchange is the capsule the fixture's claims cite and its receipt is rooted
@@ -166,12 +169,16 @@ func TestReceiptsAreRefusedBeforeAnythingIsRendered(t *testing.T) {
 	refusedBy(mustRead(t, "testdata/settlement-receipts/shared-bundle.json"), settlementView(t, carried(t)), "more than one deal cite")
 
 	view := settlementView(t, carried(t))
-	view.Receipts.Module = receiptModule(t, "capsulectl.deal-view-composed/v0")
-	refused(view, "the module must carry the manifest of")
-	view.Receipts.Module = receiptModule(t, "not.a.receipt.module/v0")
-	refused(view, "the module must carry the manifest of")
-	view.Receipts.Module = emitter.Module{Code: []byte("x"), SHA256: "00"}
-	refused(view, "the module must carry the manifest of")
+	for _, id := range []string{"capsulectl.deal-view/v0", "capsuleviewer.receipt.bilateral/v0", "not.a.receipt.module/v0"} {
+		view.Receipts.Modules = []emitter.Module{receiptModule(t, id)}
+		refused(view, "each module must carry the manifest of one of")
+	}
+	view.Receipts.Modules = []emitter.Module{{Code: []byte("x"), SHA256: "00"}}
+	refused(view, "each module must carry the manifest of one of")
+	view.Receipts.Modules = nil
+	refused(view, "no receipt module is given")
+	view.Receipts.Modules = []emitter.Module{receiptModule(t, ReceiptModuleIDs[0]), receiptModule(t, ReceiptModuleIDs[0])}
+	refused(view, "is given twice")
 	view = settlementView(t, carried(t))
 	view.Diagnostic = true
 	refused(view, "a diagnostic page carries none")
@@ -179,12 +186,21 @@ func TestReceiptsAreRefusedBeforeAnythingIsRendered(t *testing.T) {
 
 func TestAReceiptTheModuleDoesNotTakeIsRefused(t *testing.T) {
 	// A VALID bundle the module's manifest does not take could not be opened.
-	var deal moduleManifest
-	deal.ID = ReceiptModuleID
-	deal.Requires.Extensions.Required = []string{"x-deal-v0"}
-	err := checkReceiptBundle("d1", carried(t), deal)
-	assert.ErrorContains(t, err, "not one the "+ReceiptModuleID+" module draws")
-	require.NoError(t, checkReceiptBundle("d1", carried(t), moduleManifest{ID: ReceiptModuleID}))
+	// The real receipt modules (capsule-viewer go/receipt) require x-deal-v0,
+	// which this fixture's receipt does not carry.
+	var real []moduleManifest
+	for _, kind := range []string{receipt.Unilateral, receipt.Seller} {
+		module, err := receipt.Module(kind)
+		require.NoError(t, err)
+		var m moduleManifest
+		require.NoError(t, json.Unmarshal(module.Manifest, &m))
+		assert.Contains(t, ReceiptModuleIDs, m.ID)
+		real = append(real, m)
+	}
+	err := checkReceiptBundle("d1", carried(t), real)
+	assert.ErrorContains(t, err, "is not one the page's receipt modules (capsuleviewer.receipt.unilateral/v0, capsuleviewer.receipt.seller/v0) draw")
+	// One module of the page taking it is enough.
+	require.NoError(t, checkReceiptBundle("d1", carried(t), append(real, moduleManifest{ID: ReceiptModuleIDs[0]})))
 }
 
 // The caller's Gate runs on each carried receipt, after the page gate, and
@@ -192,24 +208,24 @@ func TestAReceiptTheModuleDoesNotTakeIsRefused(t *testing.T) {
 // bundle and are not handed to it (evidencebook#735).
 func TestTheCallersGateChecksEachCarriedReceipt(t *testing.T) {
 	claims := []cli.ResultClaim{{ID: "d1::paid", Evidence: []string{"ex1"}}, {ID: "d2::paid", Evidence: []string{"ex2"}}}
-	module := receiptModule(t, ReceiptModuleID)
+	module := []emitter.Module{receiptModule(t, ReceiptModuleIDs[0])}
 	good := carried(t).Bundle
 	var seen []string
 	pass := func(b []byte) error { seen = append(seen, string(b)); return nil }
-	_, err := checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims)
+	_, err := checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims)
 	require.NoError(t, err)
 	assert.Equal(t, []string{good}, seen, "only the carried bundle is checked, not the held one")
 	seen = nil
-	_, err = checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex2", NotClosed: true}}}, claims)
+	_, err = checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex2", NotClosed: true}}}, claims)
 	require.NoError(t, err)
 	assert.Empty(t, seen, "a not-closed receipt is not checked")
 	// A bundle the page gate refuses never reaches the caller's gate.
 	tampered := strings.Replace(good, `"root":"`, `"root":"0`, 1)
-	_, err = checkReceipts(&Receipts{Module: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: tampered}}}, claims)
+	_, err = checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: tampered}}}, claims)
 	assert.ErrorContains(t, err, "does not pass the page gate")
 	assert.Empty(t, seen)
 	refuse := func([]byte) error { return cli.InputError("the deal section does not verify") }
-	_, err = checkReceipts(&Receipts{Module: module, Gate: refuse, Deals: []Receipt{{Exchange: "ex1", Bundle: good}}}, claims)
+	_, err = checkReceipts(&Receipts{Modules: module, Gate: refuse, Deals: []Receipt{{Exchange: "ex1", Bundle: good}}}, claims)
 	assert.ErrorContains(t, err, "does not pass the caller's check")
 	assert.ErrorContains(t, err, "the deal section does not verify")
 }
@@ -220,21 +236,21 @@ func TestAMultiDealResultMapsEachReceiptToItsOwnDeal(t *testing.T) {
 		{ID: "d2::paid", Evidence: []string{"ex2"}}, {ID: "d3::paid", Evidence: []string{"ex3"}},
 		{ID: "no-deal", Evidence: []string{"ex4"}},
 	}
-	module := receiptModule(t, ReceiptModuleID)
+	module := []emitter.Module{receiptModule(t, ReceiptModuleIDs[0])}
 	good := string(mustRead(t, settlementReceipt))
 	// The stand-in's bundle is used for both: the mapping is what is tested.
-	got, err := checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims)
+	got, err := checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"d1": good}, got.texts)
 	assert.Equal(t, []string{"d2"}, got.withheld, "d3 has no receipt and is neither")
-	got, err = checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex3", NotClosed: true}, {Exchange: "ex2", NotClosed: true}}}, claims)
+	got, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex3", NotClosed: true}, {Exchange: "ex2", NotClosed: true}}}, claims)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"d2", "d3"}, got.notClosed)
 	assert.Empty(t, got.withheld)
-	got, err = checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex4", Held: true}}}, claims)
+	got, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex4", Held: true}}}, claims)
 	require.NoError(t, err, "a claim with no deal cites no exchange capsule, so the receipt is ignored")
 	assert.Empty(t, got.withheld)
-	_, err = checkReceipts(&Receipts{Module: module, Deals: []Receipt{{Exchange: "ex1", Held: true}, {Exchange: "leg1", Held: true}}}, claims)
+	_, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex1", Held: true}, {Exchange: "leg1", Held: true}}}, claims)
 	assert.ErrorContains(t, err, `deal "d1" has more than one receipt`, "two capsules of one deal name one deal twice")
 }
 
@@ -255,7 +271,7 @@ func TestAPageWithReceiptsGetsNoPermalink(t *testing.T) {
 
 func TestReceiptsOnAResultWithNoDealsAreRefused(t *testing.T) {
 	bundle := mustRead(t, "testdata/derived-report/bundle.json")
-	view := View{Card: "outcome", ContractReport: true, Receipts: &Receipts{Module: receiptModule(t, ReceiptModuleID)}}
+	view := View{Card: "outcome", ContractReport: true, Receipts: &Receipts{Modules: []emitter.Module{receiptModule(t, ReceiptModuleIDs[0])}}}
 	_, err := Build(bundle, view)
 	assert.ErrorIs(t, err, ErrRefused)
 	assert.ErrorContains(t, err, "no claim of the Result names a deal")

@@ -1,0 +1,4 @@
+### Changed: a settlement report opens its receipts with capsule-viewer's receipt modules (#869)
+
+- `report.Receipts.Module` is now `Modules`, the receipt modules the page carries. Each must be one of `report.ReceiptModuleIDs`: `capsuleviewer.receipt.unilateral/v0` and `capsuleviewer.receipt.seller/v0`, from capsule-viewer's Go package `receipt` (capsule-viewer#383). Each may be given only once. A carried receipt must be one that at least one of them draws. `report.ReceiptModuleID` (`capsulectl.deal-view/v0`) is removed: evidencebook no longer draws receipts with a renderer of its own. This is a breaking change for callers, which today means capsulectl-book.
+- `report` requires capsule-viewer/go v0.26.0, whose page runtime opens a carried receipt with those modules. In a report, the owner's copy reads as a shared copy, with the verifier's top line. The committed presentation pages are rebuilt on it.
