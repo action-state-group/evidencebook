@@ -8,6 +8,7 @@ and by the loop's own commitment checker; and the refusals a tool makes before i
 ``GOOSE_LOOP_SCRIPTS`` is the loop checkout's ``scripts/`` (the commitment checker); each skips when unset."""
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -289,3 +290,182 @@ def test_an_intent_sealed_before_its_index_was_noted_is_not_a_dead_end(pair):
     assert buyer._intent(deal, "buy tokens", "lightning", "the seller", "purchase", ["pay"], 50) == "", \
         "the intent is sealed and its digest is not printed again: the agreement goes without citing it"
     assert not buyer.notes(gn.DEAL_INTENT)
+
+
+# -- step 06: the settlement disclosure ---------------------------------------------------------
+
+
+def _verifies(doc: dict) -> bool:
+    """Step 06's signature check, done independently: Ed25519 by ``key_id`` over the JCS form without ``sig``."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    body = {k: v for k, v in doc.items() if k != "sig"}
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    sig = doc["sig"]
+    assert (sig["alg"], sig["canon"]) == ("Ed25519", "jcs")
+    try:
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(doc["key_id"])).verify(
+            base64.urlsafe_b64decode(sig["value"] + "=" * (-len(sig["value"]) % 4)), raw)
+        return True
+    except InvalidSignature:
+        return False
+
+
+def test_each_node_discloses_its_one_settlement_signed_by_its_own_key(run):
+    for name in ("buyer", "seller"):
+        doc = json.loads((run / f"{name}-settlement-disclosure.json").read_text())
+        assert set(doc) == {"type", "node", "key_id", "rail", "through_sequence", "settlements", "sig"}, \
+            "a count only: no amount, counterparty or payment reference"
+        assert (doc["type"], doc["rail"], doc["through_sequence"], doc["settlements"]) == \
+            ("settlement-disclosure/v1", "lightning", 1, 1)
+        assert doc["key_id"] == (run / f"{name}.key").read_text().strip()
+        assert _verifies(doc)
+
+
+@pytest.mark.skipif(not LOOP, reason="GOOSE_LOOP_SCRIPTS (the loop's scripts/) is not set")
+def test_the_loops_signature_check_accepts_each_disclosure_and_refuses_a_changed_count(run):
+    sys.path.insert(0, LOOP)
+    import check_commitment as cc
+
+    for name in ("buyer", "seller"):
+        doc = json.loads((run / f"{name}-settlement-disclosure.json").read_text())
+        spki = cc.ED25519_SPKI + bytes.fromhex(doc["key_id"])
+        assert cc.verify_sig(doc, spki)
+        assert not cc.verify_sig({**doc, "settlements": 2}, spki)
+
+
+def _settled(pair):
+    """The pair's deal through both payment legs: the buyer's payer leg, then the seller's payee leg."""
+    buyer, seller, deal, offer, tmp = pair
+    seller.respond(str(offer), "sell tokens", str(tmp / "s.json"))
+    buyer.receive(str(tmp / "s.json"))
+    buyer.agree(deal, str(tmp / "b.json"))
+    seller.receive(str(tmp / "b.json"))
+    paused = buyer.pay(deal, "reference-a", str(tmp / "leg.json"))
+    buyer.approve(deal, paused["check_id"], "proceed", "yes")
+    buyer.pay(deal, "reference-a", str(tmp / "leg.json"), paused["check_id"])
+    return paused["check_id"]
+
+
+def test_a_node_counts_its_latest_settled_leg_once_and_only_on_its_rail(pair, monkeypatch):
+    import settlement as st
+
+    buyer, seller, deal, offer, tmp = pair
+    assert st.disclosure(buyer, "lightning", 0)["settlements"] == 0, "an offer is not a settlement"
+    check_id = _settled(pair)
+    # paid: the buyer's payer leg is its settlement; the seller has sealed nothing yet
+    assert [st.disclosure(n, "lightning", 1)["settlements"] for n in (buyer, seller)] == [1, 0]
+    seller.receive(str(tmp / "leg.json"))
+    seller.received(deal, 50, "reference-a", str(tmp / "payee.json"))
+    assert st.disclosure(seller, "lightning", 1)["settlements"] == 1
+    # a call written again (its file lost) finds the sealed leg: still one settlement each
+    buyer.pay(deal, "reference-a", str(tmp / "leg2.json"), check_id)
+    seller.received(deal, 50, "reference-a", str(tmp / "payee2.json"))
+    assert [st.disclosure(n, "lightning", 1)["settlements"] for n in (buyer, seller)] == [1, 1]
+    # the rail is the reference type's, through the table: a type mapped elsewhere leaves this rail's count, and a
+    # type the table does not know counts on no rail (Sherlock2's conditions on #921 and capsule-emit#408)
+    monkeypatch.setattr(st, "RAILS", {"ln.payment_hash": "mock"})
+    assert [st.disclosure(buyer, r, 1)["settlements"] for r in ("lightning", "mock")] == [0, 1]
+    monkeypatch.setattr(st, "RAILS", {})
+    assert [st.disclosure(buyer, r, 1)["settlements"] for r in ("lightning", "mock")] == [0, 0]
+    monkeypatch.undo()
+    # an unaccepted offer beside the paid deal stops nothing
+    buyer.open_deal(seller.key_id, "more tokens", 50, "USD", "lightning", "buy more", False, str(tmp / "offer2.json"))
+    assert st.disclosure(buyer, "lightning", 1)["settlements"] == 1
+    # each disclosure is sealed in the node book
+    sealed = [r["statement"] for r in buyer.notes(gn.SETTLEMENT_DISCLOSURE)]
+    assert sealed[-1] == {k: v for k, v in st.disclosure(buyer, "lightning", 1).items() if k != "sig"}
+
+
+@pytest.mark.parametrize("rail, through", [("", 0), (" lightning", 0), ("lightning", -1), ("lightning", True),
+                                           ("lightning", 2 ** 53), ("lightning", "1"), (None, 0)])
+def test_a_disclosure_that_is_not_well_formed_is_refused_before_anything_is_sealed(node, rail, through):
+    import settlement as st
+
+    with pytest.raises(Refused):
+        st.disclosure(node, rail, through)
+    assert not node.notes(gn.SETTLEMENT_DISCLOSURE)
+
+
+def test_the_tool_writes_the_signed_disclosure(node, tmp_path, monkeypatch):
+    import loop_server
+
+    monkeypatch.setattr(loop_server, "_node", node)
+    out = json.loads(loop_server.loop_settlement_disclosure("lightning", 0, str(tmp_path / "d.json")))
+    doc = json.loads((tmp_path / "d.json").read_text())
+    assert out["ok"] and out["settlements"] == doc["settlements"] == 0 and _verifies(doc)
+    assert json.loads(loop_server.loop_settlement_disclosure("lightning", -1, str(tmp_path / "e.json")))["ok"] is False
+    assert not (tmp_path / "e.json").exists()
+
+
+def test_a_deal_opened_on_another_rail_enters_neither_sides_count(pair, tmp_path):
+    """An x-deal-v1 offer names no rail: a deal counts on the rail its legs' reference is on, never the deal's context."""
+    import settlement as st
+
+    buyer, seller, deal, offer, tmp = pair
+    _settled(pair)
+    seller.receive(str(tmp / "leg.json"))
+    seller.received(deal, 50, "reference-a", str(tmp / "payee.json"))
+    other = buyer.open_deal(seller.key_id, "tokens", 50, "USD", "mock", "buy on mock", False, str(tmp / "offer-mock.json"))
+    seller.respond(str(tmp / "offer-mock.json"), "sell tokens", str(tmp / "s-mock.json"))
+    buyer.receive(str(tmp / "s-mock.json"))
+    buyer.agree(other["deal_id"], str(tmp / "b-mock.json"))
+    with pytest.raises(Refused, match="lightning only"):
+        buyer.pay(other["deal_id"], "reference-m", str(tmp / "leg-mock.json"))
+    for n in (buyer, seller):
+        assert [st.disclosure(n, r, 1)["settlements"] for r in ("lightning", "mock")] == [1, 0]
+
+
+def test_a_leg_sealed_before_the_disclosure_existed_is_counted(pair):
+    """A profile that settled on an earlier Goose node (d3ad8fa2, before this tool): its legs are in its deal book, so
+    the count reads them with nothing to replay. Here the leg is sealed through the verbs alone, as that node did."""
+    import settlement as st
+
+    buyer, seller, deal, offer, tmp = pair
+    seller.respond(str(offer), "sell tokens", str(tmp / "s.json"))
+    buyer.receive(str(tmp / "s.json"))
+    buyer.agree(deal, str(tmp / "b.json"))
+    seller.receive(str(tmp / "b.json"))
+    paused = buyer.pay(deal, "reference-a", str(tmp / "leg.json"))
+    buyer.approve(deal, paused["check_id"], "proceed", "yes")
+    buyer._run("settle", "--deal", deal, "--sent", "--check", paused["check_id"], "--payment-ref-type", gn.PAYMENT_REF_TYPE)
+    buyer._run("settle", "--deal", deal, "--check", paused["check_id"], "--status", "settled", "--out", str(tmp / "leg.json"))
+    assert st.disclosure(buyer, "lightning", 1)["settlements"] == 1
+
+
+def test_the_count_reads_each_legs_reference_type_through_the_table(node, monkeypatch):
+    """Deals whose latest own legs name different reference types: only the type the table maps to the asked rail
+    counts, an unknown type counts on no rail, and a leg not settled (pending, failed) counts nowhere."""
+    import settlement as st
+
+    def leg(status, ref_type):
+        return {"leg": "payer", "status": status, "payment_ref_type": ref_type}
+    listing = [
+        {"deal_id": "deal-0000000000000001", "version": "x-deal-v1", "log_id": "deal/1", "own_legs": [leg("settled", "ln.payment_hash")]},
+        {"deal_id": "deal-0000000000000002", "version": "x-deal-v1", "log_id": "deal/2", "own_legs": [leg("settled", "x402.transaction")]},
+        {"deal_id": "deal-0000000000000003", "version": "x-deal-v1", "log_id": "deal/3", "own_legs": [leg("pending", "ln.payment_hash")]},
+        {"deal_id": "deal-0000000000000004", "version": "x-deal-v1", "log_id": "deal/4", "own_legs": [leg("failed", "ln.payment_hash")]},
+        {"deal_id": "deal-0000000000000005", "version": "x-deal-v1", "log_id": "deal/5", "own_legs": []},
+        {"deal_id": "deal-0000000000000006", "version": "x-deal-v1", "log_id": ""},
+        {"deal_id": "deal-0000000000000007", "kind": "deal", "log_id": "deal/7"},
+    ]
+    real = node._run
+    monkeypatch.setattr(node, "_run", lambda *a: listing if a == ("list", "--json") else real(*a))
+    assert st.settled_deals(node, "lightning") == ["deal-0000000000000001"]
+    assert [st.disclosure(node, r, 1)["settlements"] for r in ("lightning", "base", "x402")] == [1, 0, 0]
+    monkeypatch.setattr(st, "RAILS", {**st.RAILS, "x402.transaction": "base"})
+    assert st.settled_deals(node, "base") == ["deal-0000000000000002"]
+
+
+def test_a_listing_without_own_legs_is_refused_never_signed_as_zero(node, monkeypatch):
+    """A capsulectl-deal from before own_legs lists a deal with a book but no member: the tool refuses and seals
+    nothing, rather than signing a count that misses that deal's payment."""
+    import settlement as st
+
+    old = [{"deal_id": "deal-0000000000000001", "version": "x-deal-v1", "log_id": "deal/1", "state": "settled"}]
+    real = node._run
+    monkeypatch.setattr(node, "_run", lambda *a: old if a == ("list", "--json") else real(*a))
+    with pytest.raises(Refused, match="own_legs"):
+        st.disclosure(node, "lightning", 1)
+    assert not node.notes(gn.SETTLEMENT_DISCLOSURE)

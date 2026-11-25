@@ -278,3 +278,57 @@ func v1Time(t *testing.T, s string) time.Time {
 	require.NoError(t, err)
 	return ts
 }
+
+// own_legs lists each payment's latest own leg, with its status and the
+// payment reference's type only, and needs no checkpoint (evidencebook#921):
+// the buyer's one payer leg; the seller's pending observation superseded by
+// a settled one shows only the settled one; a refund leg is not the deal's
+// payment and is left out. A deal with a book and no leg lists none.
+func TestAV1ListShowsTheLatestOwnLegOfEachPayment(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	deals, _ := v1List(t)
+	assert.Equal(t, []any{}, deals[h.dealID]["own_legs"], "a book and no leg yet: an empty list, not an absent member")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "paid.json"))
+	deals, _ = v1List(t)
+	assert.Equal(t, "not_checkpointed", deals[h.dealID]["state"], "the book is past its checkpoint")
+	assert.Equal(t, []any{map[string]any{"leg": "payer", "status": "settled", "payment_ref_type": "ln.payment_hash"}},
+		deals[h.dealID]["own_legs"])
+
+	h.seller.act(t)
+	pending := payeeLeg(t, h, "pending")
+	deals, _ = v1List(t)
+	assert.Equal(t, []any{map[string]any{"leg": "payee", "status": "pending", "payment_ref_type": "ln.payment_hash"}},
+		deals[h.dealID]["own_legs"])
+	received := payeeLeg(t, h, "settled", "--supersedes", pending)
+	cancel := sellerCancelChecks(t, h)()
+	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received, "--sent",
+		"--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32))
+	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received, "--status", "settled",
+		"--out", filepath.Join(t.TempDir(), "refund.json"))
+	deals, _ = v1List(t)
+	assert.Equal(t, []any{map[string]any{"leg": "payee", "status": "settled", "payment_ref_type": "ln.payment_hash"}},
+		deals[h.dealID]["own_legs"], "the latest observation of the payment; the refund is not listed")
+	out, err := invoke(t, "", "--profile", "deal", "deal", "list")
+	require.NoError(t, err, out)
+	assert.NotContains(t, out, "ln.payment_hash", "the plain table does not show the legs")
+}
+
+// own_legs names each leg's own payment reference type (a Lightning payment
+// on one buyer's deal, an x402 transaction on another's), and a deal with
+// no book yet carries no own_legs member at all.
+func TestAV1ListOwnLegsNameEachLegsReferenceType(t *testing.T) {
+	ln, lnCheck := buyerChecked(t, v1LnHash)
+	dealRun(t, "settle", "--deal", ln.dealID, "--check", lnCheck, "--sent", "--payment-ref-type", "ln.payment_hash")
+	dealRun(t, "settle", "--deal", ln.dealID, "--check", lnCheck, "--status", "settled", "--out", filepath.Join(t.TempDir(), "ln.json"))
+	deals, _ := v1List(t)
+	assert.Equal(t, []any{map[string]any{"leg": "payer", "status": "settled", "payment_ref_type": "ln.payment_hash"}}, deals[ln.dealID]["own_legs"])
+	x, xCheck := buyerChecked(t, strings.Repeat("0f", 32))
+	dealRun(t, "settle", "--deal", x.dealID, "--check", xCheck, "--sent", "--payment-ref-type", "x402.transaction", "--payment-ref-network", "base")
+	dealRun(t, "settle", "--deal", x.dealID, "--check", xCheck, "--status", "settled", "--payment-ref", "0x"+strings.Repeat("9a", 32),
+		"--payment-ref-network", "base", "--out", filepath.Join(t.TempDir(), "x.json"))
+	offered := dealRun(t, "offer", "--input", writeJSON(t, offerTo(x.seller.party.signer)), "--out", filepath.Join(t.TempDir(), "o.json"))
+	deals, _ = v1List(t)
+	assert.Equal(t, []any{map[string]any{"leg": "payer", "status": "settled", "payment_ref_type": "x402.transaction"}}, deals[x.dealID]["own_legs"])
+	assert.NotContains(t, deals[offered["deal_id"].(string)], "own_legs", "no book: no member")
+}

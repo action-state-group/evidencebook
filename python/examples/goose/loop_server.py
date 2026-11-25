@@ -17,7 +17,7 @@ commits every log at each tick; the node answers a History card as of its newest
     04    loop_admit, loop_deal_bundle
     05    loop_deal_open, loop_deal_respond, loop_deal_agree, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_approve, loop_deal_received,
-          loop_deal_deliver, loop_deal_close, loop_deal_report
+          loop_deal_deliver, loop_deal_close, loop_deal_report, loop_settlement_disclosure
     07    loop_ask, loop_ask_reply (the asker's side, over a file you carry); loop_mailbox_poll (answer the requests
           addressed to the node's mailbox), loop_ask_mailbox, loop_ask_mailbox_poll (ask a node through the mailbox
           its commitment advertises)
@@ -66,6 +66,7 @@ except ImportError:  # mcp < 2
 import commitment as cm
 import goose_node as gn
 import mailbox_exchange as mx
+import settlement as st
 from ctl import Refused
 
 HOME = os.environ.get("GOOSE_HOME", "~/.goose-evidence")
@@ -367,6 +368,20 @@ def loop_deal_report(deal_id: str, out_path: str, wait_seconds: int = 0) -> str:
     deal (a tick is due about every 5 minutes)."""
     done = node().report(deal_id, _path(out_path), float(wait_seconds))
     return _out(ok=True, step="06", **done)
+
+
+@_tool
+def loop_settlement_disclosure(rail: str, through_sequence: int, out_path: str) -> str:
+    """Write this node's signed ``settlement-disclosure/v1`` to ``out_path``: how many deals have this node's latest own
+    payment leg settled on ``rail`` (``loop_settle``, ``loop_deal_received``; every leg names a Lightning payment hash,
+    so its rail is lightning), read from its deal books, signed with its key. ``through_sequence`` labels the rail's latest ledger sequence you
+    observed; it does not filter the count, so pass one that covers this node's settlements. The count is this node's
+    records, not the rail's: it carries no amount, counterparty or payment reference, and deals on other rails never
+    enter it. The disclosure is also sealed in the node book. Nothing is published, no rail is read and no money moves."""
+    doc = st.disclosure(node(), rail, through_sequence)
+    _write(out_path, json.dumps(doc, indent=2, sort_keys=True).encode() + b"\n")
+    return _out(ok=True, step="06", file=out_path, rail=doc["rail"], through_sequence=doc["through_sequence"],
+                settlements=doc["settlements"], key_id=doc["key_id"])
 
 
 # -- 07 Ask ---------------------------------------------------------------------------------
