@@ -24,6 +24,68 @@ capsulectl-book moved here from [capsule-cli](https://github.com/action-state-gr
 contract it implements is capsule-cli's
 [docs/PLUGINS.md](https://github.com/action-state-group/capsule-cli/blob/main/docs/PLUGINS.md).
 
+## Install a release
+
+One release carries both launchers. It is tagged `capsulectl/$V`, where `$V` is
+the version of the `capsulectl` core it pairs with, so one version names the
+whole install ([RELEASING.md](RELEASING.md)). Not every core pre-release has
+one: install a core whose version has a `capsulectl/$V` release on this
+repository's Releases page. Install the core first, from
+[capsule-cli](https://github.com/action-state-group/capsule-cli#prebuilt-binaries).
+
+Each release has, for linux/amd64, linux/arm64 and darwin/arm64:
+
+- `capsulectl-book-$V-$OS-$ARCH` and `capsulectl-deal-$V-$OS-$ARCH`, the two
+  launchers;
+- `standard-history-$V.tar.gz`, the History card's files, which `book card`
+  pages read;
+- `deal-view-$V.tar.gz`, the deal view's files;
+- `deal-skill-$V.tar.gz`, the `skills/deal` tree, the deal skill an agent's host
+  reads; the commands below do not need it, and
+  [actionstate.ai/install](https://actionstate.ai/install) places it for an agent;
+- `SHA256SUMS`;
+- one attestation bundle published under two names,
+  `capsulectl-book-$V.sigstore.json` and `capsulectl-deal-$V.sigstore.json`.
+
+Download into a folder of its own, since this `SHA256SUMS` has the same name as
+the core's, check what you downloaded, then install:
+
+```bash
+# V: the core's version, e.g. v0.1.0-rc53. P: linux-amd64, linux-arm64 or darwin-arm64.
+REL=https://github.com/action-state-group/evidencebook/releases/download/capsulectl/$V
+curl -fsSLO "$REL/capsulectl-book-$V-$P"
+curl -fsSLO "$REL/capsulectl-deal-$V-$P"
+curl -fsSLO "$REL/standard-history-$V.tar.gz"
+curl -fsSLO "$REL/deal-view-$V.tar.gz"
+curl -fsSLO "$REL/SHA256SUMS"
+curl -fsSLO "$REL/capsulectl-book-$V.sigstore.json"
+sha256sum --ignore-missing -c SHA256SUMS   # macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
+# Each of the four files, with the one bundle (with --bundle, capsule-cli's README
+# says no GitHub account or sign-in is needed):
+gh attestation verify "capsulectl-book-$V-$P" --bundle "capsulectl-book-$V.sigstore.json" \
+  --repo action-state-group/evidencebook \
+  --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml
+# ...and the same for capsulectl-deal-$V-$P, standard-history-$V.tar.gz and deal-view-$V.tar.gz.
+chmod +x "capsulectl-book-$V-$P" "capsulectl-deal-$V-$P"
+capsulectl plugin install "./capsulectl-book-$V-$P"
+capsulectl plugin install "./capsulectl-deal-$V-$P"
+# After the installs, which create the plugin folder, the archives unpack into it
+# beside the launchers (standard-history-module/ and capsulectl-deal.d/):
+tar -xzf "standard-history-$V.tar.gz" -C ~/.local/lib/capsulectl/plugins
+tar -xzf "deal-view-$V.tar.gz" -C ~/.local/lib/capsulectl/plugins
+```
+
+`gh attestation` needs gh 2.49 or later (Ubuntu 24.04's packaged gh, 2.45,
+has no `attestation` command). Without it, `SHA256SUMS` is the only check
+(capsule-cli's README says which check applies).
+
+`capsulectl plugin install` names a plugin by its handshake, not by the file
+name, checks that it is built for the installed core, and refuses a mismatch.
+`capsulectl plugin ls` then lists both plugins. A core up to
+`v0.1.0-rc53` also lists `capsulectl-deal.d` under `refused` ("not a regular
+file"): that is the deal view's folder, not a plugin, and nothing is wrong
+(capsule-cli#635).
+
 ## The History card page
 
 The plugin offers capsule-viewer's History card module
