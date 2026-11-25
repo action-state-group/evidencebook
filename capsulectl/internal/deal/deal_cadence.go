@@ -72,7 +72,12 @@ func (s *dealSession) cadenceProfile() (cli.Profile, error) {
 // tick itself is evidencebook's cadence over the shelf: it checkpoints the
 // live logs only, with the occupancy of every log the profile ever had
 // (capsule-cli#242 note §2.5).
-func (s *dealSession) tick(ctx context.Context) (map[string]any, error) {
+//
+// With now set it stamps at once, whatever the schedule (evidencebook's
+// Cadence.Stamp, the on-demand path deal agree and deal ruling already
+// take), on a shelf that is a log of book facts; on one not yet migrated
+// it falls back to the scheduled tick.
+func (s *dealSession) tick(ctx context.Context, stampNow bool) (map[string]any, error) {
 	c, p, err := s.cadenceOf(ctx)
 	if err != nil {
 		return nil, err
@@ -85,7 +90,17 @@ func (s *dealSession) tick(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	now := cli.DealClock()
-	result, err := c.Tick(ctx, now)
+	tick := c.Tick
+	if stampNow {
+		migrated, err := c.Migrated(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if migrated {
+			tick = c.Stamp
+		}
+	}
+	result, err := tick(ctx, now)
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +445,10 @@ func dealTickCommand() *cobra.Command {
 		if wait < 0 {
 			return cli.InputError("--wait-up-to must not be negative")
 		}
+		stampNow, _ := c.Flags().GetBool("now")
+		if stampNow && wait > 0 {
+			return cli.InputError("--now takes one stamp at once; it does not wait (drop --wait-up-to)")
+		}
 		until := cli.DealClock().Add(wait)
 		published := 0
 		// Merchant emails deferred for want of DNS are sealed first, so
@@ -443,7 +462,7 @@ func dealTickCommand() *cobra.Command {
 			var out map[string]any
 			err := runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
 				var err error
-				out, err = s.tick(ctx)
+				out, err = s.tick(ctx, stampNow)
 				return err
 			})
 			if err != nil {
@@ -468,6 +487,7 @@ func dealTickCommand() *cobra.Command {
 			}
 		}
 	}}
+	cmd.Flags().Bool("now", false, "Stamp at once, whatever the schedule, as deal agree and deal ruling do: the witness then sees a stamp off the cadence, so its time can say when this profile acted (for demos and tests; a scheduler never passes it)")
 	cmd.Flags().Duration("wait-up-to", 0, "The scheduler's period (for example 5m): wait for each tick due within this long and publish it on time, so the cadence keeps its jitter; the run stays alive up to this long")
 	return cmd
 }
