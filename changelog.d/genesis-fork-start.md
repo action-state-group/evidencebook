@@ -1,0 +1,4 @@
+### Fixed: a deal still reports after the other side forks at its first record (#878)
+
+- **The bug.** If the other side signed two different agreements as the first record of its deal book and sent both, the holder counted nothing of that book. Its status and every report then failed with "an offerer writes its agreement after the acceptor's it holds". An honest party could not show its deal or answer an adjudicator.
+- **The fix.** The holder now reads the branch its own agreement names in `seen`. The deal both sides signed starts from it, and `rests_on.counterparty.fork_at` stays 1, so a page can say the other side's book forked at its first record. This matches the branch the adjudicator reads (`GatherCase`). An offerer whose agreement names neither branch is still refused as inconsistent.
