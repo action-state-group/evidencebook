@@ -132,9 +132,10 @@ func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.Status
 			// signed starts, and fork_at 1 stays shown). An honest offerer
 			// seals its agreement after the acceptor's it saw, so its seen
 			// names a branch; naming neither, nothing is read, and Start
-			// still refuses the offerer's inconsistent book.
+			// still refuses the offerer's inconsistent book. An acceptor
+			// reads the branch its later records name, none before.
 			if prefix.ForkAt == 1 && len(theirs) == 0 {
-				theirs = namedBranch(held, *ag.CounterpartyKey.V, theirLog, own[0].rec.Record.Block.Seen)
+				theirs = namedBranch(held, *ag.CounterpartyKey.V, theirLog, own)
 			}
 		}
 		for i := range theirs {
@@ -329,38 +330,43 @@ func counted(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook
 }
 
 // namedBranch is the branch of sender's book logID, forked at its first
-// record, that the holder's agreement names in seen: that seq-1 record and
-// the held records that follow it while exactly one does. nil when seen
-// names none of the held first records.
-func namedBranch(held []evidencebook.HeldRecord, sender, logID string, seen Null[string]) []heldBookRecord {
-	if seen.V == nil {
-		return nil
-	}
-	next := map[string][]evidencebook.HeldRecord{}
+// record, that the holder's own book names as received: the branch
+// branchNamed picks from every own record's seen (an offerer's agreement
+// names the acceptor's agreement it saw; an acceptor's later records name
+// the offerer's), as the adjudicator's GatherCase reads it. nil when the
+// book names none of the held records, or names two branches.
+func namedBranch(held []evidencebook.HeldRecord, sender, logID string, own []ownRecord) []heldBookRecord {
+	reads := map[string]BookRead{}
+	pairs := map[string][]byte{}
 	for _, h := range held {
-		if h.SenderKey == sender && h.LogID == logID {
-			next[h.Prev] = append(next[h.Prev], h)
-		}
-	}
-	var out []heldBookRecord
-	for _, h := range next[""] {
-		if h.Position != 1 || h.Digest != *seen.V {
+		if h.SenderKey != sender || h.LogID != logID {
 			continue
 		}
-		for pos := uint64(1); ; pos++ {
-			b, err := VerifyBook(h.Record)
-			if err != nil {
-				return out
-			}
-			out = append(out, heldBookRecord{rec: StatusRecord{Record: b.Record, RecordID: h.Digest}, pair: h.Record})
-			cands := next[h.Digest]
-			if len(cands) != 1 || cands[0].Position != pos+1 {
-				return out
-			}
-			h = cands[0]
+		if b, err := VerifyBook(h.Record); err == nil && b.RecordID == h.Digest {
+			reads[b.RecordID], pairs[b.RecordID] = b, h.Record
 		}
 	}
-	return nil
+	chained := map[string]BookRead{}
+	for id, b := range reads {
+		if branchTo(reads, id) != nil {
+			chained[id] = b
+		}
+	}
+	var named []string
+	for _, o := range own {
+		if s := o.rec.Record.Block.Seen; s.V != nil {
+			named = append(named, *s.V)
+		}
+	}
+	branch, _, _, err := branchNamed(chained, named, "")
+	if err != nil {
+		return nil
+	}
+	out := make([]heldBookRecord, len(branch))
+	for i, b := range branch {
+		out[i] = heldBookRecord{rec: StatusRecord{Record: b.Record, RecordID: b.RecordID}, pair: pairs[b.RecordID]}
+	}
+	return out
 }
 
 // countedWith is counted with the counted prefix it walked.

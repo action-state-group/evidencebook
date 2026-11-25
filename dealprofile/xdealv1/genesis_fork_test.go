@@ -82,3 +82,26 @@ func TestReportAfterAcceptorGenesisForkNamingNeither(t *testing.T) {
 	_, _, err := h.buyer.status.ReportWithBook(context.Background(), caseBuyerLog, keepCopy(h.buyer.now.Format(time.RFC3339)))
 	assert.ErrorContains(t, err, "an offerer writes its agreement after the acceptor's it holds")
 }
+
+// The roles swapped (round 1 of #892): the offerer (the buyer) forks its book
+// at its first record after the acceptor's (the seller's) delivery named the
+// buyer's agreement A. The seller reads the branch its own book names, so
+// its deal is started from A, the fork shown, as the adjudicator reads it.
+func TestReportAfterOffererGenesisFork(t *testing.T) {
+	f := newFourBooks(t)
+	book := mustOpen(t, f.h.buyer, f.buyerLog)
+	other := readBack(t, book, 1).Record
+	other.Block.At = "2026-11-01T10:05:00Z"
+	forkID, forkPair := f.h.buyer.sealOnNewShelf(f.buyerLog, other)
+	require.NotEqual(t, f.b1, forkID)
+	f.h.seller.receive(forkPair, nil)
+	witnessedStamp(t, f.h.seller, gatherAt("13:00"))
+
+	r, pair, x := holderBundle(t, f.h.seller, "seller", f.h.sellerLog, keepCopy(gatherAsOf))
+	_, err := VerifyReportBundle(pair, extJSON(t, x))
+	require.NoError(t, err)
+	require.NotNil(t, r.RestsOn.Counterparty)
+	assert.Equal(t, uint64(1), r.RestsOn.Counterparty.ForkAt, "the fork is shown")
+	assert.Equal(t, f.b1, r.RestsOn.Counterparty.Last, "the branch the seller's delivery named")
+	assert.Equal(t, StateStarted, r.Start.State)
+}
