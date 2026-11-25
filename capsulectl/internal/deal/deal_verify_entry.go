@@ -49,6 +49,10 @@ func CheckDealStandaloneReport(value map[string]interface{}) error {
 		note, _ := entry["note"].(string)
 		return errors.Join(cli.ErrBundleInvalid, errors.New("the copy's standalone report fails the x-deal-v1 report rule ("+DealV1ReportRuleFailed+"): "+note))
 	}
+	if findings, _ := entry["findings"].([]string); slices.Contains(findings, DealV1CounterpartyHalfFailed) {
+		note, _ := entry["note"].(string)
+		return errors.Join(cli.ErrBundleInvalid, errors.New("the copy's other-party half fails ("+DealV1CounterpartyHalfFailed+"): "+note))
+	}
 	if (carried || entry["kind"] == DealProfileV1) && entry["status"] == "fail" || carried && entry["status"] != "pass" {
 		return errors.Join(cli.ErrBundleInvalid, errors.New("the copy's standalone report does not verify (sealed_report_unverified)"))
 	}

@@ -247,7 +247,16 @@ func runV1Report(c *cobra.Command) (err error) {
 		}
 		kind := "report"
 		if asBundle {
-			bundle, err := s.v1ReportBundle(ctx, d.OwnLogID, snap, pair, digest)
+			// The holder's own copy carries the other party's half when the
+			// shelf holds it (evidencebook#850): what the History card
+			// reads for "stamped by both", checked from the copy alone.
+			var half []byte
+			if share == dealprofile.AudienceKeep {
+				if half, err = xdealv1.HeldCounterpartyHalf(ctx, s.shelf, snap.Book.Agreement); err != nil {
+					return err
+				}
+			}
+			bundle, err := s.v1ReportBundle(ctx, d.OwnLogID, snap, pair, digest, half)
 			if err != nil {
 				return err
 			}
@@ -477,7 +486,7 @@ func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, 
 // is appended (DisclosureRecordedElsewhere), since a non-x-deal-v1 record
 // in it would make every later report refuse it. The bundle is checked as a
 // reader checks it before it is returned.
-func (s *dealSession) v1ReportBundle(ctx context.Context, logID string, snap xdealv1.ReportSnapshot, pair []byte, sealed string) ([]byte, error) {
+func (s *dealSession) v1ReportBundle(ctx context.Context, logID string, snap xdealv1.ReportSnapshot, pair []byte, sealed string, half []byte) ([]byte, error) {
 	var carried struct {
 		Record     json.RawMessage `json:"record"`
 		AgentInput json.RawMessage `json:"agent_input"`
@@ -493,8 +502,11 @@ func (s *dealSession) v1ReportBundle(ctx context.Context, logID string, snap xde
 	if err != nil {
 		return nil, err
 	}
-	raw, err := s.v1BookBundle(ctx, logID, snap.Report.DealCheckpoint,
-		map[string]json.RawMessage{xdealv1.Profile: v1Ext, dealprofile.ReportExtension: reportExt}, nil)
+	exts := map[string]json.RawMessage{xdealv1.Profile: v1Ext, dealprofile.ReportExtension: reportExt}
+	if half != nil {
+		exts[xdealv1.CounterpartyHalfExtension] = half
+	}
+	raw, err := s.v1BookBundle(ctx, logID, snap.Report.DealCheckpoint, exts, nil)
 	if err != nil {
 		return nil, err
 	}

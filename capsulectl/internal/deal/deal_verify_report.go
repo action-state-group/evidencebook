@@ -155,6 +155,17 @@ func standaloneReportEntry(value map[string]interface{}, x map[string]interface{
 				entry["status"] = "fail"
 				entry["findings"] = []string{DealV1ReportRuleFailed}
 				entry["note"] = "the x-deal-v1 report rule failed: " + err.Error()
+				return entry
+			}
+			exts, _ := value["extensions"].(map[string]interface{})
+			half, err := dealV1CounterpartyHalf(section, audience, exts)
+			if half != nil {
+				entry["counterparty_half"] = half
+			}
+			if err != nil {
+				entry["status"] = "fail"
+				entry["findings"] = []string{DealV1CounterpartyHalfFailed}
+				entry["note"] = "the copy's counterparty half does not verify: " + err.Error()
 			}
 			return entry
 		}
@@ -359,6 +370,12 @@ func agentInputDisclosure(record, input map[string]interface{}) disclosure.Resul
 	}
 	return disclosure.Verify(map[string]interface{}{"capsule": capsule, "disclosures": map[string]interface{}{"agent_input": input}}, nil)
 }
+
+// DealV1CounterpartyHalfFailed is the finding of a v1 copy that carries the
+// other party's half (x-deal-v1-counterparty-half) and the half does not
+// verify, or rides in a copy other than the holder's own: the copy is
+// INVALID, since the holder assembled it (Sherlock2, evidencebook#850).
+const DealV1CounterpartyHalfFailed = "counterparty_half_failed"
 
 // DealV1ReportRuleFailed is the finding of a v1 report the deal plugin's
 // report rule refused.
