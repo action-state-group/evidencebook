@@ -30,8 +30,9 @@ One release carries capsulectl. It holds the core and both plugin launchers at
 one version `$V`, and it is tagged `capsulectl/$V` on this repository
 ([RELEASING.md](RELEASING.md)). The core in it is capsule-cli's own published
 build, carried unchanged. The launchers are plugins that the core installs.
-Releases from `capsulectl/v0.1.0-rc55` on carry the core. For an earlier
-release, take the core of the same version from
+A release whose assets include `capsulectl-$V-$OS-$ARCH` carries the core.
+Releases made before this change do not. For one of those, take the core of
+the same version from
 [capsule-cli](https://github.com/action-state-group/capsule-cli#prebuilt-binaries).
 
 Each release has, for linux/amd64, linux/arm64 and darwin/arm64:
@@ -53,7 +54,7 @@ Each release has, for linux/amd64, linux/arm64 and darwin/arm64:
 Download the files, check them, then install:
 
 ```bash
-# V: e.g. v0.1.0-rc55. P: linux-amd64, linux-arm64 or darwin-arm64.
+# V: the release actionstate.ai/install names, e.g. v0.1.0-rcNN. P: linux-amd64, linux-arm64 or darwin-arm64.
 REL=https://github.com/action-state-group/evidencebook/releases/download/capsulectl/$V
 curl -fsSLO "$REL/capsulectl-$V-$P"
 curl -fsSLO "$REL/capsulectl-book-$V-$P"

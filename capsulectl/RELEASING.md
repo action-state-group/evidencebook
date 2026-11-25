@@ -103,7 +103,7 @@ in a fixed shape, so the workflow refuses any other version:
    The bundle is published under two names, `capsulectl-book-vX.Y.Z.sigstore.json`
    and `capsulectl-deal-vX.Y.Z.sigstore.json`; they are the same file, and the
    deal one keeps the name evidencebook-deal's releases used.
-5. The install pages pin the core and the plugins from this one release, the deal plugin asset, the deal skill archive
+5. The install pages pin the core and the plugins from this one release. They also pin the deal plugin asset, the deal skill archive
    (`deal-skill-vX.Y.Z.tar.gz`) with its `skills/deal/SKILL.md`, and the deal
    view archive (`deal-view-vX.Y.Z.tar.gz`), which is unpacked into the plugin
    directory beside `capsulectl-deal`; the pins move to this release (the

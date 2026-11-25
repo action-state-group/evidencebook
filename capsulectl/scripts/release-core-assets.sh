@@ -32,10 +32,10 @@ REPO=action-state-group/capsule-cli
 TARGETS=(linux-amd64 linux-arm64 darwin-arm64)
 sha256() { if command -v sha256sum > /dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 
-cd "$(dirname "$0")/.."
 DIST=$(cd "$DIST" && pwd)
+cd "$(dirname "$0")/.."
 core_version=$(go list -m -f '{{.Version}}' "$CORE")
-core_commit=$(go mod download -json "$CORE@$core_version" | jq -er '.Origin.Hash')
+core_commit=$(go mod download -json "$CORE@$core_version" | jq -r '.Origin.Hash // empty')
 test -n "$core_commit" || { echo "no commit for $CORE@$core_version" >&2; exit 1; }
 
 draft=$(gh release view "$core_version" --repo "$REPO" --json isDraft --jq .isDraft) \
@@ -74,6 +74,7 @@ if [ -f "$core_bin" ]; then
   home=$(mktemp -d)
   for launcher in capsulectl-book capsulectl-deal; do
     HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
+      CAPSULECTL_PLUGIN_ROOTS="$home/.local/lib/capsulectl/plugins" \
       "$core_bin" plugin install "$DIST/$launcher-$VERSION-$host" > /dev/null \
       || { rm -rf "$home"; echo "the core $core_version refused $launcher-$VERSION-$host" >&2; exit 1; }
   done
