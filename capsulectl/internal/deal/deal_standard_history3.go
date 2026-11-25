@@ -277,6 +277,9 @@ func (s *dealSession) dealEntry3(ctx context.Context, bookID string, v xdealv1.S
 	} else {
 		deal.Unpriced = true
 	}
+	if err := agreedNoLaterThanWitnessed(ctx, s.shelf.RecordTimeByKey, bookID, v.AgreedAt, keys); err != nil {
+		return standardhistory.Deal{}, false, err
+	}
 	timed, err := s.witnessedTime(ctx, bookID, v, stamps, keys)
 	if err != nil {
 		return standardhistory.Deal{}, false, err
@@ -292,6 +295,28 @@ func (s *dealSession) dealEntry3(ctx context.Context, bookID string, v xdealv1.S
 		deal.LeftOut = &none
 	}
 	return deal, true, nil
+}
+
+// agreedNoLaterThanWitnessed refuses the card when a deal's agreed_at is
+// later than its first witnessed time by more than xdealv1.AgreedAtSkew (SH
+// §11.2 "Agreed no later than witnessed", AAC#696). The first witnessed time
+// is the record time of the holder's own book's first record, its agreement,
+// which a stamp covering any later record covers too (recordTime is
+// Shelf.RecordTimeByKey). The other side's times are not read: it may have
+// agreed first. A deal whose agreement names no witness, or that no named
+// witness timed, is not checked.
+func agreedNoLaterThanWitnessed(ctx context.Context, recordTime func(context.Context, string, uint64, []string) (time.Time, bool, error), bookID, agreedAt string, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	first, ok, err := recordTime(ctx, bookID, 1, keys)
+	if err != nil || !ok {
+		return err
+	}
+	if err := xdealv1.CheckAgreedAt(agreedAt, first); err != nil {
+		return shRefusal(fmt.Sprintf("deal %s: its agreed_at is later than its first witnessed time, so its entry cannot be filled (SH §11.2)", bookID), err)
+	}
+	return nil
 }
 
 // witnessedTime is whether the deal holds a time from a witness its agreement
