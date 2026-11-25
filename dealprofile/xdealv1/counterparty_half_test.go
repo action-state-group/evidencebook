@@ -188,10 +188,47 @@ func TestHeldCounterpartyHalf(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, ext, "the proof reaches a record not held")
 
+	// Their agreement of the same role as the holder's: no half, and the
+	// holder's report is not blocked by it.
+	sr := newHandshake(t, func(a *AgreeBody) { a.Role = RoleBuyer })
+	sr.buyer.receive(sr.agreementPair, &sr.proof)
+	_, _, srHolder := gateBook(t, sr, true)
+	ext, err = HeldCounterpartyHalf(ctx, sr.buyer.shelf, srHolder)
+	require.NoError(t, err)
+	assert.Nil(t, ext, "their agreement is not of the other role")
+
 	// A deal whose counterparty keeps no book has no half.
 	n := newHandshake(t, nil)
 	_, _, noLayer := gateBook(t, n, false)
 	ext, err = HeldCounterpartyHalf(ctx, n.buyer.shelf, noLayer)
 	require.NoError(t, err)
 	assert.Nil(t, ext)
+}
+
+// The proof a half carries is the largest that covers their agreement and
+// reaches no record past the counted prefix: a larger one past a fork does
+// not hide a smaller one that fits, and a proof of another record, key or
+// shelf log, or one covering nothing yet, is never taken.
+func TestCoveringProof(t *testing.T) {
+	ag := AgreeBody{CheckpointKey: "ck", ShelfLogID: "shelf"}
+	proof := func(book, key, shelf string, entries, covers uint64) evidencebook.HeldProof {
+		var hp evidencebook.HeldProof
+		hp.Verified.Fact.BookID, hp.Verified.KeyID, hp.Verified.ShelfCheckpoint.LogID = book, key, shelf
+		hp.Verified.BookCheckpoint.Entries, hp.Covers = entries, covers
+		return hp
+	}
+	proofs := []evidencebook.HeldProof{
+		proof("ag", "ck", "shelf", 2, 2),
+		proof("ag", "ck", "shelf", 5, 3), // past a fork at 4: counted is 3
+		proof("ag", "ck", "shelf", 3, 3),
+		proof("other", "ck", "shelf", 3, 3),
+		proof("ag", "other", "shelf", 3, 3),
+		proof("ag", "ck", "other", 3, 3),
+		proof("ag", "ck", "shelf", 3, 0),
+	}
+	got := coveringProof(proofs, "ag", ag, 3)
+	require.NotNil(t, got)
+	assert.Same(t, &proofs[2], got)
+	assert.Nil(t, coveringProof(proofs[3:], "ag", ag, 3))
+	assert.Nil(t, coveringProof(proofs[:1], "ag", ag, 1), "the only proof reaches past the counted records")
 }

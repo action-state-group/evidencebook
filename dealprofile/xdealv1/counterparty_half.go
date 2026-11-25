@@ -270,12 +270,13 @@ func rootPair(bundle []byte, vb evidencebook.VerifiedBundle) ([]byte, string, er
 // shelf holds for the deal of its agreement (holderAgreement, its book
 // pair): the counterparty's counted records from its agreement up to the
 // largest held stamp proof that covers that agreement (as proofCovers reads
-// it, so the copy and the History card read one rule), with that proof. It
-// is nil when the counterparty keeps no book, nothing of theirs is held, no
-// held proof covers their agreement, or a record the proof covers is no
-// longer held (forgotten under retention): the copy then carries no half,
-// which reads absent. A half it builds that does not verify is an error,
-// never carried.
+// it, so the copy and the History card read one rule) and reaches no record
+// past their counted prefix, with that proof. It is nil when the
+// counterparty keeps no book, nothing of theirs is held, their agreement is
+// not of this offer or of the other role, no held proof covers it, or a
+// record the proof covers is no longer held (forgotten under retention):
+// the copy then carries no half, which reads absent. A half it builds that
+// does not verify is an error, never carried.
 func HeldCounterpartyHalf(ctx context.Context, shelf *evidencebook.Shelf, holderAgreement []byte) ([]byte, error) {
 	holder, err := VerifyBook(holderAgreement)
 	if err != nil {
@@ -301,22 +302,19 @@ func HeldCounterpartyHalf(ctx context.Context, shelf *evidencebook.Shelf, holder
 	if err != nil || len(theirs) == 0 {
 		return nil, err
 	}
+	// Their agreement must be of this offer and of the other role before
+	// anything is built: one that is not is theirs to answer for, and the
+	// holder's copy then carries no half rather than failing to be written.
 	tAg, _ := asAgree(theirs[0].rec.Record.Body)
+	if tAg.Offer.Digest != hAg.Offer.Digest || tAg.Role == hAg.Role {
+		return nil, nil
+	}
 	proofs, err := shelf.HeldProofs(ctx, key, logs[0])
 	if err != nil {
 		return nil, err
 	}
-	var best *evidencebook.HeldProof
-	for i, hp := range proofs {
-		v := hp.Verified
-		if v.Fact.BookID != theirs[0].rec.RecordID || v.KeyID != tAg.CheckpointKey || v.ShelfCheckpoint.LogID != tAg.ShelfLogID || hp.Covers < 1 {
-			continue
-		}
-		if best == nil || v.BookCheckpoint.Entries > best.Verified.BookCheckpoint.Entries {
-			best = &proofs[i]
-		}
-	}
-	if best == nil || best.Verified.BookCheckpoint.Entries > uint64(len(theirs)) {
+	best := coveringProof(proofs, theirs[0].rec.RecordID, tAg, uint64(len(theirs)))
+	if best == nil {
 		return nil, nil
 	}
 	pairs := make([][]byte, best.Verified.BookCheckpoint.Entries)
@@ -331,4 +329,24 @@ func HeldCounterpartyHalf(ctx context.Context, shelf *evidencebook.Shelf, holder
 		return nil, err
 	}
 	return ext, nil
+}
+
+// coveringProof is the held proof a half carries: of the largest book
+// checkpoint, among those proofCovers accepts for their agreement
+// (agreementID, tAg), that reaches no record past the counted prefix
+// (counted), so the copy never anchors on a checkpoint past a fork. A
+// larger proof that reaches past it does not hide a smaller one that fits.
+func coveringProof(proofs []evidencebook.HeldProof, agreementID string, tAg AgreeBody, counted uint64) *evidencebook.HeldProof {
+	var best *evidencebook.HeldProof
+	for i, hp := range proofs {
+		v := hp.Verified
+		if v.Fact.BookID != agreementID || v.KeyID != tAg.CheckpointKey || v.ShelfCheckpoint.LogID != tAg.ShelfLogID ||
+			hp.Covers < 1 || v.BookCheckpoint.Entries > counted {
+			continue
+		}
+		if best == nil || v.BookCheckpoint.Entries > best.Verified.BookCheckpoint.Entries {
+			best = &proofs[i]
+		}
+	}
+	return best
 }
