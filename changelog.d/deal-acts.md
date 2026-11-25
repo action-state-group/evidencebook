@@ -1,0 +1,5 @@
+### Added
+
+- Package `deal` seals a deal's acts and what each side says of them in the holder's deal book (#899): `Store.Perform` (deal.perform, authorized over the deal's journal and gated on the other side's stamp proof), `Store.Statement` (deal.statement), `Store.Settle` for a payee leg (deal.settle), `Store.Dispute`, `Store.WithdrawDispute` and `Store.Challenge` (deal.dispute) and `Store.Status` (deal.status). `Store.Authorize` and `Store.DealJournal` run x-deal-v1's authorization over a deal's journal records. Each call made again with the same input returns the record already sealed. `Config.ReceiveProfile` gives the first-act gate its profile, and `Open` creates the `deal_v1_events` and `deal_v1_sends` tables capsulectl-deal writes.
+- `xdealv1.StatusProvider.Status` gives a deal book's status value now, without a stamp.
+- Seven more `deal.Code` refusals for these calls: `CodeNoAgreement`, `CodeDisputeOpen`, `CodeChallengeUnknownRuling`, `CodeSettleWhichRow`, `CodeSettlePayer`, `CodeSettleRefunded` and `CodeSettleNegative`.

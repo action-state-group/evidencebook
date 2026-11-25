@@ -29,6 +29,31 @@ const version = "x-deal-v1"
 // deal_v1_admits binds each admission decision to the one deal it was
 // sealed for (an admit record carries no deal id, x-deal-v1 PROFILE §3).
 var tables = []string{
+	// deal_v1_events is each deal's local step list and deal_v1_sends each
+	// payer leg's send; capsulectl-deal writes both, and the store reads the
+	// list to find the journal records a deal's steps bind (DealJournal).
+	`CREATE TABLE IF NOT EXISTS deal_v1_events (
+	deal_id TEXT NOT NULL,
+	n INTEGER NOT NULL,
+	kind TEXT NOT NULL,
+	local TEXT NOT NULL,
+	record_digest TEXT NOT NULL,
+	payload BLOB,
+	PRIMARY KEY (deal_id, n)
+)`,
+	`CREATE TABLE IF NOT EXISTS deal_v1_sends (
+	deal_id TEXT NOT NULL,
+	check_digest TEXT NOT NULL,
+	event_n INTEGER NOT NULL,
+	amount_minor INTEGER NOT NULL,
+	currency TEXT NOT NULL,
+	ref_type TEXT NOT NULL,
+	ref_value TEXT NOT NULL,
+	ref_json TEXT NOT NULL,
+	reverses TEXT NOT NULL DEFAULT '',
+	leg_digest TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (deal_id, check_digest)
+)`,
 	`CREATE TABLE IF NOT EXISTS deal_versions (
 	deal_id TEXT PRIMARY KEY,
 	version TEXT NOT NULL,
@@ -97,6 +122,10 @@ type Config struct {
 	// Random is the source of deal ids and book log ids. Nil is the system
 	// CSPRNG.
 	Random io.Reader
+	// ReceiveProfile is the x-deal-v1 receive profile the shelf was opened
+	// with (ShelfConfig.Receive), whose first-act gate an act passes. Only the
+	// act calls need it (Perform, Settle).
+	ReceiveProfile *xdealv1.ReceiveProfile
 }
 
 // Store is a holder's x-deal-v1 deals on its shelf.
@@ -188,7 +217,7 @@ func codedConflict(code Code, reason string, args ...string) error {
 // renaming or removing one breaks a caller that matches on it.
 type Code string
 
-// The coded refusals: 16. Each lists, in order, the Args its message names.
+// The coded refusals: 23. Each lists, in order, the Args its message names.
 const (
 	// CodeCancelAgain: the offer is already cancelled. No Args.
 	CodeCancelAgain Code = "cancel-again"
@@ -238,6 +267,27 @@ const (
 	// CodeRecordRetry (a ConflictError): the deal book kept changing while
 	// the record was sealed; the same call made again seals it. No Args.
 	CodeRecordRetry Code = "record-retry"
+	// CodeNoAgreement: a call on a deal the holder has not agreed yet; its
+	// deal book opens at its agreement. Args: the deal id.
+	CodeNoAgreement Code = "no-agreement"
+	// CodeDisputeOpen: the holder already has an open dispute on the row in
+	// another forum; it is taken back first. Args: the row, the open
+	// dispute's forum.
+	CodeDisputeOpen Code = "dispute-open"
+	// CodeChallengeUnknownRuling: the holder holds no such ruling of the deal
+	// from its adjudicator. Args: the ruling digest, the deal id.
+	CodeChallengeUnknownRuling Code = "challenge-unknown-ruling"
+	// CodeSettleWhichRow: the offer has more than one payment row and the
+	// call names none. No Args.
+	CodeSettleWhichRow Code = "settle-which-row"
+	// CodeSettlePayer: the holder owes the row, so its leg is a payer leg,
+	// which rests on its check. Args: "refund" for a refund, else "payment".
+	CodeSettlePayer Code = "settle-payer"
+	// CodeSettleRefunded: the leg is already being refunded. Args: the leg's
+	// digest.
+	CodeSettleRefunded Code = "settle-refunded"
+	// CodeSettleNegative: an amount of the leg is negative. No Args.
+	CodeSettleNegative Code = "settle-negative"
 )
 
 // now is the store's clock, in UTC.
