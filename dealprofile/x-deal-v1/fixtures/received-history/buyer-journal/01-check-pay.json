@@ -1,0 +1,24 @@
+{
+  "fixture": "received-history/buyer-journal/01-check-pay.json",
+  "expect": "valid",
+  "appendix_a_line": "none (capsule-cli#327)",
+  "story": "A pay check whose rules checker is also handed the seller's verified History.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "check",
+      "at": "2026-11-01T10:10:00Z"
+    },
+    "body": {
+      "action": "pay",
+      "amount_minor": 6000,
+      "currency": "USD",
+      "payment_ref": "pay-ref-7732",
+      "nonce": "64cdbe071a0a3718869c5532789f92abd112dec7e616b5a6799377e9b078dde1"
+    }
+  },
+  "expected_digest": "c262941f40ac2c5274240f608ab3de5c43da90df61a554f8455e121374a0c756"
+}

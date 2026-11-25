@@ -14,6 +14,7 @@ give way and the buyer goes to the adjudicator. Each positive fixture is one rec
 | `appendix-a/case-book/` | the adjudicator's case book: the ruling, then the same ruling sealed again as final |
 | `settled/` | the same deal settled without a ruling (Appendix A's last table, lines s1 to s12): it leaves the main path after the buyer's dispute and the seller's reply, so its books continue from those records at `seq` 5 and 6 |
 | `not-started/` | an offer declined by the seller, and an offer cancelled by the buyer (Appendix A's last paragraph) |
+| `received-history/` | outside Appendix A: a buyer's pay check and its verdict, whose rules also read the seller's verified History, which the verdict binds by digest (`received_history`, capsule-cli#327) beside its evaluated rules |
 | `negative/` | records that MUST be refused, each one positive record (`base`) with one change |
 
 Each positive file holds the record, its `placement` (`journal`, `deal_book` or `case_book`), its

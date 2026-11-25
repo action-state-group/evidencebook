@@ -368,7 +368,28 @@ type AdmitBody struct {
 // carries its own secret (PROFILE §5).
 type VerdictBody struct {
 	dealprofile.VerdictBody
-	Nonce string `json:"nonce"`
+	// ReceivedHistory binds, by digest only, the counterparty's verified
+	// History the rules checker read for this verdict (capsule-cli#327
+	// design §5.4; absent when it read none). It is v1's own member, beside
+	// nonce, since v0's body_verdict is closed and frozen (PROFILE §5).
+	ReceivedHistory *ReceivedHistoryDigests `json:"received_history,omitzero"`
+	Nonce           string                  `json:"nonce"`
+}
+
+// ReceivedHistoryDigests is a verdict's received_history: each History
+// document's SHA-256 over its bytes as received, in the order the checker
+// was given them, and input_sha256, the SHA-256 of the JCS form of the whole
+// received_history member of the rules checker's input (keys, statuses and
+// documents), so the verdict is bound to what it read without disclosing it.
+//
+// AloneDeny is set exactly when the checker denied given the History and did
+// not deny without it: History alone never makes the verdict NO (capsule-cli#327 design
+// §3, condition 1), so the verdict asks (result pause) over rules that keep the
+// checker's deny.
+type ReceivedHistoryDigests struct {
+	HistorySHA256 []string `json:"history_sha256"`
+	InputSHA256   string   `json:"input_sha256"`
+	AloneDeny     bool     `json:"alone_deny,omitzero"`
 }
 
 // ApprovalBody is the journal overlay's approval: v0's body and a nonce,

@@ -355,6 +355,38 @@ func buildAppendixA(t *testing.T) *appendixA {
 		Record: Record{Block: journalBlock(TypeAgree, "2026-11-01T09:40:00Z", true), Body: &AgreeBody{Kind: KindDecline, Offer: offer, Reason: ReasonOther}}})
 	a.add(fixture{Path: "not-started/buyer-journal/01-cancellation.json", Line: "last paragraph", Story: "The seller agreed and the buyer changed its mind: it cancels its own offer.",
 		Record: Record{Block: journalBlock(TypeAgree, "2026-11-01T09:50:00Z", true), Body: &AgreeBody{Kind: KindCancellation, Offer: offer}}})
+
+	// Outside Appendix A: a buyer's pay check whose rules also read the
+	// seller's verified History (capsule-cli#327, evidencebook#666). The
+	// verdict carries the evaluated rules and binds the History by digest.
+	const rh = "received-history/buyer-journal"
+	rcb := &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay", AmountMinor: amount(6000), Currency: fxCurrency}, PaymentRef: "pay-ref-7732", Nonce: label("check nonce " + rh)}
+	rcheck := a.add(fixture{Path: rh + "/01-check-pay.json", Line: "none (capsule-cli#327)", Story: "A pay check whose rules checker is also handed the seller's verified History.",
+		Record: Record{Block: journalBlock(TypeCheck, "2026-11-01T10:10:00Z", true), Body: rcb}})
+	rvb := journalBlock(TypeVerdict, "2026-11-01T10:11:00Z", true)
+	rvb.Refs = []RelRef{rel("checks", rcheck)}
+	a.add(fixture{Path: rh + "/02-verdict-pass.json", Line: "none (capsule-cli#327)", Story: "The verdict: pass, by rules that also read the seller's verified History, which it binds by digest, never by content.",
+		Record: Record{Block: rvb, Body: &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: label("card of " + rcheck.Digest),
+			Rules: &dealprofile.VerdictBodyRules{Status: "evaluated", RulesetID: "example-rules/1.0.0", DefinitionDigest: label("ruleset definition"), CheckerSHA256: label("rules checker"),
+				Verdict: "allow", Tier: "recomputed", History: &dealprofile.VerdictBodyRulesHistory{Days: 30, Acts: 0, Complete: true}, Findings: []dealprofile.VerdictBodyRulesFindingsItem{}}},
+			ReceivedHistory: &ReceivedHistoryDigests{HistorySHA256: []string{label("seller's History")}, InputSHA256: label("received_history input of " + rcheck.Digest)},
+			Nonce:           label("VerdictBody nonce " + rh)}}})
+	// The same check denied by rules that deny only given the History: the
+	// verdict asks (capsule-cli#327 design §3, condition 1), its rules keep the checker's deny, and
+	// received_history says the deny was the History's alone.
+	rcb2 := &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay", AmountMinor: amount(6000), Currency: fxCurrency}, PaymentRef: "pay-ref-7733", Nonce: label("check nonce 2 " + rh)}
+	rcheck2 := a.add(fixture{Path: rh + "/03-check-pay.json", Line: "none (capsule-cli#327)", Story: "Another pay check whose rules checker is handed the seller's verified History.",
+		Record: Record{Block: journalBlock(TypeCheck, "2026-11-01T10:20:00Z", true), Body: rcb2}})
+	rvb2 := journalBlock(TypeVerdict, "2026-11-01T10:21:00Z", true)
+	rvb2.Refs = []RelRef{rel("checks", rcheck2)}
+	check := "history/1"
+	a.add(fixture{Path: rh + "/04-verdict-pause.json", Line: "none (capsule-cli#327)", Story: "The rules deny only given the seller's History, so the verdict asks: History alone never says no.",
+		Record: Record{Block: rvb2, Body: &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pause", Differences: []dealprofile.Difference{{Question: "safety", Rule: "rules_escalate"}}, Options: []string{"hold", "proceed"}, CardCommitment: label("card of " + rcheck2.Digest),
+			Rules: &dealprofile.VerdictBodyRules{Status: "evaluated", RulesetID: "example-rules/1.0.0", DefinitionDigest: label("ruleset definition"), CheckerSHA256: label("rules checker"),
+				Verdict: "deny", Tier: "recomputed", History: &dealprofile.VerdictBodyRulesHistory{Days: 30, Acts: 0, Complete: true},
+				Findings: []dealprofile.VerdictBodyRulesFindingsItem{{ID: "known-counterparty", Check: &check, Verdict: "fail"}}}},
+			ReceivedHistory: &ReceivedHistoryDigests{HistorySHA256: []string{label("seller's History")}, InputSHA256: label("received_history input of " + rcheck2.Digest), AloneDeny: true},
+			Nonce:           label("VerdictBody nonce 2 " + rh)}}})
 	return a
 }
 

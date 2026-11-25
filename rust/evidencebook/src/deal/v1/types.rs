@@ -525,28 +525,60 @@ impl<'de> Deserialize<'de> for CheckBody {
     }
 }
 
-/// The journal overlay's verdict: v0's body and a nonce (u528).
+/// The journal overlay's verdict: v0's body, `received_history` when the
+/// rules checker read the counterparty's History (capsule-cli#327), and a
+/// nonce (u528).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VerdictBody {
     pub v0: V0VerdictBody,
+    /// `None` when absent.
+    pub received_history: Option<ReceivedHistoryDigests>,
     pub nonce: String,
+}
+
+/// A verdict's `received_history`: each History document's SHA-256, in the
+/// order the checker was given them, and `input_sha256`, the SHA-256 of the
+/// JCS form of the checker input's `received_history` member (Go
+/// `xdealv1.ReceivedHistoryDigests`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReceivedHistoryDigests {
+    pub history_sha256: Vec<String>,
+    pub input_sha256: String,
+    /// Set exactly when the checker denied given the History and did not
+    /// deny without it (capsule-cli#327 design §3, condition 1): the verdict asks over rules that
+    /// keep the checker's deny. Absent when false, as Go writes it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alone_deny: bool,
 }
 
 impl Serialize for VerdictBody {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let rh = match &self.received_history {
+            Some(h) => Some(serde_json::to_value(h).map_err(S::Error::custom)?),
+            None => None,
+        };
         join_v0(
             s,
             &self.v0,
-            vec![("nonce", Some(Value::String(self.nonce.clone())))],
+            vec![
+                ("received_history", rh),
+                ("nonce", Some(Value::String(self.nonce.clone()))),
+            ],
         )
     }
 }
 
 impl<'de> Deserialize<'de> for VerdictBody {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<VerdictBody, D::Error> {
-        let (v0, mut m) = split_v0::<D, V0VerdictBody>(d, &["nonce"])?;
+        let (v0, mut m) = split_v0::<D, V0VerdictBody>(d, &["received_history", "nonce"])?;
+        let received_history = match m.remove("received_history") {
+            Some(v) => Some(serde_json::from_value(v).map_err(D::Error::custom)?),
+            None => None,
+        };
         Ok(VerdictBody {
             v0,
+            received_history,
             nonce: string_member::<D::Error>(&mut m, "nonce", true)?,
         })
     }

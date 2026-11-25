@@ -2014,6 +2014,23 @@
     "omitzero": true
    }
   ],
+  "dealprofile/xdealv1.ReceivedHistoryDigests": [
+   {
+    "name": "history_sha256",
+    "type": {
+     "slice": "string"
+    }
+   },
+   {
+    "name": "input_sha256",
+    "type": "string"
+   },
+   {
+    "name": "alone_deny",
+    "type": "bool",
+    "omitzero": true
+   }
+  ],
   "dealprofile/xdealv1.RemedyFor": [
    {
     "name": "row",
@@ -2953,6 +2970,15 @@
     "type": {
      "ptr": {
       "struct": "dealprofile.VerdictBodyJudge"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "received_history",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.ReceivedHistoryDigests"
      }
     },
     "omitzero": true

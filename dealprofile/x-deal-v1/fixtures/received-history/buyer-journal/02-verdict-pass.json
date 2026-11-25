@@ -1,0 +1,52 @@
+{
+  "fixture": "received-history/buyer-journal/02-verdict-pass.json",
+  "expect": "valid",
+  "appendix_a_line": "none (capsule-cli#327)",
+  "story": "The verdict: pass, by rules that also read the seller's verified History, which it binds by digest, never by content.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "verdict",
+      "at": "2026-11-01T10:11:00Z",
+      "refs": [
+        {
+          "rel": "checks",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "c262941f40ac2c5274240f608ab3de5c43da90df61a554f8455e121374a0c756"
+        }
+      ]
+    },
+    "body": {
+      "result": "pass",
+      "rules": {
+        "status": "evaluated",
+        "ruleset_id": "example-rules/1.0.0",
+        "definition_digest": "ab2b8bb769970f96daa8aa6f4042df6a9feaaa53b44f7148af67b1afda99a954",
+        "checker_sha256": "2e56bdbe9d64bc822095e8b8f55e7178c738a9d558f144e2c7c961a30575800b",
+        "verdict": "allow",
+        "tier": "recomputed",
+        "history": {
+          "days": 30,
+          "acts": 0,
+          "complete": true
+        },
+        "findings": []
+      },
+      "differences": [],
+      "options": [],
+      "card_commitment": "55f4b314d79b15176a4a85923076131cf2ac2b7db2a7e8854d5ae8d6ae13d38b",
+      "received_history": {
+        "history_sha256": [
+          "9de66dfd145a857925d0d0f2ef85d05afa454a50a08f9714ed4546f7e504c41d"
+        ],
+        "input_sha256": "1276b2dd2b1276ebb74f4b405b3f102a840bf622401a7e19ba67408a0bc29324"
+      },
+      "nonce": "180b7fe0711e837951e7e8ccdff483f38127f0a7cd9fbb76713749fa74f39303"
+    }
+  },
+  "expected_digest": "683d4e2ae2b4a8545977474dfce4b753364057cf96d854171c368c638a3198ad"
+}

@@ -16,6 +16,13 @@ carriage run by `cmd/evidencebook` and are not listed.
 | `needed-by-mesh #N` | No twin, and the Mesh plugin (`Mesh-LLM/capsules-plugin`) calls it. Not frozen. |
 | `not needed` | No twin is wanted: a Go sentinel error that each language reports through its own error type, or a Go struct type for data that Python reads as plain dicts (`dealprofile`, `dealprofile/xdealv1`, `rowstatus`). |
 
+One scoped exception to that freeze: the optional `received_history` member of
+an x-deal-v1 `verdict` body (evidencebook#666) is read by Go, Rust and Python
+alike, schema copies and types table included, so a release of one language
+never refuses a verdict another writes (Ethan, 2026-11-25: "所有需要都修了吧，
+没必要留一个雷", fix every place that needs it and leave no landmine). It
+covers that member only.
+
 `TestPortParity` (`port_parity_test.go`, run by `go test ./...`) fails when an
 exported API has no row, a row names an API Go no longer exports, or a status
 is not one of the four forms. When you add a Go API, add its row; when you port

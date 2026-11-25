@@ -1,0 +1,44 @@
+{
+  "fixture": "neg-received-history-rules-not-run",
+  "expect": "invalid",
+  "description": "a verdict that binds a History its rules checker never started on",
+  "base": "received-history/buyer-journal/02-verdict-pass.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "card_commitment": "55f4b314d79b15176a4a85923076131cf2ac2b7db2a7e8854d5ae8d6ae13d38b",
+      "differences": [],
+      "nonce": "180b7fe0711e837951e7e8ccdff483f38127f0a7cd9fbb76713749fa74f39303",
+      "options": [],
+      "received_history": {
+        "history_sha256": [
+          "9de66dfd145a857925d0d0f2ef85d05afa454a50a08f9714ed4546f7e504c41d"
+        ],
+        "input_sha256": "1276b2dd2b1276ebb74f4b405b3f102a840bf622401a7e19ba67408a0bc29324"
+      },
+      "result": "pass",
+      "rules": {
+        "cause": "checker_changed",
+        "checker_sha256": "abababababababababababababababababababababababababababababababab",
+        "status": "not_evaluated"
+      }
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T10:11:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "verdict",
+      "refs": [
+        {
+          "digest": "c262941f40ac2c5274240f608ab3de5c43da90df61a554f8455e121374a0c756",
+          "digest_alg": "SHA-256",
+          "rel": "checks",
+          "type": "deal-record"
+        }
+      ]
+    }
+  }
+}

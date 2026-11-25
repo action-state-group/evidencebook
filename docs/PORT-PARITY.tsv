@@ -568,6 +568,7 @@ dealprofile/xdealv1	type	Placement	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Producer	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	ProposeBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	ReceiveProfile	x-deal-v1	ported	ported
+dealprofile/xdealv1	type	ReceivedHistoryDigests	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Record	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	Ref	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	RelRef	x-deal-v1	ported	not needed
