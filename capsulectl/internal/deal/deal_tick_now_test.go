@@ -1,6 +1,8 @@
 package deal
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"path/filepath"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ func TestDealTickNowStampsAtOnce(t *testing.T) {
 	before := len(publishedTicks(t))
 	now := dealRun(t, "tick", "--now")
 	require.Equal(t, "ticked", now["state"], "%v", now)
+	assert.Equal(t, true, now["stamped_on_demand"])
 	assert.Len(t, publishedTicks(t), before+1, "one stamp, at once")
 	due, err := time.Parse(time.RFC3339, now["due"].(string))
 	require.NoError(t, err)
@@ -34,4 +37,18 @@ func TestDealTickNowRefusesAWait(t *testing.T) {
 	noLayerAgreed(t)
 	_, err := invoke(t, "", "--profile", "deal", "deal", "tick", "--now", "--wait-up-to", "5m")
 	require.Error(t, err)
+}
+
+// On a shelf with no x-deal-v1 book yet, --now runs the scheduled tick and
+// says so.
+func TestDealTickNowOnAnUnmigratedShelfSaysItDidNotStamp(t *testing.T) {
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	cadenceFixture(t, endpoint, public, "1m", "0s", 0)
+	clockAt(t, time.Date(2026, 11, 4, 10, 20, 0, 0, time.UTC))
+	dealRun(t, "tick")
+	out := dealRun(t, "tick", "--now")
+	assert.Equal(t, false, out["stamped_on_demand"], "%v", out)
+	assert.Equal(t, "not_due", out["state"], "%v", out)
 }

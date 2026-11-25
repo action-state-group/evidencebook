@@ -22,6 +22,10 @@ import (
 // dealWitnessSees is said wherever the witness is configured.
 const dealWitnessSees = "The witness sees one checkpoint per tick of this profile's checkpoint cadence: hashes, a size that grows by the same amount every tick, and a time on the cadence. It never sees content, how many deals there are, or when they happen."
 
+// dealWitnessSeesNow is said after a stamp made on demand (deal tick --now):
+// that stamp is the exception ASSURANCE.md names.
+const dealWitnessSeesNow = "This stamp was made on demand, off the cadence, so the witness sees the minute it was made. Otherwise the witness sees hashes, a size that grows by the same amount every tick, and a time on the cadence; never content or how many deals there are."
+
 // dealCadenceSchema is the table released builds kept their ticks in. The
 // cadence now keeps its own (evidencebook's cadence_ticks); this one is read
 // once, and again after a released build wrote to it, by migrate.
@@ -90,14 +94,14 @@ func (s *dealSession) tick(ctx context.Context, stampNow bool) (map[string]any, 
 		return nil, err
 	}
 	now := cli.DealClock()
-	tick := c.Tick
+	tick, onDemand := c.Tick, false
 	if stampNow {
 		migrated, err := c.Migrated(ctx)
 		if err != nil {
 			return nil, err
 		}
 		if migrated {
-			tick = c.Stamp
+			tick, onDemand = c.Stamp, true
 		}
 	}
 	result, err := tick(ctx, now)
@@ -105,6 +109,11 @@ func (s *dealSession) tick(ctx context.Context, stampNow bool) (map[string]any, 
 		return nil, err
 	}
 	out := map[string]any{"cadence_log": p.LogID}
+	if stampNow {
+		// false when the shelf holds no x-deal-v1 book yet (not migrated):
+		// the scheduled tick ran instead, so a caller knows why nothing was stamped.
+		out["stamped_on_demand"] = onDemand
+	}
 	if result.Ticked {
 		// The cut time only sharpens the History card's guard (cutOf falls back to
 		// the coarse tick time), so failing to keep it never fails a committed tick.
@@ -128,6 +137,9 @@ func (s *dealSession) tick(ctx context.Context, stampNow bool) (map[string]any, 
 		return out, nil
 	}
 	out["witness_sees"] = dealWitnessSees
+	if onDemand {
+		out["witness_sees"] = dealWitnessSeesNow
+	}
 	if err := s.settleEnded(ctx, c); err != nil {
 		return nil, err
 	}
