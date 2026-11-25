@@ -187,9 +187,11 @@ pub fn request_sent(
 /// judged against), in the record's statement beside the request (Go
 /// `Book.RequestSentWithCommitment`). The book keeps its members and values
 /// as given (the sealed header is JCS, as in Go) and never reads or checks
-/// it, so the record does not vouch for it: a page or verifier presents it
-/// as what the requester held, never as a checked claim. `None` records
-/// none.
+/// it, so the record does not vouch for it. It is the requester's own copy,
+/// and the responder does not sign it in this record: no card, count or
+/// check may read it as "the responder committed to X". Only a later step
+/// that verifies the object under the responder's key can give it that
+/// weight. `None` records none.
 pub fn request_sent_with_commitment(
     book: &mut dyn Book,
     octets: &[u8],

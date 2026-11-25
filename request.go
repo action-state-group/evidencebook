@@ -32,9 +32,12 @@ type RequestStatement struct {
 	// later fetch never changes what the ask is judged against. The book
 	// keeps its members and values as given (the sealed header is JCS, so
 	// member order and whitespace are not kept) and never reads or checks
-	// it, so the record does not vouch for it: a page or verifier presents
-	// it as what the requester held, never as a checked claim. Absent when
-	// none was held (RequestSentWithCommitment).
+	// it, so the record does not vouch for it. It is the requester's own
+	// copy, and the responder does not sign it in this record: no card,
+	// count or check may read it as "the responder committed to X". Only a
+	// later step that verifies the object under the responder's key can
+	// give it that weight. Absent when none was held
+	// (RequestSentWithCommitment).
 	Commitment json.RawMessage `json:"commitment,omitempty"`
 }
 
