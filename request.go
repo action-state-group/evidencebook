@@ -27,6 +27,18 @@ type RequestStatement struct {
 	// audience or requester authentication, are kept as sent and never
 	// checked, so the record does not vouch for them.
 	ComposedElsewhere bool `json:"composed_elsewhere,omitempty"`
+	// Commitment is a JSON object the requester held from the responder when
+	// it asked, such as the commitment the responder advertised, kept so a
+	// later fetch never changes what the ask is judged against. The book
+	// keeps its members and values as given (the sealed header is JCS, so
+	// member order and whitespace are not kept) and never reads or checks
+	// it, so the record does not vouch for it. It is the requester's own
+	// copy, and the responder does not sign it in this record: no card,
+	// count or check may read it as "the responder committed to X". Only a
+	// later step that verifies the object under the responder's key can
+	// give it that weight. Absent when none was held
+	// (RequestSentWithCommitment).
+	Commitment json.RawMessage `json:"commitment,omitempty"`
 }
 
 // SentRequest is a request as transmitted: its octets (JCS JSON), their
@@ -75,6 +87,18 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 // used is refused. RecordResponse and RecordAbsence then work on the record
 // as they do on one Request made.
 func (b *Book) RequestSent(ctx context.Context, request Message, responder string) (SentRequest, error) {
+	return b.RequestSentWithCommitment(ctx, request, responder, nil)
+}
+
+// RequestSentWithCommitment is RequestSent that also keeps commitment, a
+// JSON object the requester held from the responder when it asked, in the
+// record's statement beside the request (RequestStatement.Commitment). A
+// nil commitment records none; anything other than a JSON object is
+// refused.
+func (b *Book) RequestSentWithCommitment(ctx context.Context, request Message, responder string, commitment json.RawMessage) (SentRequest, error) {
+	if commitment != nil && !isJSONObject(commitment) {
+		return SentRequest{}, fmt.Errorf("%w: a request's commitment must be a JSON object", ErrInvalid)
+	}
 	if request.MediaType != MediaTypeJSON {
 		return SentRequest{}, fmt.Errorf("%w: a sent request is recorded in JSON, not %q", ErrInvalid, request.MediaType)
 	}
@@ -91,7 +115,17 @@ func (b *Book) RequestSent(ctx context.Context, request Message, responder strin
 	if jcs, err := evidencerequest.EncodeJCS(value); err != nil || !bytes.Equal(jcs, request.Octets) {
 		return SentRequest{}, fmt.Errorf("%w: a sent request must be in JCS (RFC 8785), as it was transmitted", ErrInvalid)
 	}
-	return b.recordRequest(ctx, RequestStatement{Request: slices.Clone(request.Octets), ResponderRef: responder, ComposedElsewhere: true}, check.request.Nonce)
+	statement := RequestStatement{Request: slices.Clone(request.Octets), ResponderRef: responder, ComposedElsewhere: true, Commitment: slices.Clone(commitment)}
+	return b.recordRequest(ctx, statement, check.request.Nonce)
+}
+
+// isJSONObject reports whether raw is one well-formed JSON object, read as
+// a request is (evidencerequest.DecodeJSON): a duplicate member is refused,
+// so the sealed record keeps the object as given.
+func isJSONObject(raw json.RawMessage) bool {
+	value, err := evidencerequest.DecodeJSON(raw)
+	_, object := value.(map[string]any)
+	return err == nil && object
 }
 
 // recordRequest commits statement, whose request octets are as transmitted,

@@ -137,6 +137,54 @@ func TestRequestSentRefusesWhatWasNotSent(t *testing.T) {
 	}
 }
 
+// TestRequestSentWithCommitment: the commitment a requester held for the
+// responder is kept beside the sent request, the request reads back as
+// before, a request recorded without one has no commitment member, and a
+// commitment that is not a JSON object is refused with nothing recorded.
+func TestRequestSentWithCommitment(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "asker", 42).open(t)
+	request := func(nonce string) Message {
+		return Message{Octets: []byte(`{"coverage":{"min_freshness":1},"nonce":"` + nonce + `","subject":{"checkpoints":null}}`), MediaType: MediaTypeJSON}
+	}
+	commitment := json.RawMessage(`{"digest":"` + strings.Repeat("ab", 32) + `","policy":{"stranger_safe":["checkpoints"]}}`)
+	sent, err := book.RequestSentWithCommitment(ctx, request("c1"), "responder", commitment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var asked RequestStatement
+	if err := json.Unmarshal(book.records[sent.RecordID].Header.Statement, &asked); err != nil {
+		t.Fatal(err)
+	}
+	if !asked.ComposedElsewhere || asked.ResponderRef != "responder" || !bytes.Equal(asked.Request, sent.Bytes) || !bytes.Equal(asked.Commitment, commitment) {
+		t.Fatalf("the request record %+v does not keep the request and its commitment", asked)
+	}
+	book.mu.Lock()
+	read, err := book.sentLocked(sent.RecordID)
+	book.mu.Unlock()
+	if err != nil || read.digest != sent.Digest {
+		t.Fatalf("the request reads back as %+v (%v)", read, err)
+	}
+
+	plain, err := book.RequestSent(ctx, request("c2"), "responder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statement := book.records[plain.RecordID].Header.Statement; bytes.Contains(statement, []byte(`"commitment"`)) {
+		t.Fatalf("a request recorded without a commitment carries one: %s", statement)
+	}
+
+	before := len(book.records)
+	for name, bad := range map[string]string{"an array": `[1]`, "null": `null`, "a string": `"x"`, "not JSON": `{"digest":`, "empty": ``, "a duplicate member": `{"digest":"a","digest":"b"}`} {
+		if _, err := book.RequestSentWithCommitment(ctx, request("c3"), "responder", json.RawMessage(bad)); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("%s: %v, want ErrInvalid", name, err)
+		}
+	}
+	if len(book.records) != before {
+		t.Fatal("a refused commitment was recorded")
+	}
+}
+
 // TestRefusalReasonsUnderTheRequestedProfile: a refusal names no profile,
 // so its reason conforms under the one the request asked for (v1 §6.3):
 // capacity_exceeded, which ER -02 adds, is a conforming refusal to an
