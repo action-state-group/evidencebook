@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -465,7 +466,15 @@ func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, 
 	if adjudicatorKey != "" {
 		record["adjudicator_key_id"] = adjudicatorKey
 	}
-	if kind == "bundle" {
+	if kind == "full_bundle" {
+		// A full answer (evidencebook#861): the whole deal book and the
+		// copy of the other side's book went out.
+		record["records"] = json.Number(strconv.Itoa(len(book.Records)))
+		if book.Received != nil {
+			record["received_log_id"], record["received_records"] = book.Received.LogID, json.Number(strconv.Itoa(len(book.Received.Records)))
+		}
+	}
+	if kind == "bundle" || kind == "full_bundle" {
 		ids := make([]interface{}, 0, len(book.ReliedOn))
 		for _, id := range slices.Sorted(maps.Keys(book.ReliedOn)) {
 			ids = append(ids, id)
@@ -578,6 +587,12 @@ var shelfLogIDForm = regexp.MustCompile(`^deal-cadence/[0-9a-f]{16}$`)
 func v1OwnIDs(dealID string, book xdealv1.ReportBook) []string {
 	ids := []string{dealID}
 	pairs := append([]json.RawMessage{book.Agreement}, mapValues(book.ReliedOn)...)
+	// A full adjudicator copy also carries the whole book and the held copy
+	// of the other side's, whose agreements name their shelf logs too.
+	pairs = append(pairs, mapValues(book.Records)...)
+	if book.Received != nil {
+		pairs = append(pairs, mapValues(book.Received.Records)...)
+	}
 	for _, raw := range pairs {
 		read, err := xdealv1.VerifyBook(raw)
 		if err != nil {

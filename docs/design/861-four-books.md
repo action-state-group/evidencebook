@@ -153,10 +153,12 @@ own functions keep their behavior.
 `CheckCase` requires) is kept, not replaced: the adjudicator stores each intake object once
 (ledger-cloud's `PutIfAbsent`), and a full answer must agree with it (the selective copy's
 `rests_on.own.last` must be the record at that position of the full book, else it is fork
-evidence, §2.3). On the party's side, each copy sent to the adjudicator, the case-opening one
-included, is linked by an `answer` record in the party's journal (PROFILE.md §5, `ask`,
-`answer`), the party's own book for records that serve no counterparty; PR 2 makes sure the
-case-opening copy gets one too.
+evidence, §2.3). On the party's side, each full answer and each refusal of a request is linked
+by an `answer` record in the party's journal (PROFILE.md §5, `ask`, `answer`), the party's own
+book for records that serve no counterparty. The case-opening copy answers no request, and
+`answer.request` is REQUIRED (`x-deal-v1.schema.json`, `body_answer`), so it gets no `answer`
+record; it stays recorded as every adjudicator copy is, in the deal's disclosure log
+(`recordV1Share`, PR 2's correction of this note).
 
 ### 2.3 Reading four sources into one case
 

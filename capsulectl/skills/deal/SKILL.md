@@ -506,6 +506,13 @@ user that line as it is: the referee's key is a party's, or bound to one.
 Never say a referee is independent. A controller binding the user holds, such
 as one the referee's operator publishes, is checked with `--binding FILE`.
 
+A ruling read from the parties' answers also says what the referee read each
+side's book from (`sources`). Tell the user each source it lists as not shown,
+as it is: a side that did not answer is not said to have refused, and a ruling
+against it rests only on records it signed. A `fork` line means that side
+signed two different records at one place. A request from the referee for the
+deal is the user's to answer, never yours (`deal respond --help` says how).
+
 To challenge a ruling the user holds, by the digest `deal receive` printed:
 
 ```sh

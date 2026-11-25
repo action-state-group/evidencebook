@@ -68,7 +68,7 @@ type rulingFlags struct {
 	against                                 xdealv1.Null[string]
 	final                                   bool
 	remedy                                  *xdealv1.RulingRemedy
-	copies                                  []string
+	copies, answers                         []string
 	bindings                                []json.RawMessage
 }
 
@@ -77,6 +77,7 @@ func readRulingFlags(c *cobra.Command) (rulingFlags, error) {
 	f := rulingFlags{dealID: str("deal"), row: str("row"), value: str("value"), forum: str("forum"), out: str("out"), dispute: str("dispute")}
 	f.final, _ = c.Flags().GetBool("final")
 	f.copies, _ = c.Flags().GetStringArray("copy")
+	f.answers, _ = c.Flags().GetStringArray("answer")
 	bindingPaths, _ := c.Flags().GetStringArray("binding")
 	var err error
 	if f.bindings, err = readJSONFiles("--binding", bindingPaths); err != nil {
@@ -102,8 +103,13 @@ func readRulingFlags(c *cobra.Command) (rulingFlags, error) {
 	if f.dispute == "" {
 		return f, cli.InputError("--dispute is required: the dispute file you were sent (`deal dispute --out`)")
 	}
-	if len(f.copies) < 1 || len(f.copies) > 2 {
-		return f, cli.InputError("give one or two --copy files: each party's `deal report --share adjudicator` copy")
+	switch {
+	case len(f.copies) > 2:
+		return f, cli.InputError("give at most two --copy files: each party's `deal report --share adjudicator` copy that opened the case")
+	case len(f.answers) > 2:
+		return f, cli.InputError("give at most two --answer files: each party's answer to your request (`deal respond`)")
+	case len(f.copies)+len(f.answers) == 0:
+		return f, cli.InputError("give each party's copy that opened the case (--copy) or its answer to your request (--answer), at least one")
 	}
 	kind, due, currency := str("remedy-kind"), str("remedy-due"), str("currency")
 	amount, _ := c.Flags().GetInt64("amount-minor")
@@ -139,6 +145,19 @@ both parties' adjudicator copies (--copy, from deal report --share
 adjudicator): the dispute must name you and the row, and each copy must verify
 and name you as adjudicator. A side you hold no copy of is recorded as not
 read.
+
+With the parties' answers to your request for the deal (--answer, the file
+deal respond wrote), the case is read from up to four books: each side's own
+book and the copy of it the other side held. The ruling then names what it
+read each side from (sources), a source not shown being "not shown to the
+adjudicator", and the output lists each side's book read, with each record's
+time and what timed it (own_stamp: the side's own stamps; holder_link: the
+other side's held proofs). Where a side's book forked, the copy the other
+side held governs and fork_at gives the position. A ruling may go against a
+side that did not answer, but only on records that side signed: one against
+a side none of whose records was read is refused. A party needs a
+capsulectl-deal release that reads sources to take such a ruling: an older one
+refuses it, so tell the parties the minimum release with the ruling.
 
 Your rulings of a deal go in one case book, whose place both parties compute,
 and a ruling counts only from that log. Your profile must checkpoint with your
@@ -182,7 +201,8 @@ A second final ruling on a row that differs from the first is refused.`,
 	cmd.Flags().Int64("amount-minor", 0, "The remedy's amount in minor units (with --currency)")
 	cmd.Flags().String("currency", "", "The remedy's currency (with --amount-minor)")
 	cmd.Flags().String("dispute", "", "The dispute file you were sent (required)")
-	cmd.Flags().StringArray("copy", nil, "A party's adjudicator copy (deal report --share adjudicator); give one or two")
+	cmd.Flags().StringArray("copy", nil, "A party's adjudicator copy that opened the case (deal report --share adjudicator); at most one per party")
+	cmd.Flags().StringArray("answer", nil, "A party's full answer to your request for the deal (deal respond); at most one per party")
 	cmd.Flags().StringArray("binding", nil, "A controller-binding record between your key and a party's, to deliver with the ruling (repeatable)")
 	cmd.Flags().String("out", "", "Where to write the file to send (default: standard output)")
 	cmd.AddCommand(dealRulingEntriesCommand())
@@ -252,10 +272,35 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 		copies = append(copies, cc)
 	}
 	// The case rules are the library's, so every adjudicator applies the
-	// same ones (evidencebook#779).
-	cs, err := xdealv1.CheckCase(push.Record, copies, me)
-	if err != nil {
-		return cli.InputError("the dispute and the copies are not a case for you: " + err.Error())
+	// same ones (evidencebook#779). With the parties' full answers, the case
+	// is gathered from up to four books (evidencebook#861) and the ruling
+	// names what it read each side from (sources).
+	var (
+		cs       xdealv1.Case
+		gathered *xdealv1.GatheredCase
+	)
+	if len(f.answers) == 0 {
+		if cs, err = xdealv1.CheckCase(push.Record, copies, me); err != nil {
+			return cli.InputError("the dispute and the copies are not a case for you: " + err.Error())
+		}
+	} else {
+		var answers []xdealv1.CaseAnswer
+		for _, path := range f.answers {
+			a, err := readAnswerFile(path, f.dealID)
+			if err != nil {
+				return err
+			}
+			answers = append(answers, a)
+		}
+		dir, err := pinnedWitnessDirectory(s.p)
+		if err != nil {
+			return err
+		}
+		g, err := xdealv1.GatherCase(push.Record, copies, answers, me, dir)
+		if err != nil {
+			return cli.InputError("the dispute, the copies and the answers are not a case for you: " + err.Error())
+		}
+		cs, gathered = g.Case, &g
 	}
 	switch {
 	case cs.DealID != f.dealID:
@@ -278,6 +323,11 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 		return cli.InputError("row " + f.row + " of deal " + f.dealID + " already has your final ruling, which differs from this one: the first final ruling is the one that applies")
 	case errors.Is(err, evidencebook.ErrBusy):
 		return fmt.Errorf("%w: %v; run the command again", cli.ErrConflict, err)
+	case err != nil && gathered != nil && f.against.Present && !f.against.IsNull() && gathered.Side(*f.against.V).Read.IsNull() && len(gathered.Side(*f.against.V).Forked) == 0:
+		// Steven's ruling 2 of 2026-11-24 (note §6): a ruling against a side turns only on
+		// records that side signed, so a side none of whose records was read
+		// cannot be ruled against.
+		return cli.InputError("the ruling goes against the " + *f.against.V + ", but no record the " + *f.against.V + " signed was read: neither its own book nor the copy the other side held was shown, so a ruling cannot rest on its records")
 	case err != nil:
 		var se *xdealv1.StageError
 		if errors.As(err, &se) {
@@ -304,6 +354,10 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 	}
 	data = append(data, '\n')
 	result := map[string]any{"deal_id": f.dealID, "row": f.row, "ruling": sealed.Digest, "seq": sealed.Seq, "case_log": logID, "final": f.final, "sealed": !sealed.Existing}
+	if gathered != nil {
+		result["sources"] = cs.Sources
+		result["books"] = map[string]any{xdealv1.RoleBuyer: gatheredSideOut(gathered.Buyer), xdealv1.RoleSeller: gatheredSideOut(gathered.Seller)}
+	}
 	if f.out == "" {
 		_, err = c.OutOrStdout().Write(data)
 		return err

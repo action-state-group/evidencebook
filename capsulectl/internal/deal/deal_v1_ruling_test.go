@@ -89,6 +89,8 @@ func TestARulingIsSealedAndEnteredInBothBooks(t *testing.T) {
 	require.NotNil(t, rb.Read.Buyer.V)
 	require.NotNil(t, rb.Read.Seller.V)
 	assert.True(t, strings.HasPrefix(out["case_log"].(string), xdealv1.CaseLogPrefix))
+	assert.Nil(t, rb.Sources, "a ruling from case-opening copies alone names no sources")
+	assert.NotContains(t, out, "sources")
 
 	// Both parties enter it.
 	for _, side := range []v1Side{h.buyer, h.seller} {
@@ -136,7 +138,7 @@ func TestARulingRefusals(t *testing.T) {
 	base := []string{"ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "met", "--against", "none", "--dispute", dispute}
 	assert.Contains(t, v1Err(t, "ruling", "--deal", h.dealID, "--row", "other_row", "--value", "met", "--against", "none", "--dispute", dispute, "--copy", buyerCopy), "the dispute is on row paid_as_agreed")
 	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy, "--copy", buyerCopy)...), "both copies are the buyer's")
-	assert.Contains(t, v1Err(t, base...), "give one or two --copy files")
+	assert.Contains(t, v1Err(t, base...), "at least one")
 	assert.Contains(t, v1Err(t, append(base, "--copy", buyerCopy, "--remedy-due", "2026-12-01T00:00:00Z")...), "go with --remedy-kind")
 
 	one := dealRun(t, append(base, "--copy", buyerCopy, "--out", filepath.Join(t.TempDir(), "r.json"))...)
