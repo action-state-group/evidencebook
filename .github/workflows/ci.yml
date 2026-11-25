@@ -20,6 +20,15 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A chat link opens only inside the private chat community, so a public file cites the
+      # issue or PR comment that records the message instead (evidencebook#861). The pattern
+      # is split so this file does not match itself.
+      - name: No private chat links in tracked files
+        run: |
+          if git grep -nI -e 'buzz:/''/'; then
+            echo "::error::cite the issue or PR comment that records the message, not a chat link"
+            exit 1
+          fi
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

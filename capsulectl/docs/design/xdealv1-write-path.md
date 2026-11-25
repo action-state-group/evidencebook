@@ -80,7 +80,7 @@ to recognise v1 log ids. A test
 ## 3a. The deal store migration (a one-way door)
 
 **Decided** (evidencebook shelf note §4, acceptance 8, Steven's written confirmation of the #461
-target, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=28a481d9b8c3adc23d21cd73f7452d907815c437cfb0f88feae7dcc2ab8f06e2&thread=8a42e93c728b417ddb1a4a0f3669a2faaa4e0bd0e4016497dd6afdf862a33619;
+target, [#461 record, item 1](https://github.com/action-state-group/evidencebook/issues/461#issuecomment-7167639620);
 the migration itself is the library's, so this door only carries out that confirmation): the journal,
 stamps and facts exist only on a shelf of book facts. `Shelf.Journal` refuses an unmigrated shelf
 ("call Migrate", `shelf.go:233`), so no v1 record that goes to the journal (offer, decline,

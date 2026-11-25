@@ -254,9 +254,9 @@ final checkpoint for the profile's witness; a reproduced scratch book stays JSON
 
 ## 8. Sherlock2's answer (the what)
 
-Asked once, twin first (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=69b648984d3ae71697f4a4870596d770f99833aebf3817fee2c243da71c3bbe1).
+Asked once, twin first ([#689 record, item 1](https://github.com/action-state-group/evidencebook/issues/689#issuecomment-7167665807)).
 Sherlock2 answered that none of the three is a door for Steven and agreed to all three, with
-conditions (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=2c569a101cf2f0b0a251199ddd0bdd227b2ed313138800332c4e99f1fa8809a5&thread=69b648984d3ae71697f4a4870596d770f99833aebf3817fee2c243da71c3bbe1).
+conditions ([#689 record, item 2](https://github.com/action-state-group/evidencebook/issues/689#issuecomment-7167665807)).
 
 | Condition | Where |
 |---|---|
@@ -296,7 +296,7 @@ The default window is **month** for a new report-side store; existing books stay
 
 ## 10. Grace: a Close over an earlier window (#807)
 
-Sherlock2 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=ee4e11316e8261b53e5abda85dcb7c0ffae445d837819e9ae9ba25cd48b430df&thread=cdfa9aef3d12815598c3ea6602a65a5e6cfafb54e3270ca6a50c7bce506bba85):
+Sherlock2 ([#689 record, item 3](https://github.com/action-state-group/evidencebook/issues/689#issuecomment-7167665807)):
 engineering's call, option (a): a grace period after a window ends during which its book still
 takes a close/v1 Close for a period inside it; default 7 days; fixed and printed at creation;
 the verifier, not only the writer, names any other late record; a window still in grace is named;
