@@ -7,7 +7,7 @@ the checks in Go, Rust and Python, and the vectors. The producer side (what `dis
 
 ## 1. The bar
 
-Steven's ruling u615 (2026-11-19, ops `company-oss/inbox.md:944`): a seller may include, on an
+Steven's ruling of 2026-11-19 on evidencebook-deal#207: a seller may include, on an
 adjudicator copy only, the claims its agent made without authority, by an explicit per-share
 opt-in, default off, and **never on the counterparty copy**. Sherlock confirmed that keeping the
 claim and moving the seller's verdict off it is a fix under that ruling, not a new consent
@@ -196,7 +196,7 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
   checkpoints others hold. Old-shape claims exist only in seller deals opened since rule 12
   (capsule-cli#269). Their counterparty copies withhold every old-shape agent claim, uniformly, so
   the buyer loses the word check on those claims and learns nothing about which were authorized;
-  the page says the claims sealed before this change are "not shared" (u615's word). New claims in
+  the page says the claims sealed before this change are "not shared" (the ruling's word). New claims in
   the same deal are shown. Copies already shared before this change still carry the verdict
   fields and cannot be recalled; the CHANGELOG says so.
 
@@ -257,12 +257,12 @@ it runs the reference checker, the same tag's `check_profile.py`.
 ## 9. Doors
 
 - A new public record type name and claim shape in x-deal-v0, in a public repository. It carries
-  out u615 and adds no product meaning (the verdict is the one rule 12 already seals, now in its own
+  out that ruling and adds no product meaning (the verdict is the one rule 12 already seals, now in its own
   record); engineering's call with the ruling linked, and Sherlock2's door confirmation that it
-  carries out u615 and stays inside the neutrality boundary.
+  carries out that ruling and stays inside the neutrality boundary.
 - The copy rule that withholds the represent trail from the counterparty copy changes what the
   buyer sees (today it sees the seller's checks and approvals of representations). It is needed for
-  u615 (section 2, leaks 2 and 3), and it is part of the same door confirmation.
+  that ruling (section 2, leaks 2 and 3), and it is part of the same door confirmation.
 - Sherlock confirmed the first two (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=0597a2f1589b5578d4ff3f083c97e4f482f480aa344bbcbf1cfaa1714bb8579e&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
 - Two calls were Steven's, each with Sherlock's recommendation "yes" (same thread): the old-shape
   claims a buyer no longer sees on existing deals (section 6), since no format change can reach
@@ -272,14 +272,14 @@ it runs the reference checker, the same tag's `check_profile.py`.
   position hint accepted, its limit stated in PROFILE.md and the CHANGELOG (ops 58970b48;
   buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=f1bfdf6cd0d1548052f4e4cc08e8f20610571c18231eae9ab07d5ec7d3b8b3e5).
 - Withholding every evaluation and every unchecked act's outcome from a rule 12 deal's
-  counterparty copy (leak 4): inside u615, no Steven call (Sherlock,
+  counterparty copy (leak 4): inside that ruling, no Steven call (Sherlock,
   buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=ebc66c63feee9b572ae7f483687ab8d375cce8d25f6f41a2ff84457fd93160e6&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260),
   on two conditions: the rule is scoped by deal ("this deal follows rule 12"), with no per-record
   branching inside such a deal; and evidencebook-deal#244 tests that on the probe deal (an ordered
   claim with no check, then an offer) the string `required_representation_missing` is in no
   disclosed record of the counterparty copy and the copy still verifies.
 - evidencebook#613's additions (every answer to a check, every telling, every close): inside
-  u615, no new product meaning (Sherlock,
+  that ruling, no new product meaning (Sherlock,
   buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=69334be4443defcbd62abab6c808751efffd19ef2be2a413ddbcec1d7dc06e7a&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260),
   narrowed to answers to a check, and widened to every telling in place of only the unauthorized
   ones, Sherlock's decision (withholding only the latter branches on the verdict); the report says
