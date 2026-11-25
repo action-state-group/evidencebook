@@ -1688,37 +1688,107 @@
       "required": [
         "nonce"
       ],
-      "if": {
-        "required": [
-          "received_history"
-        ]
-      },
-      "then": {
-        "required": [
-          "rules"
-        ],
-        "properties": {
-          "rules": {
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "received_history"
+            ]
+          },
+          "then": {
+            "required": [
+              "rules"
+            ],
             "properties": {
-              "status": {
-                "enum": [
-                  "evaluated",
-                  "not_evaluated"
-                ]
-              },
-              "cause": {
-                "not": {
-                  "enum": [
-                    "checker_unavailable",
-                    "checker_changed"
-                  ]
+              "rules": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "evaluated",
+                      "not_evaluated"
+                    ]
+                  },
+                  "cause": {
+                    "not": {
+                      "enum": [
+                        "checker_unavailable",
+                        "checker_changed"
+                      ]
+                    }
+                  }
                 }
               }
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "received_history"
+            ],
+            "properties": {
+              "received_history": {
+                "required": [
+                  "alone_deny"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "const": "pause"
+              },
+              "rules": {
+                "required": [
+                  "verdict"
+                ],
+                "properties": {
+                  "verdict": {
+                    "const": "deny"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "result",
+              "rules"
+            ],
+            "properties": {
+              "result": {
+                "const": "pause"
+              },
+              "rules": {
+                "required": [
+                  "verdict"
+                ],
+                "properties": {
+                  "verdict": {
+                    "const": "deny"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "received_history"
+            ],
+            "properties": {
+              "received_history": {
+                "required": [
+                  "alone_deny"
+                ]
+              }
+            }
+          }
         }
-      },
-      "description": "v0's body_verdict, received_history when the rules checker read the counterparty's History, and nonce. The record checks validate the body without received_history and nonce against v0's body_verdict, which is closed, so they are not merged here. A verdict with received_history has rules a checker was started on: evaluated, or not evaluated for a cause other than checker_unavailable and checker_changed, where no run read the History."
+      ],
+      "description": "v0's body_verdict, received_history when the rules checker read the counterparty's History, and nonce. The record checks validate the body without received_history and nonce against v0's body_verdict, which is closed, so they are not merged here. A verdict with received_history has rules a checker was started on: evaluated, or not evaluated for a cause other than checker_unavailable and checker_changed, where no run read the History. A verdict whose rules deny asks (result pause) only when received_history says the deny was the History's alone (alone_deny)."
     },
     "received_history": {
       "type": "object",
@@ -1741,6 +1811,10 @@
         "input_sha256": {
           "$ref": "#/$defs/hex64",
           "description": "The SHA-256 of the JCS form of the received_history member of the rules checker's input (external-check-input/v0): the keys the documents were verified under, their statuses and the documents themselves."
+        },
+        "alone_deny": {
+          "const": true,
+          "description": "Present exactly when the rules checker denied given the History and did not deny without it (or could not answer without it): History alone never makes the verdict NO (D1 condition 1), so the verdict asks (result pause) while rules keeps the checker's deny as given."
         }
       },
       "description": "What the rules checker read about the counterparty beside the record, bound by digest only: the counterparty's verified History (capsule-cli#327, design 327-received-history.md section 5.4). Absent when the checker read no History. Neither member is a digest a shared copy carries: a verdict is a journal record, and a journal record is in no shared copy."

@@ -42,6 +42,7 @@ const (
 	nAdmit    = "appendix-a/buyer-journal/04-admit-go.json"
 	nVerdict  = "appendix-a/buyer-journal/07-verdict-pass.json"
 	nHistory  = "received-history/buyer-journal/02-verdict-pass.json"
+	nAlone    = "received-history/buyer-journal/04-verdict-pause.json"
 	nApproval = "appendix-a/buyer-journal/08-approval-proceed.json"
 	nSellerAg = "appendix-a/seller-book/01-agreement.json"
 	nBuyerAg  = "appendix-a/buyer-book/01-agreement.json"
@@ -91,6 +92,15 @@ func negatives() []negative {
 		{name: "neg-received-history-without-rules", description: "a verdict that binds a History no rules run read", base: nHistory, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { del(b, "rules") }},
+		{name: "neg-alone-deny-without-pause", description: "a verdict that says its deny was the History's alone and does not ask", base: nAlone, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { b["result"] = "deny"; b["options"] = []any{"hold"} }},
+		{name: "neg-pause-over-deny-without-alone-deny", description: "a verdict that asks over rules that deny, with no word that the deny was the History's alone", base: nAlone, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b["received_history"].(map[string]any), "alone_deny") }},
+		{name: "neg-alone-deny-false", description: "alone_deny is present only as true", base: nHistory, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { b["received_history"].(map[string]any)["alone_deny"] = false }},
 		{name: "neg-received-history-rules-not-run", description: "a verdict that binds a History its rules checker never started on", base: nHistory, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) {

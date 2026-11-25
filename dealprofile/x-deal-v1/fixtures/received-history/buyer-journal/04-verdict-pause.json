@@ -1,0 +1,67 @@
+{
+  "fixture": "received-history/buyer-journal/04-verdict-pause.json",
+  "expect": "valid",
+  "appendix_a_line": "none (capsule-cli#327)",
+  "story": "The rules deny only given the seller's History, so the verdict asks: History alone never says no.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "verdict",
+      "at": "2026-11-01T10:21:00Z",
+      "refs": [
+        {
+          "rel": "checks",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "95a8a4eb2a0da8b20ae0c3f5387c4a0f3aed26a2f20b482d807ab73e8d70d58d"
+        }
+      ]
+    },
+    "body": {
+      "result": "pause",
+      "rules": {
+        "status": "evaluated",
+        "ruleset_id": "example-rules/1.0.0",
+        "definition_digest": "ab2b8bb769970f96daa8aa6f4042df6a9feaaa53b44f7148af67b1afda99a954",
+        "checker_sha256": "2e56bdbe9d64bc822095e8b8f55e7178c738a9d558f144e2c7c961a30575800b",
+        "verdict": "deny",
+        "tier": "recomputed",
+        "history": {
+          "days": 30,
+          "acts": 0,
+          "complete": true
+        },
+        "findings": [
+          {
+            "id": "known-counterparty",
+            "check": "history/1",
+            "verdict": "fail"
+          }
+        ]
+      },
+      "differences": [
+        {
+          "question": "safety",
+          "rule": "rules_escalate"
+        }
+      ],
+      "options": [
+        "hold",
+        "proceed"
+      ],
+      "card_commitment": "d454a377dc0debe93b5ac5f054baaf28daf51c9e203e6efed9b30e9241c3e206",
+      "received_history": {
+        "history_sha256": [
+          "9de66dfd145a857925d0d0f2ef85d05afa454a50a08f9714ed4546f7e504c41d"
+        ],
+        "input_sha256": "3d50f205cca86fc505d58dbb1c8df86955c32adddc2c21c723c1cc493ad3308b",
+        "alone_deny": true
+      },
+      "nonce": "e659ce127cca4359602e68935c9e0087b14156d54e02bbd54cc725f2c787e508"
+    }
+  },
+  "expected_digest": "5c826d3e36defdc1bbc7b5f8777c3903510e101c1e7c193b2c8d1d106ca7f9dc"
+}

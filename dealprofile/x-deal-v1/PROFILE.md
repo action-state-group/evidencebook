@@ -319,7 +319,11 @@ the digest could try each likely content against it.
   the checker was given them, at most two) and `input_sha256` (the SHA-256 of the JCS form of the
   checker input's `received_history` member). A verdict that carries it has `rules` a checker was
   started on: `evaluated`, or `not_evaluated` for any cause but `checker_unavailable` and
-  `checker_changed`, where no run read the History. It binds what the verdict read by digest, never by
+  `checker_changed`, where no run read the History. History alone never makes a verdict NO (D1 condition 1): when the
+  checker denies given the History and does not deny without it, the verdict asks (`result`
+  `pause`), `rules` keeps the checker's `deny` as given, and `received_history` carries
+  `alone_deny: true`. A verdict whose rules deny asks only then, and `alone_deny` appears only
+  then. It binds what the verdict read by digest, never by
   content, and is read, like `nonce`, beside v0's closed `body_verdict`, never inside it. A
   verdict is a journal record, so it is in no deal-book copy, shared copy or adjudicator copy. A
   reader that predates the member refuses a verdict that carries it: Go, Rust and Python read it

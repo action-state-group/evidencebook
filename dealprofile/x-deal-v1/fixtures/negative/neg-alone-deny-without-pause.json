@@ -1,0 +1,67 @@
+{
+  "fixture": "neg-alone-deny-without-pause",
+  "expect": "invalid",
+  "description": "a verdict that says its deny was the History's alone and does not ask",
+  "base": "received-history/buyer-journal/04-verdict-pause.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "card_commitment": "d454a377dc0debe93b5ac5f054baaf28daf51c9e203e6efed9b30e9241c3e206",
+      "differences": [
+        {
+          "question": "safety",
+          "rule": "rules_escalate"
+        }
+      ],
+      "nonce": "e659ce127cca4359602e68935c9e0087b14156d54e02bbd54cc725f2c787e508",
+      "options": [
+        "hold"
+      ],
+      "received_history": {
+        "alone_deny": true,
+        "history_sha256": [
+          "9de66dfd145a857925d0d0f2ef85d05afa454a50a08f9714ed4546f7e504c41d"
+        ],
+        "input_sha256": "3d50f205cca86fc505d58dbb1c8df86955c32adddc2c21c723c1cc493ad3308b"
+      },
+      "result": "deny",
+      "rules": {
+        "checker_sha256": "2e56bdbe9d64bc822095e8b8f55e7178c738a9d558f144e2c7c961a30575800b",
+        "definition_digest": "ab2b8bb769970f96daa8aa6f4042df6a9feaaa53b44f7148af67b1afda99a954",
+        "findings": [
+          {
+            "check": "history/1",
+            "id": "known-counterparty",
+            "verdict": "fail"
+          }
+        ],
+        "history": {
+          "acts": 0,
+          "complete": true,
+          "days": 30
+        },
+        "ruleset_id": "example-rules/1.0.0",
+        "status": "evaluated",
+        "tier": "recomputed",
+        "verdict": "deny"
+      }
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T10:21:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "verdict",
+      "refs": [
+        {
+          "digest": "95a8a4eb2a0da8b20ae0c3f5387c4a0f3aed26a2f20b482d807ab73e8d70d58d",
+          "digest_alg": "SHA-256",
+          "rel": "checks",
+          "type": "deal-record"
+        }
+      ]
+    }
+  }
+}

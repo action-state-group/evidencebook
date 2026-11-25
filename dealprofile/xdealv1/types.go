@@ -381,9 +381,15 @@ type VerdictBody struct {
 // was given them, and input_sha256, the SHA-256 of the JCS form of the whole
 // received_history member of the rules checker's input (keys, statuses and
 // documents), so the verdict is bound to what it read without disclosing it.
+//
+// AloneDeny is set exactly when the checker denied given the History and did
+// not deny without it: History alone never makes the verdict NO (D1
+// condition 1), so the verdict asks (result pause) over rules that keep the
+// checker's deny.
 type ReceivedHistoryDigests struct {
 	HistorySHA256 []string `json:"history_sha256"`
 	InputSHA256   string   `json:"input_sha256"`
+	AloneDeny     bool     `json:"alone_deny,omitzero"`
 }
 
 // ApprovalBody is the journal overlay's approval: v0's body and a nonce,

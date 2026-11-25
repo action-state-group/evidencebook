@@ -2024,6 +2024,11 @@
    {
     "name": "input_sha256",
     "type": "string"
+   },
+   {
+    "name": "alone_deny",
+    "type": "bool",
+    "omitzero": true
    }
   ],
   "dealprofile/xdealv1.RemedyFor": [

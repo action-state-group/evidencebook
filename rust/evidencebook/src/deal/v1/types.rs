@@ -545,6 +545,11 @@ pub struct VerdictBody {
 pub struct ReceivedHistoryDigests {
     pub history_sha256: Vec<String>,
     pub input_sha256: String,
+    /// Set exactly when the checker denied given the History and did not
+    /// deny without it (D1 condition 1): the verdict asks over rules that
+    /// keep the checker's deny. Absent when false, as Go writes it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alone_deny: bool,
 }
 
 impl Serialize for VerdictBody {
