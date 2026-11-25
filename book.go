@@ -520,6 +520,13 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if entry.RecordType == RecordTypeBookClose && !b.closing {
 		return Record{}, fmt.Errorf("%w: a book_close record is written only by CloseForWindows", ErrInvalid)
 	}
+	if entry.RecordType == RecordTypeAgentAct {
+		// EvaluatePack reads every agent_act record; one it cannot read
+		// would stop it for good on this append-only book.
+		if err := checkAgentAct(entry.Statement); err != nil {
+			return Record{}, err
+		}
+	}
 	fieldOpenings, fieldCommitments, err := fieldOriginals(entry.Fields)
 	if err != nil {
 		return Record{}, err

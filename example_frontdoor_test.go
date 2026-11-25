@@ -13,14 +13,18 @@ import (
 	"github.com/action-state-group/evidencebook"
 )
 
-// The front door, record and evaluate: RecordAct seals each act of the
+// Record and evaluate: RecordAct seals each act of the
 // owner's agent, in capsule-engine's action form, and EvaluatePack runs a
 // rules pack over them and seals the Evidence Result, returning the bundle
 // report.Build renders (docs/GUIDE.md, "Start here").
 //
 // The acts are three purchases; the pack is capsule-engine's Everyday Rules
 // 0.3.8. A rule that does not apply to an act has no claim and is counted as
-// excluded; nothing rolls a rule up to one verdict.
+// excluded; nothing rolls a rule up to one verdict. The six not met are rules
+// r02 and r06 on each purchase: they ask for an earlier payment to the same
+// merchant in the same deal, and these acts name no deal. The nine not
+// evaluable are r14, r24 and r25 on each: the pack declares them and no
+// check measures them.
 func ExampleBook_EvaluatePack() {
 	ctx := context.Background()
 	dir, err := os.MkdirTemp("", "evidencebook-example")
@@ -70,7 +74,7 @@ func ExampleBook_EvaluatePack() {
 	fmt.Println("bundle verifies: true")
 	// Output:
 	// contract: asg/everyday@0.3.8
-	// evaluations: 21 excluded as not applicable: 63
+	// evaluations: 21 excluded as not applicable: 60
 	// met: 6 not met: 6 not evaluable: 9
 	// bundle verifies: true
 }

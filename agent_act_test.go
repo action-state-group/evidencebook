@@ -83,6 +83,10 @@ func TestEvaluatePackProjectsEachRuleOnEachAct(t *testing.T) {
 	// The expected claims, from the engine run independently here.
 	engine, err := guard.NewEngine(p)
 	require.NoError(t, err)
+	packRules := map[string]bool{}
+	for _, r := range p.Rules {
+		packRules[r.ID] = true
+	}
 	want := map[string]string{}
 	excluded := 0
 	var history guard.MemoryHistory
@@ -92,6 +96,9 @@ func TestEvaluatePackProjectsEachRuleOnEachAct(t *testing.T) {
 		d, err := engine.Check(a, history)
 		require.NoError(t, err)
 		for _, r := range engine.Report(a, d).Rules {
+			if !packRules[r.Rule] {
+				continue // the engine's own rows are no rule of the pack
+			}
 			id := fmt.Sprintf("act-%d/%s", acts[i].Seq, r.Rule)
 			switch r.Verdict {
 			case guard.VerdictNotApplicable:
@@ -128,6 +135,7 @@ func TestEvaluatePackProjectsEachRuleOnEachAct(t *testing.T) {
 			assert.Equal(t, "SATISFIED", c.Sufficiency)
 		}
 		assert.Contains(t, doc.Aggregate.Buckets[c.Verdict], c.ID)
+		assert.True(t, packRules[c.RequirementRef], "claim %s names %s, no rule of the pack", c.ID, c.RequirementRef)
 	}
 	assert.Equal(t, want, got)
 	// The fixture exercises all three verdicts and the exclusion.
@@ -211,4 +219,97 @@ func TestPackContractRef(t *testing.T) {
 		_, err := packContractRef(id)
 		assert.ErrorIs(t, err, ErrInvalid, id)
 	}
+}
+
+// The engine reports rows that are no rule of the pack (its reference check,
+// its reading of the pack's action semantics). They are neither claims nor
+// exclusions of the pack's contract, even when one fails, as the
+// action-semantics row does on a purchase.make act with no currency.
+func TestEvaluatePackLeavesOutTheEnginesOwnRows(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "alice", 1).open(t)
+	p := everyday(t)
+	act := json.RawMessage(`{"verb":"purchase.make","operator":"alice","developer":"alice-agent","timestamp":"2026-10-27T12:00:00Z","amount_minor":500,"target":"shop-a","action_class":"money.purchase"}`)
+	_, err := book.RecordAct(ctx, act)
+	require.NoError(t, err)
+
+	engine, err := guard.NewEngine(p)
+	require.NoError(t, err)
+	a, err := guard.DecodeAction(bytes.NewReader(act))
+	require.NoError(t, err)
+	d, err := engine.Check(a, nil)
+	require.NoError(t, err)
+	packRules := map[string]bool{}
+	for _, r := range p.Rules {
+		packRules[r.ID] = true
+	}
+	engineOnly, excluded := 0, 0
+	for _, r := range engine.Report(a, d).Rules {
+		switch {
+		case !packRules[r.Rule]:
+			engineOnly++
+		case r.Verdict == guard.VerdictNotApplicable:
+			excluded++
+		}
+	}
+	require.Positive(t, engineOnly, "the fixture must exercise the engine's own rows")
+
+	rep, err := book.EvaluatePack(ctx, p, EvaluateOptions{})
+	require.NoError(t, err)
+	doc := decodeResult(t, rep.Result.Header.Statement)
+	for _, c := range doc.Claims {
+		assert.True(t, packRules[c.RequirementRef], c.RequirementRef)
+	}
+	assert.Equal(t, excluded, doc.Aggregate.Coverage.ExcludedNotApplicable)
+}
+
+// Whichever call appends it, an agent_act record holds an act the engine
+// reads, so EvaluatePack never meets one it cannot.
+func TestAnAgentActRecordHoldsAReadableAct(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "alice", 1).open(t)
+	_, err := book.Append(ctx, Entry{RecordType: RecordTypeAgentAct, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"note":"not an act"}`)})
+	assert.ErrorIs(t, err, ErrInvalid)
+	_, err = book.Append(ctx, Entry{RecordType: RecordTypeAgentAct, EpistemicType: ProducerClaim})
+	assert.ErrorIs(t, err, ErrInvalid, "no statement")
+	assert.Zero(t, book.Size())
+}
+
+func TestEvaluatePackRefusesAPackTheEngineRefuses(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "alice", 1).open(t)
+	_, err := book.RecordAct(ctx, purchase("shop-a", 500, 0))
+	require.NoError(t, err)
+	_, err = book.EvaluatePack(ctx, pack.Pack{ID: "acme/empty/1"}, EvaluateOptions{})
+	assert.ErrorIs(t, err, ErrInvalid)
+}
+
+// stubEngine reports fixed rows for every act.
+type stubEngine struct{ rows []guard.RuleResult }
+
+func (s stubEngine) Check(guard.Action, guard.History) (guard.Decision, error) {
+	return guard.Decision{}, nil
+}
+
+func (s stubEngine) Report(guard.Action, guard.Decision) guard.CheckReport {
+	return guard.CheckReport{Rules: s.rows}
+}
+
+func TestEvaluateActsRefusals(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "alice", 1).open(t)
+	act, err := book.RecordAct(ctx, purchase("shop-a", 500, 0))
+	require.NoError(t, err)
+	rules := map[string]bool{"r1": true}
+
+	_, err = evaluateActs(stubEngine{rows: []guard.RuleResult{{Rule: "r1", Verdict: guard.VerdictNotApplicable}}}, rules, "acme/rules@1", []Record{act})
+	assert.ErrorIs(t, err, ErrInvalid, "no rule applies to any act")
+
+	_, err = evaluateActs(stubEngine{rows: []guard.RuleResult{{Rule: "r1", Verdict: "maybe"}}}, rules, "acme/rules@1", []Record{act})
+	assert.ErrorContains(t, err, `the verdict "maybe"`)
+
+	unreadable := act
+	unreadable.Header.Statement = json.RawMessage(`{"note":"not an act"}`)
+	_, err = evaluateActs(stubEngine{}, rules, "acme/rules@1", []Record{unreadable})
+	assert.ErrorIs(t, err, ErrInvalid, "an act record that no longer reads")
 }

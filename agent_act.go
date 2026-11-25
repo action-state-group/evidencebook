@@ -28,16 +28,28 @@ const RecordTypeAgentAct = "agent_act"
 // such as amount_minor, currency and target); it is refused unless
 // guard.DecodeAction reads it. The record carries the act, in its canonical
 // form, as its statement, so a bundle that discloses the record discloses
-// every member of the act.
+// every member of the act. The record is a producer claim: the book owner's
+// own word, which no one else has checked.
+//
+// Every agent_act record holds an act the engine reads: the book refuses
+// one that does not, whichever call appends it.
 func (b *Book) RecordAct(ctx context.Context, act json.RawMessage) (Record, error) {
-	if _, err := guard.DecodeAction(bytes.NewReader(act)); err != nil {
-		return Record{}, fmt.Errorf("%w: the act is not in capsule-engine's action form: %v", ErrInvalid, err)
+	if err := checkAgentAct(act); err != nil {
+		return Record{}, err
 	}
 	canonical, err := canonicalStatement(act)
 	if err != nil {
 		return Record{}, err
 	}
 	return b.Append(ctx, Entry{RecordType: RecordTypeAgentAct, EpistemicType: ProducerClaim, Statement: canonical})
+}
+
+// checkAgentAct refuses an act capsule-engine's engine does not read.
+func checkAgentAct(act json.RawMessage) error {
+	if _, err := guard.DecodeAction(bytes.NewReader(act)); err != nil {
+		return fmt.Errorf("%w: the act is not in capsule-engine's action form: %v", ErrInvalid, err)
+	}
+	return nil
 }
 
 // EvaluateOptions selects how EvaluatePack bundles the Result. Bundle names
@@ -49,7 +61,8 @@ type EvaluateOptions struct {
 
 // EvaluatePack runs p, a capsule-engine rules pack, over every act
 // RecordAct sealed in this book, in log order, each act against the acts
-// before it, and seals the outcome as an Evidence Result v0 the book signs.
+// before it, and seals the outcome in the book as an Evidence Result v0 the
+// book signs.
 // It returns the sealed Result and the one Evidence Bundle rooted at it, with
 // every payload and the contract-report/v1 extension, which report.Build
 // renders.
@@ -66,9 +79,16 @@ type EvaluateOptions struct {
 // contract_ref is the pack's id with its last "/" read as "@" (a pack
 // "acme/rules/1.2.0" reports "acme/rules@1.2.0"), and generated_at is the
 // last act's committed time, so calls over the same acts seal one Result.
+// Rows the engine reports that are no rule of the pack (its reference check,
+// its reading of the pack's action semantics) are left out.
 //
-// A book with no acts, or a pack whose id has no version, is refused with
-// ErrInvalid.
+// The bundle carries every act of the book in full, every member of each,
+// so share it, or a page built from it, only with someone who may see all
+// of them.
+//
+// A book with no acts, a pack whose id has no version, and acts to which no
+// rule of the pack applies (so there is no claim to report) are refused
+// with ErrInvalid.
 func (b *Book) EvaluatePack(ctx context.Context, p pack.Pack, opts EvaluateOptions) (Report, error) {
 	contract, err := packContractRef(p.ID)
 	if err != nil {
@@ -85,7 +105,11 @@ func (b *Book) EvaluatePack(ctx context.Context, p pack.Pack, opts EvaluateOptio
 	if err != nil {
 		return Report{}, fmt.Errorf("%w: the rules pack %s: %v", ErrInvalid, p.ID, err)
 	}
-	result, err := evaluateActs(engine, contract, acts)
+	rules := make(map[string]bool, len(p.Rules))
+	for _, rule := range p.Rules {
+		rules[rule.ID] = true
+	}
+	result, err := evaluateActs(engine, rules, contract, acts)
 	if err != nil {
 		return Report{}, err
 	}
@@ -196,9 +220,20 @@ type actAggregate struct {
 	} `json:"buckets"`
 }
 
+// rulesEngine is the part of capsule-engine's guard.Engine evaluateActs
+// uses.
+type rulesEngine interface {
+	Check(guard.Action, guard.History) (guard.Decision, error)
+	Report(guard.Action, guard.Decision) guard.CheckReport
+}
+
 // evaluateActs checks each act against the ones before it and projects the
-// per-rule verdicts into the Result document.
-func evaluateActs(engine *guard.Engine, contract string, acts []Record) (json.RawMessage, error) {
+// verdicts of the pack's own rules (rules, by id) into the Result document.
+// The engine's report also carries rows that are no rule of the pack, such
+// as its reference check and its reading of the pack's action semantics;
+// they are no requirement of the pack's contract, so they are neither
+// claims nor exclusions.
+func evaluateActs(engine rulesEngine, rules map[string]bool, contract string, acts []Record) (json.RawMessage, error) {
 	var out actResult
 	out.ResultVersion = "evidence-result-v0"
 	out.Claims = []actClaim{}
@@ -215,6 +250,9 @@ func evaluateActs(engine *guard.Engine, contract string, acts []Record) (json.Ra
 		}
 		cited := []actDigest{{DigestAlg: "SHA-256", Digest: record.RecordID}}
 		for _, rule := range engine.Report(action, decision).Rules {
+			if !rules[rule.Rule] {
+				continue
+			}
 			claim := actClaim{
 				ID:          "act-" + strconv.FormatUint(record.Seq, 10) + "/" + rule.Rule,
 				ContractRef: contract, RequirementRef: rule.Rule,
