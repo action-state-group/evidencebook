@@ -7,12 +7,13 @@ import (
 	"sort"
 	"strings"
 
+	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/evidencebook"
 )
 
-// ReceiptModuleIDs are the modules a page opens a plain deal receipt with:
+// ReceiptModuleIDs returns the modules a page opens a plain deal receipt with:
 // capsule-viewer's receipt modules for an x-deal-v0 copy, the owner's or a
 // seller's (capsule-viewer go/receipt, the one receipt renderer,
 // capsule-viewer#383), which the page runtime's RECEIPT_MODULE_IDS lists from
@@ -22,13 +23,17 @@ import (
 // capsule, so there is nothing yet to bind it to its deal by: it is refused
 // here until that binding exists (agent-action-capsule#674,
 // capsule-viewer#353).
-var ReceiptModuleIDs = []string{
+func ReceiptModuleIDs() []string {
+	return append([]string(nil), receiptModuleIDs...)
+}
+
+var receiptModuleIDs = []string{
 	"capsuleviewer.receipt.unilateral/v0",
 	"capsuleviewer.receipt.seller/v0",
 }
 
 // Receipts are the deal receipts a contract report page carries
-// (capsule-viewer#228, #351): the receipt module the page opens them with and
+// (capsule-viewer#228, #351): the receipt modules the page opens them with and
 // the receipts the holder hands over, each carried, held by the holder's
 // share policy, or not closed. The report never decides what the policy allows: the caller
 // states it per receipt. Nil carries nothing, and the page is then the page
@@ -41,7 +46,7 @@ var ReceiptModuleIDs = []string{
 type Receipts struct {
 	// Modules are the receipt modules the page carries, each a script and
 	// its pins (capsule-viewer go/receipt's Module). Each manifest names one
-	// of ReceiptModuleIDs, at most once, and the emitter checks that it pins
+	// of ReceiptModuleIDs(), at most once, and the emitter checks that it pins
 	// the script and stylesheets. A carried bundle must satisfy one module's
 	// requires.bundle_kind, requires.extensions.required, forbids.extensions
 	// and forbids.profiles, as the page's module resolution reads them, or the
@@ -74,8 +79,8 @@ type Receipt struct {
 	// are to give the Result a digest to check it against).
 	Exchange string
 	// Bundle is the receipt bundle as the node served it (JSON text, kept
-	// exactly as given). It must pass the page gate and be one the module
-	// takes.
+	// exactly as given). It must pass the verdict of the page that opens it
+	// (receiptPageGate) and be one that one of the page's receipt modules takes.
 	Bundle string
 	// Held says the holder's disclosure policy keeps this deal's receipt off
 	// the page; the page says so on its claims. Exactly one of Bundle, Held
@@ -111,16 +116,16 @@ func dealOf(claimID string) (string, bool) {
 }
 
 // checkReceipts judges receipts against the Result's claims before anything
-// is rendered: the module is a receipt module, a receipt's exchange capsule is
+// is rendered: each module is a receipt module, a receipt's exchange capsule is
 // cited by the claims of at most one deal (one no deal cites is ignored), a
 // deal has at most one receipt, and each carried bundle of a deal on the page
-// passes the page gate and is one the module takes.
+// passes the page gate and is one that one of the page's receipt modules takes.
 func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipts, error) {
 	var manifests []moduleManifest
 	for _, module := range receipts.Modules {
 		var manifest moduleManifest
 		if err := json.Unmarshal(module.Manifest, &manifest); err != nil || !isReceiptModule(manifest.ID) {
-			return checkedReceipts{}, refusef("receipts: each module must carry the manifest of one of %s, the modules a page opens a plain deal receipt with", strings.Join(ReceiptModuleIDs, ", "))
+			return checkedReceipts{}, refusef("receipts: each module must carry the manifest of one of %s, the modules a page opens a plain deal receipt with", strings.Join(receiptModuleIDs, ", "))
 		}
 		for _, prior := range manifests {
 			if prior.ID == manifest.ID {
@@ -208,7 +213,7 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 }
 
 // moduleManifest is the part of a presentation manifest that decides which
-// bundles the module draws (aac.presentation-manifest/v0).
+// bundles a module draws (aac.presentation-manifest/v0).
 type moduleManifest struct {
 	ID       string `json:"id"`
 	Requires struct {
@@ -247,9 +252,9 @@ func (m moduleManifest) accepts(bundleKind string, extensions map[string]interfa
 	return true
 }
 
-// isReceiptModule says whether id is one of ReceiptModuleIDs.
+// isReceiptModule says whether id is one of ReceiptModuleIDs().
 func isReceiptModule(id string) bool {
-	for _, known := range ReceiptModuleIDs {
+	for _, known := range receiptModuleIDs {
 		if id == known {
 			return true
 		}
@@ -265,7 +270,7 @@ func checkReceiptBundle(deal string, r Receipt, modules []moduleManifest) error 
 	if err != nil {
 		return refusef("receipts: the receipt bundle of deal %q does not decode: %s", deal, cli.SafeError(err))
 	}
-	if err := cli.PageGate(value); err != nil {
+	if err := receiptPageGate(value); err != nil {
 		return refusef("receipts: the receipt bundle of deal %q does not pass the page gate, so it is not carried: %s", deal, cli.SafeError(err))
 	}
 	extensions, _ := value["extensions"].(map[string]interface{})
@@ -279,6 +284,27 @@ func checkReceiptBundle(deal string, r Receipt, modules []moduleManifest) error 
 		ids = append(ids, module.ID)
 	}
 	return refusef("receipts: the receipt bundle of deal %q is not one the page's receipt modules (%s) draw (its kind, extensions or root profile do not meet their requires and forbids)", deal, strings.Join(ids, ", "))
+}
+
+// receiptPageGate is the verdict of the page that opens a carried receipt:
+// capsule-cli's page gate, or, for a producer-selected bundle (a Mesh node's
+// receipt: its interval coverage is withheld as selection_not_checkable, by
+// design), agent-action-capsule's page verdict, which the page runtime and
+// the receipt modules apply (bundle.VerifyBundleForPage and bundle.Verified;
+// capsule-viewer#386). Any other bundle the page gate refuses stays refused,
+// with its reason.
+func receiptPageGate(value map[string]interface{}) error {
+	gate := cli.PageGate(value)
+	if gate == nil {
+		return nil
+	}
+	if !aacbundle.Verified(aacbundle.VerifyBundleForPage(value)) {
+		return gate
+	}
+	if shown, total, ok := cli.ReportRowsShown(value); ok && (total == 0 || shown < total) {
+		return gate
+	}
+	return nil
 }
 
 // profilesOf are the profiles a bundle's root declares, as the viewer's
