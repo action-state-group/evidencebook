@@ -1129,9 +1129,13 @@ func (s *dealSession) composeMember(ctx context.Context, dealID string, m compos
 	member["observer"], member["custody"] = outcome.record["key_id"], outcome.record["checkpoint_key_id"]
 	switch outcome.record["outcome"] {
 	case evidencebook.OutcomeRefusal:
-		refusal, err := cli.DecodeBundleJSON(*resp.Refusal)
+		received, err := cli.DecodeBundleJSON(*resp.Refusal)
 		if err != nil {
 			return nil, err
+		}
+		refusal, err := signedRefusal(received, sent.digest, outcome.record["key_id"])
+		if err != nil {
+			return nil, cli.InputError("member " + m.recordID + ": " + err.Error())
 		}
 		if member["digest"], err = canonical.JSONDigest(refusal); err != nil {
 			return nil, err
@@ -1164,6 +1168,38 @@ func (s *dealSession) composeMember(ctx context.Context, dealID string, m compos
 		}
 	}
 	return member, nil
+}
+
+// dealRefusalCarried are the members of a recorded refusal that compose
+// carries: the ones its signature covers as `request --response` verified it
+// (Refusal.Verify, evidence-interop/0: issued_at, reason, request_digest),
+// and key_id and sig, which a reader needs to check that signature.
+var dealRefusalCarried = []string{"issued_at", "reason", "request_digest", "key_id", "sig"}
+
+// signedRefusal is the received refusal object cut to dealRefusalCarried,
+// each value as received. Anything else the reply carried (detail,
+// policy_digest, which evidence-interop/0 does not sign, or a member added on
+// the way) is signed by no one, so the composer's seal never covers it
+// (evidencebook#872). What is kept must verify again, for this request and
+// observer: the record step's decoder folds case, so a reply carrying both
+// "reason" and "Reason" verified over one of them while the exact-name cut
+// here keeps the other; such a refusal is refused, not sealed.
+func signedRefusal(received map[string]interface{}, requestDigest string, keyID interface{}) (map[string]interface{}, error) {
+	out := make(map[string]interface{}, len(dealRefusalCarried))
+	for _, name := range dealRefusalCarried {
+		if v, ok := received[name]; ok {
+			out[name] = v
+		}
+	}
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return nil, err
+	}
+	var r evidencebook.Refusal
+	if json.Unmarshal(encoded, &r) != nil || r.RequestDigest != requestDigest || r.KeyID != keyID || r.Verify() != nil {
+		return nil, errors.New("the recorded refusal's signed members do not verify for this request")
+	}
+	return out, nil
 }
 
 // dealJoinPointer is where a copy's root record holds the deal id: the
