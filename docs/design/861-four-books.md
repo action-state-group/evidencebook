@@ -15,7 +15,7 @@ ledger-cloud main `9e52270`. File references are to those commits; `PROFILE.md` 
   defaults to full disclosure ("I think so. That's right.", 00:14:23). Ops records it as a
   DECISION: `action-state-ops` `evidence-network/inbox.md:596` (u207,
   buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=0c3bb8740ccff751e35f940c3f3ae6805708176b18c49d17f9f6e0661158edf8).
-- **Steven rules the what**: §6 lists the questions. **Ethan decides the how and the order**: §5.
+- **Steven rules the what**: §6 records his rulings (2026-11-24, u211). **Ethan decides the how and the order**: §5.
 - Out of this note: deploys and spend (Steven's), and evidencebook#833's files.
 
 The four books of one deal, named the way this note uses them:
@@ -161,7 +161,7 @@ returns for each side the book the adjudicator reads:
 - **Both of a side's sources shown**: the own book and the other party's copy of it must agree
   record for record over the copy's length. Two different records at one position, both signed
   by that side, are a fork: both are kept as evidence, the ruling records the position
-  (`fork_at`, §3.2), and which branch governs is Steven's question (§6). Where the two agree
+  (`fork_at`, §3.2), and the branch the counterparty received governs (Steven's ruling, §6 item 3). Where the two agree
   and one only extends the other (the answers were cut at different times, so a record the side
   sent after its own answer is in the copy), the longer source is read and `fork_at` stays 0:
   `fork_at` is set only where two different records sit at one position.
@@ -203,7 +203,9 @@ Two limits the ruling and its page state, not hide:
   absence (`Book.RecordAbsence`, `request.go:689`). The page says "request published <time>; no
   answer by <deadline>; delivery not shown", never "refused" and never "asked and ignored", as
   ledger-cloud#35 already treats the adjudicator's sent time ("never as proof of delivery").
-  Whether a ruling may go against a side on these terms is Steven's question (§6).
+  A ruling may go against a silent side on these terms, but only on records that side signed
+  itself (Steven's ruling, §6 item 2); the deadline is 7 days from the request's publication
+  (§6 item 4).
 
 ### 3.2 The ruling's inputs and what it names (acceptance 4)
 
@@ -297,7 +299,7 @@ Operator: `request` (seal the request in the adjudicator's journal, then publish
 
 ## 5. PRs and their order
 
-Each PR is reviewed under the usual rules; none starts before Steven's ruling on §6.
+Each PR is reviewed under the usual rules; Steven ruled on §6 on 2026-11-24 (u211), so they may start.
 
 1. **evidencebook, Go**: PROFILE.md and the schema (`sources`; the extension's `records` and
    `received`; the full-copy derivation token), `VerifyReportBundle`'s full-copy checks,
@@ -320,44 +322,38 @@ Each PR is reviewed under the usual rules; none starts before Steven's ruling on
    `/status.json`; the end-to-end run of acceptance 5; RUNBOOK's local run (option A).
 4. **Loop step 09** (evidencebook#830): the dispute, ruling and receive step on the new flow.
 
-## 6. Questions for Steven (the what)
+## 6. Steven's rulings (the what)
+
+Steven accepted Sherlock2's recommendation on all five questions on 2026-11-24 ("yes i agree on
+these recs", buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9e8836b14b0026311c43ba5eddc2df7ecd1abb01fd0252c5769a088bff69c6aa&thread=440510368f48f25851cb3b3476a5d116f1b9acb9bb41833b3fb55b5a74faaddb).
+Ops records it as a DECISION refining u207: `action-state-ops` `evidence-network/inbox.md:607`
+(u211). The recommendation he accepted is
+buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=4f37c6bfa53b02847a3ebeb5cbfd882472d257f67fc2d86589dbae9e9d3e0a7d&thread=440510368f48f25851cb3b3476a5d116f1b9acb9bb41833b3fb55b5a74faaddb.
 
 1. **Full disclosure contents.** A party's answer gives the adjudicator its whole deal book and
    every record of the other side's book it received (§2.2), without the other side's consent
-   beyond the agreement's adjudicator term. This carries out u207; confirm that forwarding the
-   received copy is within it.
-2. **Ruling against a silent side.** Nothing shows a silent side received the request, and its
-   record times rest on proofs the other side chose to hand over (§3.1). Proposed: the ruling may
-   still go against it, its page says "delivery not shown" and names the sources, and its remedy
-   is a challenge with its own book.
-3. **A fork.** When a side's own book and the copy the other side holds differ (§2.3), proposed:
-   the branch the other side received governs, since the signer showed it to its counterparty,
-   the ruling records `fork_at`, and both branches are kept and shown, since a fork is itself
-   evidence.
-4. **The answer deadline.** How long a party has before its books count as "not shown to the
-   adjudicator". Proposed: 7 days from the request, a service constant stated in the practice
-   statement, as the 30-day challenge window is (ledger-cloud `ledger_cloud/adjudicator/RUNBOOK.md:74`).
-5. **Hosting.** Option A (Steven's machine) now, B on his decision to deploy (§4.1).
+   beyond the agreement's adjudicator term. Forwarding the received copy is within u207: those
+   records were already sent to the counterparty. u547 and u615 are unchanged; agent claims and
+   the floor are journal-only (PROFILE.md:123), so a whole deal book cannot carry them.
+2. **Ruling against a silent side.** A ruling may go against a silent side, but it may turn only on
+   records that side signed itself. Its page says "delivery not shown", names the books shown and
+   not shown, and names the source that timed each deciding record (§3.1). The silent side's
+   remedy is a challenge with its own book within the 30-day challenge window (ledger-cloud
+   `ledger_cloud/adjudicator/RUNBOOK.md:74`).
+3. **A fork.** When a side's own book and the copy the other side holds differ at one position
+   (§2.3), the branch the counterparty received governs, since the signer showed it to its
+   counterparty and the counterparty relied on it. The ruling records `fork_at`, both branches are
+   kept and shown, and the page says plainly "the signer's book forked at N".
+4. **The answer deadline.** 7 days, counted from when the request is published, with that time
+   printed on the page. It is a service constant stated in the practice statement, as the 30-day
+   challenge window is, and stays out of the neutral spec.
+5. **Hosting.** Option A now: Steven runs the ledger-cloud adjudicator on his own machine
+   (directory store, no spend); option B only when he chooses (§4.1). Before any cloud move he
+   decides between moving the adjudicator's `key_id` and giving new deals a new key (old cases
+   ruled under the old one), and makes that choice before real deals name the local key.
 
-**Sherlock2's recommendation** (a recommendation, not a ruling; Steven rules; buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=4f37c6bfa53b02847a3ebeb5cbfd882472d257f67fc2d86589dbae9e9d3e0a7d&thread=440510368f48f25851cb3b3476a5d116f1b9acb9bb41833b3fb55b5a74faaddb, on head `25e8b4d6`):
-
-1. Yes; forwarding the held copy is within u207, since those records were already sent to the
-   counterparty. u615 and u547 hold mechanically: agent claims and the floor are journal-only
-   (PROFILE.md:123), so a whole deal book cannot carry them.
-2. Yes, with one condition: the ruling may turn only on records the silent side signed itself,
-   and the page names the source that timed each deciding record. The challenge window is its
-   remedy.
-3. Yes: the branch the counterparty received governs; keep both branches and `fork_at`, and the
-   page says plainly "the signer's book forked at N".
-4. 7 days, counted from when the request is published, with that time printed on the page; a
-   service constant in the practice statement, out of the neutral spec.
-5. A now. Before B: agreements name the adjudicator by `key_id`, so moving to the cloud either
-   moves that key or gives new deals a new key, with old cases ruled under the old one; Steven
-   should choose before real deals name the local key.
-
-Doors: confirmed as format only. The forced reader upgrade is acceptable since `/status.json`
-and the RUNBOOK name the minimum release; the release notes say so too. Neutrality clean.
-
-Engineering's doors, for Sherlock2's door confirmation (format shapes with no product meaning
-beyond u207 and the answers above): the ruling's `sources` member, the bundle extension's
-`records` and `received`, the full-copy derivation token, and the forced upgrade of §3.2.
+**Doors**, confirmed by Sherlock2 in the same recommendation: the ruling's `sources` member, the
+bundle extension's `records` and `received`, and the full-copy derivation token are format only,
+with no product meaning beyond u207 and the rulings above. The forced reader upgrade of §3.2
+affects users and is acceptable because `/status.json`, the RUNBOOK and the release notes name
+the minimum reader release. Neutrality: none of this is on a public surface.
