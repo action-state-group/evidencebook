@@ -112,15 +112,22 @@ for kind in x-deal-v0 x-deal-report/v0; do
 done
 
 # deal-receipt-edited: one line of the signed report edited. The bundle's own
-# records still verify, so the page's runtime runs the deal view, which
-# refuses: the report's signature no longer verifies.
+# records still verify, but the page's own check of the standalone report
+# fails, so the page refuses the copy before any receipt is drawn
+# (capsule-viewer#415): the refused banner, and the condition named under
+# "Failed on this page".
 jq -c '.extensions["x-deal-report/v0"].agent_input.report.did_line = "A line nobody sealed."' receipt.json >receipt-edited.json
 # The bundle is data in a JSON element (capsule-viewer 0.4.0), so the edit
 # needs no change to the page's CSP, which pins only executable scripts.
 replace_bundle receipt.html receipt-edited.json >receipt-edited.html
 check "deal-receipt-edited: the page carries the edited line" contains receipt-edited.html 'A line nobody sealed.'
 render receipt-edited.html
-check "deal-receipt-edited: the page says the text could not be checked" contains receipt-edited.html.dom "<p class=\"deal-bad\">⚠️ The receipt's text could not be checked against its sealed report"
+check "deal-receipt-edited: the page refuses the copy" contains receipt-edited.html.dom 'data-verify="failed" data-verdict="invalid"'
+check "deal-receipt-edited: the page names the report that does not match" contains receipt-edited.html.dom "data-check=\"deal-report-capsule\">Didn't verify: the deal report carried outside the log does not match its Capsule."
+# The deal view (internal/deal/assets/deal-view.js) draws into <div id="deal">:
+# the valid receipt has it, the refused one must not.
+check "deal-receipt: the page draws the deal view" contains receipt.html.dom 'id="deal"'
+check "deal-receipt-edited: no receipt is drawn" lacks receipt-edited.html.dom 'id="deal"'
 check "deal-receipt-edited: the page shows no edited line" lacks receipt-edited.html.dom '<p class="deal-note">A line nobody sealed.</p>'
 check "deal-receipt-edited: no \"not checked\" label" lacks receipt-edited.html.dom 'data-unchecked="x-deal-v0"'
 # The deal-format verdicts come from the plugin (`capsulectl deal verify
