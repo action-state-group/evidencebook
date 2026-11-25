@@ -333,8 +333,9 @@ func counted(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook
 // record, that the holder's own book names as received: the branch
 // branchNamed picks from every own record's seen (an offerer's agreement
 // names the acceptor's agreement it saw; an acceptor's later records name
-// the offerer's), as the adjudicator's GatherCase reads it. nil when the
-// book names none of the held records, or names two branches.
+// the offerer's), as the adjudicator's GatherCase reads it. A book naming
+// none of the held records reads the one first record held, when only one
+// chains from seq 1; nil when two do, or when the book names two branches.
 func namedBranch(held []evidencebook.HeldRecord, sender, logID string, own []ownRecord) []heldBookRecord {
 	reads := map[string]BookRead{}
 	pairs := map[string][]byte{}

@@ -501,8 +501,9 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
     buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=8728c4e97dedb5a72a99ba28b9d5b654aabae2f7850d09212ea0b63e233749f3&thread=450eef8b72f029fd348085fd7ec94e08efd05faa1300dfffc0cfe50c19c99698).
     An offerer's agreement names the acceptor's agreement it saw, so an offerer naming neither
     branch has an inconsistent book, refused as before. An acceptor's agreement names nothing, so an
-    acceptor reads the branch its later records name, and before any names one it reads nothing:
-    awaiting, then not started.
+    acceptor reads the branch its later records name. A holder whose book names none of the held
+    records reads the one first record it holds, when it holds only one (the fork then shows only in
+    a later record's `prev`), and nothing when it holds two: awaiting, then not started.
   - `rests_on.counterparty_proof` reads the counterparty's layer and the held proof together:
     `held`; `not_yet`, a layered counterparty whose proof has not arrived; or `no_layer`, a
     counterparty that sends no stamp proof, which a page words as
