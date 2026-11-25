@@ -26,46 +26,56 @@ contract it implements is capsule-cli's
 
 ## Install a release
 
-One release carries both launchers. It is tagged `capsulectl/$V`, where `$V` is
-the version of the `capsulectl` core it pairs with, so one version names the
-whole install ([RELEASING.md](RELEASING.md)). Not every core pre-release has
-one: install a core whose version has a `capsulectl/$V` release on this
-repository's Releases page. Install the core first, from
+One release carries capsulectl. It holds the core and both plugin launchers at
+one version `$V`, and it is tagged `capsulectl/$V` on this repository
+([RELEASING.md](RELEASING.md)). The core in it is capsule-cli's own published
+build, carried unchanged. The launchers are plugins that the core installs.
+Releases from `capsulectl/v0.1.0-rc55` on carry the core. For an earlier
+release, take the core of the same version from
 [capsule-cli](https://github.com/action-state-group/capsule-cli#prebuilt-binaries).
 
 Each release has, for linux/amd64, linux/arm64 and darwin/arm64:
 
+- `capsulectl-$V-$OS-$ARCH`, the core, with its own attestation bundle
+  `capsulectl-$V.sigstore.json` (built by capsule-cli);
 - `capsulectl-book-$V-$OS-$ARCH` and `capsulectl-deal-$V-$OS-$ARCH`, the two
   launchers;
 - `standard-history-$V.tar.gz`, the History card's files, which `book card`
   pages read;
 - `deal-view-$V.tar.gz`, the deal view's files;
-- `deal-skill-$V.tar.gz`, the `skills/deal` tree, the deal skill an agent's host
-  reads; the commands below do not need it, and
+- `deal-skill-$V.tar.gz`, the `skills/deal` tree, which is the deal skill an
+  agent's host reads. The commands below do not need it, and
   [actionstate.ai/install](https://actionstate.ai/install) places it for an agent;
-- `SHA256SUMS`;
-- one attestation bundle published under two names,
+- one `SHA256SUMS` over every file;
+- the plugins' attestation bundle, published under two names,
   `capsulectl-book-$V.sigstore.json` and `capsulectl-deal-$V.sigstore.json`.
 
-Download into a folder of its own, since this `SHA256SUMS` has the same name as
-the core's, check what you downloaded, then install:
+Download the files, check them, then install:
 
 ```bash
-# V: the core's version, e.g. v0.1.0-rc53. P: linux-amd64, linux-arm64 or darwin-arm64.
+# V: e.g. v0.1.0-rc55. P: linux-amd64, linux-arm64 or darwin-arm64.
 REL=https://github.com/action-state-group/evidencebook/releases/download/capsulectl/$V
+curl -fsSLO "$REL/capsulectl-$V-$P"
 curl -fsSLO "$REL/capsulectl-book-$V-$P"
 curl -fsSLO "$REL/capsulectl-deal-$V-$P"
 curl -fsSLO "$REL/standard-history-$V.tar.gz"
 curl -fsSLO "$REL/deal-view-$V.tar.gz"
 curl -fsSLO "$REL/SHA256SUMS"
+curl -fsSLO "$REL/capsulectl-$V.sigstore.json"
 curl -fsSLO "$REL/capsulectl-book-$V.sigstore.json"
 sha256sum --ignore-missing -c SHA256SUMS   # macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
-# Each of the four files, with the one bundle (with --bundle, capsule-cli's README
-# says no GitHub account or sign-in is needed):
+# Provenance, with no GitHub account (with --bundle). The core, built by capsule-cli:
+gh attestation verify "capsulectl-$V-$P" --bundle "capsulectl-$V.sigstore.json" \
+  --repo action-state-group/capsule-cli \
+  --signer-workflow action-state-group/capsule-cli/.github/workflows/release.yml
+# The plugins and archives, built here, each with the plugins' bundle:
 gh attestation verify "capsulectl-book-$V-$P" --bundle "capsulectl-book-$V.sigstore.json" \
   --repo action-state-group/evidencebook \
   --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml
 # ...and the same for capsulectl-deal-$V-$P, standard-history-$V.tar.gz and deal-view-$V.tar.gz.
+mkdir -p ~/.local/bin && install -m 0755 "capsulectl-$V-$P" ~/.local/bin/capsulectl
+export PATH="$HOME/.local/bin:$PATH"   # add this line to ~/.bashrc or ~/.zshrc to keep it
+capsulectl --version                    # capsulectl $V (commit <40-hex commit>)
 chmod +x "capsulectl-book-$V-$P" "capsulectl-deal-$V-$P"
 capsulectl plugin install "./capsulectl-book-$V-$P"
 capsulectl plugin install "./capsulectl-deal-$V-$P"
