@@ -14,7 +14,11 @@
 // and admit. A deal book opens at its agreement; there is no close and no
 // results log.
 //
-// Like dealprofile, the package seals nothing and holds no deal logic: it
-// returns bytes and verdicts, and the producer seals them with its own key on
-// its own book.
+// Like dealprofile, the package holds the profile's rules, not a holder's
+// deal: it returns bytes and verdicts, and the producer seals them with its
+// own key on its own book (package deal is the Deal API that does). It seals
+// two kinds of record itself, both from what a case or a received ruling
+// fixes: an adjudicator's ruling in its case book (SealRuling) and the
+// statement a holder's book needs to name a counted ruling (the receive
+// profile).
 package xdealv1

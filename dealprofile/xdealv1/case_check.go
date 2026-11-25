@@ -14,6 +14,7 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile"
+	"github.com/action-state-group/evidencebook/internal/placeappend"
 )
 
 // An adjudicator's rules (evidencebook#779): what makes a dispute and the
@@ -269,10 +270,6 @@ type SealedRuling struct {
 // adjudicator never replaces it; a challenge of it records disagreement.
 var ErrRulingConflict = errors.New("xdealv1: the case book already holds a different final ruling on this row")
 
-// sealTries is how many times SealRuling rebuilds a ruling whose place was
-// taken by another write.
-const sealTries = 8
-
 // SealRuling seals body in the case book of c on shelf, at time at, once: a
 // ruling of the deal with the same body already there is returned as it is
 // (Existing), and any other ruling on a row the book already holds a final
@@ -309,12 +306,13 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 	if err != nil {
 		return SealedRuling{}, err
 	}
-	for try := 0; try < sealTries; try++ {
-		size := book.Size()
+	var out SealedRuling
+	err = placeappend.Append(ctx, book, func(size uint64) (placeappend.Try, error) {
 		var rows []evidencebook.Record
 		if size > 0 {
+			var err error
 			if rows, err = book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: size}); err != nil {
-				return SealedRuling{}, err
+				return placeappend.Try{}, err
 			}
 		}
 		var bookID, prevID string
@@ -325,10 +323,10 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 			prevID = r.RecordID
 			rec, kind, err := v1Payload(ctx, book, r)
 			if err != nil {
-				return SealedRuling{}, err
+				return placeappend.Try{}, err
 			}
 			if kind != payloadV1 {
-				return SealedRuling{}, fmt.Errorf("xdealv1: the case book's record %d is not readable", i+1)
+				return placeappend.Try{}, fmt.Errorf("xdealv1: the case book's record %d is not readable", i+1)
 			}
 			rb, ok := bodyOf[RulingBody](rec.Body)
 			if !ok || rec.Block.DealID != c.DealID {
@@ -336,13 +334,14 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 			}
 			got, err := bodyBytes(*rb)
 			if err != nil {
-				return SealedRuling{}, err
+				return placeappend.Try{}, err
 			}
 			if bytes.Equal(got, wantBody) {
-				return sealedAt(ctx, book, r, rec, uint64(i+1), bookID, true)
+				out, err = sealedAt(ctx, book, r, rec, uint64(i+1), bookID, true)
+				return placeappend.Try{Skip: true}, err
 			}
 			if rb.Final && rb.Row == body.Row {
-				return SealedRuling{}, ErrRulingConflict
+				return placeappend.Try{}, ErrRulingConflict
 			}
 		}
 		block := Block{Profile: Profile, Canonicalization: Canonicalization, DealID: c.DealID,
@@ -350,35 +349,35 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 		if size > 0 {
 			last := rows[len(rows)-1]
 			if len(last.Header.PayloadCommitments) != 1 {
-				return SealedRuling{}, fmt.Errorf("xdealv1: the case book's last record has no record digest")
+				return placeappend.Try{}, fmt.Errorf("xdealv1: the case book's last record has no record digest")
 			}
 			prev := RefTo(last.Header.PayloadCommitments[0])
 			block.Prev = &prev
 		}
 		rec := Record{Block: block, Body: &body}
 		if err := Check(rec); err != nil {
-			return SealedRuling{}, err
+			return placeappend.Try{}, err
 		}
 		if err := CheckRuling(rec, c.Agreement); err != nil {
-			return SealedRuling{}, err
+			return placeappend.Try{}, err
 		}
 		entry, err := BookEntry(rec, prevID)
 		if err != nil {
-			return SealedRuling{}, err
+			return placeappend.Try{}, err
 		}
-		stored, err := book.AppendAt(ctx, size+1, entry)
-		if errors.Is(err, evidencebook.ErrBusy) {
-			continue
-		}
-		if err != nil {
-			return SealedRuling{}, err
-		}
-		if bookID == "" {
-			bookID = stored.RecordID
-		}
-		return sealedAt(ctx, book, stored, rec, size+1, bookID, false)
+		return placeappend.Try{Entry: entry, Done: func(stored evidencebook.Record) error {
+			if bookID == "" {
+				bookID = stored.RecordID
+			}
+			var err error
+			out, err = sealedAt(ctx, book, stored, rec, size+1, bookID, false)
+			return err
+		}}, nil
+	}, placeappend.Tries)
+	if errors.Is(err, placeappend.ErrKeptChanging) {
+		return SealedRuling{}, fmt.Errorf("%w: the case book kept changing while the ruling was sealed", evidencebook.ErrBusy)
 	}
-	return SealedRuling{}, fmt.Errorf("%w: the case book kept changing while the ruling was sealed", evidencebook.ErrBusy)
+	return out, err
 }
 
 // shownOf reports whether the case shows any record of role's book: one
