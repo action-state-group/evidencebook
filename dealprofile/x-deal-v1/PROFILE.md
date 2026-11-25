@@ -550,8 +550,10 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   carries at that position. The branch of a held copy read is the one the holder's book names as
   received. Where two sources of one side hold different records at a position, the side's book
   forked there: the copy the other side held governs, both are kept, and `fork_at` records it
-  (Steven's ruling 3, u211). With no held copy, a fork between the side's opening copy and its full
-  answer reads neither branch past it. Otherwise the longer source is read. Each record read is
+  (Steven's ruling 3, u211). Otherwise the longer source is read, but never past a fork the held
+  copy does not reach: there no branch is shown as received (the holder received both branches
+  and named neither, or the side's own copies differ beyond what the holder holds), so the book
+  is read only up to the position before it and the rest is kept as fork evidence. Each record read is
   timed by its signer's own stamps and by the holder's linking facts, the earlier of the two, and
   the case says which timed it ("time from the other side's held proofs" for the second). A
   received stamp proof carries no witness receipts yet (design note 461, Q8), so a silent side's

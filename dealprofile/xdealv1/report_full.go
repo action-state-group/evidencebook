@@ -271,7 +271,7 @@ func chain(pairs map[string]json.RawMessage, deal string) ([]BookRead, error) {
 // holder's own book pairs, every record held from the counterparty's log for
 // the deal that chains from seq 1, and the held proofs those records
 // recompute.
-func fullBook(rb ReportBooks, pairs map[string][]byte, held []evidencebook.HeldRecord, proofs []evidencebook.HeldProof) (map[string]json.RawMessage, *ReportReceived, error) {
+func fullBook(rb ReportBooks, pairs map[string][]byte, in fullInputs) (map[string]json.RawMessage, *ReportReceived, error) {
 	records := map[string]json.RawMessage{}
 	for _, r := range rb.Books.Own {
 		p, ok := pairs[r.RecordID]
@@ -282,13 +282,13 @@ func fullBook(rb ReportBooks, pairs map[string][]byte, held []evidencebook.HeldR
 	}
 	rc := &ReportReceived{Records: map[string]json.RawMessage{}, Proofs: []evidencebook.StampProof{}}
 	ag, _ := asAgree(rb.Books.Own[0].Record.Body)
-	if rb.Counterpart == nil || ag.CounterpartyKey.V == nil {
+	if in.logID == "" || ag.CounterpartyKey.V == nil {
 		return records, rc, nil
 	}
-	rc.LogID = rb.Counterpart.LogID
+	rc.LogID = in.logID
 	reads := map[string]BookRead{}
 	raw := map[string][]byte{}
-	for _, h := range held {
+	for _, h := range in.held {
 		if h.SenderKey != *ag.CounterpartyKey.V || h.LogID != rc.LogID {
 			continue
 		}
@@ -302,10 +302,13 @@ func fullBook(rb ReportBooks, pairs map[string][]byte, held []evidencebook.HeldR
 			rc.Records[id], kept[id] = raw[id], b
 		}
 	}
-	for _, hp := range proofs {
+	for _, hp := range in.proofs {
 		if recomputedBySome(hp.Verified, kept) {
 			rc.Proofs = append(rc.Proofs, hp.Proof)
 		}
+	}
+	if len(rc.Records) == 0 {
+		rc.LogID = ""
 	}
 	return records, rc, nil
 }

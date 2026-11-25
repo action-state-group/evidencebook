@@ -368,8 +368,8 @@ func ids(book []CaseRecord) []string {
 // held copy, a fork between the side's opening copy and its full answer
 // reads neither branch past it.
 func TestGatherSideForks(t *testing.T) {
-	a1, a2 := br("a1", 1, ""), br("a2", 2, "a1")
-	x3, y3 := br("x3", 3, "a2"), br("y3", 3, "a2")
+	a1, a2, b1 := br("a1", 1, ""), br("a2", 2, "a1"), br("b1", 1, "")
+	x3, y3, x4 := br("x3", 3, "a2"), br("y3", 3, "a2"), br("x4", 4, "x3")
 	own := func(rs ...BookRead) answerRead { return answerRead{full: FullCopy{Own: rs}} }
 	holder := func(rs ...BookRead) answerRead {
 		return answerRead{branch: rs, full: FullCopy{LogID: "deal/x", Own: []BookRead{br("h1", 1, "")}}}
@@ -392,7 +392,17 @@ func TestGatherSideForks(t *testing.T) {
 			book: []string{"a1", "a2", "x3"}, ownLast: "x3", heldLast: "a1"},
 		{name: "the held copy forked; the own book agrees with the branch read and goes further", own: own(a1, a2, y3), hasOwn: true,
 			holder: answerRead{branch: []BookRead{a1, a2}, forked: []BookRead{x3}, forkAt: 3, full: FullCopy{LogID: "deal/x", Own: []BookRead{br("h1", 1, "")}}}, hasHolder: true,
-			book: []string{"a1", "a2", "y3"}, forked: []string{"x3"}, forkAt: 3, ownLast: "y3", heldLast: "a2"},
+			book: []string{"a1", "a2"}, forked: []string{"x3", "y3"}, forkAt: 3, ownLast: "y3", heldLast: "a2"},
+		{name: "the own copies differ past the held copy: neither is read past the fork", own: own(a1, a2, x3, x4), hasOwn: true,
+			holder: holder(a1, a2), hasHolder: true,
+			op: openingRead{records: map[uint64]BookRead{1: a1, 3: y3}, size: 3, last: "y3"}, hasOpening: true,
+			book: []string{"a1", "a2"}, forked: []string{"x3", "x4"}, forkAt: 3, ownLast: "x4", heldLast: "a2"},
+		{name: "the sender forked at its first record and the holder named neither", own: own(a1, a2), hasOwn: true,
+			holder: answerRead{forked: []BookRead{a1, b1}, forkAt: 1, full: FullCopy{LogID: "deal/x", Own: []BookRead{br("h1", 1, "")}}}, hasHolder: true,
+			book: nil, forked: []string{"a1", "b1", "a2"}, forkAt: 1, ownLast: "a2"},
+		{name: "an opening copy carrying two records at one seq", hasOpening: true,
+			op:   openingRead{records: map[uint64]BookRead{1: a1}, size: 3, last: "x3", forkAt: 3, forked: []BookRead{x3, y3}},
+			book: []string{"a1"}, forked: []string{"x3", "y3"}, forkAt: 3, ownLast: "x3"},
 		{name: "the held copy alone", holder: holder(a1, a2), hasHolder: true, book: []string{"a1", "a2"}, heldLast: "a2"},
 		{name: "the opening copy and the full answer differ, nothing held: neither past it", own: own(a1, a2, x3), hasOwn: true,
 			op: openingRead{records: map[uint64]BookRead{1: a1, 3: y3}, size: 3, last: "y3"}, hasOpening: true,
@@ -447,6 +457,15 @@ func TestHeldBranch(t *testing.T) {
 
 	_, _, _, err = heldBranch(full, []string{"y3", "z3"})
 	assert.ErrorContains(t, err, "two branches")
+
+	// A fork at the first record, neither named: no branch, every held
+	// record kept as evidence.
+	b1 := br("b1", 1, "")
+	branch, forked, at, err = heldBranch(FullCopy{Received: held(a1, a2, b1)}, nil)
+	require.NoError(t, err)
+	assert.Empty(t, branch)
+	assert.Equal(t, []string{"a1", "b1", "a2"}, recordIDs(forked))
+	assert.Equal(t, uint64(1), at)
 
 	branch, forked, at, err = heldBranch(FullCopy{Received: held(a1, a2)}, nil)
 	require.NoError(t, err)

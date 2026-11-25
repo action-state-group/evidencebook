@@ -650,12 +650,24 @@ func (p *StatusProvider) ReportSnapshot(ctx context.Context, logID string, c Rep
 		}
 		if stable {
 			var in fullInputs
-			if ag, _ := asAgree(rb.Books.Own[0].Record.Body); c.Full && rb.Counterpart != nil && ag.CounterpartyKey.V != nil {
+			if ag, _ := asAgree(rb.Books.Own[0].Record.Body); c.Full && ag.CounterpartyKey.V != nil {
 				if in.held, err = p.Shelf.HeldByDeal(ctx, rb.Books.Own[0].Record.Block.DealID); err != nil {
 					return ReportSnapshot{}, err
 				}
-				if in.proofs, err = p.Shelf.HeldProofs(ctx, *ag.CounterpartyKey.V, rb.Counterpart.LogID); err != nil {
-					return ReportSnapshot{}, err
+				// The counterparty's log, even when nothing of it is counted
+				// (a fork at its first record): the full copy carries what is held.
+				if rb.Counterpart != nil {
+					in.logID = rb.Counterpart.LogID
+				} else if logs := logsOf(in.held, *ag.CounterpartyKey.V, func(r Record) bool {
+					a, ok := asAgree(r.Body)
+					return ok && a.Kind == KindAgreement
+				}); len(logs) > 0 {
+					in.logID = logs[0]
+				}
+				if in.logID != "" {
+					if in.proofs, err = p.Shelf.HeldProofs(ctx, *ag.CounterpartyKey.V, in.logID); err != nil {
+						return ReportSnapshot{}, err
+					}
 				}
 			}
 			r, b, err := reportWithBook(rb, c, pairs, in)

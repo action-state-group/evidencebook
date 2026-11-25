@@ -75,7 +75,7 @@ func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte, in fu
 		if c.Audience != dealprofile.AudienceAdjudicator {
 			return Report{}, ReportBook{}, fmt.Errorf("xdealv1: report: only an adjudicator's copy is full")
 		}
-		if book.Records, book.Received, err = fullBook(rb, pairs, in.held, in.proofs); err != nil {
+		if book.Records, book.Received, err = fullBook(rb, pairs, in); err != nil {
 			return Report{}, ReportBook{}, err
 		}
 	}
@@ -86,6 +86,7 @@ func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte, in fu
 // book pairs: every record the holder holds for the deal, and the stamp
 // proofs held from the counterparty for its log.
 type fullInputs struct {
+	logID  string
 	held   []evidencebook.HeldRecord
 	proofs []evidencebook.HeldProof
 }
