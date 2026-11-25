@@ -84,7 +84,8 @@ payment reference is a value you observed.
 | 05 | | `loop_deal_respond` (keeps the offer, runs the admission, agrees): the agreement file |
 | 05 | `loop_deal_reconcile` (keeps the seller's agreement), then `loop_deal_agree`: the agreement file | `loop_deal_reconcile` (keeps the buyer's agreement) |
 | 06 | `loop_settle` (the payment reference you saw on the rail). A pause returns the card to show the user; `loop_deal_approve` seals their answer, then `loop_settle` again with the `check_id`: the payer leg | `loop_deal_reconcile` (keeps it), then `loop_deal_received` (what you received): the payee leg |
-| 06 | `loop_deal_reconcile` (keeps the payee leg) | `loop_deal_deliver` (a commit review that pauses the same way, then the act): the delivery file |
+| 06 | `loop_deal_reconcile` (keeps the payee leg), then `loop_settlement_disclosure` (your signed count of settlements on the rail) | `loop_settlement_disclosure` |
+| 06 | | `loop_deal_deliver` (a commit review that pauses the same way, then the act): the delivery file |
 | 06 | `loop_deal_reconcile` (keeps the delivery), `loop_deal_close` (`received` or `not_received`: the statement) | `loop_deal_close` |
 | 06 | `loop_deal_reconcile` (keeps the seller's statement), then `loop_deal_report` (waits for the tick that covers the deal) | the same for the buyer's |
 | 09 | not built on x-deal-v1 yet: [#830](https://github.com/action-state-group/evidencebook/issues/830) | |
@@ -97,6 +98,18 @@ The final review of an act (`deal check`) pauses when the user must answer: a pr
 with no card protection. `loop_settle` and `loop_deal_deliver` then return `paused: true` and the card in `say`.
 Show it as it is, seal only what the user answers (`loop_deal_approve`), and call the tool again with the
 `check_id`. A leg or an act the tool seals returns `person_signature: missing` until the person has signed it: say "settled, as the agent's records show", never that the user signed. The scripted run plays the user: its answers are the script's, and its records say what the script said, not what a person consented to.
+
+`loop_settlement_disclosure` is step 06's count. It writes the node's signed `settlement-disclosure/v1`
+(`type`, `node`, `key_id`, `rail`, `through_sequence`, `settlements`, `sig`), which the loop compares with the rail's own
+count of final settlements you are a party to. `settlements` is the number of deals on `rail` (the rail the deal was opened
+on) for which your node sealed its own payment leg as settled: the payer leg (`loop_settle`) or the payee leg
+(`loop_deal_received`). It is your node's records, not a ledger view: the node reads no rail and tests no finality, so
+it counts what its records say was settled. A Goose deal has one payment row and no refund, so one deal is one
+settlement. The count is for the asked rail only, and the disclosure carries no amount, counterparty or payment
+reference: each payment reference is on the leg each side signed. `through_sequence` is a label, not a filter: pass the
+rail's latest ledger sequence you observed, one that covers your settlements, since the loop counts the ledger up to it.
+The disclosure is signed with your signing key (Ed25519 over its RFC 8785 form without `sig`), so it is checked offline
+with your public key, and it is also sealed in your node book. The tool publishes nothing.
 
 A deal is admitted by `capsule-engine admission evaluate` over the pack in `admission-pack.json` (capsule-engine's
 `ladder` conformance pack, `asg/admission_test/0.1.0`: **a test pack, not a policy for real deals**: its trust roots are placeholders (`ctl-trusted`, `judge-a`, `witness-a`), so a node that deals for real gives its own pack), for this price and currency. The node seals the decision (`deal admit`) and the agreement
@@ -156,9 +169,8 @@ checkpoint), and `loop_ask` and `loop_ask_reply` (an evidence request you send, 
 - **Step 09, the dispute** (a referee's Result), ran on x-deal-v0 halves and is not built on x-deal-v1:
   [#830](https://github.com/action-state-group/evidencebook/issues/830) (`deal dispute`, the offer's adjudicator's
   `deal ruling`, `deal receive`).
-- **The rail-wide settlement disclosure and the payment-reference opening** (step 06's `loop_settlement_disclosure` and
-  `loop_pay_opening`) counted and opened v0 records. `deal settlement` reads one deal; a verb for the count over a rail
-  is still to be built.
+- **The payment-reference opening** (step 06's `loop_pay_opening`) opened a v0 record's committed reference. An x-deal-v1
+  payment leg carries its reference in clear, signed by its side, so there is nothing to open.
 - **Importing a flat ledger** (`loop_import`) is not built in capsulectl. A node that has a capsule-emit ledger keeps it
   as it is.
 - **The Mesh node's half check** (`goose-deal-half/1`, capsules-plugin v0.1.8): a v1 deal has no half file; its files are

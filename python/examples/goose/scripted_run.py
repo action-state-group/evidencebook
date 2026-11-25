@@ -17,7 +17,9 @@ and ``<node>.key`` (its signing key id), ``commitments/<key_id>.json`` with
 ``buyer-opening-bundle.json`` is the buyer's admission and its record of the deal, one bundle
 (loop_deal_bundle); and the deal's files in the order they are exchanged: ``offer.json``,
 ``seller-agreement.json``, ``buyer-agreement.json``, ``buyer-leg.json``, ``seller-leg.json``,
-``seller-delivery.json``, ``<node>-statement.json``, ``<node>-report.json``. The scripted run answers
+``seller-delivery.json``, ``<node>-statement.json``, ``<node>-report.json``; and
+``<node>-settlement-disclosure.json``, each node's signed count of its settlements on the deal's rail
+(loop_settlement_disclosure, step 06). The scripted run answers
 the user's check for them (loop_deal_approve), as a person would. With GOOSE_CARD_SERVICE set to a
 service file (card-service.example.json), each node also registers its card on that service
 (loop_register_card) and writes ``<node>-card-statement.json``.
@@ -114,6 +116,10 @@ async def run(out: Path) -> None:
             await seller.call("loop_deal_received", deal_id=deal_id, amount_minor=50,
                               payment_ref="payment-hash-of-the-invoice", out_path=str(out / "seller-leg.json"))
             await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-leg.json"))
+            # 06: each node's signed count of the settlements it sealed on the deal's rail (no rail here: sequence 1).
+            for me in (buyer, seller):
+                await me.call("loop_settlement_disclosure", rail="lightning", through_sequence=1,
+                              out_path=str(out / f"{me.name}-settlement-disclosure.json"))
             # The seller delivers (its commit review pauses too) and the buyer keeps the act.
             delivery = await seller.call("loop_deal_deliver", deal_id=deal_id, out_path=str(out / "seller-delivery.json"))
             assert delivery.get("paused"), delivery
