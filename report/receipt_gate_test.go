@@ -138,3 +138,14 @@ func TestOnlyAProducerSelectionIsAdmittedOnThePageVerdict(t *testing.T) {
 	capsule.CapsuleResults = map[string]aacverify.VerificationResult{"c": {OK: false}}
 	assert.False(t, admittedSelection(capsule))
 }
+
+// A real bundle the core gate refuses but the page verdict alone would pass
+// (a bogus witness on a seller's complete copy) is not a producer selection,
+// so it stays refused.
+func TestACompleteReceiptTheCoreGateRefusesStaysRefused(t *testing.T) {
+	bogus := mutated(t, sellerKeep, func(b map[string]interface{}) {
+		b["checkpoint"].(map[string]interface{})["witnesses"] = []interface{}{map[string]interface{}{"key_id": "w", "signature": "AAAA"}}
+	})
+	require.Error(t, cli.PageGate(bogus))
+	assert.Error(t, receiptPageGate(bogus))
+}
