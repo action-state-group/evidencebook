@@ -8,7 +8,7 @@ require (
 	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
 	github.com/action-state-group/capsule-viewer/go v0.26.0
 	github.com/action-state-group/checkpointed-local-log/go v0.4.0
-	github.com/action-state-group/evidencebook v0.26.1-0.20261125133610-7ad15a2d9a43
+	github.com/action-state-group/evidencebook v0.26.1-0.20261125152653-cc061f0e2fa1
 	github.com/action-state-group/evidencebook/report v0.8.0
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/fxamacker/cbor/v2 v2.9.0
@@ -49,6 +49,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
