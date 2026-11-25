@@ -57,6 +57,10 @@ var errWitnessUnread = errors.New("witness not readable")
 // checkpoints are signed by another key. An alarm, as a key change always was.
 var errReadKeyRefused = errors.New("the witness refused this key for the log")
 
+// errUnsignedFork is an answer without the checkpoint that still lists the
+// log's flagged equivocations: a fork, so an alarm, though nothing else was read.
+var errUnsignedFork = errors.New("history was rewritten")
+
 func canaryCommands() *cobra.Command {
 	canary := &cobra.Command{Use: "canary", Short: "A scheduled DEMO deal, and a watcher that alarms from the public witness when it stops",
 		// An operator's monitor, never run by an agent: a failure keeps
@@ -394,6 +398,9 @@ func canaryWatchCommand() *cobra.Command {
 		// The read is signed with the real clock: the witness checks it
 		// against its own, not against this command's deal clock.
 		cp, found, err := readWitnessCheckpoint(c.Context(), witness, logID, key, time.Now())
+		if errors.Is(err, errUnsignedFork) {
+			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s %s", logID, err))
+		}
 		if errors.Is(err, errReadKeyRefused) {
 			// The last good observation is kept, so every later run alarms too.
 			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s: %s (its checkpoints are now signed by another key, or this is not the log's key)", logID, err))
@@ -514,7 +521,11 @@ func readWitnessCheckpoint(ctx context.Context, witness, logID string, key ed255
 	}
 	if cp.Root == "" || cp.Timestamp == "" {
 		// The answer an unsigned read gets: the read's headers did not reach
-		// the witness, so nothing here says whether the log advanced.
+		// the witness, so nothing here says whether the log advanced. Its
+		// equivocations are still public, and a fork is still an alarm.
+		if n := len(cp.Equivocations); n > 0 {
+			return witnessCheckpoint{}, false, fmt.Errorf("%w: the witness has flagged %d conflicting checkpoint(s) for this log", errUnsignedFork, n)
+		}
 		return witnessCheckpoint{}, false, errors.New("answered without the checkpoint, as to an unsigned read")
 	}
 	return cp, true, nil
@@ -528,7 +539,11 @@ func readRefusal(body io.Reader) error {
 			Code string `json:"code"`
 		} `json:"detail"`
 	}
-	_ = json.NewDecoder(io.LimitReader(body, 1<<16)).Decode(&refusal)
+	if err := json.NewDecoder(io.LimitReader(body, 1<<16)).Decode(&refusal); err != nil {
+		// A body that does not decode names no code: a partly decoded one
+		// must not read as a key change.
+		return errors.New("status 403")
+	}
 	switch refusal.Detail.Code {
 	case "read_key_mismatch":
 		return errReadKeyRefused

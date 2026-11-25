@@ -447,6 +447,44 @@ func TestCanaryWatchLeavesTheLogUnreadOnOtherRefusals(t *testing.T) {
 	}
 }
 
+func TestCanaryWatchStillAlarmsOnAPublicForkWhenTheReadIsAnsweredUnsigned(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	now := clockAt(t, time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+	w := newFakeWitness(t)
+	w.set(5, 3, "r5", "r3", "k", *now)
+	w.unsigned = true
+	w.cp.Equivocations = append(w.cp.Equivocations, json.RawMessage(`{"mmr_size":5}`))
+	_, err := watch(t, w, filepath.Join(t.TempDir(), "state.json"))
+	require.ErrorIs(t, err, cli.ErrAlarm)
+	assert.Equal(t, "canary alarm: deal-cadence/00aa history was rewritten: the witness has flagged 1 conflicting checkpoint(s) for this log", cli.SafeError(err))
+}
+
+func TestCanaryWatchReadsAMalformedRefusalAsUnreadNotAKeyChange(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	now := clockAt(t, time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(http.StatusForbidden)
+		_, _ = rw.Write([]byte(`{"detail":{"code":"read_key_mismatch"},"detail":42}`))
+	}))
+	t.Cleanup(server.Close)
+	w := newFakeWitness(t)
+	w.set(5, 3, "r5", "r3", "k", *now)
+	state := filepath.Join(t.TempDir(), "state.json")
+	_, err := watch(t, w, state)
+	require.NoError(t, err)
+	before, err := os.ReadFile(state)
+	require.NoError(t, err)
+
+	t.Setenv("CANARY_TEST_SEED", watchSeed)
+	_, err = invoke(t, "", "deal", "canary", "watch", "--log-id", "deal-cadence/00aa", "--witness", server.URL,
+		"--expect-every", "26h", "--state", state, "--read-key-env", "CANARY_TEST_SEED")
+	require.ErrorIs(t, err, errWitnessUnread)
+	assert.NotErrorIs(t, err, cli.ErrAlarm)
+	after, err := os.ReadFile(state)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after))
+}
+
 func TestCanaryWatchNeedsAKeyToSignWith(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	_, err := invoke(t, "", "deal", "canary", "watch", "--log-id", "deal-cadence/00aa", "--witness", "https://witness.example",
