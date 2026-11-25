@@ -25,7 +25,8 @@ import (
 //     at the receipt's own registration time, the earliest when several;
 //   - failed: the proof is not of this copy's checkpoint, or a receipt does
 //     not verify and none does;
-//   - withheld: no directory, or no receipt held.
+//   - withheld: no directory, no receipt held, or no receipt that could be
+//     checked under the directory.
 // It is never a claim: a witness result leaves the copy's verdict as it was.
 
 // stampProofFlag is verify's flag for the proof file.
