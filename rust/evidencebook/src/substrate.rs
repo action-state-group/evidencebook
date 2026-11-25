@@ -364,6 +364,40 @@ pub enum SubstrateError {
     StalePrepared { prev_size: u64, latest_size: u64 },
 }
 
+/// The inclusion path (sibling hashes, leaf upward) of the leaf at
+/// `leaf_index` in the MMR of `mmr_size` nodes held by `nodes`: what
+/// [`CheckpointedLog::inclusion_path`] returns, for the substrate and the
+/// shelf's log alike.
+pub(crate) fn inclusion_path(
+    nodes: &impl NodeReader,
+    leaf_index: u64,
+    mmr_size: u64,
+) -> Result<Vec<[u8; 32]>, SubstrateError> {
+    let proof = inclusion_proof(nodes, leaf_index, mmr_size).log_err()?;
+    hashes(&proof.witness)
+}
+
+/// What a consistency proof from the MMR of `from` nodes to the MMR of `to`
+/// nodes held by `nodes` is made of: the old peaks, each one's path into the
+/// new MMR, and the new peaks. What [`CheckpointedLog::consistency_parts`]
+/// returns, for the same callers as [`inclusion_path`].
+pub(crate) fn consistency_parts(
+    nodes: &impl NodeReader,
+    from: u64,
+    to: u64,
+) -> Result<ConsistencyParts, SubstrateError> {
+    let proof = consistency_proof(nodes, from, to).log_err()?;
+    Ok((
+        hashes(&proof.old_peaks)?,
+        proof
+            .witness
+            .iter()
+            .map(|p| hashes(p))
+            .collect::<Result<_, _>>()?,
+        hashes(&proof.new_peaks)?,
+    ))
+}
+
 fn hashes(hex_list: &[String]) -> Result<Vec<[u8; 32]>, SubstrateError> {
     hex_list
         .iter()
@@ -665,37 +699,6 @@ impl CllSubstrate {
             .collect())
     }
 
-    /// The inclusion path (sibling hashes, leaf upward) of the leaf at
-    /// `leaf_index` in the MMR of `mmr_size` nodes.
-    pub(crate) fn inclusion_path(
-        &self,
-        leaf_index: u64,
-        mmr_size: u64,
-    ) -> Result<Vec<[u8; 32]>, SubstrateError> {
-        let proof = inclusion_proof(&self.node_store, leaf_index, mmr_size).log_err()?;
-        hashes(&proof.witness)
-    }
-
-    /// What a consistency proof from the MMR of `from` nodes to the MMR of
-    /// `to` nodes is made of: the old peaks, each one's path into the new
-    /// MMR, and the new peaks.
-    pub(crate) fn consistency_parts(
-        &self,
-        from: u64,
-        to: u64,
-    ) -> Result<ConsistencyParts, SubstrateError> {
-        let proof = consistency_proof(&self.node_store, from, to).log_err()?;
-        Ok((
-            hashes(&proof.old_peaks)?,
-            proof
-                .witness
-                .iter()
-                .map(|p| hashes(p))
-                .collect::<Result<_, _>>()?,
-            hashes(&proof.new_peaks)?,
-        ))
-    }
-
     fn peak_hashes(&self, size: u64) -> Result<Vec<Hash>, SubstrateError> {
         Ok(peaks(size)
             .log_err()?
@@ -721,11 +724,11 @@ impl CheckpointedLog for CllSubstrate {
         leaf_index: u64,
         mmr_size: u64,
     ) -> Result<Vec<[u8; 32]>, SubstrateError> {
-        CllSubstrate::inclusion_path(self, leaf_index, mmr_size)
+        inclusion_path(&self.node_store, leaf_index, mmr_size)
     }
 
     fn consistency_parts(&self, from: u64, to: u64) -> Result<ConsistencyParts, SubstrateError> {
-        CllSubstrate::consistency_parts(self, from, to)
+        consistency_parts(&self.node_store, from, to)
     }
 }
 
@@ -927,6 +930,42 @@ mod tests {
                 &proof
             ));
         }
+    }
+
+    #[test]
+    fn the_shared_proof_parts_read_any_node_store_as_the_substrate_does() {
+        // Another node store holding the same nodes (the shelf's in-memory
+        // one) gets what this substrate serves.
+        let dir = tempfile::tempdir().unwrap();
+        let key = SigningKey::from_bytes(&[9u8; 32]);
+        let mut s = open(dir.path());
+        for n in 0..3 {
+            s.append(&id(n)).unwrap();
+        }
+        let first = cut(&mut s, 3, &key).unwrap();
+        for n in 3..7 {
+            s.append(&id(n)).unwrap();
+        }
+        let second = cut(&mut s, 7, &key).unwrap();
+        let mut copy = cll::mmr::MemoryNodeStore::new();
+        let nodes: Vec<Hash> = (0..s.node_store.size())
+            .map(|p| s.node_store.node(p))
+            .collect();
+        cll::mmr::NodeAppender::append_nodes(&mut copy, &nodes);
+
+        for n in 0..7 {
+            assert_eq!(
+                inclusion_path(&copy, n, second.mmr_size).unwrap(),
+                CheckpointedLog::inclusion_path(&s, n, second.mmr_size).unwrap()
+            );
+        }
+        assert_eq!(
+            consistency_parts(&copy, first.mmr_size, second.mmr_size).unwrap(),
+            CheckpointedLog::consistency_parts(&s, first.mmr_size, second.mmr_size).unwrap()
+        );
+        assert!(inclusion_path(&copy, 7, second.mmr_size).is_err());
+        assert!(consistency_parts(&copy, second.mmr_size, first.mmr_size).is_err());
+        assert_eq!(Checkpoint::from_log(second.to_log()), second);
     }
 
     #[test]
