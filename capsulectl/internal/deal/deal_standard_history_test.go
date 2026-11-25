@@ -284,7 +284,7 @@ func TestTheCardIsAsOfItsAnchor(t *testing.T) {
 	var card map[string]any
 	require.NoError(t, json.Unmarshal(reply.Envelope.Artifact, &card))
 	assert.Equal(t, float64(1), card["in_window"].(map[string]any)["of"])
-	assert.Equal(t, evidencebook.ReasonCoverageUnsatisfiable, refusedWith(t, respondCard(t, pinRequest(t, "00"+pin[2:]))), "a pin that names no anchor")
+	assert.Equal(t, evidencebook.ReasonCoverageUnsatisfiable, refusedWith(t, respondCard(t, pinRequest(t, otherDigest(pin)))), "a pin that names no anchor")
 
 	// A policy change is in no card until a tick follows it.
 	*now = now.Add(3 * time.Hour)
@@ -938,4 +938,22 @@ func TestATickSurvivesARefusedCutFile(t *testing.T) {
 	tick := dealRun(t, "tick")
 	assert.Equal(t, "ticked", tick["state"])
 	assert.Equal(t, true, tick["cut_time_not_recorded"])
+}
+
+// otherDigest is a digest that differs from d in its first byte, whatever
+// that byte is: "00"+d[2:] equals d when d itself starts with 00 (1 run in
+// 256), and the test then asked for the real anchor (evidencebook#941).
+func otherDigest(d string) string {
+	if strings.HasPrefix(d, "00") {
+		return "01" + d[2:]
+	}
+	return "00" + d[2:]
+}
+
+func TestOtherDigestAlwaysDiffers(t *testing.T) {
+	for _, d := range []string{"00" + strings.Repeat("ab", 31), "ff" + strings.Repeat("ab", 31), "01" + strings.Repeat("00", 31)} {
+		got := otherDigest(d)
+		assert.NotEqual(t, d, got)
+		assert.Len(t, got, len(d))
+	}
 }
