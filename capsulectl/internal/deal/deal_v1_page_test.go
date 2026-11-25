@@ -247,3 +247,44 @@ func TestAV1ReportWitnessDirectoryRefusals(t *testing.T) {
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--witness-directory", w), "use it with --html")
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--html", filepath.Join(t.TempDir(), "p.html"), "--witness-directory", filepath.Join(t.TempDir(), "missing.json")), "cannot read --witness-directory")
 }
+
+// The page path with a real witness (the demo's vectors): v1ReportPage gives
+// its own verify the proof and the directory, and the page carries exactly
+// verify's witnessed result, never the proof or its receipts. In a browser
+// the page says that time in capsulectl's voice (CAPSULECTL_CHROME).
+func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
+	usePluginVerify(t)
+	keep, err := os.ReadFile(filepath.Join(witnessedVectors, "keep.json"))
+	require.NoError(t, err)
+	proof, err := readStampProof(filepath.Join(witnessedVectors, "proof.json"))
+	require.NoError(t, err)
+	dir, err := filepath.Abs(filepath.Join(witnessedVectors, "witnesses.json"))
+	require.NoError(t, err)
+	page, err := v1ReportPage(t.Context(), keep, "capsulectl deal verify --bundle receipt.html", proof, dir)
+	require.NoError(t, err)
+	report := pageVerifyReport(t, page)
+	var entry map[string]any
+	for _, e := range report["extensions"].([]any) {
+		if m := e.(map[string]any); m["kind"] == "x-deal-v1" {
+			entry = m
+		}
+	}
+	require.NotNil(t, entry)
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z"}, entry["witnessed"])
+	m := regexp.MustCompile(`<script type="application/json">([\s\S]*?)</script>`).FindSubmatch(page)
+	require.NotNil(t, m)
+	assert.Empty(t, holderWitnessEvidence(t, m[1]), "the page's bundle carries no proof of the holder's")
+	assert.NotContains(t, string(page), `"witness_receipts"`, "the page carries no receipt")
+
+	binary := os.Getenv("CAPSULECTL_CHROME")
+	if binary == "" {
+		return
+	}
+	file := filepath.Join(t.TempDir(), "receipt.html")
+	require.NoError(t, os.WriteFile(file, page, 0o600))
+	chrome := startHeadlessChrome(t, binary)
+	opened := chrome.open(t, "file://"+file, presentationViews[1])
+	var text string
+	opened.eval(t, `document.getElementById("app").textContent`, &text)
+	assert.Contains(t, text, "Time-stamped by Action State's witness at 2026-11-25T14:41:19Z, as capsulectl verify reported on your own book. This page did not check it itself.")
+}

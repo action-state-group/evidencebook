@@ -63,8 +63,8 @@ func v1Witnessed(value map[string]interface{}, proof *entryProof, dir *witness.D
 	if err != nil {
 		return failed("the stamp proof does not verify: " + err.Error())
 	}
-	if v.BookCheckpoint.Root != vb.Anchor.Root || v.BookCheckpoint.TreeSize != vb.Anchor.MMRSize {
-		return failed("the stamp proof is not of this copy's checkpoint")
+	if reason := stampProofOfCopy(vb, v); reason != "" {
+		return failed(reason)
 	}
 	if len(proof.WitnessReceipts) == 0 {
 		return withheld("no witness receipt is held for this checkpoint yet")
@@ -134,4 +134,24 @@ func (s *dealSession) v1PageWitness(ctx context.Context, c *cobra.Command, d *v1
 		return nil, dirPath, err
 	}
 	return &entryProof{StampProof: &best.proof, WitnessReceipts: best.receipts}, dirPath, nil
+}
+
+// stampProofOfCopy says why a verified stamp proof is not of the copy's own
+// signed checkpoint, or "" when it is: the copy's anchor is signed, by the
+// key that signed the proof's checkpoints (VerifyStampProof holds both to one
+// key), for the same log, root and size. A proof is outside input, so a root
+// and size alone are not enough: another key's checkpoint over the same
+// records would pass (Codex, #935).
+func stampProofOfCopy(vb evidencebook.VerifiedBundle, v evidencebook.VerifiedStampProof) string {
+	switch {
+	case !vb.AnchorAuthenticated:
+		return "the copy's checkpoint is not signed, so no stamp proof is of it"
+	case v.KeyID != vb.AnchorKeyID:
+		return "the stamp proof is signed by another key than the copy's checkpoint"
+	case v.BookCheckpoint.LogID != vb.LogID:
+		return "the stamp proof is of another log than the copy's"
+	case v.BookCheckpoint.Root != vb.Anchor.Root || v.BookCheckpoint.TreeSize != vb.Anchor.MMRSize:
+		return "the stamp proof is not of this copy's checkpoint"
+	}
+	return ""
 }

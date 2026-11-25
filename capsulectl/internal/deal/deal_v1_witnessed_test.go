@@ -4,6 +4,8 @@ package deal
 
 import (
 	"encoding/json"
+
+	"github.com/action-state-group/evidencebook"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,4 +111,32 @@ func TestV1WitnessedRefusals(t *testing.T) {
 	out, err := exec.Command(plugin, "verify", "--bundle", filepath.Join(witnessedVectors, "keep.json"), "--stamp-proof", filepath.Join(witnessedVectors, "witnesses.json")).CombinedOutput()
 	require.Error(t, err)
 	assert.Contains(t, string(out), "is not a proof file")
+}
+
+// A stamp proof binds to the copy only through the copy's own signed
+// checkpoint: the same key, log, root and size. Same root and size under
+// another key, or another log, is not of this copy.
+func TestStampProofOfCopy(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(witnessedVectors, "keep.json"))
+	require.NoError(t, err)
+	vb, err := evidencebook.VerifyBundle(raw)
+	require.NoError(t, err)
+	pr, err := readStampProof(filepath.Join(witnessedVectors, "proof.json"))
+	require.NoError(t, err)
+	v, err := evidencebook.VerifyStampProof(*pr.StampProof)
+	require.NoError(t, err)
+	assert.Empty(t, stampProofOfCopy(vb, v))
+
+	otherKey := v
+	otherKey.KeyID = strings.Repeat("ab", 32)
+	assert.Contains(t, stampProofOfCopy(vb, otherKey), "another key")
+	otherLog := v
+	otherLog.BookCheckpoint.LogID = "deal/other"
+	assert.Contains(t, stampProofOfCopy(vb, otherLog), "another log")
+	otherSize := v
+	otherSize.BookCheckpoint.TreeSize++
+	assert.Contains(t, stampProofOfCopy(vb, otherSize), "not of this copy's checkpoint")
+	unsigned := vb
+	unsigned.AnchorAuthenticated = false
+	assert.Contains(t, stampProofOfCopy(unsigned, v), "not signed")
 }
