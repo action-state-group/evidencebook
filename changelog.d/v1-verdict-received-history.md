@@ -1,0 +1,3 @@
+### Added: a verdict's `received_history` on x-deal-v1 (#666)
+
+- An x-deal-v1 `verdict` body may carry `received_history`: `history_sha256`, the SHA-256 of each History document the rules checker read about the counterparty, and `input_sha256`, the SHA-256 of the JCS form of the checker input's `received_history` member. It binds by digest, never by content (capsule-cli#327, design §5.4), and is read beside v0's closed `body_verdict`, like `nonce`. `xdealv1.VerdictBody.ReceivedHistory` (`ReceivedHistoryDigests`) holds it, and the schema, the fixtures (the buyer's pay verdict in Appendix A) and three negatives cover it. The member is a format door: a reader from an earlier release refuses a verdict that carries it, so readers need this release or later.

@@ -313,6 +313,15 @@ the digest could try each likely content against it.
   reused. `verdict` and `approval` are v0's bodies plus `nonce`, read against v0's closed bodies
   without it. A verdict's digest does not leave the holder under this rule (section 8 signs the
   approval, not the verdict); its nonce is defence in depth.
+- A `verdict` whose rules checker read the counterparty's verified History also carries
+  `received_history` (capsule-cli#327, design `327-received-history.md` section 5.4): optional
+  and closed, `history_sha256` (each document's SHA-256 over its bytes as received, in the order
+  the checker was given them, at most two) and `input_sha256` (the SHA-256 of the JCS form of the
+  checker input's `received_history` member). It binds what the verdict read by digest, never by
+  content, and is read, like `nonce`, beside v0's closed `body_verdict`, never inside it. A
+  verdict is a journal record, so it is in no deal-book copy, shared copy or adjudicator copy. A
+  reader that predates the member refuses a verdict that carries it: Go, Rust and Python read it
+  from the same release (evidencebook#666).
 - An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment.
 - `xdealv1.CheckAuthorizations` refuses a journal in which two records share a nonce or a
   `verbatim_commitment`.

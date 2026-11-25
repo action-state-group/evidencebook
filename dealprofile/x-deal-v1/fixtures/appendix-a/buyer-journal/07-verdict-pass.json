@@ -2,7 +2,7 @@
   "fixture": "appendix-a/buyer-journal/07-verdict-pass.json",
   "expect": "valid",
   "appendix_a_line": "23",
-  "story": "The verdict on that one check: pass.",
+  "story": "The verdict on that one check: pass, by rules that also read the seller's verified History, bound by digest.",
   "placement": "journal",
   "record": {
     "x-deal-v1": {
@@ -25,8 +25,14 @@
       "differences": [],
       "options": [],
       "card_commitment": "7b9f6fe06aa834704172546896e1750d2bd7f9525ac52d2c7dbac0b75f3c7263",
+      "received_history": {
+        "history_sha256": [
+          "9de66dfd145a857925d0d0f2ef85d05afa454a50a08f9714ed4546f7e504c41d"
+        ],
+        "input_sha256": "8e9427c813c58bb47bf9b2e5b1738db9d8c32aca727e0b80c7f55d545743433b"
+      },
       "nonce": "3d71e7a94efde455dec1c49ff84556237e52277549167d0d178b04683ca1b2b0"
     }
   },
-  "expected_digest": "35544ac049d9274577d609ed1acdb4fe73ae2cf07239585202ee93da48d118ca"
+  "expected_digest": "81541ec6a7d8b0e462fdeef4929127ac10a0d850544a32d59f3b456e8f8d16b6"
 }

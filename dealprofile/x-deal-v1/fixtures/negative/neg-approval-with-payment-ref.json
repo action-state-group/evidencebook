@@ -22,7 +22,7 @@
       "record_type": "approval",
       "refs": [
         {
-          "digest": "35544ac049d9274577d609ed1acdb4fe73ae2cf07239585202ee93da48d118ca",
+          "digest": "81541ec6a7d8b0e462fdeef4929127ac10a0d850544a32d59f3b456e8f8d16b6",
           "digest_alg": "SHA-256",
           "rel": "approves",
           "type": "deal-record"

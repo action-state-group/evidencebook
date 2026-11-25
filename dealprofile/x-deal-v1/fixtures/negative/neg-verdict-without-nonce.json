@@ -11,6 +11,12 @@
       "card_commitment": "7b9f6fe06aa834704172546896e1750d2bd7f9525ac52d2c7dbac0b75f3c7263",
       "differences": [],
       "options": [],
+      "received_history": {
+        "history_sha256": [
+          "9de66dfd145a857925d0d0f2ef85d05afa454a50a08f9714ed4546f7e504c41d"
+        ],
+        "input_sha256": "8e9427c813c58bb47bf9b2e5b1738db9d8c32aca727e0b80c7f55d545743433b"
+      },
       "result": "pass"
     },
     "x-deal-v1": {

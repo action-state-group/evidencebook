@@ -198,12 +198,21 @@ func (a *appendixA) approvedCheck(dir, n, line, action, paymentRef, approver str
 	card := label("card of " + check.Digest)
 	vb := journalBlock(TypeVerdict, at(1), true)
 	vb.Refs = []RelRef{rel("checks", check)}
-	verdict := a.add(fixture{Path: dir + "/" + next(n, 1) + "-verdict-pass.json", Line: line, Story: "The verdict on that one check: pass.",
-		Record: Record{Block: vb, Body: &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: card}, Nonce: label("VerdictBody nonce " + dir + " " + n)}}})
+	body := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: card}, Nonce: label("VerdictBody nonce " + dir + " " + n)}
+	story := "The verdict on that one check: pass."
+	if action == "pay" {
+		// The buyer's rules read the seller's verified History before
+		// paying (capsule-cli#327): the verdict binds it by digest. The
+		// seller's verdicts read none, so both forms are here.
+		body.ReceivedHistory = &ReceivedHistoryDigests{HistorySHA256: []string{label("seller's History")}, InputSHA256: label("received_history input of " + check.Digest)}
+		story = "The verdict on that one check: pass, by rules that also read the seller's verified History, bound by digest."
+	}
+	verdict := a.add(fixture{Path: dir + "/" + next(n, 1) + "-verdict-pass.json", Line: line, Story: story,
+		Record: Record{Block: vb, Body: body}})
 	ab := journalBlock(TypeApproval, at(2), true)
 	ab.Refs = []RelRef{rel("approves", verdict)}
 	approval := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: approver}, Nonce: label("ApprovalBody nonce " + dir + " " + n)}
-	story := "The owner's standing intent answers the passing verdict: proceed."
+	story = "The owner's standing intent answers the passing verdict: proceed."
 	if approver == "user" {
 		approval.SaidCommitment, approval.CardCommitment = label("owner said "+check.Digest), card
 		story = "The owner answers the card: proceed."

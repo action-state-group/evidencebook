@@ -13,8 +13,8 @@ b68c65d286586eb8e067ee025ac2748b5a5875a41d4d1cd0730071c41920a085  appendix-a/buy
 d69f3b3f5ec5cd7438a65b9ed8a8420893599ffd6e8b5ad3553c7c8f2a7e8bb3  appendix-a/buyer-journal/04-admit-go.json
 c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737  appendix-a/buyer-journal/05-offer.json
 c92275672ad7d9779c5d0ad2d5702da4f6f235ca73c3a5c5e0a39d736005013b  appendix-a/buyer-journal/06-check-pay.json
-35544ac049d9274577d609ed1acdb4fe73ae2cf07239585202ee93da48d118ca  appendix-a/buyer-journal/07-verdict-pass.json
-0d9393bd8c044a3b89aecc22c4aa1c78af80dd6eac1156eb54b6011ec693b31c  appendix-a/buyer-journal/08-approval-proceed.json
+81541ec6a7d8b0e462fdeef4929127ac10a0d850544a32d59f3b456e8f8d16b6  appendix-a/buyer-journal/07-verdict-pass.json
+137b76d3523626f7caf30ddcce8854a29006152a010f8da59752e339591780d2  appendix-a/buyer-journal/08-approval-proceed.json
 6b267a988b8c8a740551218ff0edb570dc63a33a41a0b09ac4d2ef81054c7a8e  appendix-a/case-book/01-ruling.json
 6f7d98688119855aeb41ce4339aca260b1785162003fc3ff53850cd24c9333c3  appendix-a/case-book/02-ruling-final.json
 0e91d7532b004e190000bee64a29a3b15c21cfb979c137fbba30da5335ee0215  appendix-a/seller-book/01-agreement.json

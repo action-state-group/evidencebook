@@ -455,7 +455,7 @@ def _check_body(r: Record) -> None:
     elif t == TYPE_CHECK:
         _check_v0_body(r, ("payment_ref", "nonce"), "body_check")
     elif t == TYPE_VERDICT:
-        _check_v0_body(r, ("nonce",), "body_verdict")
+        _check_v0_body(r, ("received_history", "nonce"), "body_verdict")
     elif t == TYPE_APPROVAL:
         _check_v0_body(r, ("nonce",), "body_approval")
 
