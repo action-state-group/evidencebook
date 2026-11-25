@@ -14,6 +14,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// sealOutcomeNote seals the owner's outcome_note on a closed deal, as the
+// removed `deal outcome-note seal` did, standing for a book an earlier release
+// wrote: such a book is still read, and still never shared (u597).
+func sealOutcomeNote(t *testing.T, id, reason string) {
+	t.Helper()
+	withSession(t, func(s *dealSession) {
+		require.NoError(t, s.useDeal(t.Context(), id, false))
+		events, err := s.load(t.Context(), id)
+		require.NoError(t, err)
+		closeAt := finalClose(events)
+		require.GreaterOrEqual(t, closeAt, 0, "the deal is closed")
+		_, err = s.seal(t.Context(), id, events, dealEvent{Kind: "outcome_note", OutcomeNote: &dealOutcomeNote{Reason: reason},
+			Confirms: events[closeAt].CapsuleID})
+		require.NoError(t, err)
+	})
+}
+
 // u597 (evidencebook-deal#218): the temporary outcome_note is never in a
 // shared copy. A record that confirms the close would say what the note says
 // even with its payload withheld (it has one value), and a copy is one log's
@@ -21,7 +38,7 @@ import (
 // is not affected. Sherlock2 (buzz d3a751ce).
 func TestNoSharedCopyIsMadeOfADealThatHoldsAnOutcomeNote(t *testing.T) {
 	id := closedUnderPack(t, packID, "")
-	dealRun(t, "outcome-note", "seal", "--deal", id, "--reason", "dispute_lost")
+	sealOutcomeNote(t, id, "dispute_lost")
 
 	for _, audience := range []string{cli.DealAudienceCounterparty, cli.DealAudienceAdjudicator} {
 		out := filepath.Join(t.TempDir(), "shared.json")
@@ -68,7 +85,7 @@ func TestANodeStillAnswersTheCardWithANotedDeal(t *testing.T) {
 	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
 	id := retailDeal(t)
 	dealRun(t, "close", "--deal", id, "--input", writeJSON(t, `{"status":"not_received","reason":"not_delivered"}`))
-	dealRun(t, "outcome-note", "seal", "--deal", id, "--reason", "dispute_lost")
+	sealOutcomeNote(t, id, "dispute_lost")
 	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
@@ -109,7 +126,7 @@ func TestARequestForANotedDealIsDeclinedWithTheReasonWordAlone(t *testing.T) {
 	before = ask(fresh)
 	assert.Nil(t, before["refusal"], "a deal with no note answers")
 
-	dealRun(t, "outcome-note", "seal", "--deal", id, "--reason", "dispute_lost")
+	sealOutcomeNote(t, id, "dispute_lost")
 	for name, coverage := range map[string]map[string]any{"fresh": fresh, "a floor past the log": {"min_freshness": map[string]any{"size": 999}}, "a future time": future, "both coverages": both} {
 		got := ask(coverage)
 		refusal, ok := got["refusal"].(map[string]any)
