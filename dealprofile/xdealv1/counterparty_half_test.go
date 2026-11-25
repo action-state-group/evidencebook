@@ -188,10 +188,12 @@ func TestHeldCounterpartyHalf(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, ext, "the proof reaches a record not held")
 
-	// Their agreement of the same role as the holder's: no half, and the
-	// holder's report is not blocked by it.
+	// Their agreement of the same role as the holder's: the shelf does not
+	// hold it (evidencebook#884), so no half, and the holder's report is not
+	// blocked by it.
 	sr := newHandshake(t, func(a *AgreeBody) { a.Role = RoleBuyer })
-	sr.buyer.receive(sr.agreementPair, &sr.proof)
+	_, err = sr.buyer.receiveRaw(sr.agreementPair, &sr.proof)
+	assert.ErrorContains(t, err, "may not push this record")
 	_, _, srHolder := gateBook(t, sr, true)
 	ext, err = HeldCounterpartyHalf(ctx, sr.buyer.shelf, srHolder)
 	require.NoError(t, err)
