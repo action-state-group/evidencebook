@@ -285,8 +285,6 @@ def test_start_from_books_vectors(case):
      'agree_by "x" is not'),
     (StartInput(at="2026-11-01T10:00:00Z", side="acceptor", counterparty_layer=True,
                 agree_by="2026-11-02T00:00:00Z", counterpart_agreement_held=True), "a held counterpart agreement"),
-    (StartInput(at="2026-11-01T10:00:00Z", side="offerer", counterparty_layer=True,
-                agree_by="2026-11-02T00:00:00Z"), "an offerer writes its agreement after"),
     (StartInput(at="2026-11-01T10:00:00Z", side="offerer", first_act=FirstAct("late")),
      'first_act.time "late" is not'),
 ])

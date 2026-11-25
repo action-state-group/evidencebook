@@ -3,7 +3,6 @@
 package xdealv1
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -74,13 +73,18 @@ func TestReportAfterAcceptorGenesisFork(t *testing.T) {
 	}
 }
 
-// Naming neither branch, nothing of the forked book is read, and an
-// offerer whose agreement names no acceptor agreement it holds is still
-// refused as inconsistent: an honest offerer names the branch it saw.
+// Naming neither branch, nothing of the forked book is read: the deal reads
+// as awaiting before agree_by (u217: option 1 when the offerer names neither),
+// and the fork is still shown, with nothing counted.
 func TestReportAfterAcceptorGenesisForkNamingNeither(t *testing.T) {
 	h, _ := genesisFork(t, func(*handshake) Null[string] { return Some(strings.Repeat("ab", 32)) })
-	_, _, err := h.buyer.status.ReportWithBook(context.Background(), caseBuyerLog, keepCopy(h.buyer.now.Format(time.RFC3339)))
-	assert.ErrorContains(t, err, "an offerer writes its agreement after the acceptor's it holds")
+	r, pair, x := holderBundle(t, h.buyer, "buyer", caseBuyerLog, keepCopy(h.buyer.now.Format(time.RFC3339)))
+	_, err := VerifyReportBundle(pair, extJSON(t, x))
+	require.NoError(t, err)
+	require.NotNil(t, r.RestsOn.Counterparty)
+	assert.Equal(t, uint64(1), r.RestsOn.Counterparty.ForkAt)
+	assert.Zero(t, r.RestsOn.Counterparty.Counted)
+	assert.Equal(t, StateAwaitingAgreement, r.Start.State)
 }
 
 // The roles swapped (round 1 of #892): the offerer (the buyer) forks its book

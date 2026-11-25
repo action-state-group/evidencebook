@@ -131,9 +131,9 @@ func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.Status
 			// (evidencebook#878, Sherlock2's option 2: the deal both sides
 			// signed starts, and fork_at 1 stays shown). An honest offerer
 			// seals its agreement after the acceptor's it saw, so its seen
-			// names a branch; naming neither, nothing is read, and Start
-			// still refuses the offerer's inconsistent book. An acceptor
-			// reads the branch its later records name, none before.
+			// names a branch; naming neither, nothing is read and the deal
+			// reads awaiting, then not started (u217). An acceptor reads the
+			// branch its later records name, none before.
 			if prefix.ForkAt == 1 && len(theirs) == 0 {
 				theirs = namedBranch(held, *ag.CounterpartyKey.V, theirLog, own)
 			}
@@ -167,8 +167,13 @@ func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.Status
 	slices.Sort(link.CheckedOver)
 	link.CheckedOver = slices.Compact(link.CheckedOver)
 	var cp *ReportCounterpartLog
-	if len(theirs) > 0 {
+	switch {
+	case len(theirs) > 0:
 		cp = &ReportCounterpartLog{LogID: theirLog, Counted: uint64(len(theirs)), Last: theirs[len(theirs)-1].rec.RecordID, ForkAt: prefix.ForkAt}
+	case theirLog != "" && prefix.ForkAt > 0:
+		// Nothing read of a forked book (the holder names no branch): the
+		// fork is still shown, with nothing counted (u217).
+		cp = &ReportCounterpartLog{LogID: theirLog, ForkAt: prefix.ForkAt}
 	}
 	pairs := map[string][]byte{}
 	for _, o := range own {

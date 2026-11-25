@@ -287,6 +287,50 @@
       }
     },
     {
+      "name": "offerer-holds-none",
+      "why": "an offerer that counts no acceptor agreement (the acceptor forked at its first record and the offerer names neither branch, u217): awaiting before agree_by",
+      "input": {
+        "at": "2026-11-01T12:00:00Z",
+        "side": "offerer",
+        "counterparty_layer": true,
+        "agree_by": "2026-11-02T23:59:59Z",
+        "counterpart_agreement_held": false,
+        "same_offer_and_rows": null,
+        "offerer_names_acceptor": null,
+        "offerer_agreement_time": null,
+        "acceptor_names_offerer": false,
+        "cancellation_named_first": false,
+        "first_act": null
+      },
+      "expect": {
+        "state": "awaiting_agreement",
+        "local": false,
+        "by": null
+      }
+    },
+    {
+      "name": "offerer-holds-none-after",
+      "why": "the same after agree_by: not started",
+      "input": {
+        "at": "2026-11-05T12:00:00Z",
+        "side": "offerer",
+        "counterparty_layer": true,
+        "agree_by": "2026-11-02T23:59:59Z",
+        "counterpart_agreement_held": false,
+        "same_offer_and_rows": null,
+        "offerer_names_acceptor": null,
+        "offerer_agreement_time": null,
+        "acceptor_names_offerer": false,
+        "cancellation_named_first": false,
+        "first_act": null
+      },
+      "expect": {
+        "state": "not_started",
+        "local": false,
+        "by": null
+      }
+    },
+    {
       "name": "offerer-names-another",
       "why": "the offerer's agreement names another record than the acceptor's agreement: it does not join; awaiting before agree_by",
       "input": {

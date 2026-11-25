@@ -127,7 +127,12 @@ def start(inp: StartInput) -> StartResult:
         raise ValueError("xdealv1: start: a held counterpart agreement gives same_offer_and_rows and "
                          "offerer_names_acceptor")
     # 3. No counterpart agreement, or one about another deal.
-    if not inp.counterpart_agreement_held or inp.same_offer_and_rows is False:
+    # An offerer that counts no acceptor agreement reads as an acceptor does
+    # (u217, evidencebook#878); one holding an agreement on another offer or
+    # rows is inconsistent.
+    if not inp.counterpart_agreement_held:
+        return awaiting
+    if inp.same_offer_and_rows is False:
         if inp.side == SIDE_OFFERER:
             raise ValueError("xdealv1: start: an offerer writes its agreement after the acceptor's it holds")
         return awaiting
