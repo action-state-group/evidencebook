@@ -303,7 +303,13 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
 - A witness that is slow or down never stops a deal. The delivery stays
   pending and is retried by a later poll once its backoff has passed,
   or by hand with `capsulectl --profile deal deal tick`, which retries
-  every pending delivery whether or not a tick is due.
+  pending deliveries whether or not a tick is due. They go oldest first,
+  since the witness takes a checkpoint only after its predecessor, and a
+  run stops at the first one the witness does not take. A run without
+  `--wait-up-to` also stops once it has spent `--deliver-for` (5s by
+  default) on deliveries, checked between them; each row it left is listed
+  in `pending` with `not_tried_this_run: true` and its stored reason, for a
+  later tick.
 - A delivery whose request never reached the witness (refused, unresolved,
   timed out, or stopped by a proxy) is reported as "pending: network consent
   needed, or no network", in the poll's output and on the receipt: on an
