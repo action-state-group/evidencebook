@@ -668,7 +668,8 @@ capsulectl. Follow them; never make up your own narration of a step.
 - **A report goes out only when asked.** The cadence, `deal tick`,
   checkpoints and other bookkeeping stay silent. On an x-deal-v1 deal the
   report is `deal report --deal ID`, read at your last checkpoint (Purchase,
-  step 11); there is no receipt page yet.
+  step 11); `deal report --deal ID --html FILE` writes your own copy's
+  receipt page, which shows capsulectl's own verify report of that copy.
 - **"Show my deals" comes from the record, never from memory.** Run `deal
   list --json` and say each deal's `say`, one per line, in the order
   listed. For one deal, find it in the same list by its `say` and

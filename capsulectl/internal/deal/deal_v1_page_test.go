@@ -79,6 +79,13 @@ func TestAV1ReportHTMLRefusals(t *testing.T) {
 		assert.Contains(t, v1Err(t, append([]string{"report", "--deal", h.dealID, "--html", file}, extra...)...), "your own copy's receipt page", extra)
 	}
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--html", file, "--share", "counterparty", "--to", "Kettle Shop"), "goes to --bundle with --share")
+	// --read-only writes nothing, --html included; an explicit --share keep
+	// leaves every other refusal in place.
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--html", file, "--read-only"), "--read-only writes nothing")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--html", file, "--share", "keep", "--read-only"), "--read-only writes nothing")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--html", file, "--share", "keep", "--email", filepath.Join(t.TempDir(), "e.eml")), "receipt email")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--html", file, "--share", "keep", "--from-bundle", other), "countersignatures")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--html", " "), "cannot be empty")
 	_, err := os.Lstat(file)
 	assert.ErrorIs(t, err, os.ErrNotExist, "no page is written")
 }
@@ -99,9 +106,14 @@ func TestSelfVerifyReport(t *testing.T) {
 		defer func() { selfVerifyBinary = old }()
 		return selfVerifyReport(context.Background(), []byte(`{}`))
 	}
-	got, err := run(script("invalid", `echo '{"spec_version":"capsule-cli-result/v1","verdict":"INVALID"}'; exit 1`))
+	got, err := run(script("invalid", `echo '{"spec_version":"capsule-cli-result/v1","verdict":"INVALID","bundle_digest":"ab"}'; exit 1`))
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"spec_version":"capsule-cli-result/v1","verdict":"INVALID"}`, string(got))
+	assert.JSONEq(t, `{"spec_version":"capsule-cli-result/v1","verdict":"INVALID","bundle_digest":"ab"}`, string(got))
+	// capsulectl's error envelope has the same spec_version and is no report.
+	_, err = run(script("envelope", `echo '{"spec_version":"capsule-cli-result/v1","error":"operation failed"}'; exit 2`))
+	assert.ErrorContains(t, err, "gave no report")
+	_, err = run(script("errorful", `echo '{"spec_version":"capsule-cli-result/v1","verdict":"VALID","bundle_digest":"ab","error":"x"}'`))
+	assert.ErrorContains(t, err, "gave no report")
 	_, err = run(script("nothing", `echo boom >&2; exit 2`))
 	assert.ErrorContains(t, err, "gave no report: boom")
 	_, err = run(script("other", `echo '{"spec_version":"something-else/v1"}'`))

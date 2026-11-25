@@ -49,10 +49,8 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	switch {
 	case f.Changed("html") && (f.Changed("out") || f.Changed("bundle") || f.Changed("withheld")):
 		return cli.InputError("--html writes your own copy's receipt page; it does not take --out, --bundle or --withheld")
-	case f.Changed("html") && f.Changed("share"):
-		if share, _ := f.GetString("share"); share != dealprofile.AudienceKeep {
-			return cli.InputError("--html writes your own copy's receipt page; a copy for someone else goes to --bundle with --share")
-		}
+	case f.Changed("html") && f.Changed("share") && f.Lookup("share").Value.String() != dealprofile.AudienceKeep:
+		return cli.InputError("--html writes your own copy's receipt page; a copy for someone else goes to --bundle with --share")
 	case f.Changed("email"):
 		return cli.InputError("--email writes an x-deal-v0 deal's receipt email; it does not apply to an x-deal-v1 report")
 	case f.Changed("from-bundle") || f.Changed("directory"):
@@ -69,10 +67,10 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 		return cli.InputError("--withheld writes the bundle you ask a countersigner to sign (`countersign request`); it is not a copy for the other side or an adjudicator: drop --share")
 	case f.Changed("out") && f.Changed("bundle"):
 		return cli.InputError("--out writes the sealed report and --bundle the Evidence Bundle that carries it: choose one")
-	case readOnly && (f.Changed("out") || f.Changed("bundle") || f.Changed("share") || f.Changed("to")):
-		return cli.InputError("--read-only writes nothing: it takes no --out, --bundle, --share or --to")
+	case readOnly && (f.Changed("out") || f.Changed("bundle") || f.Changed("html") || f.Changed("share") || f.Changed("to")):
+		return cli.InputError("--read-only writes nothing: it takes no --out, --bundle, --html, --share or --to")
 	}
-	for _, name := range []string{"out", "bundle"} {
+	for _, name := range []string{"out", "bundle", "html"} {
 		if v, _ := f.GetString(name); f.Changed(name) && strings.TrimSpace(v) == "" {
 			return cli.InputError("--" + name + " names the file to write; it cannot be empty")
 		}

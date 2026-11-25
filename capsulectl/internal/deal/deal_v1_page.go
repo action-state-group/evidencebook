@@ -92,10 +92,19 @@ func selfVerifyReport(ctx context.Context, bundle []byte) ([]byte, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	runErr := cmd.Run()
-	var probe struct {
-		SpecVersion string `json:"spec_version"`
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("verify --bundle for the page: %w", ctx.Err())
 	}
-	if json.Unmarshal(stdout.Bytes(), &probe) != nil || probe.SpecVersion != "capsule-cli-result/v1" {
+	// A report has a verdict and the bundle's digest; capsulectl's error
+	// envelope shares the spec_version but has neither, and is no report.
+	var probe struct {
+		SpecVersion  string          `json:"spec_version"`
+		Verdict      string          `json:"verdict"`
+		BundleDigest string          `json:"bundle_digest"`
+		Error        json.RawMessage `json:"error"`
+	}
+	if json.Unmarshal(stdout.Bytes(), &probe) != nil || probe.SpecVersion != "capsule-cli-result/v1" ||
+		probe.Verdict == "" || probe.BundleDigest == "" || probe.Error != nil {
 		var exitErr *exec.ExitError
 		if runErr != nil && !errors.As(runErr, &exitErr) {
 			return nil, fmt.Errorf("verify --bundle for the page: %w", runErr)
