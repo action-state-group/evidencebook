@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/action-state-group/agent-action-capsule/go/personalhistory"
@@ -25,10 +27,10 @@ import (
 // anything the counterparty sent with this deal.
 //
 // It is read on x-deal-v1 deals only; x-deal-v0 is frozen (evidencebook#626).
-// The kinds read are a personal_history_basic/1 History (H3). A stapled
-// history_card/2 (H4) waits for capsule-cli's library entry for the staple
-// verifier (capsule-cli#567) and is refused until then; history_card/1 is
-// not read (staples are history_card/2 only).
+// The kinds read are a personal_history_basic/1 History (H3) and a stapled
+// history_card/2 (H4), each verified with capsule-cli's own verifier
+// (HistoryVerdict, StapleVerdict); history_card/1 is not read (staples are
+// history_card/2 only).
 
 const (
 	// receivedHistoryKind is the one History kind `--history` reads: a
@@ -42,9 +44,12 @@ const (
 	// to the request octets in the file (PH §8.2). A staple that answers no
 	// request of ours would carry NOT_PRESENT (design §5.2).
 	receivedHistoryBound = "BOUND"
-	historyCardStaple1   = "history_card/1"
-	historyCardStaple2   = "history_card/2"
-	evidenceCommitment   = "evidence-commitment/1"
+	// receivedHistoryNotBound is a staple's request_binding when it checks
+	// out but answers no request of ours (design §5.2).
+	receivedHistoryNotBound = "NOT_PRESENT"
+	historyCardStaple1      = "history_card/1"
+	historyCardStaple2      = "history_card/2"
+	evidenceCommitment      = "evidence-commitment/1"
 )
 
 // receivedHistoryDoc is one verified document, as the checker reads it.
@@ -89,6 +94,7 @@ func historyFlagsGiven(c *cobra.Command) bool {
 func readReceivedHistory(c *cobra.Command) (*receivedHistory, error) {
 	paths, _ := c.Flags().GetStringArray("history")
 	keys, _ := c.Flags().GetStringSlice("counterparty-key")
+	checkpointKeys, _ := c.Flags().GetStringSlice("checkpoint-key")
 	switch {
 	case len(paths) == 0 && len(keys) == 0:
 		return nil, nil
@@ -97,9 +103,9 @@ func readReceivedHistory(c *cobra.Command) (*receivedHistory, error) {
 	case len(keys) == 0:
 		return nil, cli.InputError("--history needs --counterparty-key: the counterparty's key from your deployment policy, never one read from the History or from anything the counterparty sent")
 	}
-	for _, k := range keys {
+	for _, k := range append(slices.Clone(keys), checkpointKeys...) {
 		if len(k) != 64 || !cli.IsLowerHex(k) {
-			return nil, cli.InputError("--counterparty-key is a raw Ed25519 public key as 64 lowercase hex characters")
+			return nil, cli.InputError("--counterparty-key and --checkpoint-key are raw Ed25519 public keys as 64 lowercase hex characters")
 		}
 	}
 	h := &receivedHistory{About: receivedHistoryAbout, CounterpartyKeys: keys, Histories: []receivedHistoryDoc{}}
@@ -116,7 +122,7 @@ func readReceivedHistory(c *cobra.Command) (*receivedHistory, error) {
 			return nil, cli.InputError("--history " + path + " is the same document as an earlier --history")
 		}
 		seen[digest] = true
-		doc, err := verifyReceivedHistory(path, raw, keys)
+		doc, err := verifyReceivedHistory(path, raw, keys, checkpointKeys)
 		if err != nil {
 			return nil, err
 		}
@@ -127,32 +133,27 @@ func readReceivedHistory(c *cobra.Command) (*receivedHistory, error) {
 		doc.SHA256 = digest
 		h.Histories = append(h.Histories, doc)
 	}
+	if len(checkpointKeys) > 0 && !kinds[historyCardStaple2] {
+		return nil, cli.InputError("--checkpoint-key goes with a stapled " + historyCardStaple2 + ": it is the key its checkpoints are signed by")
+	}
 	return h, nil
 }
 
 // verifyReceivedHistory verifies one document with capsule-cli's History
 // verifier under keys, and returns it as the checker reads it. Every reason
 // it refuses with is the verifier's, never text from the document.
-func verifyReceivedHistory(path string, raw []byte, keys []string) (receivedHistoryDoc, error) {
+func verifyReceivedHistory(path string, raw []byte, keys, checkpointKeys []string) (receivedHistoryDoc, error) {
 	var head struct {
 		History any `json:"history"`
 		Profile any `json:"profile"`
 	}
-	if err := json.Unmarshal(raw, &head); err != nil {
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not a JSON History document")
+	if json.Unmarshal(raw, &head) != nil {
+		head.History = nil
 	}
-	kind, _ := head.History.(string)
-	if profile, ok := head.Profile.(string); ok && kind == "" {
-		kind = profile
-	}
-	switch kind {
-	case receivedHistoryKind:
-	case historyCardStaple2, evidenceCommitment:
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a stapled history card: this build cannot verify a stapled " + historyCardStaple2 + " yet (capsule-cli#567), so it is not read")
-	case historyCardStaple1:
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a " + historyCardStaple1 + " staple: a stapled card is read as " + historyCardStaple2 + " only")
-	default:
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not a History this check reads: want a " + receivedHistoryKind + " History")
+	if kind, _ := head.History.(string); kind != receivedHistoryKind {
+		// Anything else is read as a staple, as `verify --history` reads it
+		// (the kind is the file's own, history before profile), or refused.
+		return verifyReceivedStaple(path, raw, keys, checkpointKeys)
 	}
 	file, err := personalhistory.ParseFile(raw)
 	if err != nil {
@@ -177,6 +178,79 @@ func verifyReceivedHistory(path string, raw []byte, keys []string) (receivedHist
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " cannot be handed to the rules checker: " + err.Error())
 	}
 	return receivedHistoryDoc{Kind: receivedHistoryKind, RequestBinding: receivedHistoryBound, Document: document}, nil
+}
+
+// verifyReceivedStaple verifies a stapled history_card/2 (H4) with
+// capsule-cli's StapleVerdict under one counterparty key, the one the host's
+// policy gives for this deal's counterparty, and the checkpoint keys. Design
+// §5.2: accepted, or checking out but answering no request of ours
+// (request_binding NOT_PRESENT, a commitment staples the reply octets only),
+// reads as verified; a check left unrun, or a card not accepted, refuses
+// the check. The staple must be read under exactly the key given (Sherlock2
+// on capsule-cli#567: a staple under another key is not this counterparty's).
+func verifyReceivedStaple(path string, raw []byte, keys, checkpointKeys []string) (receivedHistoryDoc, error) {
+	notRead := cli.InputError("--history " + path + " is not a History this check reads: want a " + receivedHistoryKind + " History or a stapled " + historyCardStaple2)
+	if len(keys) != 1 {
+		if _, err := cli.StapleVerdict(raw, nil, nil); err != nil {
+			return receivedHistoryDoc{}, notRead
+		}
+		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a stapled card: give exactly one --counterparty-key, this deal's counterparty's, so the card is read as theirs and no one else's")
+	}
+	result, err := cli.StapleVerdict(raw, keys, checkpointKeys)
+	if errors.Is(err, cli.ErrInput) {
+		return receivedHistoryDoc{}, notRead
+	} else if err != nil {
+		return receivedHistoryDoc{}, err
+	}
+	switch {
+	case len(result.Derivations) != 1:
+		return receivedHistoryDoc{}, cli.InputError("--history " + path + " staples " + fmt.Sprint(len(result.Derivations)) + " cards: a check reads one stapled card")
+	case result.Derivations[0] == historyCardStaple1:
+		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a " + historyCardStaple1 + " staple: a stapled card is read as " + historyCardStaple2 + " only")
+	case result.Derivations[0] != historyCardStaple2:
+		return receivedHistoryDoc{}, notRead
+	case result.CounterpartyKey != keys[0]:
+		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not verified under --counterparty-key, so it is not attributable to this counterparty")
+	}
+	binding, err := stapleBinding(path, result)
+	if err != nil {
+		return receivedHistoryDoc{}, err
+	}
+	document, err := jcsReadyDocument(raw)
+	if err != nil {
+		return receivedHistoryDoc{}, cli.InputError("--history " + path + " cannot be handed to the rules checker: " + err.Error())
+	}
+	return receivedHistoryDoc{Kind: historyCardStaple2, RequestBinding: binding, Document: document}, nil
+}
+
+// stapleBinding reads a staple's verdict as design §5.2 does: accepted is
+// bound to our request (BOUND); checking out but answering no request of ours
+// (a commitment staples the reply octets only) is verified with
+// request_binding NOT_PRESENT, tested before ErrPartial, which it also
+// matches; a check left unrun, or a card not accepted, refuses with the
+// verifier's own reason.
+func stapleBinding(path string, result cli.StapleResult) (string, error) {
+	switch {
+	case result.Outcome == nil:
+		return receivedHistoryBound, nil
+	case errors.Is(result.Outcome, cli.ErrHistoryAnswersNoRequest):
+		return receivedHistoryNotBound, nil
+	case errors.Is(result.Outcome, cli.ErrPartial):
+		return "", cli.InputError("--history " + path + " is not verified: " + strings.Join(result.NotRun, ", ") + " was not checked" + checkpointHint(result.NotRun))
+	}
+	why := "it is not accepted under --counterparty-key"
+	if len(result.Report.Findings) > 0 {
+		why += " (" + strings.Join(result.Report.Findings, "; ") + ")"
+	}
+	return "", cli.InputError("--history " + path + " is not verified: " + why + ". It is not attributable to this counterparty, so the check does not run")
+}
+
+// checkpointHint names the flag a checkpoint_key left unchecked needs.
+func checkpointHint(notRun []string) string {
+	if slices.Contains(notRun, "checkpoint_key") {
+		return " (give --checkpoint-key, the key its checkpoints are signed by, from your deployment policy)"
+	}
+	return ""
 }
 
 // jcsReadyDocument is the document's bytes exactly as received, once it is
