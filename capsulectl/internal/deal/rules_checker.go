@@ -1165,8 +1165,8 @@ func v1ActCheck(events []sealedEvent, actID string) string {
 // merchant reads a v1 payment too (evidencebook#890). Both records are built
 // under the act's own deal key, never the key of the deal being checked, so
 // their per-deal fingerprints are the ones that deal sealed. complete is false
-// when the act, or the check it rests on, cannot be read; record is nil when
-// the act cannot.
+// when the act, its chain to its check, or the check cannot be read; record is
+// nil when the act cannot.
 func (s *dealSession) v1HistoryAct(dealID, actID string, evs []sealedEvent) (record map[string]interface{}, complete bool) {
 	defer func(key []byte) { s.dkey = key }(s.dkey)
 	s.dkey = dealprofile.DealKey(s.secret, dealID)
@@ -1174,9 +1174,13 @@ func (s *dealSession) v1HistoryAct(dealID, actID string, evs []sealedEvent) (rec
 	if err != nil || record == nil {
 		return nil, false
 	}
+	// Every act the history reads rests on an authorization (v1RulesActs), so
+	// one whose chain to its check is broken is kept without who it was with,
+	// and the history is then not complete: a rule never reads that merchant
+	// as new without saying so.
 	check := v1ActCheck(evs, actID)
 	if check == "" {
-		return record, true
+		return record, false
 	}
 	if cp := v1CheckCounterpartyProfile(evs, check); cp != nil {
 		record["counterparty_profile"] = cp

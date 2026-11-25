@@ -219,6 +219,9 @@ func TestEverydayLimitsOnAV1Deal(t *testing.T) {
 		assert.Contains(t, diffs, "r05-spending-limits#7d: the 7-day total with this purchase is over the 7-day limit you set (limit 10000; value 12000)")
 		assert.NotContains(t, diffs, "r05-spending-limits#per_purchase")
 		assert.NotContains(t, diffs, "r06-new-merchant", "this merchant was paid before")
+		for _, id := range []string{"r02-ordinary-purchase", "r06-new-merchant"} {
+			assert.Equal(t, "pass", rulesFinding(t, out, id)["verdict"], "%s: an earlier payment to this merchant", id)
+		}
 
 	})
 
