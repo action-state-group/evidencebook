@@ -3,6 +3,7 @@
 package deal
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -260,4 +261,24 @@ func rulesGivenHistory(r dealRules) dealRules {
 		r.Reason += rePinHint
 	}
 	return r
+}
+
+// runRulesGivenHistory runs the pinned checker on input with h added, as the
+// run whose rules are sealed: the checker's words stay out (rulesGivenHistory),
+// the History is bound when the checker started on it (boundHistory), and a
+// deny is checked against a run without the History, so History alone never
+// denies (D1 condition 1). A run without the History that does not answer
+// cannot show the deny is not History's alone, so the check asks.
+func runRulesGivenHistory(ctx context.Context, p cli.Profile, role string, input []byte, history *dealRulesHistory, h *receivedHistory) (dealRules, error) {
+	checked, inputSHA256, err := withReceivedHistory(input, h)
+	if err != nil {
+		return dealRules{}, err
+	}
+	rules := rulesGivenHistory(runRulesChecker(ctx, p, role, checked, history))
+	rules.ReceivedHistory = boundHistory(rules, h, inputSHA256)
+	if rules.Status == "evaluated" && rules.Verdict == "deny" {
+		without := runRulesChecker(ctx, p, role, input, history)
+		rules.HistoryAloneDeny = without.Status != "evaluated" || without.Verdict != "deny"
+	}
+	return rules, nil
 }

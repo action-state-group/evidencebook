@@ -2587,16 +2587,12 @@ func dealCheckCommand() *cobra.Command {
 				// Given --history, the run whose rules are sealed reads the
 				// counterparty's verified History (D1 (a)); the cards' notice
 				// run below reads the input without it, as before.
-				checked, inputSHA256 := input, ""
 				if receivedHist != nil {
-					if checked, inputSHA256, err = withReceivedHistory(input, receivedHist); err != nil {
+					if rules, err = runRulesGivenHistory(ctx, s.p, dealRole(events), input, history, receivedHist); err != nil {
 						return err
 					}
-				}
-				rules = runRulesChecker(ctx, s.p, dealRole(events), checked, history)
-				if receivedHist != nil {
-					rules = rulesGivenHistory(rules)
-					rules.ReceivedHistory = boundHistory(rules, receivedHist, inputSHA256)
+				} else {
+					rules = runRulesChecker(ctx, s.p, dealRole(events), input, history)
 				}
 				rules.Notice = ""
 				if len(received) > 0 {

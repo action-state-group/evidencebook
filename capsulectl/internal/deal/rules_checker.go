@@ -80,6 +80,13 @@ type dealRules struct {
 	// the checker was started with it, whatever it answered, and sealed on
 	// an x-deal-v1 verdict as its received_history member (v1Record).
 	ReceivedHistory *xdealv1.ReceivedHistoryDigests `json:"received_history,omitempty"`
+	// HistoryAloneDeny is set when the checker denied given the History and
+	// did not deny without it (or could not answer without it): History
+	// alone never makes the verdict NO (D1 condition 1, capsule-cli#327
+	// design §3), so the check asks instead (effectiveRulesVerdict). The
+	// checker's own deny stays in Verdict and is sealed as given, so a
+	// re-run of the bound input reproduces it.
+	HistoryAloneDeny bool `json:"history_alone_deny,omitempty"`
 	// Notice is the checker's one line for the person (external-check-result/v0
 	// notice), as the run reported it. Only the run that was given received
 	// cards is read for it (receivedNotice); json:"-" keeps it out of every
@@ -450,6 +457,12 @@ func rulesDifferences(r *dealRules) []dealDifference {
 	if r == nil {
 		return nil
 	}
+	if r.HistoryAloneDeny && r.Verdict == "deny" {
+		// Read as the escalation condition 1 allows, with a line saying why.
+		asked := *r
+		asked.Verdict = effectiveRulesVerdict(r)
+		return append(rulesDifferences(&asked), dealDifference{Question: "safety", Rule: "rules_escalate", Text: historyAloneText})
+	}
 	if r.Status == "not_evaluated" {
 		return []dealDifference{{Question: "safety", Rule: "rules_not_checked", Text: "Your rules were not checked: " + r.Reason}}
 	}
@@ -506,6 +519,22 @@ func rulesDifferences(r *dealRules) []dealDifference {
 		out = append(out, dealDifference{Question: "safety", Rule: rule, Text: "Your rules (" + r.RulesetID + "): " + r.Verdict})
 	}
 	return out
+}
+
+// historyAloneText says why a deny reads as a question: the counterparty's
+// History alone never decides no (D1 condition 1).
+const historyAloneText = "Your rules would refuse this only because of the counterparty's History, which never refuses on its own: you decide"
+
+// effectiveRulesVerdict is the rules verdict a check acts on: the checker's,
+// except a deny History alone caused, which asks (escalate).
+func effectiveRulesVerdict(r *dealRules) string {
+	if r != nil && r.HistoryAloneDeny && r.Verdict == "deny" {
+		return "escalate"
+	}
+	if r == nil {
+		return ""
+	}
+	return r.Verdict
 }
 
 func compactJSON(raw json.RawMessage) string {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/dealprofile"
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 )
 
 // recheckAtSend re-runs a pay check's evaluation at `deal settle --sent`
@@ -27,7 +28,12 @@ import (
 // evaluation answers worse or with a difference the check did not have, or
 // when the configured rules checker cannot answer now, answers worse, or
 // fails a rule the check did not fail: the user runs deal check again.
-func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events []sealedEvent, checkDigest string) error {
+//
+// A check that read the counterparty's History (`deal check --history`) is
+// asked again on the same History: h must be the documents and keys whose
+// digests its verdict sealed (capsule-cli#327 §5.4), so the re-run is a
+// re-run of the bound input, and a deny History alone causes still asks.
+func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events []sealedEvent, checkDigest string, h *receivedHistory) error {
 	// The check ran as a v1 check does (useV1Check): the deal's key and the
 	// v1 records the rules checker reads.
 	s.dkey = dealprofile.DealKey(s.secret, dealID)
@@ -45,6 +51,16 @@ func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events [
 		return fmt.Errorf("%w: check %s has no verdict step", cli.ErrConflict, checkDigest)
 	}
 	orig := events[ci].Event.Check
+	var sealed *xdealv1.ReceivedHistoryDigests
+	if orig.Rules != nil {
+		sealed = orig.Rules.ReceivedHistory
+	}
+	switch {
+	case sealed != nil && h == nil:
+		return cli.InputError("check " + checkDigest + " read the counterparty's History: give the same --history and --counterparty-key to deal settle --sent, so the payment is checked against what the check read. Nothing was sent")
+	case sealed == nil && h != nil:
+		return cli.InputError("--history goes with a check that read the counterparty's History; check " + checkDigest + " read none")
+	}
 	// The events the check read: up to its snapshot and the payee companion
 	// sealed after it, before the verdict.
 	base := append([]sealedEvent{}, events[:ci]...)
@@ -78,7 +94,23 @@ func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events [
 	if err != nil {
 		return err
 	}
-	rules := runRulesChecker(ctx, s.p, dealRole(events), input, history)
+	var rules dealRules
+	if h != nil {
+		// The same History the verdict bound: the same documents, in the
+		// same order, and the same member (keys, statuses and documents).
+		_, inputSHA256, err := withReceivedHistory(input, h)
+		if err != nil {
+			return err
+		}
+		if !slices.Equal(h.historySHA256(), sealed.HistorySHA256) || inputSHA256 != sealed.InputSHA256 {
+			return cli.InputError("--history is not the History check " + checkDigest + " read: its digests differ from the ones its verdict sealed. Nothing was sent")
+		}
+		if rules, err = runRulesGivenHistory(ctx, s.p, dealRole(events), input, history, h); err != nil {
+			return err
+		}
+	} else {
+		rules = runRulesChecker(ctx, s.p, dealRole(events), input, history)
+	}
 	checked := orig.Rules != nil && orig.Rules.Status == "evaluated"
 	if rules.Status != "evaluated" {
 		if !checked {
@@ -106,8 +138,10 @@ func (s *dealSession) recheckAtSend(ctx context.Context, dealID string, events [
 func rulesChange(orig *dealRules, now dealRules) (refuse bool, verdict string, why []string) {
 	approved := map[[2]string]bool{}
 	origVerdict := ""
+	// A deny History alone caused asks, then and now (D1 condition 1).
+	nowVerdict := effectiveRulesVerdict(&now)
 	if orig != nil && orig.Status == "evaluated" {
-		origVerdict = orig.Verdict
+		origVerdict = effectiveRulesVerdict(orig)
 		for _, f := range substantiveFindings(orig.Findings) {
 			approved[[2]string{f.ID, f.Verdict}] = true
 		}
@@ -117,7 +151,7 @@ func rulesChange(orig *dealRules, now dealRules) (refuse bool, verdict string, w
 		if f.Verdict != "fail" && f.Verdict != "not_evaluable" {
 			continue
 		}
-		if now.Verdict != "deny" && approved[[2]string{f.ID, f.Verdict}] {
+		if nowVerdict != "deny" && approved[[2]string{f.ID, f.Verdict}] {
 			continue
 		}
 		text := f.ID
@@ -127,10 +161,10 @@ func rulesChange(orig *dealRules, now dealRules) (refuse bool, verdict string, w
 		failing = append(failing, text)
 	}
 	switch {
-	case now.Verdict == "deny":
+	case nowVerdict == "deny":
 		return true, "denied by your rules", failing
-	case rulesRank(now.Verdict) > rulesRank(origVerdict) || len(failing) > 0:
-		return true, "rules: " + now.Verdict, failing
+	case rulesRank(nowVerdict) > rulesRank(origVerdict) || len(failing) > 0:
+		return true, "rules: " + nowVerdict, failing
 	}
 	return false, "", nil
 }

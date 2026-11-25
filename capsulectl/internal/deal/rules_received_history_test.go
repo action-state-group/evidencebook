@@ -394,3 +394,100 @@ func TestReceivedHistoryStaysBoundThroughADowngrade(t *testing.T) {
 	assert.Equal(t, "unreadable", out["rules"].(map[string]any)["cause"])
 	require.NotNil(t, sealedVerdictHistory(t, h.dealID))
 }
+
+// historyDeniesBody is a checker that denies only when handed the History,
+// and allows otherwise.
+var historyDeniesBody = `if grep -q received_history "$INPUT"; then ` + checkerPrints("deny", `{"id":"known-counterparty","check":"card/1","verdict":"fail","reason":"their History lists no deals"}`) + `; else ` + checkerPrints("allow", "") + `; fi`
+
+// D1 condition 1: History alone never makes the verdict NO. A deny the
+// checker gives only when handed the History asks instead, and the checker's
+// own deny is sealed as given; a deny it gives without the History too
+// stays a deny.
+func TestReceivedHistoryAloneNeverDenies(t *testing.T) {
+	h := openedV1(t)
+	checker := recordingChecker(t, historyDeniesBody)
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	assert.Equal(t, "pause", out["verdict"], "History alone asks, never denies")
+	assert.Equal(t, "deny", out["rules"].(map[string]any)["verdict"], "the checker's own answer is kept")
+	assert.Contains(t, differenceTexts(out), historyAloneText)
+	runs := checkerInputs(t, checker)
+	require.Len(t, runs, 2, "a deny is checked against a run without the History")
+	assert.Contains(t, runs[0], "received_history")
+	assert.NotContains(t, runs[1], "received_history")
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		for _, r := range journal {
+			if b, ok := r.Body.(*xdealv1.VerdictBody); ok {
+				assert.Equal(t, "pause", b.Result)
+				require.NotNil(t, b.Rules)
+				assert.Equal(t, "deny", b.Rules.Verdict, "the sealed rules are the checker's, re-checkable")
+			}
+		}
+	})
+
+	h2 := openedV1(t)
+	recordingChecker(t, checkerPrints("deny", denyFinding))
+	out = dealRun(t, "check", "--deal", h2.dealID, "--input", writeJSON(t, historyCommit),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	assert.Equal(t, "deny", out["verdict"], "a deny without the History too is a deny")
+	assert.NotContains(t, differenceTexts(out), historyAloneText)
+}
+
+// historyPayCheck is a buyer's passing pay check, on an agreed v1 deal,
+// whose rules read the seller's History; it returns the deal and the check.
+func historyPayCheck(t *testing.T, body string) (*handshakeV1, string) {
+	t.Helper()
+	h := agreedBoth(t, paymentOffer)
+	h.buyer.act(t)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, `{"verbatim":"buy the lamp, at most 70 dollars","max_total_minor":7000}`), "--opening", writeJSON(t, v1Opening))
+	recordingChecker(t, body)
+	in := fmt.Sprintf(`{"action":"pay","amount_minor":6000,"authorized_max_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"},"payment_ref":%q}`, v1LnHash)
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, in),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	require.Equal(t, "pass", out["verdict"], "%v", out)
+	var check string
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), h.dealID)
+		require.NoError(t, err)
+		check = checkDigest(t, journal)
+	})
+	return h, check
+}
+
+// The send re-runs a check that read the History on the same History
+// (Sherlock2 on #897): without it, or with another History or key, the
+// payment is refused and nothing is sent; with it, the re-run reads it.
+func TestReceivedHistoryIsReadAgainAtTheSend(t *testing.T) {
+	h, check := historyPayCheck(t, `if grep -q received_history "$INPUT"; then `+checkerPrints("allow", "")+`; else `+checkerPrints("deny", denyFinding)+`; fi`)
+	sent := []string{"settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"}
+	assert.Contains(t, v1Err(t, sent...), "read the counterparty's History: give the same --history")
+	assert.Contains(t, v1Err(t, append(sent, "--history", historyFixture("accepted-2.json"), "--counterparty-key", historyHolderKey)...), "is not the History check")
+	assert.Contains(t, v1Err(t, append(sent, "--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey+","+strings.Repeat("cd", 32))...), "is not the History check")
+	dealRun(t, append(sent, "--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)...)
+}
+
+// A check that read no History takes none at the send, and --history goes
+// with --sent only.
+func TestReceivedHistoryAtTheSendNeedsACheckThatReadOne(t *testing.T) {
+	h, check := buyerCheckedFor(t, paymentOffer, 6000, v1LnHash)
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash",
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey), "read none")
+	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "p.json"),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey), "--history goes with --sent")
+}
+
+// At the send, a deny History alone causes still asks: the pay that passed
+// on the History is checked again, and the rules' answer then is held to
+// the same condition (rulesChange reads the effective verdict).
+func TestReceivedHistoryAloneNeverDeniesAtTheSend(t *testing.T) {
+	orig := &dealRules{Status: "evaluated", Verdict: "allow"}
+	now := dealRules{Status: "evaluated", Verdict: "deny", HistoryAloneDeny: true}
+	refuse, verdict, _ := rulesChange(orig, now)
+	assert.True(t, refuse, "an escalation the check did not have still stops the send")
+	assert.Equal(t, "rules: escalate", verdict, "but as a question, never a deny")
+	now.HistoryAloneDeny = false
+	_, verdict, _ = rulesChange(orig, now)
+	assert.Equal(t, "denied by your rules", verdict)
+}
