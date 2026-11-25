@@ -11,6 +11,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/personalhistory"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
 )
 
@@ -224,6 +225,16 @@ func withReceivedHistory(input []byte, h *receivedHistory) ([]byte, string, erro
 	}
 	sum := sha256.Sum256(jcs)
 	return extended, hex.EncodeToString(sum[:]), nil
+}
+
+// boundHistory is the digests a run given h binds, or nil when the checker
+// never started (it could not be run, or changed since it was pinned): a
+// digest would then claim an input no run read.
+func boundHistory(r dealRules, h *receivedHistory, inputSHA256 string) *xdealv1.ReceivedHistoryDigests {
+	if r.Status == "not_evaluated" && (r.Cause == "checker_unavailable" || r.Cause == "checker_changed") {
+		return nil
+	}
+	return &xdealv1.ReceivedHistoryDigests{HistorySHA256: h.historySHA256(), InputSHA256: inputSHA256}
 }
 
 // rulesGivenHistory is a run's rules block when its input held

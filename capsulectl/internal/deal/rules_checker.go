@@ -22,6 +22,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/dealprofile"
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -74,6 +75,11 @@ type dealRules struct {
 	Grade string `json:"grade,omitempty"`
 	// History is what the checker was given beside the record.
 	History *dealRulesHistory `json:"history,omitempty"`
+	// ReceivedHistory binds, by digest, the counterparty's verified History
+	// the run read (`deal check --history`, capsule-cli#327 §5.4): set when
+	// the checker was started with it, whatever it answered, and sealed on
+	// an x-deal-v1 verdict as its received_history member (v1Record).
+	ReceivedHistory *xdealv1.ReceivedHistoryDigests `json:"received_history,omitempty"`
 	// Notice is the checker's one line for the person (external-check-result/v0
 	// notice), as the run reported it. Only the run that was given received
 	// cards is read for it (receivedNotice); json:"-" keeps it out of every
@@ -337,7 +343,7 @@ func sealableRules(r dealRules, localValues []string) dealRules {
 		why = why[i+len("refusing to seal: "):]
 	}
 	return dealRules{Status: "not_evaluated", Cause: "unreadable", CheckerSHA256: r.CheckerSHA256,
-		Reason: "the rules checker's answer could not be sealed (" + why + ")"}
+		Reason: "the rules checker's answer could not be sealed (" + why + ")", ReceivedHistory: r.ReceivedHistory}
 }
 
 // rulesDeclaredNotMeasured is the reason a checker gives for a rule its

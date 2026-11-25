@@ -8,11 +8,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -238,4 +240,115 @@ else ` + checkerPrints("allow", "") + `; fi`
 	assert.NotContains(t, runs[0], "received_cards", "and no cards")
 	assert.NotContains(t, runs[1], "received_history", "the notice run reads no History")
 	assert.Equal(t, plain[1]["received_cards"], runs[1]["received_cards"], "the cards as before")
+}
+
+// sealedVerdictHistory is the received_history member of the deal's last
+// journal verdict, or nil.
+func sealedVerdictHistory(t *testing.T, dealID string) *xdealv1.ReceivedHistoryDigests {
+	t.Helper()
+	var out *xdealv1.ReceivedHistoryDigests
+	withSession(t, func(s *dealSession) {
+		journal, err := s.v1DealJournal(t.Context(), dealID)
+		require.NoError(t, err)
+		for _, r := range journal {
+			if b, ok := r.Body.(*xdealv1.VerdictBody); ok {
+				out = b.ReceivedHistory
+			}
+		}
+	})
+	return out
+}
+
+// Design §6 test 3 (sealed side): the verdict whose rules read the History
+// seals its SHA-256 and the member's input_sha256, the SHA-256 of the JCS of
+// the member exactly as the checker received it, and nothing of the
+// document or the keys. A check without --history seals none.
+func TestReceivedHistorySealsItsDigestsOnly(t *testing.T) {
+	h := openedV1(t)
+	checker := recordingChecker(t, checkerPrints("allow", ""))
+	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit))
+	assert.Nil(t, sealedVerdictHistory(t, h.dealID), "no History, no member")
+
+	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	got := sealedVerdictHistory(t, h.dealID)
+	require.NotNil(t, got)
+	assert.Equal(t, []string{fileSHA256(t, historyFixture("accepted.json"))}, got.HistorySHA256)
+
+	raw, err := os.ReadFile(checker + ".input")
+	require.NoError(t, err)
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var input map[string]any
+	require.NoError(t, dec.Decode(&input))
+	jcs, err := JCSOf(input["received_history"])
+	require.NoError(t, err)
+	sum := sha256.Sum256(jcs)
+	assert.Equal(t, hex.EncodeToString(sum[:]), got.InputSHA256, "input_sha256 is over the member the checker read")
+
+	stored := v1Stored(t, h.dealID)
+	for _, leaked := range []string{"\"definition\"", "\"exchanges\"", historyHolderKey} {
+		assert.NotContains(t, stored, leaked, "the journal and local events hold no History content or key")
+	}
+}
+
+// A run that never started binds nothing: the checker changed since it was
+// pinned, so no digest claims an input no run read.
+func TestReceivedHistoryUnreadByAnyRunIsNotBound(t *testing.T) {
+	h := openedV1(t)
+	checker := recordingChecker(t, checkerPrints("allow", ""))
+	require.NoError(t, os.WriteFile(checker, []byte("#!/bin/sh\nexit 0\n"), 0o700))
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	assert.Equal(t, "checker_changed", out["rules"].(map[string]any)["cause"])
+	assert.Nil(t, sealedVerdictHistory(t, h.dealID))
+}
+
+// A refused run binds what it was given: its verdict may rest on the input.
+func TestReceivedHistoryRefusedRunIsBound(t *testing.T) {
+	h := openedV1(t)
+	recordingChecker(t, "exit 3")
+	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	require.NotNil(t, sealedVerdictHistory(t, h.dealID))
+}
+
+// Design §6 test 4 (shares) and D1 condition 2: neither your own copy nor
+// the counterparty's carries the verdict's received_history or its digests.
+// An adjudicator's copy needs an agreement that names one; it carries deal
+// book records, never a journal verdict, and the share rule refuses the
+// member for it too (TestReceivedHistoryIsNeverShareable).
+func TestReceivedHistoryIsInNoSharedCopy(t *testing.T) {
+	dealID := noLayerAgreed(t)
+	recordingChecker(t, checkerPrints("allow", ""))
+	dealRun(t, "check", "--deal", dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("ab", 32)+`"`)),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	bound := sealedVerdictHistory(t, dealID)
+	require.NotNil(t, bound)
+	for _, audience := range []string{"keep", "counterparty"} {
+		file := filepath.Join(t.TempDir(), audience+".json")
+		args := []string{"report", "--deal", dealID, "--share", audience, "--bundle", file}
+		if audience != "keep" {
+			args = append(args, "--to", "the other side")
+		}
+		dealRun(t, args...)
+		copied := string(mustRead(t, file))
+		assert.NotContains(t, copied, "received_history", audience)
+		assert.NotContains(t, copied, bound.InputSHA256, audience)
+		assert.NotContains(t, copied, bound.HistorySHA256[0], audience)
+	}
+}
+
+// The share rule refuses a record holding received_history even when its
+// only other strings are shareable: its two digests end in neither _digest
+// nor _commitment, and the member is refused by name.
+func TestReceivedHistoryIsNeverShareable(t *testing.T) {
+	member := map[string]interface{}{"history_sha256": []interface{}{strings.Repeat("a", 64)}, "input_sha256": strings.Repeat("b", 64)}
+	for _, audience := range []string{"counterparty", "adjudicator"} {
+		assert.False(t, dealRecordShareable(map[string]interface{}{"result": "pass", "received_history": member}, "", audience, dealPrivate{}), audience)
+		assert.True(t, dealRecordShareable(map[string]interface{}{"result": "pass"}, "", audience, dealPrivate{}), audience)
+	}
+	for _, k := range []string{"history_sha256", "input_sha256"} {
+		assert.False(t, strings.HasSuffix(k, "_digest") || strings.HasSuffix(k, "_commitment") || dealShareKeys[k], k)
+	}
 }

@@ -884,6 +884,12 @@ func dealRecordShareable(v interface{}, key string, audience string, p dealPriva
 				// one merchant, so no shared copy carries it.
 				return false
 			}
+			if k == "received_history" {
+				// What the rules read about the counterparty, by digest: a
+				// handle on their History (D1 condition 2, capsule-cli#327),
+				// so no shared copy carries it.
+				return false
+			}
 			if k == "ids" {
 				// Counterparty fingerprints: keyed HMACs, not the identifiers.
 				ids, ok := child.(map[string]interface{})
