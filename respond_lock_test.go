@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -254,58 +253,95 @@ func TestRespondAnswersStayConsistentWhileTheLogGrows(t *testing.T) {
 	}
 }
 
-// slowStore makes every answer cost answerCost: each one reads the
-// checkpoint history once to build its view, as an answer over a large book
-// spends its time reading the store and loading the log. Sealing never
-// reads it.
-type slowStore struct {
+// turnstileStore parks every answer in its view read (Checkpoints, which
+// Respond reads outside the book's lock) until the test opens the turnstile,
+// so the test, not the host's speed, decides when answers are in flight.
+// Sealing never reads Checkpoints, so a seal never parks.
+type turnstileStore struct {
 	Store
-	answerCost time.Duration
+	stop chan struct{} // closed: nothing parks any more
+	mu   sync.Mutex
+	turn chan struct{} // nil until armed; closed to let the parked answers through
+	// parked counts the answers waiting at turn.
+	parked int
 }
 
-func (s *slowStore) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
-	time.Sleep(s.answerCost)
+func (s *turnstileStore) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
+	s.mu.Lock()
+	turn := s.turn
+	if turn != nil {
+		s.parked++
+	}
+	s.mu.Unlock()
+	if turn != nil {
+		select {
+		case <-turn:
+		case <-s.stop:
+		}
+	}
 	return s.Store.Checkpoints(ctx)
 }
 
-// answerCost is what every answer costs under the flood, and sealingBound
-// the stated bound on the 95th percentile of seal latency. A seal waits at
-// most for the seals queued ahead of it, one per answer in flight, each a
-// few fsynced journal writes; the bound leaves room for those on a loaded
-// runner under the race detector. The bound is on a percentile because a
-// single seal can stall on the scheduler or the disk whatever the book does;
-// the maximum is logged. Holding the book's lock for each answer, as Respond
-// did before #208, made every seal wait out at least the answer in progress,
-// and in practice the answers queued ahead of it: seconds.
-const (
-	answerCost   = time.Second
-	sealingBound = answerCost / 2
-	// strangerCeiling is a hard bound on every seal under a stranger flood,
-	// loose enough for one seal stalled on the scheduler or the disk under
-	// the race detector. Before #208 a seal waited out the answers queued
-	// ahead of it, several answer costs.
-	strangerCeiling = 2 * answerCost
-)
+// arm makes every later answer park.
+func (s *turnstileStore) arm() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.turn = make(chan struct{})
+}
 
-// TestRespondFloodDoesNotStallSealing is #208's load test: flooders keep
-// requests in flight continuously while the book seals at a fixed rate for
-// two answer costs, so answers complete (and, when authenticated, seal
-// their records) while it is measured. Every seal must
-// land, in order, and 95% of them within sealingBound. Strangers never
-// seal, so no seal of theirs can queue ahead of the book's, and under a
-// stranger flood every seal must also finish within strangerCeiling. The
-// flooders start staggered across one answer cost, as independent askers
-// would. TestRespondDoesNotHoldTheLockWhileAnswering is the deterministic
-// check that an answer in progress never blocks a seal; this test bounds
-// the latency under load. It runs once with strangers (checkpoints, history_card/1 and
-// a refused full_history) and once with an authenticated requester, whose
-// answers each also seal a record under the lock.
+// open lets the parked answers through; the next answers park again.
+func (s *turnstileStore) open() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	close(s.turn)
+	s.turn, s.parked = make(chan struct{}), 0
+}
+
+// waitParked waits until n answers are parked, failing rather than hanging
+// when they never are.
+func (s *turnstileStore) waitParked(t *testing.T, n int, bound time.Duration) {
+	t.Helper()
+	for deadline := time.Now().Add(bound); ; time.Sleep(time.Millisecond) {
+		s.mu.Lock()
+		parked := s.parked
+		s.mu.Unlock()
+		if parked >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d of %d answers reached the store within %s: an answer in progress holds the others back, as one holding the book's lock would", parked, n, bound)
+		}
+	}
+}
+
+// TestRespondFloodDoesNotStallSealing is #208's load test, asserted as
+// progress rather than time: flooders keep a request each in flight, and the
+// book seals while every one of them is in the middle of its answer. A
+// turnstile store parks each answer in its view read until the test lets it
+// through after a seal. Each round waits until all the flooders are parked,
+// seals while every answer is in flight, opens the turnstile, and seals
+// again at once, racing the answers released, which, when authenticated,
+// seal their own records under the lock. Had Respond held the book's lock
+// for its answer, as before #208, the first parked answer would hold it and
+// the others could never reach the store, so the round never starts. Every
+// answer completes only after a seal landed while it was in flight, exactly
+// flooders answers complete per round, and every seal lands, in order.
+//
+// The one timer, hang, catches a deadlock and is far above any seal or
+// answer on a loaded host under the race detector, where a seal takes up to
+// about two seconds in its own durable writes and never waits on an answer
+// (evidencebook#938). The test asserts no latency, which measures the host.
+// Like TestRespondDoesNotHoldTheLockWhileAnswering, the single-answer check,
+// it holds answers in their view read, so it shows the lock is not held
+// there. It runs once with strangers (checkpoints, history_card/1 and a
+// refused full_history), whose answers never seal, and once with an
+// authenticated requester, whose answers each seal a record.
 func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 	const (
 		history  = 40
 		flooders = 8
-		window   = 2 * answerCost
-		interval = 5 * time.Millisecond
+		rounds   = 10
+		hang     = time.Minute
 	)
 	for _, c := range []struct {
 		name      string
@@ -325,7 +361,7 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 			ctx := context.Background()
 			f := newFixture(t, "book-a", 1)
 			cfg := f.config(t)
-			store := &slowStore{Store: cfg.Store}
+			store := &turnstileStore{Store: cfg.Store, stop: make(chan struct{})}
 			cfg.Store = store
 			book, err := Open(ctx, cfg)
 			if err != nil {
@@ -338,23 +374,34 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 					anchorPin(t, book)
 				}
 			}
-			store.answerCost = answerCost
 			requests := c.requests(t, book)
+			size := book.Size()
 
-			stop := make(chan struct{})
+			store.arm()
 			var answered atomic.Int64
 			var flood sync.WaitGroup
+			// However the test ends, the parked answers go through and the
+			// flooders stop before the book is released.
+			stop := sync.OnceFunc(func() { close(store.stop) })
+			t.Cleanup(func() { stop(); flood.Wait() })
 			for w := range flooders {
 				flood.Go(func() {
-					time.Sleep(time.Duration(w) * answerCost / flooders)
 					for i := w; ; i++ {
 						select {
-						case <-stop:
+						case <-store.stop:
 							return
 						default:
 						}
-						if _, _, err := book.Respond(ctx, requests[i%len(requests)], RespondOptions{AuthenticatedRequester: c.requester, Policy: policyWith("peers")}); err != nil {
+						reply, sealed, err := book.Respond(ctx, requests[i%len(requests)], RespondOptions{AuthenticatedRequester: c.requester, Policy: policyWith("peers")})
+						switch {
+						case err != nil:
 							t.Error(err)
+							return
+						case c.requester == "" && sealed.RecordID != "":
+							t.Errorf("a stranger's answer sealed record %s", sealed.RecordID)
+							return
+						case c.requester != "" && (reply.Envelope == nil || sealed.RecordID == ""):
+							t.Errorf("want an answer and its sealed record, got refusal %+v", reply.Refusal)
 							return
 						}
 						answered.Add(1)
@@ -362,41 +409,57 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 				})
 			}
 
-			var latencies []time.Duration
 			var ids []string
-			tick := time.NewTicker(interval)
-			end := time.Now().Add(window)
-			for i := 0; time.Now().Before(end); i++ {
-				<-tick.C
-				start := time.Now()
-				record, err := book.Append(ctx, observation(fmt.Sprintf("sealed-%d", i), `{"status":"approved"}`))
-				latencies = append(latencies, time.Since(start))
-				if err != nil {
-					t.Fatal(err)
-				}
-				ids = append(ids, record.RecordID)
-				if i%10 == 9 {
-					if _, err := book.Checkpoint(ctx); err != nil {
-						t.Fatal(err)
-					}
-				}
+			var slowest time.Duration
+			var roots uint64
+			seal := func(name string) {
+				t.Helper()
+				within(t, hang, "sealing "+name, func() error {
+					start := time.Now()
+					record, err := book.Append(ctx, observation(name, `{"status":"approved"}`))
+					slowest = max(slowest, time.Since(start))
+					ids = append(ids, record.RecordID)
+					return err
+				})
 			}
-			tick.Stop()
+			for r := range rounds {
+				store.waitParked(t, flooders, hang)
+				// Every flooder's earlier answer completed before it parked
+				// again, and none completes while parked.
+				if got, want := answered.Load(), int64(r*flooders); got != want {
+					t.Fatalf("round %d: %d answers completed, want %d", r, got, want)
+				}
+				seal(fmt.Sprintf("held-%d", r))
+				if r%3 == 2 {
+					// The answers are parked, so the checkpoint is the
+					// only writer: what it adds is its index roots.
+					before := book.Size()
+					within(t, hang, "Checkpoint", func() error {
+						_, err := book.Checkpoint(ctx)
+						return err
+					})
+					roots += book.Size() - before
+				}
+				store.open()
+				seal(fmt.Sprintf("racing-%d", r))
+			}
+			store.waitParked(t, flooders, hang)
 			during := answered.Load()
-			close(stop)
+			stop()
 			flood.Wait()
+			if want := int64(rounds * flooders); during != want {
+				t.Fatalf("%d answers completed in %d rounds, want %d", during, rounds, want)
+			}
+			t.Logf("%d answers and %d seals; slowest seal %s", during, len(ids), slowest)
 
-			slices.Sort(latencies)
-			p95 := latencies[len(latencies)*95/100]
-			t.Logf("%d answers during %d seals; seal latency p50 %s, p95 %s, max %s (bound on p95 %s)", during, len(latencies), latencies[len(latencies)/2], p95, latencies[len(latencies)-1], sealingBound)
-			if during < flooders/2 {
-				t.Fatalf("only %d answers finished while sealing was measured; the flood did not run through it", during)
+			// Strangers never grow the log; each authenticated answer seals
+			// one record. Every answer has completed: the flooders stopped.
+			sealedByAnswers := uint64(0)
+			if c.requester != "" {
+				sealedByAnswers = uint64(answered.Load())
 			}
-			if p95 > sealingBound {
-				t.Fatalf("95%% of seals took up to %s under the flood, over the %s bound", p95, sealingBound)
-			}
-			if worst := latencies[len(latencies)-1]; c.requester == "" && worst > strangerCeiling {
-				t.Fatalf("a seal took %s under a stranger flood, over the %s ceiling", worst, strangerCeiling)
+			if got, want := book.Size(), size+uint64(len(ids))+roots+sealedByAnswers; got != want {
+				t.Fatalf("the book holds %d records, want %d: %d before, %d seals, %d index roots, %d answers recorded", got, want, size, len(ids), roots, sealedByAnswers)
 			}
 			// No seal is lost: each is in the reopened book, in the order
 			// it was sealed.
