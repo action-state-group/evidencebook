@@ -2,8 +2,8 @@ package book
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	stdhtml "html"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	viewerreceipt "github.com/action-state-group/capsule-viewer/go/receipt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -89,10 +90,23 @@ func TestACarriedDealReceiptReachesTheSettlementPage(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(receipts["d1"].(string)), &carried))
 	require.NoError(t, json.Unmarshal(receipt, &want))
 	assert.Equal(t, want, carried, "d1 carries the receipt bundle")
-	// The deal view module is in the page, its stylesheet in the CSP.
-	assert.Contains(t, string(page), "capsulectl.deal-view/v0")
-	style := sha256.Sum256([]byte(dealViewCSS(t)))
-	assert.Contains(t, string(page), "'sha256-"+base64.StdEncoding.EncodeToString(style[:])+"'")
+	// capsule-viewer's receipt modules are in the page, deal-view is not, and
+	// each module's stylesheet pin is in the CSP (capsule-viewer#383).
+	// (The page runtime still lists the deal view's id among the receipt
+	// modules it may open; the deal view's own script is not carried.)
+	assert.NotContains(t, string(page), "deal-view.js: the deal page's presentation module")
+	for _, kind := range []string{viewerreceipt.Unilateral, viewerreceipt.Seller} {
+		module, err := viewerreceipt.Module(kind)
+		require.NoError(t, err)
+		id, err := viewerreceipt.ID(kind)
+		require.NoError(t, err)
+		assert.Contains(t, string(page), id)
+		for _, pin := range module.StyleSHA256 {
+			raw, err := hex.DecodeString(pin)
+			require.NoError(t, err)
+			assert.Contains(t, string(page), "'sha256-"+base64.StdEncoding.EncodeToString(raw)+"'")
+		}
+	}
 
 	// The same receipt as a JSON string holding its text is the same page.
 	text, err := json.Marshal(string(receipt))
@@ -215,16 +229,10 @@ func TestReceiptsFlagRefusals(t *testing.T) {
 	refused("bundle.json", receiptsFile(t, []map[string]any{entry, entry}), `deal "d1" has more than one receipt`)
 	refused("bundle.json", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t)}}), "exactly one of them")
 	refused("shared-bundle.json", receiptsFile(t, []map[string]any{entry}), "more than one deal cite")
-	// A bundle that is no deal receipt is refused: the deal view would not draw it.
-	refused("bundle.json", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "receipt": json.RawMessage(mustRead(t, filepath.Join(settlementDir, "receipt.json")))}}), "is not one the capsulectl.deal-view/v0 module draws")
+	// A bundle that is no deal receipt is refused: no receipt module would draw it.
+	refused("bundle.json", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "receipt": json.RawMessage(mustRead(t, filepath.Join(settlementDir, "receipt.json")))}}), "is not one the page's receipt modules")
 	refused("bundle.json", receiptsFile(t, []map[string]any{entry}), "--permalink cannot be used with --receipts", "--permalink")
 	refused("bundle.json", receiptsFile(t, []map[string]any{entry}), "--diagnostic cannot be used with --receipts", "--diagnostic")
-}
-
-// The deal view's stylesheet, whose digest the page's CSP lists.
-func dealViewCSS(t *testing.T) string {
-	t.Helper()
-	return string(mustRead(t, "../deal/assets/deal-view.css"))
 }
 
 // An x-deal-v1 deal's bundle seals no Result, so `book report build` refuses
@@ -287,16 +295,22 @@ func clickedReceiptText(t *testing.T, page []byte) string {
 	return strings.Join(strings.Fields(stdhtml.UnescapeString(text)), " ")
 }
 
-// The real deal view, in a real browser, opens the carried receipt under the
-// claim of its deal and verifies it, and a receipt the share policy holds
-// reads as held: Sherlock2's settled sentence, not "no record".
+// capsule-viewer's receipt module, in a real browser, opens the carried
+// receipt under the claim of its deal and verifies it (the page checks the
+// copy's standalone report itself, capsule-viewer#398), and a receipt the
+// share policy holds reads as held: Sherlock2's settled sentence, not "no
+// record".
 func TestTheBrowserOpensACarriedReceiptAndReadsAHeldOne(t *testing.T) {
 	carried, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{{"exchange_capsule_id": settlementExchange(t), "receipt": json.RawMessage(mustRead(t, dealReceipt))}}))
 	require.NoError(t, err)
 	text := clickedReceiptText(t, carried)
 	assert.Contains(t, text, "Close receipt", "the control opened")
-	assert.Contains(t, text, "Receipt · deal-134fae85882ad8bf", "the deal view drew the carried receipt")
-	assert.Contains(t, text, "Your copy only · not fully checked", "at the strength the receipt has: the other side's record is not in it")
+	assert.Contains(t, text, "Checked in this browser by the page's verifier", "the receipt module drew the carried receipt with its top line")
+	assert.Contains(t, text, "Shared copy", "carried in a report, the owner's copy reads as a shared copy")
+	assert.Contains(t, text, "Nothing from their side is in this receipt.", "at the strength the receipt has: the other side's record is not in it")
+	assert.NotContains(t, text, "This page has no viewer for this kind of receipt")
+	assert.Contains(t, text, "This page checked it itself: signed by the deal's last step, matching its Capsule, and made at this deal's checkpoint.", "the page says it checked the copy's standalone report itself (capsule-viewer#410)")
+	assert.NotContains(t, text, "This page did not check the signature itself", "no line credits capsulectl with a check the page made")
 	assert.Contains(t, text, "10 of 10 checks passed · 6 top-level records", "the page verified the receipt bundle it carries")
 	assert.NotContains(t, text, "Receipt not carried with this page")
 
@@ -313,4 +327,73 @@ func TestTheBrowserOpensACarriedReceiptAndReadsAHeldOne(t *testing.T) {
 	none, _, err := buildSettlement(t, "bundle.json", "--receipts", receiptsFile(t, []map[string]any{}))
 	require.NoError(t, err)
 	assert.Contains(t, clickedReceiptText(t, none), "Receipt not carried with this page.")
+}
+
+// deal verify's INCOMPLETE is admitted only for a producer selection: interval
+// coverage withheld as selection_not_checkable and nothing else unmet, with
+// the deal section read and passing (evidencebook#870's narrow exception).
+func TestDealVerifyAdmitsOnlyAProducerSelection(t *testing.T) {
+	pass := claimStatus{Status: "pass", Findings: []string{}}
+	selection := claimStatus{Status: "withheld", Findings: []string{"selection_not_checkable"}}
+	base := func() dealVerifyResult {
+		r := dealVerifyResult{Verdict: "INCOMPLETE", GraphClosure: pass, IntervalCoverage: selection, PerRecordMembership: pass, Checkpoint: pass, ProducerSignatures: pass}
+		r.Extensions = []dealVerifyExtension{{Kind: "producer-key/v1", Status: "uninterpreted"}, {Kind: "x-deal-v0", Status: "pass"}}
+		return r
+	}
+	assert.True(t, base().producerSelection())
+
+	cases := map[string]func(*dealVerifyResult){
+		"INVALID":                func(r *dealVerifyResult) { r.Verdict = "INVALID" },
+		"other coverage finding": func(r *dealVerifyResult) { r.IntervalCoverage.Findings = []string{"range_proof_missing"} },
+		"two coverage findings":  func(r *dealVerifyResult) { r.IntervalCoverage.Findings = []string{"selection_not_checkable", "x"} },
+		"graph closure":          func(r *dealVerifyResult) { r.GraphClosure.Status = "fail" },
+		"membership":             func(r *dealVerifyResult) { r.PerRecordMembership.Status = "fail" },
+		"checkpoint":             func(r *dealVerifyResult) { r.Checkpoint.Status = "fail" },
+		"signatures":             func(r *dealVerifyResult) { r.ProducerSignatures.Status = "fail" },
+		"deal section failed":    func(r *dealVerifyResult) { r.Extensions[1].Status = "fail" },
+		"no deal section read":   func(r *dealVerifyResult) { r.Extensions = r.Extensions[:1] },
+		"deal section passes with a finding": func(r *dealVerifyResult) {
+			r.Extensions[1].Findings = []string{"unchecked_thing"}
+		},
+		"a reader claim not shown": func(r *dealVerifyResult) {
+			r.ReaderClaims = append(r.ReaderClaims, struct {
+				Status   string   `json:"status"`
+				Findings []string `json:"findings"`
+			}{"not_shown", []string{"sale_not_shown"}})
+		},
+		"a reader claim passing with a finding": func(r *dealVerifyResult) {
+			r.ReaderClaims = append(r.ReaderClaims, struct {
+				Status   string   `json:"status"`
+				Findings []string `json:"findings"`
+			}{"pass", []string{"x"}})
+		},
+		"another extension not passing": func(r *dealVerifyResult) {
+			r.Extensions = append(r.Extensions, dealVerifyExtension{Kind: "x-deal-sale/v0", Status: "not_shown"})
+		},
+		"a composed member": func(r *dealVerifyResult) {
+			r.Extensions = append(r.Extensions, dealVerifyExtension{Kind: "composed/v1", Status: "pass", Composed: json.RawMessage(`{"status":"pass"}`)})
+		},
+	}
+	for name, change := range cases {
+		r := base()
+		change(&r)
+		assert.False(t, r.producerSelection(), name)
+	}
+}
+
+// A Mesh node's receipt, a producer selection that deal verify calls
+// INCOMPLETE, passes the real deal verify's check; the same receipt with a
+// record changed after it was sealed does not (report/testdata/viewer-receipts).
+func TestDealVerifyTakesAMeshProducerSelection(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("CAPSULECTL_BIN", filepath.Join(installedCapsulectl(t), "capsulectl"))
+	mesh := mustRead(t, "../../../report/testdata/viewer-receipts/mesh-payer.bundle.json")
+	require.NoError(t, dealVerify(mesh))
+
+	var bundle map[string]any
+	require.NoError(t, json.Unmarshal(mesh, &bundle))
+	bundle["records"].([]any)[0].(map[string]any)["timestamp"] = "2001-01-01T00:00:00Z"
+	tampered, err := json.Marshal(bundle)
+	require.NoError(t, err)
+	assert.Error(t, dealVerify(tampered))
 }
