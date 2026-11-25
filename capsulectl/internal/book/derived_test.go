@@ -1,7 +1,6 @@
 package book
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
@@ -200,17 +199,13 @@ func TestUnregisteredOrUngrantedPackIsRefused(t *testing.T) {
 	_ = sent
 
 	x.writePack("pack.json", packFileBody(""))
-	c := testCommand()
-	var stdout, stderr bytes.Buffer
-	c.SetOut(&stdout)
-	c.SetErr(&stderr)
-	c.SetArgs([]string{"respond", "--profile", "b", "--request", filepath.Join(x.dir, "pack.sent"), "--requester", "stranger", "--output", filepath.Join(x.dir, "stranger.response")})
-	require.NoError(t, c.ExecuteContext(t.Context()))
+	stdout, stderr, err := invokeSplit(t, "respond", "--profile", "b", "--request", filepath.Join(x.dir, "pack.sent"), "--requester", "stranger", "--output", filepath.Join(x.dir, "stranger.response"))
+	require.NoError(t, err, stderr)
 	// The holder's operator sees the reason the gate decided on, on stderr
 	// only; the result, the reply and the record carry policy_declined
 	// (evidencebook#580).
-	assert.Contains(t, stderr.String(), "refused "+evidencebook.ReasonPolicyDeclined+"; the gate decided "+evidencebook.ReasonNotAuthorized)
-	assert.Contains(t, stdout.String(), `"reason":"`+evidencebook.ReasonPolicyDeclined+`"`)
+	assert.Contains(t, stderr, "refused "+evidencebook.ReasonPolicyDeclined+"; the gate decided "+evidencebook.ReasonNotAuthorized)
+	assert.Contains(t, stdout, `"reason":"`+evidencebook.ReasonPolicyDeclined+`"`)
 	raw, err := os.ReadFile(filepath.Join(x.dir, "stranger.response"))
 	require.NoError(t, err)
 	refusal, err := evidencebook.ParseReply(evidencebook.Message{Octets: raw, MediaType: evidencebook.MediaTypeJSON})
@@ -219,22 +214,17 @@ func TestUnregisteredOrUngrantedPackIsRefused(t *testing.T) {
 	// The CLI answers under the uniform refusal policy, which folds
 	// not_authorized into policy_declined (ER -03 §4.2).
 	assert.Equal(t, evidencebook.ReasonPolicyDeclined, refusal.Refusal.Reason)
-	for _, leaked := range [][]byte{stdout.Bytes(), raw, storeBytes(t, x.b)} {
+	for _, leaked := range [][]byte{[]byte(stdout), raw, storeBytes(t, x.b)} {
 		assert.NotContains(t, string(leaked), evidencebook.ReasonNotAuthorized, "the decided reason leaves only on stderr")
 	}
 
 	// A refusal whose sent reason is the decided one prints nothing extra:
 	// derivation_unsupported once the pack is no longer opted in.
 	require.NoError(t, os.Remove(filepath.Join(derivationDir(x.b), "pack.json")))
-	stdout.Reset()
-	stderr.Reset()
-	c = testCommand()
-	c.SetOut(&stdout)
-	c.SetErr(&stderr)
-	c.SetArgs([]string{"respond", "--profile", "b", "--request", filepath.Join(x.dir, "pack.sent"), "--requester", "a", "--output", filepath.Join(x.dir, "unsupported.response")})
-	require.NoError(t, c.ExecuteContext(t.Context()))
-	assert.Contains(t, stdout.String(), `"reason":"`+evidencebook.ReasonDerivationUnsupported+`"`)
-	assert.Empty(t, stderr.String())
+	stdout, stderr, err = invokeSplit(t, "respond", "--profile", "b", "--request", filepath.Join(x.dir, "pack.sent"), "--requester", "a", "--output", filepath.Join(x.dir, "unsupported.response"))
+	require.NoError(t, err, stderr)
+	assert.Contains(t, stdout, `"reason":"`+evidencebook.ReasonDerivationUnsupported+`"`)
+	assert.Empty(t, stderr)
 }
 
 func TestDoctorListsThePacksItServes(t *testing.T) {

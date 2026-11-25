@@ -62,6 +62,21 @@ func invoke(t *testing.T, input string, args ...string) (string, error) {
 	return out.String(), e
 }
 
+// invokeSplit is invoke with stdout and stderr kept apart, for a command
+// whose JSON result is on stdout while stderr may carry an operator
+// diagnostic (`book respond`, evidencebook#580).
+func invokeSplit(t *testing.T, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	c := testCommand()
+	var out, errOut bytes.Buffer
+	c.SetIn(strings.NewReader(""))
+	c.SetOut(&out)
+	c.SetErr(&errOut)
+	c.SetArgs(args)
+	err = c.ExecuteContext(t.Context())
+	return out.String(), errOut.String(), err
+}
+
 // testCommand is the capsulectl tree as a user reaches it with the book
 // plugin installed, in one process: the core commands; the book plugin's
 // own commands at the top level, where its binary has them (replacing the

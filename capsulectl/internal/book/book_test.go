@@ -727,7 +727,7 @@ func TestRequestRespondRoundTrip(t *testing.T) {
 		return r
 	}
 	respond := func(name string) cli.EvidenceRespondResult {
-		out, err := invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(dir, name+".sent"), "--requester", "a", "--output", filepath.Join(dir, name+".response"))
+		out, _, err := invokeSplit(t, "respond", "--profile", "b", "--request", filepath.Join(dir, name+".sent"), "--requester", "a", "--output", filepath.Join(dir, name+".response"))
 		require.NoError(t, err)
 		var r cli.EvidenceRespondResult
 		require.NoError(t, json.Unmarshal([]byte(out), &r))

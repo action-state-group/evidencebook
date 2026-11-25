@@ -198,7 +198,7 @@ func TestRespondAnswersACheckpointRangeRequest(t *testing.T) {
 func TestRespondWithoutRequesterAnswersOnlyPublicSubjects(t *testing.T) {
 	x := newEvidenceExchange(t)
 	unauthenticated := func(name string) cli.EvidenceRespondResult {
-		out, err := invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(x.dir, name+".sent"), "--output", filepath.Join(x.dir, name+".response"))
+		out, _, err := invokeSplit(t, "respond", "--profile", "b", "--request", filepath.Join(x.dir, name+".sent"), "--output", filepath.Join(x.dir, name+".response"))
 		require.NoError(t, err, out)
 		var r cli.EvidenceRespondResult
 		require.NoError(t, json.Unmarshal([]byte(out), &r))
