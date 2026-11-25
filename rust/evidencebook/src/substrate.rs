@@ -851,6 +851,28 @@ mod tests {
         }
     }
 
+    /// A signer that always fails: the cut is refused as a signer error, as
+    /// before the shared cut, and nothing is prepared.
+    #[test]
+    fn a_failing_signer_refuses_the_cut() {
+        struct Failing;
+        impl Signer for Failing {
+            fn sign(&self, _: &[u8]) -> Result<[u8; 64], SignError> {
+                Err(SignError("no key".into()))
+            }
+            fn key_id(&self) -> String {
+                "00".repeat(32)
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = open(dir.path());
+        s.append(&id(0)).unwrap();
+        let err = s
+            .prepare_checkpoint(1, "log", "2026-11-25T08:00:00Z", &Failing)
+            .unwrap_err();
+        assert!(matches!(err, SubstrateError::Signer(_)), "{err:?}");
+    }
+
     #[test]
     fn checkpoints_chain_prove_inclusion_and_survive_reopen() {
         let dir = tempfile::tempdir().unwrap();
