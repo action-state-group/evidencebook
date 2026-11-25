@@ -23,8 +23,8 @@ import (
 //     stamp proof binds this copy's checkpoint into; witness is that row's
 //     name in W (the reader's own label, not something the copy proves) and
 //     at the receipt's own registration time, the earliest when several;
-//   - failed: the proof is not of this copy's checkpoint, or a receipt does
-//     not verify and none does;
+//   - failed: the proof is not of this copy's own signed checkpoint or does
+//     not verify, or a receipt fails and none verifies;
 //   - withheld: no directory, no receipt held, or no receipt that could be
 //     checked under the directory.
 // It is never a claim: a witness result leaves the copy's verdict as it was.

@@ -146,7 +146,7 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 			continue
 		}
 		core := c.RunE
-		c.Flags().String(stampProofFlag, "", "With --bundle on your own x-deal-v1 copy: the proof file deal checkpoint proof wrote for it; with --witness-directory, the copy's x-deal-v1 entry reports witnessed (verified, failed or withheld), which never changes the verdict")
+		c.Flags().String(stampProofFlag, "", "With --bundle on your own x-deal-v1 copy: the proof file deal checkpoint proof wrote for it; the copy's x-deal-v1 entry reports witnessed (verified, failed, or withheld when no --witness-directory is given), which never changes the verdict")
 		c.RunE = func(c *cobra.Command, args []string) error {
 			bundle, _ := c.Flags().GetString("bundle")
 			proofPath, _ := c.Flags().GetString(stampProofFlag)
