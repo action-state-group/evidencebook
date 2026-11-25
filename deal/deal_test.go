@@ -44,6 +44,13 @@ type side struct {
 
 func newSide(t *testing.T, name string) *side {
 	t.Helper()
+	return newSideWindowed(t, name, nil)
+}
+
+// newSideWindowed is a side whose shelf splits into windows when window is
+// set (evidencebook#689, #797).
+func newSideWindowed(t *testing.T, name string, window *evidencebook.WindowPolicy) *side {
+	t.Helper()
 	ctx := t.Context()
 	dir := t.TempDir()
 	p := &side{t: t, name: name, now: time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), key: seed(name + " record key")}
@@ -62,6 +69,7 @@ func newSide(t *testing.T, name string) *side {
 		AuthenticatedIndexes: func(string) []evidencebook.AuthenticatedIndex {
 			return []evidencebook.AuthenticatedIndex{}
 		},
+		Window: window,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = shelf.Release() })
@@ -81,10 +89,12 @@ func newSide(t *testing.T, name string) *side {
 		Status: &xdealv1.StatusProvider{Shelf: shelf, OfferPair: p.store.OfferPair}})
 	require.NoError(t, err)
 	// The journal and SealSent need a shelf of book facts.
-	_, err = p.cadence.Tick(ctx, p.now)
-	require.NoError(t, err)
-	p.tick()
-	require.NoError(t, p.cadence.Migrate(ctx, p.now))
+	if migrated, err := p.cadence.Migrated(ctx); err == nil && !migrated {
+		_, err = p.cadence.Tick(ctx, p.now)
+		require.NoError(t, err)
+		p.tick()
+		require.NoError(t, p.cadence.Migrate(ctx, p.now))
+	}
 	return p
 }
 
@@ -596,4 +606,224 @@ func TestAStoppedDeclineExcludesAnAgreement(t *testing.T) {
 	dec, err := seller.store.DeclineOffer(ctx, offer.Digest, "", "d")
 	require.NoError(t, err)
 	assert.True(t, dec.Resumed)
+}
+
+// unrecord makes a deal look like a run that appended its agreement and
+// stopped before recording it.
+func (p *side) unrecord(dealID string) {
+	p.t.Helper()
+	_, err := p.db.ExecContext(p.t.Context(), `UPDATE deal_v1 SET own_agreement_id='', own_agreement_digest='' WHERE deal_id=?`, dealID)
+	require.NoError(p.t, err)
+	_, err = p.db.ExecContext(p.t.Context(), `UPDATE deal_versions SET state='agreeing' WHERE deal_id=?`, dealID)
+	require.NoError(p.t, err)
+}
+
+func TestAnAgreementAppendedButNotRecordedIsReadBack(t *testing.T) {
+	ctx := t.Context()
+	_, seller, offer, sa, _ := handshake(t)
+	seller.unrecord(offer.DealID)
+
+	// A decline sees the book holds an agreement.
+	_, err := seller.store.DeclineOffer(ctx, offer.Digest, "", "late")
+	assert.Contains(t, inputReason(t, err), "you agreed to this offer")
+
+	d, err := seller.store.Repair(ctx, offer.DealID)
+	require.NoError(t, err)
+	assert.Equal(t, sa.Digest, d.OwnAgreementDigest)
+	assert.Equal(t, "agreed", d.State)
+
+	seller.unrecord(offer.DealID)
+	again, err := seller.store.Agree(ctx, seller.cadence, offer.Digest, AgreeOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, sa.Pair, again.Pair, "the agreement is read back, never sealed twice")
+
+	seller.unrecord(offer.DealID)
+	a, err := ParseAdmission(engineOutput(t, "GO", true, nil), seller.now)
+	require.NoError(t, err)
+	_, err = seller.store.Admit(ctx, offer.DealID, a)
+	assert.Contains(t, inputReason(t, err), "is already agreed")
+}
+
+func TestDeclineFromAStoppedAgreeing(t *testing.T) {
+	ctx := t.Context()
+	buyer, seller := newSide(t, "buyer"), newSide(t, "seller")
+	sk := seller.keyID()
+	offer, err := buyer.store.Offer(ctx, offerTo(t, &sk), "o")
+	require.NoError(t, err)
+	seller.receiveSent(offer.Pair, nil)
+	// An agreeing run that stopped before its book held a record sealed
+	// nothing: the offer can still be declined.
+	_, err = seller.db.ExecContext(ctx, `UPDATE deal_versions SET state='agreeing', own_log_id='deal/00000000000000000000000000000000' WHERE deal_id=?`, offer.DealID)
+	require.NoError(t, err)
+	_, err = seller.store.DeclineOffer(ctx, offer.Digest, "", "d")
+	require.NoError(t, err)
+	d, err := seller.store.Deal(ctx, offer.DealID)
+	require.NoError(t, err)
+	assert.Equal(t, "declined", d.State)
+}
+
+// unpair makes a sent row look like a run that sealed its record and stopped
+// before storing its pair.
+func (p *side) unpair(digest string) {
+	p.t.Helper()
+	_, err := p.db.ExecContext(p.t.Context(), `UPDATE deal_sent SET pair=NULL, state='sealing' WHERE record_digest=?`, digest)
+	require.NoError(p.t, err)
+}
+
+func TestASentRecordWithNoPairIsSealedAgainOrRefused(t *testing.T) {
+	ctx := t.Context()
+	buyer := newSide(t, "buyer")
+	sk := newSide(t, "seller").keyID()
+	offer, err := buyer.store.Offer(ctx, offerTo(t, &sk), "o")
+	require.NoError(t, err)
+
+	// A cancellation the journal holds with no pair is sealed again as a new
+	// operation.
+	c, err := buyer.store.CancelOffer(ctx, offer.Digest, "c")
+	require.NoError(t, err)
+	buyer.unpair(c.Digest)
+	buyer.tick()
+	again, err := buyer.store.CancelOffer(ctx, offer.Digest, "c")
+	require.NoError(t, err)
+	assert.False(t, again.Resumed)
+	assert.NotEqual(t, c.Digest, again.Digest)
+	var superseded int
+	require.NoError(t, buyer.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM deal_sent WHERE request_digest LIKE 'c:superseded:%'`).Scan(&superseded))
+	assert.Equal(t, 1, superseded)
+
+	// An offer cannot be: its pair cannot be rebuilt, and the offer stands.
+	other, err := buyer.store.Offer(ctx, offerTo(t, &sk), "o2")
+	require.NoError(t, err)
+	buyer.unpair(other.Digest)
+	_, err = buyer.store.Offer(ctx, offerTo(t, &sk), "o2")
+	var ce *ConflictError
+	require.ErrorAs(t, err, &ce)
+	assert.Contains(t, ce.Reason, "was sealed but its file was not made")
+}
+
+func TestAgreeCitesOnlyTheDealsOwnAdmit(t *testing.T) {
+	ctx := t.Context()
+	buyer, seller := newSide(t, "buyer"), newSide(t, "seller")
+	sk := seller.keyID()
+	first, err := buyer.store.Offer(ctx, offerTo(t, &sk), "o1")
+	require.NoError(t, err)
+	second, err := buyer.store.Offer(ctx, offerTo(t, &sk), "o2")
+	require.NoError(t, err)
+	seller.receiveSent(first.Pair, nil)
+	seller.receiveSent(second.Pair, nil)
+
+	raw := engineOutput(t, "GO", true, nil)
+	a, err := ParseAdmission(raw, seller.now)
+	require.NoError(t, err)
+	admitSecond, err := seller.store.Admit(ctx, second.DealID, a)
+	require.NoError(t, err)
+
+	// One engine output is one record: it is not sealed for another deal.
+	_, err = seller.store.Admit(ctx, first.DealID, a)
+	var ce *ConflictError
+	require.ErrorAs(t, err, &ce)
+	assert.Contains(t, ce.Reason, "already sealed")
+
+	// The first deal has no admit of its own: an admit sealed for the second
+	// is refused, by name.
+	_, err = seller.store.Agree(ctx, seller.cadence, first.Digest, AgreeOptions{Admit: admitSecond})
+	var ie *InputError
+	require.ErrorAs(t, err, &ie)
+	assert.Equal(t, "admit", ie.Field)
+	assert.Contains(t, ie.Reason, "is the admission decision `deal admit` sealed for deal "+second.DealID)
+
+	// The deal's own admit, named, is cited.
+	ag, err := seller.store.Agree(ctx, seller.cadence, second.Digest, AgreeOptions{Admit: admitSecond})
+	require.NoError(t, err)
+	read, err := xdealv1.VerifyBook(ag.Pair)
+	require.NoError(t, err)
+	body, ok := agreeOf(read.Record)
+	require.True(t, ok)
+	assert.Equal(t, admitSecond, body.Admit.Digest)
+}
+
+func TestAWindowedShelfPlacesTheBookAtItsAgreement(t *testing.T) {
+	ctx := t.Context()
+	window := &evidencebook.WindowPolicy{Period: evidencebook.WindowDay, Base: evidencebook.JournalLogID, Since: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), Journal: true}
+	buyer := newSideWindowed(t, "buyer", window)
+	offer, err := buyer.store.Offer(ctx, offerTo(t, nil), "o")
+	require.NoError(t, err)
+	buyer.admit(offer.DealID)
+
+	// Another write opens the book first: the place is taken, the agreement
+	// is built again on the book as it now is, and it is refused there, since
+	// an agreement is only a book's first record. The book holds one.
+	taken := false
+	bookAppendHook = func() {
+		if taken {
+			return
+		}
+		taken = true
+		_, err := buyer.store.Agree(ctx, buyer.cadence, offer.Digest, AgreeOptions{})
+		require.NoError(t, err)
+	}
+	t.Cleanup(func() { bookAppendHook = func() {} })
+	_, err = buyer.store.Agree(ctx, buyer.cadence, offer.Digest, AgreeOptions{})
+	require.Error(t, err)
+	assert.True(t, taken)
+	d, err := buyer.store.Deal(ctx, offer.DealID)
+	require.NoError(t, err)
+	book, err := buyer.store.OwnBook(ctx, d)
+	require.NoError(t, err)
+	assert.Len(t, book, 1)
+	_, placed, err := buyer.shelf.Placement(ctx, d.OwnLogID)
+	require.NoError(t, err)
+	assert.True(t, placed, "the deal's book is placed in its agreement's window")
+
+	// Agreeing again returns that agreement.
+	ag, err := buyer.store.Agree(ctx, buyer.cadence, offer.Digest, AgreeOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, d.OwnAgreementDigest, ag.Digest)
+}
+
+func TestOpenRefusesAnIncompleteConfig(t *testing.T) {
+	p := newSide(t, "buyer")
+	good := Config{Shelf: p.shelf, DB: p.db, SigningKey: p.key.Public().(ed25519.PublicKey),
+		CheckpointKey: p.key.Public().(ed25519.PublicKey), ShelfLogID: testCadenceLog}
+	for name, edit := range map[string]func(*Config){
+		"no shelf":         func(c *Config) { c.Shelf = nil },
+		"no db":            func(c *Config) { c.DB = nil },
+		"no signing key":   func(c *Config) { c.SigningKey = nil },
+		"no shelf log id":  func(c *Config) { c.ShelfLogID = "" },
+		"short checkpoint": func(c *Config) { c.CheckpointKey = c.CheckpointKey[:8] },
+	} {
+		cfg := good
+		edit(&cfg)
+		_, err := Open(t.Context(), cfg)
+		assert.Error(t, err, name)
+	}
+	_, err := Open(t.Context(), good)
+	assert.NoError(t, err)
+}
+
+func TestAnOfferSentBeforeItsRowWasKeptGetsItsRow(t *testing.T) {
+	ctx := t.Context()
+	buyer, seller := newSide(t, "buyer"), newSide(t, "seller")
+	sk := seller.keyID()
+	offer, err := buyer.store.Offer(ctx, offerTo(t, &sk), "o")
+	require.NoError(t, err)
+	// An early build kept only the deal's version row for an offer it sent.
+	_, err = buyer.db.ExecContext(ctx, `DELETE FROM deal_v1 WHERE deal_id=?`, offer.DealID)
+	require.NoError(t, err)
+
+	seller.receiveSent(offer.Pair, nil)
+	seller.admit(offer.DealID)
+	sa, err := seller.store.Agree(ctx, seller.cadence, offer.Digest, AgreeOptions{})
+	require.NoError(t, err)
+	buyer.receiveAgreement(sa)
+
+	d, err := buyer.store.Deal(ctx, offer.DealID)
+	require.NoError(t, err)
+	assert.Equal(t, xdealv1.SideOfferer, d.Side)
+	assert.Equal(t, xdealv1.RoleBuyer, d.Role)
+	assert.Equal(t, offer.Digest, d.OfferDigest)
+	assert.Equal(t, seller.keyID(), d.CounterpartyKey)
+	read, err := xdealv1.VerifyBook(sa.Pair)
+	require.NoError(t, err)
+	assert.Equal(t, read.RecordID, d.CounterpartyAgreement)
 }

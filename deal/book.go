@@ -261,10 +261,13 @@ func (s *Store) Repair(ctx context.Context, dealID string) (*Deal, error) {
 	if err != nil || d == nil {
 		return d, err
 	}
+	if d.OwnAgreementID != "" || d.OwnLogID == "" {
+		return d, nil
+	}
 	if err := s.repairIfStopped(ctx, d); err != nil {
 		return nil, err
 	}
-	return d, nil
+	return s.Deal(ctx, dealID)
 }
 
 // OwnBook is the holder's deal book of d as records, in order.

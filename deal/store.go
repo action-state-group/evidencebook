@@ -104,13 +104,20 @@ type Store struct {
 	cfg Config
 }
 
-// Open opens the store on cfg.Shelf, creating its tables when absent.
+// Open opens the store on cfg.Shelf, creating its tables when absent. The
+// shelf's cadence must already keep a log of book facts (Cadence.Migrated):
+// the journal and SealSent need one. A host that also keeps deals of the
+// legacy x-deal-v0 opens a Store only for x-deal-v1 work, so a store that
+// never holds an x-deal-v1 deal never gains these tables.
 func Open(ctx context.Context, cfg Config) (*Store, error) {
 	if cfg.Shelf == nil || cfg.DB == nil {
 		return nil, errors.New("deal: Open needs a shelf and a handle on its file")
 	}
 	if len(cfg.SigningKey) != ed25519.PublicKeySize || len(cfg.CheckpointKey) != ed25519.PublicKeySize {
 		return nil, errors.New("deal: Open needs the shelf's signing and checkpoint public keys")
+	}
+	if cfg.ShelfLogID == "" {
+		return nil, errors.New("deal: Open needs the shelf's cadence log id, which an agreement names")
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now

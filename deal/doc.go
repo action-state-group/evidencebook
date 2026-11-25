@@ -29,7 +29,7 @@
 // the offers it received (deal_v1_offers), each record sent whole
 // (deal_sent) and each admission decision bound to its deal
 // (deal_v1_admits). capsulectl-deal keeps its deals in the same tables, so a
-// store either writes opens in the other.
+// deal store written by either opens in the other.
 //
 // Every call can be run again after a failure. A record sent whole is
 // written to deal_sent before it is sealed, keyed by the caller's request
