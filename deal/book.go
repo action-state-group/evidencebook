@@ -231,10 +231,10 @@ func (s *Store) repairOpening(ctx context.Context, d *Deal, book *evidencebook.B
 		return conflictf("the deal book's first record has no record digest")
 	}
 	d.OwnAgreementID, d.OwnAgreementDigest = first[0].RecordID, first[0].Header.PayloadCommitments[0]
-	if _, err = s.cfg.DB.ExecContext(ctx, `UPDATE deal_v1 SET own_agreement_id=?, own_agreement_digest=? WHERE deal_id=?`, d.OwnAgreementID, d.OwnAgreementDigest, d.ID); err != nil {
+	if _, err = s.cfg.DB.ExecContext(ctx, `UPDATE deal_v1 SET own_agreement_id=?, own_agreement_digest=? WHERE deal_id=?`, d.OwnAgreementID, d.OwnAgreementDigest, d.DealID); err != nil {
 		return err
 	}
-	_, err = s.cfg.DB.ExecContext(ctx, `UPDATE deal_versions SET state='agreed' WHERE deal_id=?`, d.ID)
+	_, err = s.cfg.DB.ExecContext(ctx, `UPDATE deal_versions SET state='agreed' WHERE deal_id=?`, d.DealID)
 	return err
 }
 

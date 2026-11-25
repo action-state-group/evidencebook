@@ -472,7 +472,7 @@ func (s *Store) agreement(ctx context.Context, cad *evidencebook.Cadence, d *Dea
 	if err != nil {
 		return Agreement{}, err
 	}
-	return Agreement{DealID: d.ID, Digest: d.OwnAgreementDigest, Side: d.Side, Pair: pair, StampProof: proof, NoLayer: noLayer}, nil
+	return Agreement{DealID: d.DealID, Digest: d.OwnAgreementDigest, Side: d.Side, Pair: pair, StampProof: proof, NoLayer: noLayer}, nil
 }
 
 func refOf(digest string) *xdealv1.Ref {

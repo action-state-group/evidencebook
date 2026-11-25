@@ -116,7 +116,7 @@ func (s *Store) ensureOfferedRow(ctx context.Context, d *Deal) error {
 	}
 	var payload []byte
 	var digest string
-	err := s.cfg.DB.QueryRowContext(ctx, `SELECT payload, record_digest FROM deal_sent WHERE deal_id=? AND kind=? ORDER BY id LIMIT 1`, d.ID, xdealv1.TypePropose).Scan(&payload, &digest)
+	err := s.cfg.DB.QueryRowContext(ctx, `SELECT payload, record_digest FROM deal_sent WHERE deal_id=? AND kind=? ORDER BY id LIMIT 1`, d.DealID, xdealv1.TypePropose).Scan(&payload, &digest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -132,7 +132,7 @@ func (s *Store) ensureOfferedRow(ctx context.Context, d *Deal) error {
 		return nil
 	}
 	if _, err = s.cfg.DB.ExecContext(ctx, `INSERT INTO deal_v1 (deal_id, side, role, offer_digest, counterparty_key, counterparty_agreement, own_agreement_id, own_agreement_digest) VALUES (?, ?, ?, ?, '', '', '', '') ON CONFLICT(deal_id) DO NOTHING`,
-		d.ID, xdealv1.SideOfferer, prop.Role, digest); err != nil {
+		d.DealID, xdealv1.SideOfferer, prop.Role, digest); err != nil {
 		return err
 	}
 	d.Side, d.Role, d.OfferDigest = xdealv1.SideOfferer, prop.Role, digest

@@ -190,7 +190,7 @@ func (s *Store) keyID() string { return hex.EncodeToString(s.cfg.SigningKey) }
 
 // Deal is a deal this store holds, as its tables record it.
 type Deal struct {
-	ID string
+	DealID string
 	// Side is offerer or acceptor and Role buyer or seller; both are empty
 	// for an offer sent before its row was kept.
 	Side, Role  string
@@ -210,7 +210,7 @@ type Deal struct {
 
 // Deal reads a deal; nil when the store holds no x-deal-v1 deal of that id.
 func (s *Store) Deal(ctx context.Context, dealID string) (*Deal, error) {
-	d := &Deal{ID: dealID}
+	d := &Deal{DealID: dealID}
 	err := s.cfg.DB.QueryRowContext(ctx,
 		`SELECT own_log_id, counterparty_log_id, state FROM deal_versions WHERE deal_id=? AND version=?`, dealID, version).
 		Scan(&d.OwnLogID, &d.CounterpartyLogID, &d.State)
