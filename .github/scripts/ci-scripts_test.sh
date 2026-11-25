@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests race-packages.sh against this checkout's package graph and
 # paths-changed.sh against this checkout's workflows. Run from anywhere:
-# bash .github/scripts/ci-scripts_test.sh (capsulectl.yml's quality job runs it).
+# bash .github/scripts/ci-scripts_test.sh (ci.yml's CI scripts job runs it on
+# every pull request).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 fails=0
@@ -14,7 +15,12 @@ run() { # module paths...
 expect() { # description, want ("" for none; space-separated, sorted), module, paths...
   local what=$1 want=$2 got
   shift 2
-  got=$(run "$@" | paste -sd ' ' -)
+  if ! got=$(run "$@"); then
+    printf 'FAIL %s: race-packages.sh exited nonzero\n' "$what"
+    fails=$((fails + 1))
+    return
+  fi
+  got=${got//$'\n'/ }
   if [[ "$got" != "$want" ]]; then
     printf 'FAIL %s\n  want: %s\n  got:  %s\n' "$what" "$want" "$got"
     fails=$((fails + 1))
@@ -22,21 +28,15 @@ expect() { # description, want ("" for none; space-separated, sorted), module, p
     printf 'ok   %s\n' "$what"
   fi
 }
-# The raced packages, failing the test when the script itself fails.
-raced() {
-  local out
-  if ! out=$(run "$@"); then
-    printf 'FAIL race-packages.sh %s exited nonzero\n' "$1" >&2
-    fails=$((fails + 1))
-    return 1
-  fi
-  printf '%s\n' "$out"
-}
+# The raced packages; the helpers count a failure of the script itself (in
+# the caller's shell, not a command substitution's).
 expect_has() { # description, package, module, paths...
   local what=$1 pkg=$2 out
   shift 2
-  out=$(raced "$@") || { printf 'FAIL %s\n' "$what"; return; }
-  if grep -qxF "$pkg" <<<"$out"; then printf 'ok   %s\n' "$what"; else
+  if ! out=$(run "$@"); then
+    printf 'FAIL %s: race-packages.sh exited nonzero\n' "$what"
+    fails=$((fails + 1))
+  elif grep -qxF "$pkg" <<<"$out"; then printf 'ok   %s\n' "$what"; else
     printf 'FAIL %s: %s not raced\n' "$what" "$pkg"
     fails=$((fails + 1))
   fi
@@ -44,8 +44,10 @@ expect_has() { # description, package, module, paths...
 expect_lacks() {
   local what=$1 pkg=$2 out
   shift 2
-  out=$(raced "$@") || { printf 'FAIL %s\n' "$what"; return; }
-  if grep -qxF "$pkg" <<<"$out"; then
+  if ! out=$(run "$@"); then
+    printf 'FAIL %s: race-packages.sh exited nonzero\n' "$what"
+    fails=$((fails + 1))
+  elif grep -qxF "$pkg" <<<"$out"; then
     printf 'FAIL %s: %s raced\n' "$what" "$pkg"
     fails=$((fails + 1))
   else printf 'ok   %s\n' "$what"; fi
@@ -88,7 +90,7 @@ real_go=$(command -v go)
 cat > "$fake/go" <<FAKE
 #!/usr/bin/env bash
 case "\$FAIL_ON \$*" in
-  "all list"*) echo "go: injected failure" >&2; exit 1 ;;
+  "all list -f"*) echo "go: injected failure" >&2; exit 1 ;;
   "deps "*-deps*) echo "go: injected failure" >&2; exit 1 ;;
 esac
 exec "$real_go" "\$@"
@@ -102,6 +104,45 @@ fails_closed() { # description, FAIL_ON value
 }
 fails_closed "race-packages: a failed package listing fails the script" all
 fails_closed "race-packages: a failed dependency listing fails the script" deps
+
+# report-failure.sh against a fake gh that logs its calls.
+cat > "$fake/gh" <<'FAKE'
+#!/usr/bin/env bash
+echo "$*" >> "$MOCK_LOG"
+case "$1 $2" in
+  "label create") exit "${LABEL_CREATE_RC:-0}" ;;
+  "label list") printf '%s' "${LABELS:-}" ;;
+  "issue list")
+    n=$(cat "$MOCK_LOG.lists" 2>/dev/null || echo 0)
+    echo $((n + 1)) > "$MOCK_LOG.lists"
+    if ((n == 0)); then printf '%s' "${FIRST_LIST:-}"; else printf '%s' "${SECOND_LIST:-}"; fi
+    ;;
+  "issue create") echo "https://github.com/o/r/issues/${CREATED:-41}" ;;
+esac
+FAKE
+chmod +x "$fake/gh"
+reports() { # description, wanted issue calls ("verb number", ;-separated), env...
+  local what=$1 want=$2 got
+  shift 2
+  rm -f "$fake/log" "$fake/log.lists"
+  if ! env PATH="$fake:$PATH" MOCK_LOG="$fake/log" GITHUB_REPOSITORY=o/r TITLE=T RUN=R REPORT_SETTLE_SECONDS=0 \
+    "$@" bash "$here/report-failure.sh" > /dev/null 2>&1; then
+    printf 'FAIL %s: exited nonzero\n' "$what"
+    fails=$((fails + 1))
+    return
+  fi
+  got=$(grep -E '^issue (comment|edit|close|create)' "$fake/log" | awk '{n = ""; for (i = 3; i <= NF; i++) if ($i ~ /^[0-9]+$/) { n = " " $i; break }; print $2 n}' | paste -sd ';' -)
+  if [[ "$got" == "$want" ]]; then printf 'ok   %s\n' "$what"; else
+    printf 'FAIL %s\n  want: %s\n  got:  %s\n' "$what" "$want" "$got"
+    fails=$((fails + 1))
+  fi
+}
+reports "report: an open issue gets the run, then the label" "comment 7;edit 7" FIRST_LIST=7 LABELS=ci-red
+reports "report: a label that cannot be created does not stop the report" "comment 7" FIRST_LIST=7 LABEL_CREATE_RC=1 LABELS=
+reports "report: a newer duplicate leaves ours open" "create;edit 41" CREATED=41 SECOND_LIST=42 LABELS=ci-red
+reports "report: an older duplicate takes our run and ours closes" \
+  "create;edit 42;comment 41;edit 41;close 42" \
+  CREATED=42 SECOND_LIST=$'41\n42' LABELS=ci-red
 
 # paths-changed.sh
 paths() { # description, want, workflow, paths...

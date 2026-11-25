@@ -29,23 +29,34 @@ all=0
 changed=$(mktemp)
 log=$(mktemp -d)
 trap 'rm -rf "$changed" "$log"' EXIT
+# Selection errors stop the script: a check that silently skipped a suite
+# would pass without running what the changes need.
 if ((!all)); then
   base=$(git merge-base HEAD origin/main) || { echo "no merge base with origin/main; fetch it or pass --all" >&2; exit 2; }
-  { git diff --no-renames --name-only "$base"; git ls-files --others --exclude-standard; } | sort -u > "$changed"
+  git diff --no-renames --name-only "$base" > "$changed" || { echo "git diff failed" >&2; exit 2; }
+  git ls-files --others --exclude-standard >> "$changed" || { echo "git ls-files failed" >&2; exit 2; }
 fi
 
 # Whether a suite runs: always with --all; otherwise when the changes reach it.
 reaches() { # workflow
   ((all)) && return 0
-  [[ "$(bash .github/scripts/paths-changed.sh "$1" < "$changed")" == true ]]
+  local r
+  r=$(bash .github/scripts/paths-changed.sh "$1" < "$changed") || { echo "paths-changed.sh $1 failed" >&2; exit 2; }
+  case "$r" in true) return 0 ;; false) return 1 ;; *) echo "paths-changed.sh $1 printed $r" >&2; exit 2 ;; esac
+}
+matched() { # grep options and pattern, over the changed paths; exits on a grep error
+  local st=0
+  grep "$@" "$changed" > /dev/null || st=$?
+  ((st < 2)) || { echo "grep failed" >&2; exit 2; }
+  ((st == 0))
 }
 reaches_root() {
   ((all)) && return 0
-  grep -vqE '^(capsulectl/|report/|changelog\.d/|\.github/workflows/(capsulectl|capsulectl-core-main|rust|report|leak-lint|changelog-fragments|publish-rust|release|prepare-release|tag-release)\.yml$)' "$changed"
+  matched -vE '^(capsulectl/|report/|changelog\.d/|\.github/workflows/(capsulectl|capsulectl-core-main|rust|report|leak-lint|changelog-fragments|publish-rust|release|prepare-release|tag-release)\.yml$)'
 }
 reaches_python() {
   ((all)) && return 0
-  grep -qE '^(python/|testdata/|dealprofile/|[^/]+\.go$|go\.(mod|sum)$)' "$changed"
+  matched -E '^(python/|testdata/|dealprofile/|[^/]+\.go$|go\.(mod|sum)$)'
 }
 
 results=()
@@ -119,12 +130,13 @@ python_suite() {
   (cd python && .venv/bin/python -m pytest -q)
 }
 
+skipped() { results+=("$(printf '%-12s %s' "$1" 'skipped (the changes do not reach it)')"); }
 suite ci-scripts bash .github/scripts/ci-scripts_test.sh
-reaches_root && suite root root_suite
-reaches .github/workflows/capsulectl.yml && suite capsulectl capsulectl_suite
-reaches .github/workflows/report.yml && suite report report_suite
-reaches .github/workflows/rust.yml && suite rust rust_suite
-reaches_python && suite python python_suite
+if reaches_root; then suite root root_suite; else skipped root; fi
+if reaches .github/workflows/capsulectl.yml; then suite capsulectl capsulectl_suite; else skipped capsulectl; fi
+if reaches .github/workflows/report.yml; then suite report report_suite; else skipped report; fi
+if reaches .github/workflows/rust.yml; then suite rust rust_suite; else skipped rust; fi
+if reaches_python; then suite python python_suite; else skipped python; fi
 
 printf '\n== summary (%s) ==\n' "$( ((all)) && echo all suites || echo suites the changes reach)"
 printf '%s\n' "${results[@]}"
