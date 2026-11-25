@@ -12,9 +12,9 @@ name: capsulectl
 on:
   push:
     branches: [main]
-    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", ".github/workflows/capsulectl.yml"]
+    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml"]
   pull_request:
-    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", ".github/workflows/capsulectl.yml"]
+    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml"]
   workflow_dispatch:
   schedule:
     # Nightly: every case under the race detector (see the tests job's env).
@@ -72,7 +72,11 @@ jobs:
           go generate ./internal/deal
           git diff --exit-code -- internal/deal/confusables_table.go
       - name: The release build, dry run
-        # release.yml's build and handshake check for both launchers, on every change.
+        # release.yml's build, handshake check and core step for the one
+        # release, on every change: the core step adds the published core
+        # go.mod requires, so a defect in it shows here, not on a pushed tag.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           scripts/release-build.sh v0.0.0-ci "$GITHUB_SHA" "$RUNNER_TEMP/dist"
           core=$(go list -m -f '{{.Version}}' github.com/action-state-group/capsule-cli)
@@ -85,6 +89,17 @@ jobs:
           (cd "$RUNNER_TEMP/dist" && sha256sum -c SHA256SUMS)
           scripts/check-standard-history-archive.sh "$RUNNER_TEMP/dist/capsulectl-book-v0.0.0-ci-linux-amd64" "$RUNNER_TEMP/dist/standard-history-v0.0.0-ci.tar.gz"
           scripts/check-deal-view-archive.sh "$RUNNER_TEMP/dist/capsulectl-deal-v0.0.0-ci-linux-amd64" "$RUNNER_TEMP/dist/deal-view-v0.0.0-ci.tar.gz"
+          # The core step needs a published capsule-cli release; a pin at a
+          # commit (a pseudo-version, before the one release) has none, and
+          # release.yml refuses to tag it anyway.
+          if printf '%s\n' "$core" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?'; then
+            scripts/release-core-assets.sh v0.0.0-ci "$RUNNER_TEMP/dist"
+          else
+            echo "::notice::capsule-cli is pinned at $core, not a release tag: the core step is skipped in this dry run"
+          fi
+          (cd "$RUNNER_TEMP/dist" && sha256sum -c SHA256SUMS)
+          test "$(cd "$RUNNER_TEMP/dist" && ls | grep -vx SHA256SUMS | sort)" = "$(awk '{print $2}' "$RUNNER_TEMP/dist/SHA256SUMS" | sort)" \
+            || { echo "SHA256SUMS does not list exactly the release's files"; exit 1; }
 
   tests:
     # The race detector split by test name across ten jobs, and every case
