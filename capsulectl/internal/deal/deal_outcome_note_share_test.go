@@ -90,6 +90,13 @@ func TestANodeStillAnswersTheCardWithANotedDeal(t *testing.T) {
 	*now = now.Add(2 * time.Minute)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 
+	// The owner's own card still counts a book's note did_not_hold (kept for books an earlier release wrote).
+	own := filepath.Join(t.TempDir(), "own.json")
+	dealRun(t, "standard-history", "card", "--derivation", "standard_history/1", "--out", own)
+	deals := shBlock(t, readBundle(t, own))["deals"].([]any)
+	require.Len(t, deals, 1)
+	assert.Equal(t, "did_not_hold", deals[0].(map[string]any)["outcome"])
+
 	reply := respondCard(t, cardRequest(t, fullHistory))
 	require.NotNil(t, reply.Envelope, "an envelope, not a refusal")
 	require.NoError(t, reply.Envelope.Verify())

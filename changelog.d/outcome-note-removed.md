@@ -1,3 +1,4 @@
+<!-- changelog: capsulectl/CHANGELOG-deal.md -->
 ### Removed: `deal outcome-note seal` (evidencebook#462, evidencebook-skills#285)
 
 - **What.** The TEMPORARY verb that sealed the holder's own note that an x-deal-v0 deal did not hold. Nothing calls it: the ARD demo now runs on x-deal-v1, where a deal that did not hold is shown by the adjudicator's ruling (evidencebook-skills#288).

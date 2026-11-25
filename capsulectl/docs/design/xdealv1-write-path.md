@@ -269,7 +269,7 @@ have them (v0 deals). A v0 deal keeps both verbs unchanged.
 ## 8. Old deals, the demo and the pin
 
 - v0 deals, their close records and results logs, `standard_history/1` and `/2`, the temporary
-  `outcome_note` verb and `examples/ard-commerce` are not changed. With the setting at its
+  `outcome_note` record (its verb was removed in #909) and `examples/ard-commerce` are not changed. With the setting at its
   default, no code path of this note runs.
 - The evidencebook pin moves only to a released version that contains `x-deal-v1`. Until then
   this work builds on a pseudo-version in a branch that is not merged. It also needs capsule-viewer
