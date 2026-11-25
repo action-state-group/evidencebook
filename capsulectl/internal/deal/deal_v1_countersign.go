@@ -99,6 +99,12 @@ func withheldForm(raw []byte) ([]byte, error) {
 				return nil, fmt.Errorf("a record Capsule of the deal book carries %q, which the withheld form does not show a countersigner: refusing to write it", member)
 			}
 		}
+		// model_attestation holds only the header's digest.
+		ma, _ := capsule["model_attestation"].(map[string]interface{})
+		ca, _ := ma["compute_attestation"].(map[string]interface{})
+		if _, ok := ca["agent_input_digest"]; !ok || len(ma) != 1 || len(ca) != 1 {
+			return nil, errors.New("a record Capsule of the deal book carries a model_attestation other than the header's digest, which the withheld form does not show a countersigner: refusing to write it")
+		}
 	}
 	completeness, _ := withheld["completeness"].(map[string]interface{})
 	if completeness == nil {

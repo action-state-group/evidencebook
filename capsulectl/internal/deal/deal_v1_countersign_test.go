@@ -218,4 +218,11 @@ func TestAV1WithheldCapsulesCarryOnlyTheListedMembers(t *testing.T) {
 	require.NoError(t, err)
 	_, err = withheldForm(raw)
 	require.ErrorContains(t, err, `carries "evidence_record_header"`)
+
+	b = readBundleFile(t, withheldV1(t, h))
+	b["records"].([]interface{})[0].(map[string]interface{})["model_attestation"].(map[string]interface{})["compute_attestation"].(map[string]interface{})["agent_output_digest"] = "00"
+	raw, err = json.Marshal(b)
+	require.NoError(t, err)
+	_, err = withheldForm(raw)
+	require.ErrorContains(t, err, "a model_attestation other than the header's digest")
 }
