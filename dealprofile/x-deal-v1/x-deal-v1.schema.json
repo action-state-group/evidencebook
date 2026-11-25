@@ -1814,7 +1814,7 @@
         },
         "alone_deny": {
           "const": true,
-          "description": "Present exactly when the rules checker denied given the History and did not deny without it (or could not answer without it): History alone never makes the verdict NO (D1 condition 1), so the verdict asks (result pause) while rules keeps the checker's deny as given."
+          "description": "Present exactly when the rules checker denied given the History and did not deny without it (or could not answer without it): History alone never makes the verdict NO (capsule-cli#327 design §3, condition 1), so the verdict asks (result pause) while rules keeps the checker's deny as given."
         }
       },
       "description": "What the rules checker read about the counterparty beside the record, bound by digest only: the counterparty's verified History (capsule-cli#327, design 327-received-history.md section 5.4). Absent when the checker read no History. Neither member is a digest a shared copy carries: a verdict is a journal record, and a journal record is in no shared copy."

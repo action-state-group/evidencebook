@@ -383,8 +383,8 @@ type VerdictBody struct {
 // documents), so the verdict is bound to what it read without disclosing it.
 //
 // AloneDeny is set exactly when the checker denied given the History and did
-// not deny without it: History alone never makes the verdict NO (D1
-// condition 1), so the verdict asks (result pause) over rules that keep the
+// not deny without it: History alone never makes the verdict NO (capsule-cli#327 design
+// §3, condition 1), so the verdict asks (result pause) over rules that keep the
 // checker's deny.
 type ReceivedHistoryDigests struct {
 	HistorySHA256 []string `json:"history_sha256"`

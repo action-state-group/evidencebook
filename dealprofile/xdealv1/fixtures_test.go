@@ -372,7 +372,7 @@ func buildAppendixA(t *testing.T) *appendixA {
 			ReceivedHistory: &ReceivedHistoryDigests{HistorySHA256: []string{label("seller's History")}, InputSHA256: label("received_history input of " + rcheck.Digest)},
 			Nonce:           label("VerdictBody nonce " + rh)}}})
 	// The same check denied by rules that deny only given the History: the
-	// verdict asks (D1 condition 1), its rules keep the checker's deny, and
+	// verdict asks (capsule-cli#327 design §3, condition 1), its rules keep the checker's deny, and
 	// received_history says the deny was the History's alone.
 	rcb2 := &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay", AmountMinor: amount(6000), Currency: fxCurrency}, PaymentRef: "pay-ref-7733", Nonce: label("check nonce 2 " + rh)}
 	rcheck2 := a.add(fixture{Path: rh + "/03-check-pay.json", Line: "none (capsule-cli#327)", Story: "Another pay check whose rules checker is handed the seller's verified History.",
