@@ -53,28 +53,44 @@ expect_lacks() {
   else printf 'ok   %s\n' "$what"; fi
 }
 
-cctl_all="./cmd ./cmd/capsulectl-book ./cmd/capsulectl-deal ./internal/book ./internal/deal/assets ./internal/packfile ./scripts/bookdemo ./scripts/genconfusables"
+# Expectations that depend on the package graph come from go list, so a later
+# change to which package imports which does not break these tests.
+pkgs_of() { # module dir; prints its packages, ./x form, sorted, one line
+  (cd "$here/../../$1" && go list ./... | sed "s#^$(go list -m)\$#.#; s#^$(go list -m)/#./#" | sort | paste -sd ' ' -)
+}
+cctl_all=$(pkgs_of capsulectl | tr ' ' '\n' | grep -vx ./internal/deal | paste -sd ' ' -)
+# A package book's tests import from this module, other than book itself.
+book_dep=$(cd "$here/../../capsulectl" && go list -test -deps -f '{{.ImportPath}}' ./internal/book |
+  sed 's/ \[.*\]$//; s/\.test$//' | grep "^$(go list -m)/internal/" | grep -vx "$(go list -m)/internal/book" | sort -u | head -n 1)
+book_dep=${book_dep#github.com/action-state-group/evidencebook/}
 
 # capsulectl
-expect "capsulectl: a deal change races cmd and the deal launcher, never internal/deal" \
-  "./cmd ./cmd/capsulectl-deal ./scripts/genconfusables" capsulectl capsulectl/internal/deal/deal.go
-expect "capsulectl: a book change" "./cmd ./cmd/capsulectl-book ./internal/book" capsulectl capsulectl/internal/book/book.go
+expect_has "capsulectl: a deal change races cmd" ./cmd capsulectl capsulectl/internal/deal/deal.go
+expect_lacks "capsulectl: a deal change never races internal/deal" ./internal/deal capsulectl capsulectl/internal/deal/deal.go
+expect_has "capsulectl: a book change races book" ./internal/book capsulectl capsulectl/internal/book/book.go
+expect_has "capsulectl: a book change races cmd" ./cmd capsulectl capsulectl/internal/book/book.go
+expect_lacks "capsulectl: a book change does not race bookdemo, which does not import it" ./scripts/bookdemo capsulectl capsulectl/internal/book/book.go
 expect_has "capsulectl: a nested book fixture maps to book" ./internal/book capsulectl capsulectl/internal/book/testdata/result/x.json
-expect_has "capsulectl: deal/assets races book, which imports it" ./internal/book capsulectl capsulectl/internal/deal/assets/deal-view.css
-expect_has "capsulectl: packfile races cmd" ./cmd capsulectl capsulectl/internal/packfile/packfile.go
-expect_has "capsulectl: packfile races book" ./internal/book capsulectl capsulectl/internal/packfile/packfile.go
+if [[ -n "$book_dep" ]]; then
+  expect_has "capsulectl: a change to ${book_dep#capsulectl/} races book, whose tests import it" ./internal/book capsulectl "$book_dep/x.go"
+else
+  printf 'FAIL capsulectl: book imports no other package of the module; pick another reverse-dependency case\n'
+  fails=$((fails + 1))
+fi
 expect "capsulectl: docs, skills and README race nothing" "" capsulectl capsulectl/docs/a.md capsulectl/skills/deal/SKILL.md capsulectl/README.md
 expect "capsulectl: root-module and Python changes race nothing" "" capsulectl book.go python/evidencebook/x.py
 expect "capsulectl: go.mod races everything but internal/deal" "$cctl_all" capsulectl capsulectl/go.mod
 expect "capsulectl: the workflow races everything" "$cctl_all" capsulectl .github/workflows/capsulectl.yml
 expect "capsulectl: a shared fixture tree races everything" "$cctl_all" capsulectl testdata/card-registration/vectors.json
 expect "capsulectl: a Go file in no known package (new or deleted) races everything" "$cctl_all" capsulectl capsulectl/internal/gone/gone.go
-expect "capsulectl: a rename across packages races both sides" "./cmd ./cmd/capsulectl-book ./internal/book ./scripts/bookdemo" \
+expect_has "capsulectl: a rename across packages races the old side" ./scripts/bookdemo \
+  capsulectl capsulectl/scripts/bookdemo/main.go capsulectl/internal/book/moved.go
+expect_has "capsulectl: a rename across packages races the new side" ./internal/book \
   capsulectl capsulectl/scripts/bookdemo/main.go capsulectl/internal/book/moved.go
 expect_lacks "capsulectl: internal/deal is never raced" ./internal/deal capsulectl capsulectl/go.mod
 
 # root module
-root_all=$(cd "$here/../.." && go list ./... | sed "s#^$(go list -m)\$#.#; s#^$(go list -m)/#./#" | sort | paste -sd ' ' -)
+root_all=$(pkgs_of .)
 expect "root: capsulectl, report, prose and workflow changes race nothing" "" root \
   capsulectl/internal/book/x.go report/report.go docs/GUIDE.md changelog.d/x.md .github/workflows/rust.yml
 expect_has "root: an xdealv1 change races xdealv1" ./dealprofile/xdealv1 root dealprofile/xdealv1/types.go
