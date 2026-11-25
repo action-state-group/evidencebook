@@ -24,7 +24,9 @@
 #     bytes the binary embeds and its handshake states);
 #   SHA256SUMS over all of them.
 # Every archive is deterministic (sorted entries, fixed mtime, owner 0:0,
-# gzip -n). It needs GNU tar: set TAR=gtar on macOS.
+# gzip -n). It needs GNU tar: TAR names it, else `tar` when that is GNU tar,
+# else `gtar` (macOS: brew install gnu-tar); anything else is refused before
+# the build starts.
 set -euo pipefail
 
 VERSION="${1:?version, e.g. v0.1.0}"
@@ -34,6 +36,21 @@ CORE=github.com/action-state-group/capsule-cli
 PKG=$CORE/cli
 TARGETS=(linux/amd64 linux/arm64 darwin/arm64)
 LAUNCHERS=(capsulectl-book capsulectl-deal)
+
+# The archives need GNU tar's --sort, --mtime and --owner options; macOS's
+# tar is bsdtar, which refuses them partway through the build.
+is_gnu_tar() { "$1" --version 2> /dev/null | head -n 1 | grep -q 'GNU tar'; }
+if [ -z "${TAR:-}" ]; then
+  if is_gnu_tar tar; then TAR=tar
+  elif command -v gtar > /dev/null && is_gnu_tar gtar; then TAR=gtar
+  fi
+fi
+if [ -z "${TAR:-}" ] || ! is_gnu_tar "$TAR"; then
+  echo "release-build.sh: GNU tar is needed for the archives, and ${TAR:-tar} is not GNU tar." >&2
+  echo "On macOS: brew install gnu-tar (it installs gtar, which this script then uses)." >&2
+  echo "On Linux: install your distribution's tar package." >&2
+  exit 1
+fi
 
 cd "$(dirname "$0")/.."
 core_version=$(go list -m -f '{{.Version}}' "$CORE")
@@ -63,13 +80,13 @@ files=()
 while IFS= read -r f; do files+=("$f"); done < <(jq -r '.files[].path | sub("^standard-history-module/"; "")' internal/book/assets/standard-history/presentation.json)
 for f in "${files[@]}"; do cp "internal/book/assets/standard-history/$f" "$tmp/standard-history-module/"; done
 (cd "$tmp" && { printf '%s\0' standard-history-module; for f in $(printf '%s\n' "${files[@]}" | LC_ALL=C sort); do printf '%s\0' "standard-history-module/$f"; done; } |
-  "${TAR:-tar}" --null --no-recursion -T - --format=gnu --owner=0 --group=0 --numeric-owner \
+  "$TAR" --null --no-recursion -T - --format=gnu --owner=0 --group=0 --numeric-owner \
     --mode='u+rw,go=rX' --mtime='1970-01-01 00:00:00Z' -cf -) |
   gzip -n -9 >"$OUT/standard-history-$VERSION.tar.gz"
 
 # The deal skill: the tree as committed, in a fixed order with fixed metadata.
 git ls-files -z skills/deal | LC_ALL=C sort -z |
-  "${TAR:-tar}" --null -T - --format=gnu --owner=0 --group=0 --numeric-owner \
+  "$TAR" --null -T - --format=gnu --owner=0 --group=0 --numeric-owner \
     --mode='u+rw,go=rX' --mtime='1970-01-01 00:00:00Z' -cf - |
   gzip -n -9 >"$OUT/deal-skill-$VERSION.tar.gz"
 
@@ -77,7 +94,7 @@ git ls-files -z skills/deal | LC_ALL=C sort -z |
 mkdir "$tmp/capsulectl-deal.d"
 cp internal/deal/assets/deal-view.js internal/deal/assets/deal-view.css "$tmp/capsulectl-deal.d/"
 (cd "$tmp" && printf '%s\0' capsulectl-deal.d capsulectl-deal.d/deal-view.css capsulectl-deal.d/deal-view.js |
-  "${TAR:-tar}" --null --no-recursion -T - --format=gnu --owner=0 --group=0 --numeric-owner \
+  "$TAR" --null --no-recursion -T - --format=gnu --owner=0 --group=0 --numeric-owner \
     --mode='u+rw,go=rX' --mtime='1970-01-01 00:00:00Z' -cf -) |
   gzip -n -9 >"$OUT/deal-view-$VERSION.tar.gz"
 
