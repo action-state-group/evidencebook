@@ -330,29 +330,37 @@ func readAnswer(full FullCopy, e evidencebook.BookEvidence, witnesses aacwitness
 // records do not fork), the held records off it, and the lowest seq of one
 // of those (0 for none).
 func heldBranch(full FullCopy, named []string) ([]BookRead, []BookRead, uint64, error) {
-	if len(full.Received) == 0 {
+	return branchNamed(full.Received, named, full.Role)
+}
+
+// branchNamed is heldBranch over held, the other side's records held by a
+// holder of role, each chaining from seq 1. The holder's status reads the
+// same branch when that side forked at its first record (statusBooks), so
+// the start and the case never read different branches.
+func branchNamed(held map[string]BookRead, named []string, role string) ([]BookRead, []BookRead, uint64, error) {
+	if len(held) == 0 {
 		return nil, nil, 0, nil
 	}
 	head := ""
 	for _, id := range named {
-		if b, ok := full.Received[id]; ok && (head == "" || b.Seq > full.Received[head].Seq) {
+		if b, ok := held[id]; ok && (head == "" || b.Seq > held[head].Seq) {
 			head = id
 		}
 	}
 	var branch []BookRead
 	if head != "" {
-		branch = branchTo(full.Received, head)
+		branch = branchTo(held, head)
 		for _, id := range named {
-			b := full.Received[id]
+			b := held[id]
 			if branch[b.Seq-1].RecordID != id {
-				return nil, nil, 0, caseErr("the %s's book names two branches of the other side's book as received", full.Role)
+				return nil, nil, 0, caseErr("the %s's book names two branches of the other side's book as received", role)
 			}
 		}
 	}
 	children := map[string][]BookRead{}
 	var roots []BookRead
-	for _, id := range slices.Sorted(maps.Keys(full.Received)) {
-		b := full.Received[id]
+	for _, id := range slices.Sorted(maps.Keys(held)) {
+		b := held[id]
 		if b.Seq == 1 {
 			roots = append(roots, b)
 		} else {
@@ -364,8 +372,8 @@ func heldBranch(full FullCopy, named []string) ([]BookRead, []BookRead, uint64, 
 			// The sender forked at its first record and the holder named
 			// neither: no branch is read, and every held record is evidence.
 			var all []BookRead
-			for _, id := range slices.Sorted(maps.Keys(full.Received)) {
-				all = append(all, full.Received[id])
+			for _, id := range slices.Sorted(maps.Keys(held)) {
+				all = append(all, held[id])
 			}
 			return nil, uniqueBySeq(all), 1, nil
 		}
@@ -384,8 +392,8 @@ func heldBranch(full FullCopy, named []string) ([]BookRead, []BookRead, uint64, 
 	}
 	var forked []BookRead
 	var forkAt uint64
-	for _, id := range slices.Sorted(maps.Keys(full.Received)) {
-		if b := full.Received[id]; !on[id] {
+	for _, id := range slices.Sorted(maps.Keys(held)) {
+		if b := held[id]; !on[id] {
 			forked = append(forked, b)
 			if forkAt == 0 || b.Seq < forkAt {
 				forkAt = b.Seq

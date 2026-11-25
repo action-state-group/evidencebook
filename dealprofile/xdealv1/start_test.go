@@ -86,6 +86,11 @@ func TestStartVectors(t *testing.T) {
 		other, awaiting)
 	add("other-rows-after", "the same after agree_by: not started",
 		in(func(s *StartInput) { s.At = stAfter }, other), notStarted)
+	none := StartInput{At: stBefore, Side: SideOfferer, CounterpartyLayer: true, AgreeBy: stAgreeBy}
+	add("offerer-holds-none", "an offerer that counts no acceptor agreement (the acceptor forked at its first record and the offerer names neither branch, u217): awaiting before agree_by",
+		none, awaiting)
+	add("offerer-holds-none-after", "the same after agree_by: not started",
+		in(func(s *StartInput) { s.At = stAfter }, none), notStarted)
 	add("offerer-names-another", "the offerer's agreement names another record than the acceptor's agreement: it does not join; awaiting before agree_by",
 		in(func(s *StartInput) { s.OffererNamesAcceptor = boolp(false) }, stBoth(SideAcceptor, stBefore)), awaiting)
 	add("offerer-names-another-after", "the same after agree_by: not started",
@@ -131,7 +136,6 @@ func TestStartRefuses(t *testing.T) {
 		"bad at":       {At: "2026-11-01 12:00:00", Side: SideAcceptor, CounterpartyLayer: true, AgreeBy: stAgreeBy},
 		"bad agree_by": {At: stBefore, Side: SideAcceptor, CounterpartyLayer: true, AgreeBy: "tomorrow"},
 		"bad side":     {At: stBefore, Side: "buyer", CounterpartyLayer: true, AgreeBy: stAgreeBy},
-		"offerer without the acceptor's agreement": {At: stBefore, Side: SideOfferer, CounterpartyLayer: true, AgreeBy: stAgreeBy},
 		"bad offerer time": func() StartInput {
 			s := stBoth(SideAcceptor, stBefore)
 			s.OffererAgreementTime = strp("2026-11-31T00:00:00Z")

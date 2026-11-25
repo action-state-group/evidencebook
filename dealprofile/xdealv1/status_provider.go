@@ -126,6 +126,17 @@ func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.Status
 			if theirs, prefix, err = countedWith(ctx, p.Shelf, held, *ag.CounterpartyKey.V, theirLog); err != nil {
 				return fail(err)
 			}
+			// The counterparty forked at its first record, so nothing is
+			// counted: the branch the holder's own agreement names is read
+			// (evidencebook#878, Sherlock2's option 2: the deal both sides
+			// signed starts, and fork_at 1 stays shown). An honest offerer
+			// seals its agreement after the acceptor's it saw, so its seen
+			// names a branch; naming neither, nothing is read and the deal
+			// reads awaiting, then not started (u217). An acceptor reads the
+			// branch its later records name, none before.
+			if prefix.ForkAt == 1 && len(theirs) == 0 {
+				theirs = namedBranch(held, *ag.CounterpartyKey.V, theirLog, own)
+			}
 		}
 		for i := range theirs {
 			if theirs[i].rec.Time, err = p.receivedTime(ctx, in, theirLog, uint64(i+1), keys); err != nil {
@@ -156,8 +167,13 @@ func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.Status
 	slices.Sort(link.CheckedOver)
 	link.CheckedOver = slices.Compact(link.CheckedOver)
 	var cp *ReportCounterpartLog
-	if len(theirs) > 0 {
+	switch {
+	case len(theirs) > 0:
 		cp = &ReportCounterpartLog{LogID: theirLog, Counted: uint64(len(theirs)), Last: theirs[len(theirs)-1].rec.RecordID, ForkAt: prefix.ForkAt}
+	case theirLog != "" && prefix.ForkAt > 0:
+		// Nothing read of a forked book (the holder names no branch): the
+		// fork is still shown, with nothing counted (u217).
+		cp = &ReportCounterpartLog{LogID: theirLog, ForkAt: prefix.ForkAt}
 	}
 	pairs := map[string][]byte{}
 	for _, o := range own {
@@ -316,6 +332,47 @@ func logsOf(held []evidencebook.HeldRecord, sender string, first func(Record) bo
 func counted(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, sender, logID string) ([]heldBookRecord, error) {
 	out, _, err := countedWith(ctx, shelf, held, sender, logID)
 	return out, err
+}
+
+// namedBranch is the branch of sender's book logID, forked at its first
+// record, that the holder's own book names as received: the branch
+// branchNamed picks from every own record's seen (an offerer's agreement
+// names the acceptor's agreement it saw; an acceptor's later records name
+// the offerer's), as the adjudicator's GatherCase reads it. A book naming
+// none of the held records reads the one first record held, when only one
+// chains from seq 1; nil when two do, or when the book names two branches.
+func namedBranch(held []evidencebook.HeldRecord, sender, logID string, own []ownRecord) []heldBookRecord {
+	reads := map[string]BookRead{}
+	pairs := map[string][]byte{}
+	for _, h := range held {
+		if h.SenderKey != sender || h.LogID != logID {
+			continue
+		}
+		if b, err := VerifyBook(h.Record); err == nil && b.RecordID == h.Digest {
+			reads[b.RecordID], pairs[b.RecordID] = b, h.Record
+		}
+	}
+	chained := map[string]BookRead{}
+	for id, b := range reads {
+		if branchTo(reads, id) != nil {
+			chained[id] = b
+		}
+	}
+	var named []string
+	for _, o := range own {
+		if s := o.rec.Record.Block.Seen; s.V != nil {
+			named = append(named, *s.V)
+		}
+	}
+	branch, _, _, err := branchNamed(chained, named, "")
+	if err != nil {
+		return nil
+	}
+	out := make([]heldBookRecord, len(branch))
+	for i, b := range branch {
+		out[i] = heldBookRecord{rec: StatusRecord{Record: b.Record, RecordID: b.RecordID}, pair: pairs[b.RecordID]}
+	}
+	return out
 }
 
 // countedWith is counted with the counted prefix it walked.

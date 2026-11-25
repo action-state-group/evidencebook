@@ -124,7 +124,13 @@ pub fn start(input: &StartInput) -> Result<StartResult, Error> {
                 .into(),
         ));
     }
-    if !input.counterpart_agreement_held || input.same_offer_and_rows == Some(false) {
+    // An offerer that counts no acceptor agreement reads as an acceptor does
+    // (u217, evidencebook#878); one holding an agreement on another offer or
+    // rows is inconsistent.
+    if !input.counterpart_agreement_held {
+        return Ok(awaiting());
+    }
+    if input.same_offer_and_rows == Some(false) {
         if input.side == SIDE_OFFERER {
             return Err(start_err(
                 "an offerer writes its agreement after the acceptor's it holds".into(),

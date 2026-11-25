@@ -492,6 +492,17 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   picks no leg, and `check` stays the only verdict.
 - **What a page must not misread** (Sherlock2, evidencebook#526 and #528):
   - `rests_on.counterparty_kind` is null while nothing states it; a page shows "not stated".
+  - `rests_on.counterparty.fork_at` is the position of a fork in the counterparty's book the holder
+    holds evidence of; a page says "the other side's book forked at N". A fork at the first record
+    counts nothing of that book, so the holder reads the branch its own book names as received (its
+    records' `seen`), the one an adjudicator reads (`GatherCase`): the deal both sides signed starts
+    from it, `counted` is that branch's length and `fork_at` stays 1 (Steven, evidencebook#878;
+    `counted` confirmed by Sherlock2 on evidencebook#892).
+    An acceptor's agreement names nothing, so an acceptor reads the branch its later records name.
+    A holder whose book names none of the held records reads the one first record it holds, when it
+    holds only one (the fork then shows only in a later record's `prev`). When it holds two, it reads
+    nothing: the deal reads awaiting before agree_by and not started after, for an offerer too, and
+    the fork is shown with `counted` 0.
   - `rests_on.counterparty_proof` reads the counterparty's layer and the held proof together:
     `held`; `not_yet`, a layered counterparty whose proof has not arrived; or `no_layer`, a
     counterparty that sends no stamp proof, which a page words as

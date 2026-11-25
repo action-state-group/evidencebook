@@ -104,8 +104,9 @@ def start(inp: StartInput) -> StartResult:
     not RFC 3339 UTC to the second and an unknown side; with a counterparty
     that runs the layer, also agree_by that is not such a time, a held
     counterpart agreement whose same_offer_and_rows or
-    offerer_names_acceptor is ``None``, and an offerer that holds no
-    acceptor's agreement, or one citing another offer or rows."""
+    offerer_names_acceptor is ``None``, and an offerer holding an acceptor's
+    agreement that cites another offer or rows. An offerer that holds no
+    acceptor agreement reads as awaiting, then not started (u217)."""
     at = _start_time("at", inp.at)
     if inp.side not in (SIDE_OFFERER, SIDE_ACCEPTOR):
         raise ValueError(f"xdealv1: start: side {_go_quote(inp.side)} is neither offerer nor acceptor")
@@ -127,7 +128,12 @@ def start(inp: StartInput) -> StartResult:
         raise ValueError("xdealv1: start: a held counterpart agreement gives same_offer_and_rows and "
                          "offerer_names_acceptor")
     # 3. No counterpart agreement, or one about another deal.
-    if not inp.counterpart_agreement_held or inp.same_offer_and_rows is False:
+    # An offerer that counts no acceptor agreement reads as an acceptor does
+    # (u217, evidencebook#878); one holding an agreement on another offer or
+    # rows is inconsistent.
+    if not inp.counterpart_agreement_held:
+        return awaiting
+    if inp.same_offer_and_rows is False:
         if inp.side == SIDE_OFFERER:
             raise ValueError("xdealv1: start: an offerer writes its agreement after the acceptor's it holds")
         return awaiting
