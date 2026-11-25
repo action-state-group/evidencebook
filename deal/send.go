@@ -116,7 +116,7 @@ func (s *Store) send(ctx context.Context, request, dealID, kind string, payload 
 			return nil, err
 		}
 		if held {
-			return nil, codedConflict(CodeOfferNotRebuilt, "the record "+digest+" was sealed but its file was not made, and the library cannot rebuild it: for an offer, cancel it with Store.CancelOffer", digest)
+			return nil, codedConflict(CodeRecordNotRebuilt, "the record "+digest+" was sealed but its pair was not made, and the library cannot rebuild it: for an offer, cancel it with Store.CancelOffer", digest)
 		}
 	}
 	entry := evidencebook.Entry{

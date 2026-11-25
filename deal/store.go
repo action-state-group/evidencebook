@@ -138,11 +138,10 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 // (admit, intent, input, reason) and the message is Field followed by
 // Reason, so a command line can put its own flag name in front.
 //
-// Code, when set, names a refusal whose message tells the caller which call
-// of this package to make next, and Args holds the values that message
-// names, in the order the Code's doc lists. A caller with its own names for
-// those calls, such as a command line, can word the refusal itself from Code
-// and Args.
+// Code, when set, names a refusal whose message names a call of this
+// package, and Args holds the values that message names, in the order the
+// Code's doc lists. A caller with its own names for those calls, such as a
+// command line, can word the refusal itself from Code and Args.
 type InputError struct {
 	Field, Reason string
 	Code          Code
@@ -182,14 +181,14 @@ func codedConflict(code Code, reason string, args ...string) error {
 	return &ConflictError{Reason: reason, Code: code, Args: args}
 }
 
-// Code names a refusal of this package whose message names the call to make
-// next. The values are for the caller's own process: a program may match on
+// Code names a refusal of this package whose message names a call of this
+// package, or asks for the same call again. The values are for the caller's own process: a program may match on
 // them or word the refusal in its own terms, but they are not vocabulary to
 // write into output, a record or a message. The constants are stable:
 // renaming or removing one breaks a caller that matches on it.
 type Code string
 
-// The coded refusals. Each lists, in order, the Args its message names.
+// The coded refusals: 16. Each lists, in order, the Args its message names.
 const (
 	// CodeCancelAgain: the offer is already cancelled. No Args.
 	CodeCancelAgain Code = "cancel-again"
@@ -232,10 +231,13 @@ const (
 	// CodeAgreeFirst: a record for a deal book that has not opened; it opens
 	// at the holder's agreement. Args: the deal id.
 	CodeAgreeFirst Code = "agree-first"
-	// CodeOfferNotRebuilt (a ConflictError): a record sent whole was sealed
+	// CodeRecordNotRebuilt (a ConflictError): a record sent whole was sealed
 	// but its pair was not made, and the store cannot rebuild it. Args: the
 	// record digest.
-	CodeOfferNotRebuilt Code = "offer-not-rebuilt"
+	CodeRecordNotRebuilt Code = "record-not-rebuilt"
+	// CodeRecordRetry (a ConflictError): the deal book kept changing while
+	// the record was sealed; the same call made again seals it. No Args.
+	CodeRecordRetry Code = "record-retry"
 )
 
 // now is the store's clock, in UTC.

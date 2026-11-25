@@ -207,7 +207,7 @@ func (s *Store) SealInBook(ctx context.Context, dealID string, in BookRecord) (S
 		return try, nil
 	}, bookAppendTries)
 	if errors.Is(err, placeappend.ErrKeptChanging) {
-		return Sealed{}, conflictf("the deal book kept changing while the record was sealed; run the command again")
+		return Sealed{}, codedConflict(CodeRecordRetry, "the deal book kept changing while the record was sealed; make the same call again")
 	}
 	return out, err
 }

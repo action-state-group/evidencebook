@@ -21,10 +21,12 @@ func TestAnAdmissionThatDoesNotAdmitIsCoded(t *testing.T) {
 }
 
 // The package's texts name its own calls: never a command of a program
-// built on it, nor a product. A refusal that needs a program's wording is
-// coded, and the program words it (InputError.Code).
+// built on this package (capsulectl), a request to run a command, or a
+// company or demo name. A refusal a program words in its own terms is coded
+// (InputError.Code). capsule-engine's command, which produces ParseAdmission's
+// input, is named where the input comes from.
 func TestTheTextsNameOnlyThisPackagesCalls(t *testing.T) {
-	refused := regexp.MustCompile("`deal [a-z]|capsulectl|(?i)\\b(goose|mesh|actionstate|action state group)\\b")
+	refused := regexp.MustCompile("`deal [a-z]|capsulectl|run the command|(?i)\\b(goose|mesh|actionstate|action state group)\\b")
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
 	for _, f := range files {

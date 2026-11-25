@@ -558,9 +558,18 @@ func TestSealInBookRetriesATakenPlace(t *testing.T) {
 	var ce *ConflictError
 	require.ErrorAs(t, err, &ce)
 	assert.Contains(t, ce.Reason, "kept changing")
+	assertCoded(t, err, CodeRecordRetry)
 
 	// A record other than an agreement does not open a book.
 	other, err := buyer.store.Offer(ctx, offerTo(t, nil), "o2")
+	require.NoError(t, err)
+	_, err = buyer.store.SealInBook(ctx, other.DealID, BookRecord{Body: statement})
+	assert.Contains(t, inputReason(t, err), "has no deal book yet")
+	assertCoded(t, err, CodeAgreeFirst, other.DealID)
+
+	// A book whose log id was stored but whose agreement was never appended
+	// opens only at the agreement, too.
+	_, err = buyer.db.ExecContext(ctx, `UPDATE deal_versions SET own_log_id=?, state='agreeing' WHERE deal_id=?`, "deal/"+strings.Repeat("ab", 16), other.DealID)
 	require.NoError(t, err)
 	_, err = buyer.store.SealInBook(ctx, other.DealID, BookRecord{Body: statement})
 	assert.Contains(t, inputReason(t, err), "has no deal book yet")
@@ -733,8 +742,8 @@ func TestASentRecordWithNoPairIsSealedAgainOrRefused(t *testing.T) {
 	_, err = buyer.store.Offer(ctx, offerTo(t, &sk), "o2")
 	var ce *ConflictError
 	require.ErrorAs(t, err, &ce)
-	assert.Contains(t, ce.Reason, "was sealed but its file was not made")
-	assertCoded(t, err, CodeOfferNotRebuilt, other.Digest)
+	assert.Contains(t, ce.Reason, "was sealed but its pair was not made")
+	assertCoded(t, err, CodeRecordNotRebuilt, other.Digest)
 }
 
 func TestAgreeCitesOnlyTheDealsOwnAdmit(t *testing.T) {
