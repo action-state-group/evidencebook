@@ -7,7 +7,7 @@ the checks in Go, Rust and Python, and the vectors. The producer side (what `dis
 
 ## 1. The bar
 
-Steven's ruling of 2026-11-19 on evidencebook-deal#207: a seller may include, on an
+Steven's ruling of 2026-11-19 on evidencebook-deal#207 (ops `company-oss/inbox.md:944`): a seller may include, on an
 adjudicator copy only, the claims its agent made without authority, by an explicit per-share
 opt-in, default off, and **never on the counterparty copy**. Sherlock confirmed that keeping the
 claim and moving the seller's verdict off it is a fix under that ruling, not a new consent

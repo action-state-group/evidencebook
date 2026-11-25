@@ -104,9 +104,9 @@ rows withheld and no counterparty prefix. The full answer holds:
    the deal book only, not the journal: journal records stay out as today, except those the
    relied-on records already cite. Two standing rulings hold unchanged: the private floor
    (`intent.min_total_minor` and its openings, a journal member) never goes to an adjudicator
-   copy, which keeps the max only (Steven, 2026-10-19, capsule-cli#286); and the claims a
+   copy, which keeps the max only (Steven, 2026-10-19, capsule-cli#286; ops `company-oss/inbox.md:795`); and the claims a
    seller's agent made without authority go on an adjudicator copy only by the seller's explicit
-   opt-in, default off, reading "not shared" when absent (Steven, 2026-11-19, evidencebook-deal#207;
+   opt-in, default off, reading "not shared" when absent (Steven, 2026-11-19, evidencebook-deal#207, `company-oss/inbox.md:944`;
    `--include-agent-claims`, `capsulectl/internal/deal/commands.go:76-84`). Full disclosure here
    means the whole deal book and the held copy, not those.
 2. **The held copy**: every record of the other side's book the party holds for the deal that

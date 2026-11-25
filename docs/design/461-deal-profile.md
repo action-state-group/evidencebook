@@ -35,8 +35,8 @@ These are not reopened here.
 4. **Acceptance 9.** A deal book opens at agreement. There is no close and no results log. Term
    rows have due dates and contest windows. Each side makes statements. Both agreement records
    name the same witnesses. A started deal whose records have no time from any witness is counted, its rows local,
-   whether or not its agreement names a witness (Steven, 2026-11-19: "count it"; Steven, 2026-11-18, evidencebook#570
-   and #570 for a deal that agrees and then goes silent, which starts and is counted, local). AAC
+   whether or not its agreement names a witness (Steven, 2026-11-19: "count it"; Steven, 2026-11-18, on evidencebook#570,
+   for a deal that agrees and then goes silent, which starts and is counted, local). AAC
    `/3` SH-12 still leaves such a deal out when its agreement names a witness; AAC#634 changes it. The stamp proof follows the order of design §4.3 (section 7). The
    rules verdict word stays a record in its own deal book, bound to the deal id and the pack
    digest, carried in the counterparty cut under the conditions of Steven's 2026-11-13 ruling on evidencebook-deal#191, and never in the journal
@@ -878,8 +878,8 @@ Evaluation, in order:
 6. `offerer_agreement_time` set: `started`, `local` false, `by: offerer_in_time` when it is not after
    `agree_by`, else `not_started` (a late agreement, never named).
 7. `offerer_agreement_time` null: `started`, `local` true, at any `at`, before or after `agree_by`
-   (Appendix A lines 21 and 22: "a local result until ..."; after `agree_by`, #511: Steven's "count
-   it", Steven, 2026-11-18, #570, a counterparty that agrees and then goes silent is counted, so the silent side's
+   (Appendix A lines 21 and 22: "a local result until ..."; after `agree_by`, #511: Steven, 2026-11-19, "count
+   it"; Steven, 2026-11-18, #570: a counterparty that agrees and then goes silent is counted, so the silent side's
    failure shows). `local` says the result may differ for a reader who holds a witnessed time: one
    after `agree_by` gives step 6's `not_started`, a naming gives step 5.
 
@@ -1094,7 +1094,7 @@ margin, it stamps its agreement alone first.
    the profile re-check every held proof's bindings) and PR 4 (`xdealv1.CanAct`). Vectors: 7.3.
 3. It writes its agreement (`seen` = the acceptor's agreement), and before its first `perform` or
    payer `settle`, `xdealv1.ReceiveProfile.GateAct` applies the gate of step 2 (`CanAct`). Without
-   it the act is refused. **Decided** (Steven, 2026-11-18, on #505): the
+   it the act is refused. **Decided** (Steven, 2026-11-18, on #505; buzz 42c1e73f; ops company-oss 3797bda0): the
    gate always applies, whether or not the agreement names a witness, to the first `perform` or
    payer `settle` only.
 4. After the act: `Stamp`, `StampProof(..., AudienceCounterparty)`, and a push with the act's
@@ -1106,7 +1106,7 @@ and a statement are never gated, nor is any act after the first. Appendix A has 
 payment received record (line 27) before the buyer's proof arrives (line 32), and deliver (line 37)
 after.
 
-**A counterparty without the layer** (Steven, 2026-11-18, "layer ii") has
+**A counterparty without the layer** (Steven, 2026-11-18, "layer ii"; buzz 20704793, ops 8ff23c29) has
 no agreement or proof to wait for, and its first act goes ahead: it is not refused. `GateAct` allows
 it and marks it unguarded (`GateNoLayer`). The receipt and the card say the other side sent no
 stamp proof, so the deal is counted from the holder's receipt only. The status value carries this as
@@ -1963,7 +1963,7 @@ verified under (`shelf_record_time.go:20-25`; `461-shelf-facts.md:117-125`).
 
 Key-id naming needs `RecordTime` to filter by key id (11.1, PR 1). URL naming needs no library
 change.
-**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded on #482)): name each witness by its verified key id, with the URL as a hint:
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded on #482, ops a86cd2f9)): name each witness by its verified key id, with the URL as a hint:
 `{"key_id": "…", "url": "…"}`. The library's `RecordTime` gains naming by key id (11.1, PR 1).
 
 **Steven's one ask for AAC#626.** Q4 and Q12 gated AAC#626's exact-head approval (the `/3` card's
@@ -1980,13 +1980,13 @@ since a verdict sealed before settlement would be a close by another name. The 2
 are (3.3), condition 1 (shared under the holder's share policy: a node shares by default, a
 person does not) and condition 4 among them, and the verdict word stays a record in the party's
 own book, never a member of a report (the 2026-11-13 ruling's condition 3; section 9).
-**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded on #482)): seal at settled; a deal that is never settled has no verdict.
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded on #482, ops a86cd2f9)): seal at settled; a deal that is never settled has no verdict.
 
 **Q3. The intent, the check before an act, its verdict and the approval.** Design §7 says they need "types of
 their own or a place in the overlay; no source settles which". Proposed: a journal-only overlay
 of four types (`intent`, `check`, the per-check `verdict`, `approval`), reusing v0's bodies and rules (3.2), and the journey overlay placed by phase (3.2). This touches the trim of the public vocabulary that
 design §14, row 7, puts to Steven.
-**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded on #482)): the journal overlay as proposed, with `listing_digest` optional on an offer (3.3).
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded on #482, ops a86cd2f9)): the journal overlay as proposed, with `listing_digest` optional on an offer (3.3).
 
 **Q4. evidencebook#404 against the ten types.** #404 (sourced to Steven, 2026-11-05) asks for four
 kinds: `dispute`, `dispute_response`, `adjudication` and `revocation`, plus a forum enum and a
