@@ -4,8 +4,10 @@
 
 A scheduled DEMO deal, and a watcher that raises the alarm from the public
 witness alone. When the canary stops, nobody has to notice an error message:
-the public log stops advancing, and anyone watching it sees that. Watching
-needs no access to the host, the account or the agent.
+the log stops advancing at the witness, and the watcher sees that. Watching
+needs no access to the host, the account or the agent, only the canary
+profile's checkpoint key: the witness shows a log's size, root and time only
+to a read signed with the log's own key (capsule-anchor#110).
 
 ## How it works
 
@@ -22,9 +24,10 @@ needs no access to the host, the account or the agent.
   there are). So the canary needs **a profile of its own whose only ticker is
   `deal canary run`**. On a profile that another timer also ticks, the log would keep
   advancing while every canary deal fails, and nothing could be seen.
-- `capsulectl deal canary watch --log-id <cadence log> --witness <url> --expect-every <duration>`
-  reads the witness's last checkpoint for that log
-  (`GET <witness>/checkpoints/<log id>`, read-only) and compares it with the
+- `capsulectl --profile canary deal canary watch --witness <url> --expect-every <duration>`
+  reads the witness's last checkpoint for the profile's cadence log
+  (`GET <witness>/checkpoints/<log id>`, read-only, signed with the profile's
+  checkpoint key; `--log-id` defaults to that log and must name it) and compares it with the
   previous observation, kept in a small state file it owns. It exits 0 while
   the log advances, and with exit code 6 and one plain line when:
   - the log has not advanced for longer than `--expect-every` (by the
@@ -33,12 +36,16 @@ needs no access to the host, the account or the agent.
   - the history was rewritten: the size went back; the same size has a
     different root; the checkpoint that directly follows the last one seen
     names a different root for it; the checkpoints are signed by a different
-    key; or the witness has flagged conflicting checkpoints for the log;
+    key, or the witness refuses the read's key for the log; or the witness has
+    flagged conflicting checkpoints for the log;
   - the log was never witnessed at all.
 - It reads only over HTTPS: `--witness` must be an https URL (plain http only
-  for a witness on the same machine), and it never follows a redirect off HTTPS.
+  for a witness on the same machine), and it follows no redirect at all, since
+  the signed read could be replayed for a few minutes by whoever received it.
 - A witness it cannot read at all is not an alarm: `watch` exits 1 and says it
-  cannot tell. Run it from more than one place if that matters.
+  cannot tell. So is a refusal for another reason: this machine's clock more
+  than 5 minutes from the witness's, or an answer without the checkpoint (the
+  read's headers did not arrive). Run it from more than one place if that matters.
 - Between two polls the log usually moves by more than one checkpoint. `watch`
   checks the direct link when there is one; across a gap it relies on the
   witness, which refuses a checkpoint that does not chain from the last one it
@@ -91,11 +98,17 @@ A cron line for the host (once a day, at an odd minute):
 To catch the consent prompt too, have the agent's own scheduler start the same
 command instead of cron.
 
-Watching needs no credentials: the witness answers anyone. Run `watch` from
-somewhere that is not the host, for example GitHub Actions on a schedule
-(`examples/canary-watch.yml`), or any other machine:
+Run `watch` from somewhere that is not the host, for example GitHub Actions on
+a schedule (`examples/canary-watch.yml`), or any other machine. Off the host it
+signs with the canary profile's checkpoint seed (32 bytes, hex), from a file
+of mode 0600 (`--read-key-file`) or an environment variable (`--read-key-env`),
+and needs `--log-id`. That seed also signs the canary log's checkpoints, so
+keep it as a secret, give it only to the watcher, and use it for the canary
+profile alone, whose log holds nothing but DEMO deals. An unsigned read shows
+only the log's flagged conflicts, not whether it advanced.
 
 ```bash
-capsulectl deal canary watch --log-id deal-cadence/<16 hex> \
-  --witness https://witness.agentactioncapsule.org --expect-every 26h
+CANARY_CHECKPOINT_SEED=... capsulectl deal canary watch --log-id deal-cadence/<16 hex> \
+  --witness https://witness.agentactioncapsule.org --expect-every 26h \
+  --read-key-env CANARY_CHECKPOINT_SEED
 ```

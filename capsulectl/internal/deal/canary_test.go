@@ -3,12 +3,14 @@ package deal
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -19,12 +21,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeWitness answers GET /checkpoints/{log_id} with whatever the test last set.
+// fakeWitness answers GET /checkpoints/{log_id} with whatever the test last
+// set, as the gated witness does (capsule-anchor#110): the checkpoint only to
+// a read signed with the log's key (watchKey), only the equivocations to an
+// unsigned read, and 403 to a read signed by another key.
 type fakeWitness struct {
-	mu     sync.Mutex
-	status int
-	cp     witnessCheckpoint
-	server *httptest.Server
+	mu       sync.Mutex
+	status   int
+	refusal  string // a 403 code to answer with, whatever the read
+	unsigned bool   // answer as if the read headers never arrived
+	cp       witnessCheckpoint
+	server   *httptest.Server
+}
+
+// watchSeed is the canary profile's checkpoint seed these tests sign with.
+var watchSeed = strings.Repeat("ab", 32)
+
+func watchKey() ed25519.PublicKey {
+	seed, _ := hex.DecodeString(watchSeed)
+	return ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)
 }
 
 func newFakeWitness(t *testing.T) *fakeWitness {
@@ -41,10 +56,32 @@ func newFakeWitness(t *testing.T) *fakeWitness {
 			rw.WriteHeader(w.status)
 			return
 		}
+		code := w.refusal
+		if code == "" && !readSignedBy(r, "deal-cadence/00aa", watchKey()) {
+			code = "read_key_mismatch"
+		}
+		if code != "" {
+			rw.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(rw).Encode(map[string]any{"detail": map[string]string{"code": code, "error": "refused"}})
+			return
+		}
+		if w.unsigned {
+			_ = json.NewEncoder(rw).Encode(map[string]any{"log_id": w.cp.LogID, "equivocations": w.cp.Equivocations})
+			return
+		}
 		_ = json.NewEncoder(rw).Encode(w.cp)
 	}))
 	t.Cleanup(w.server.Close)
 	return w
+}
+
+// readSignedBy checks a read's headers as capsule-anchor's checkpoint_read.py does.
+func readSignedBy(r *http.Request, logID string, pub ed25519.PublicKey) bool {
+	sig, err := base64.RawURLEncoding.DecodeString(r.Header.Get(readSignatureHeader))
+	if err != nil {
+		return false
+	}
+	return ed25519.Verify(pub, []byte(readDomain+"\n"+logID+"\n"+r.Header.Get(readTimeHeader)), sig)
 }
 
 func (w *fakeWitness) set(size, prevSize uint64, root, prevRoot, key string, at time.Time) {
@@ -57,8 +94,9 @@ func (w *fakeWitness) set(size, prevSize uint64, root, prevRoot, key string, at 
 
 func watch(t *testing.T, w *fakeWitness, state string) (string, error) {
 	t.Helper()
+	t.Setenv("CANARY_TEST_SEED", watchSeed)
 	return invoke(t, "", "deal", "canary", "watch", "--log-id", "deal-cadence/00aa", "--witness", w.server.URL,
-		"--expect-every", "26h", "--state", state)
+		"--expect-every", "26h", "--state", state, "--read-key-env", "CANARY_TEST_SEED")
 }
 
 func TestCanaryWatchPassesWhileTheLogAdvances(t *testing.T) {
@@ -131,7 +169,7 @@ func TestCanaryWatchAlarmsWhenTheHistoryIsRewritten(t *testing.T) {
 		"went back":        {2, 1, "r2", "r1", "k", 0, "it went back from size 5 to 2"},
 		"same size, other": {5, 3, "x5", "r3", "k", 0, "size 5 now has root x5, not r5"},
 		"broken link":      {7, 5, "r7", "x5", "k", 0, "the checkpoint after size 5 says that size had root x5, not r5"},
-		"other key":        {7, 5, "r7", "r5", "k2", 0, "its checkpoints are now signed by key k2, not k"},
+		"other key id":     {7, 5, "r7", "r5", "k2", 0, "its checkpoints are now signed by key k2, not k"},
 		"equivocation":     {7, 5, "r7", "r5", "k", 1, "the witness has flagged 1 conflicting checkpoint(s) for this log"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -339,9 +377,141 @@ func TestCanaryWatchDoesNotFollowARedirectOffHTTPS(t *testing.T) {
 	t.Cleanup(func() { canaryHTTP = old })
 
 	state := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("CANARY_TEST_SEED", watchSeed)
 	_, err := invoke(t, "", "deal", "canary", "watch", "--log-id", "deal-cadence/00aa", "--witness", server.URL,
-		"--expect-every", "26h", "--state", state)
+		"--expect-every", "26h", "--state", state, "--read-key-env", "CANARY_TEST_SEED")
 	require.ErrorIs(t, err, errWitnessUnread)
-	assert.Contains(t, cli.SafeError(err), "redirected to a non-HTTPS URL")
+	assert.Contains(t, cli.SafeError(err), "a signed read follows no redirect")
 	assert.NotErrorIs(t, err, cli.ErrAlarm)
+}
+
+func TestCanaryWatchSendsItsSignedReadToNoOtherServer(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	clockAt(t, time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+	var leaked sync.Map
+	other := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		leaked.Store("hit", r.Header.Get(readSignatureHeader))
+	}))
+	t.Cleanup(other.Close)
+	first := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		http.Redirect(rw, r, other.URL+r.URL.Path, http.StatusFound)
+	}))
+	t.Cleanup(first.Close)
+	t.Setenv("CANARY_TEST_SEED", watchSeed)
+	_, err := invoke(t, "", "deal", "canary", "watch", "--log-id", "deal-cadence/00aa", "--witness", first.URL,
+		"--expect-every", "26h", "--state", filepath.Join(t.TempDir(), "s.json"), "--read-key-env", "CANARY_TEST_SEED")
+	require.ErrorIs(t, err, errWitnessUnread)
+	_, hit := leaked.Load("hit")
+	assert.False(t, hit, "the redirect target must never be asked")
+}
+
+func TestCanaryWatchAlarmsWhenTheWitnessRefusesTheKey(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	now := clockAt(t, time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+	w := newFakeWitness(t)
+	state := filepath.Join(t.TempDir(), "state.json")
+	w.set(5, 3, "r5", "r3", "k", *now)
+	_, err := watch(t, w, state)
+	require.NoError(t, err)
+	before, err := os.ReadFile(state)
+	require.NoError(t, err)
+
+	// Another seed signs the read: the witness's key for the log is not it.
+	t.Setenv("OTHER_SEED", strings.Repeat("cd", 32))
+	_, err = invoke(t, "", "deal", "canary", "watch", "--log-id", "deal-cadence/00aa", "--witness", w.server.URL,
+		"--expect-every", "26h", "--state", state, "--read-key-env", "OTHER_SEED")
+	require.ErrorIs(t, err, cli.ErrAlarm)
+	assert.Contains(t, cli.SafeError(err), "the witness refused this key for the log")
+	after, err := os.ReadFile(state)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after), "the last good observation is kept")
+}
+
+func TestCanaryWatchLeavesTheLogUnreadOnOtherRefusals(t *testing.T) {
+	for code, want := range map[string]string{
+		"read_time_skew":           "this machine's clock is more than 5 minutes from the witness's",
+		"read_signature_malformed": "refused the read as malformed",
+		"":                         "answered without the checkpoint, as to an unsigned read",
+	} {
+		t.Run(want, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			now := clockAt(t, time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+			w := newFakeWitness(t)
+			w.set(5, 3, "r5", "r3", "k", *now)
+			w.refusal, w.unsigned = code, code == ""
+			_, err := watch(t, w, filepath.Join(t.TempDir(), "state.json"))
+			require.ErrorIs(t, err, errWitnessUnread)
+			assert.NotErrorIs(t, err, cli.ErrAlarm)
+			assert.Contains(t, cli.SafeError(err), want)
+		})
+	}
+}
+
+func TestCanaryWatchNeedsAKeyToSignWith(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	_, err := invoke(t, "", "deal", "canary", "watch", "--log-id", "deal-cadence/00aa", "--witness", "https://witness.example",
+		"--expect-every", "26h")
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "only to the log's own key")
+
+	t.Setenv("CANARY_TEST_SEED", watchSeed)
+	_, err = invoke(t, "", "deal", "canary", "watch", "--witness", "https://witness.example",
+		"--expect-every", "26h", "--read-key-env", "CANARY_TEST_SEED")
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "--log-id is required")
+}
+
+func TestCanaryWatchSignsWithTheProfilesCheckpointKey(t *testing.T) {
+	canaryFixture(t)
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	p.LogID = "deal-cadence/00aa"
+	require.NoError(t, cli.SaveProfile(p, true))
+	key, err := cli.PrivateKey(p.Checkpoint.Signing)
+	require.NoError(t, err)
+	watchSeed = hex.EncodeToString(key.Seed())
+	t.Cleanup(func() { watchSeed = strings.Repeat("ab", 32) })
+
+	now := clockAt(t, time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+	w := newFakeWitness(t)
+	w.set(5, 3, "r5", "r3", "k", *now)
+	state := filepath.Join(t.TempDir(), "state.json")
+	// --log-id defaults to the profile's own cadence log.
+	out, err := invoke(t, "", "--profile", "deal", "deal", "canary", "watch", "--witness", w.server.URL,
+		"--expect-every", "26h", "--state", state)
+	require.NoError(t, err, out)
+	assert.Contains(t, out, `"state":"advancing"`)
+
+	_, err = invoke(t, "", "--profile", "deal", "deal", "canary", "watch", "--log-id", "deal-cadence/00bb",
+		"--witness", w.server.URL, "--expect-every", "26h", "--state", state)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "is not profile deal's cadence log")
+}
+
+// The read's bytes match capsule-anchor's (its tests check the same file).
+func TestCanaryReadSignatureMatchesTheWitnessVectors(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "checkpoint-read-vectors.json"))
+	require.NoError(t, err)
+	var doc struct {
+		Seed  string `json:"seed_hex"`
+		Pub   string `json:"public_key_hex"`
+		Cases []struct {
+			LogID     string `json:"log_id"`
+			Time      string `json:"time"`
+			Signature string `json:"signature"`
+		} `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &doc))
+	seed, err := hex.DecodeString(doc.Seed)
+	require.NoError(t, err)
+	key := ed25519.NewKeyFromSeed(seed)
+	assert.Equal(t, doc.Pub, hex.EncodeToString(key.Public().(ed25519.PublicKey)))
+	require.NotEmpty(t, doc.Cases)
+	for _, c := range doc.Cases {
+		at, err := strconv.ParseInt(c.Time, 10, 64)
+		require.NoError(t, err)
+		gotTime, gotSig := signRead(key, c.LogID, time.Unix(at, 0))
+		assert.Equal(t, c.Time, gotTime)
+		assert.Equal(t, c.Signature, gotSig, c.LogID)
+	}
 }

@@ -2,9 +2,11 @@
 #
 # Not run from this location -- copy it into a repo's .github/workflows/ and set
 # LOG_ID to the canary profile's cadence log (the `cadence_log` that
-# `capsulectl deal canary run` prints). It needs no secrets: the witness answers
-# anyone. A failing run is the alarm; route it wherever failed workflow runs
-# already go.
+# `capsulectl deal canary run` prints), and add the canary profile's checkpoint
+# seed (32 bytes, hex) as the repository secret CANARY_CHECKPOINT_SEED: the
+# witness shows a log's checkpoint only to a read signed with the log's own key
+# (docs/CANARY.md). A failing run is the alarm; route it wherever failed
+# workflow runs already go.
 
 name: Canary watch
 
@@ -44,6 +46,9 @@ jobs:
           sha256sum --ignore-missing -c SHA256SUMS
           install -m 0755 "capsulectl-deal-$CAPSULECTL_DEAL_VERSION-linux-amd64" "$RUNNER_TEMP/capsulectl-deal"
       - name: Watch
+        env:
+          CANARY_CHECKPOINT_SEED: ${{ secrets.CANARY_CHECKPOINT_SEED }}
         run: |
           "$RUNNER_TEMP/capsulectl-deal" canary watch --log-id "$LOG_ID" --witness "$WITNESS" \
-            --expect-every "$EXPECT_EVERY" --state canary-state.json
+            --expect-every "$EXPECT_EVERY" --state canary-state.json \
+            --read-key-env CANARY_CHECKPOINT_SEED

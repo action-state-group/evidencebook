@@ -2,7 +2,9 @@
 #
 # Not run from this location -- copy it into a repo's .github/workflows/ and
 # list each test account's cadence log id (`cll checkpoint cadence` prints it as
-# cadence_log). It needs no secrets: the witness answers anyone. Each account
+# cadence_log), and each account's checkpoint seed (32 bytes, hex) as the
+# repository secret the account's `seed` names: the witness shows a log's
+# checkpoint only to a read signed with the log's own key. Each account
 # is one job; the run fails when any account's log stopped advancing or was
 # rewritten, and the run summary lists every account's verdict. A failed
 # scheduled run is the alarm: GitHub notifies the repo's watchers.
@@ -28,12 +30,13 @@ jobs:
       fail-fast: false
       matrix:
         account:
-          # name: a label only; log: the account's cadence log id.
-          - { name: account-1, log: deal-cadence/0000000000000001 }
-          - { name: account-2, log: deal-cadence/0000000000000002 }
-          - { name: account-3, log: deal-cadence/0000000000000003 }
-          - { name: account-4, log: deal-cadence/0000000000000004 }
-          - { name: control-pinned, log: deal-cadence/0000000000000005 }
+          # name: a label only; log: the account's cadence log id; seed: the
+          # repository secret holding that account's checkpoint seed.
+          - { name: account-1, log: deal-cadence/0000000000000001, seed: HARNESS_SEED_1 }
+          - { name: account-2, log: deal-cadence/0000000000000002, seed: HARNESS_SEED_2 }
+          - { name: account-3, log: deal-cadence/0000000000000003, seed: HARNESS_SEED_3 }
+          - { name: account-4, log: deal-cadence/0000000000000004, seed: HARNESS_SEED_4 }
+          - { name: control-pinned, log: deal-cadence/0000000000000005, seed: HARNESS_SEED_5 }
     env:
       WITNESS: https://witness.agentactioncapsule.org
       # A live account ticks every 5m +/- 1m, so its last checkpoint is at most
@@ -56,10 +59,13 @@ jobs:
           sha256sum --ignore-missing -c SHA256SUMS
           install -m 0755 "capsulectl-deal-$CAPSULECTL_DEAL_VERSION-linux-amd64" "$RUNNER_TEMP/capsulectl-deal"
       - name: Verdict
+        env:
+          READ_SEED: ${{ secrets[matrix.account.seed] }}
         run: |
           set +e
           line=$("$RUNNER_TEMP/capsulectl-deal" canary watch --log-id "${{ matrix.account.log }}" \
-            --witness "$WITNESS" --expect-every "$EXPECT_EVERY" --state state.json 2>&1)
+            --witness "$WITNESS" --expect-every "$EXPECT_EVERY" --state state.json \
+            --read-key-env READ_SEED 2>&1)
           code=$?
           case $code in
             0) verdict="advancing" ;;
