@@ -282,9 +282,13 @@ func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
 	}
 	file := filepath.Join(t.TempDir(), "receipt.html")
 	require.NoError(t, os.WriteFile(file, page, 0o600))
+	// The page shows times in the reader's own zone (capsule-viewer#423):
+	// a fixed zone for the browser makes the line exact.
+	t.Setenv("TZ", "UTC")
 	chrome := startHeadlessChrome(t, binary)
 	opened := chrome.open(t, "file://"+file, presentationViews[1])
 	var text string
 	opened.eval(t, `document.getElementById("app").textContent`, &text)
-	assert.Contains(t, text, "Time-stamped by Action State's witness at 2026-11-25T14:41:19Z, as capsulectl verify reported on your own book. This page did not check it itself.")
+	assert.Contains(t, text, "Time-stamped by Action State's witness at Nov 25, 2026, 2:41 PM UTC (14:41:19 UTC), as capsulectl verify reported on your own book. This file carries no witness receipt, so this page did not check it itself.")
+	assert.NotContains(t, text, "so this page could not check a time-stamp itself", "the header line is left out on this page (capsule-viewer#424)")
 }
