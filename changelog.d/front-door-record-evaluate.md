@@ -1,0 +1,5 @@
+### Added: the front door's record and report calls, `Book.RecordAct` and `Book.EvaluatePack` (#895)
+
+- `Book.RecordAct` seals one act of the book owner's agent, in capsule-engine's action form (the JSON `capsule-engine check --action` reads), as an `agent_act` record, a producer claim. An act the rules engine cannot read is refused and seals nothing.
+- `Book.EvaluatePack` runs a capsule-engine rules pack (capsule-engine's `guard` engine; this package decides nothing itself) over those acts in log order, each against the earlier ones, and seals the outcome as an Evidence Result v0. Each claim is one rule on one act, tier `recomputed`, grade `self-attested`. A rule that does not apply has no claim and counts in `excluded_not_applicable`, and no rule is rolled up to one verdict. It returns the bundle rooted at the Result, with the contract report, which `report.Build` renders. Running it again over the same acts finds the Result it sealed.
+- docs/GUIDE.md opens with "Start here: three calls", which points to record an act, get the report and open a deal; opening a deal is not a library call yet (#899).

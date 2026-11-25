@@ -1,6 +1,7 @@
 # evidencebook SDK guide
 
-This guide walks the SDK as six paths, in the order a developer meets them.
+This guide starts with the front door's three calls, then walks the SDK as
+six paths, in the order a developer meets them.
 Each path names the functions it uses and the runnable Go `Example` that shows
 it. The API reference is the package documentation on pkg.go.dev:
 
@@ -9,11 +10,12 @@ it. The API reference is the package documentation on pkg.go.dev:
 
 Every Example below renders there with its output, from v0.9.0 for the root
 module and `report/v0.3.0` for the report module. Path 4's Example renders
-from v0.13.0, and Path 5's from the first release after v0.13.3. To run them from a
+from v0.13.0, Path 5's from the first release after v0.13.3, and the front door's
+from the first release after v0.26.0. To run them from a
 checkout:
 
 ```bash
-go test -run 'Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond|Example_staple|Example_admitAPeer' -v .
+go test -run 'ExampleBook_EvaluatePack|Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond|Example_staple|Example_admitAPeer' -v .
 ```
 
 Path 4's Mesh History also runs in Rust, from `rust/`:
@@ -22,7 +24,7 @@ Path 4's Mesh History also runs in Rust, from `rust/`:
 cargo test --locked -p evidencebook-interop --test mesh_history -- --nocapture
 ```
 
-Every Example reads a corpus file from its module's `testdata/` by its path
+Every Example but the front door's reads a corpus file from its module's `testdata/` by its path
 and runs under `go test` in CI, so the guide, the CI run and the vectors are
 the same files.
 [VECTORS.md](../VECTORS.md) lists where each set comes from.
@@ -41,6 +43,27 @@ capsule-cli or the viewer. Add it only for path 2:
 ```bash
 go get github.com/action-state-group/evidencebook/report@latest
 ```
+
+## Start here: three calls
+
+The front door is three calls: record an act, get the report, open a deal.
+This section only points to them; each is described where it lives.
+
+| Call | What it does | Where |
+|---|---|---|
+| record an act | `Book.RecordAct` seals one act of your agent, in capsule-engine's action form (the JSON `capsule-engine check --action` reads), as an `agent_act` record, a producer claim | root module |
+| get the report | `Book.EvaluatePack` runs a capsule-engine rules pack over those acts, then seals the Evidence Result and returns the bundle rooted at it; `report.Build` renders that bundle under `report.View{Card: "obligation", ContractReport: true}`, and `report.SealPage` seals the page | root module, then the report module ([Path 1](#path-1-write-a-terms-pack-and-seal-a-result), [Path 2](#path-2-build-a-report)) |
+| open a deal | not a library call yet: `capsulectl deal offer` and `capsulectl deal agree` do it today ([evidencebook#899](https://github.com/action-state-group/evidencebook/issues/899)) | the capsulectl-deal plugin |
+
+Example: [`Book.EvaluatePack`](https://pkg.go.dev/github.com/action-state-group/evidencebook#example-Book.EvaluatePack)
+(`example_frontdoor_test.go`). It records three purchases and evaluates them
+under capsule-engine's Everyday Rules 0.3.8 (`pack.LoadEveryday038()`). Its
+acts are written in the Example, not read from `testdata/`.
+
+The rules capsule-engine's packs carry read an act's commerce fields: amount,
+currency, target and action class. On an act without them, such as a reply
+the agent sent, most rules do not apply. A rule that does not apply gives no
+claim and counts as excluded, never as met.
 
 ## Path 0: join the loop
 
@@ -75,8 +98,10 @@ check was not run, never that it passed or failed.
 
 ## Path 1: write a Terms Pack and seal a Result
 
-Writing a Terms Pack and evaluating evidence against it (`evaluate`, the pack
-verbs) are not part of this module, and evidencebook does not wrap them:
+Writing a Terms Pack and the pack verbs are not part of this module. Of
+evaluation, it wraps one case: `Book.EvaluatePack` runs capsule-engine's rules
+engine (`guard`) over the acts `Book.RecordAct` sealed ("Start here" above).
+Everything else is outside this module:
 
 - **Packs and evaluation:** [capsule-engine](https://github.com/action-state-group/capsule-engine)
   implements them. Its public Go module is
