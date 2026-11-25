@@ -1,34 +1,42 @@
 # The Goose loop reference
 
-A [Goose](https://github.com/block/goose) extension that runs the loop's deal steps on an
-evidencebook shelf, in Python. Copy it to build an agent whose History cards a relying party can
-check and staple to its counterparty's.
+A [Goose](https://github.com/block/goose) extension that runs the loop's deal steps on a
+[capsulectl](../../../capsulectl/README.md) deal profile. Copy it to build an agent whose History
+cards a relying party can check and staple to its counterparty's.
 
-The node keeps everything its key answers for in one SQLite file, the shelf (design note
-[#254](../../../docs/design/254-shelf.md) §3 and §8):
+The extension is a thin MCP layer. Each tool is one or two verbs of the `capsulectl-deal` plugin, run
+on the node's own profile (`GOOSE_HOME` is the profile's `HOME`, so two nodes on one machine never share
+a store or a key). Python never opens the store, and this example imports none of the `evidencebook`
+Python package: the evidence store is Go's, and this is a client of it.
 
-- **One book per deal** (`deal/<deal_id>`). Each step of the deal is an
-  [x-deal-v0](../../../dealprofile/x-deal-v0/PROFILE.md) record, sealed as a Capsule that is the
-  book's record. Each Capsule carries the deal id, so a relying party can join your half of the deal
-  to your counterparty's on it (Evidence Bundle -02 `composed/v1`, `pre_agreed_identifier`).
-- **The node book** (`goose/node`). This holds what the node did outside any deal: joining,
-  admitting a peer, a counterparty's half it verified, and the evidence requests it sent and the
-  answers.
-- **Your existing ledger**, if you have one (`goose/ledger`). A capsule-emit ledger is copied once
-  into the shelf. Each record is copied exactly as it was sealed, and nothing is re-signed.
-- **The cadence** (`goose/cadence`). At each tick it commits every book's checkpoint in one
-  checkpoint, which is the one a witness signs and the anchor of your `standard_history/1` card.
+The node's profile holds:
 
-The node answers `history_card/1` for any one book, and `standard_history/1` (your deals, counted)
-as of a tick.
+- **a deal** (`deal/<log id>`): an [x-deal-v1](../../../dealprofile/x-deal-v1/PROFILE.md) deal. The
+  offer, the admission, the user's intent, the agreement, the payment legs, the delivery and the
+  statements are the profile's records. What the other side needs from them is the file each verb
+  writes; you carry it over your own channel and the other side keeps it with `deal receive`.
+- **the node book** (`goose/node`): what the node did outside any deal: joining, its decision on a peer,
+  a deal's context, the model calls it sealed, and the evidence requests it sent and their answers
+  (`deal node ...`).
+- **the cadence**: `deal tick` commits every log's checkpoint in one checkpoint, the one a witness sees
+  and the anchor of the node's cards.
+
+The node answers `history_card/2` (its cadence checkpoints, no deal counts) and `standard_history/3`
+(its x-deal-v1 deals, counted) as of its newest checkpoint.
 
 ## Run it
 
-You need Python 3.10 or later, this repository's Python package, and `mcp`:
+You need Python 3.10 or later, `mcp`, `cryptography`, and two programs on `PATH` (or named by
+variables):
+
+- `capsulectl-deal`, the plugin `capsulectl plugin install` installs from a
+  [capsulectl release](../../../capsulectl/README.md) (`GOOSE_CAPSULECTL_DEAL` names another binary);
+- `capsule-engine`, [capsule-engine](https://github.com/action-state-group/capsule-engine)'s command (go/v0.6.0
+  or later): a deal's admission decision is its `admission evaluate` (`GOOSE_CAPSULE_ENGINE`).
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install ./python "mcp>=1.20"
+.venv/bin/pip install cryptography "mcp>=1.20" "websockets==17.4"
 ```
 
 Add the extension to `~/.config/goose/config.yaml`:
@@ -39,7 +47,7 @@ extensions:
     enabled: true
     type: stdio
     name: goose_loop
-    description: "Goose loop steps on an evidencebook shelf"
+    description: "Goose loop steps on a capsulectl deal profile"
     cmd: /path/to/.venv/bin/python
     args: ["/path/to/python/examples/goose/loop_server.py"]
     timeout: 60
@@ -48,48 +56,57 @@ extensions:
       GOOSE_OPERATOR: "acme-co"
 ```
 
-On first use the node creates the following in `GOOSE_HOME`, each with mode 0600:
+On first use the node runs `deal init --dir $GOOSE_HOME/deal` under the profile `GOOSE_OPERATOR` (the AAC
+operator of everything it seals) and declares itself a person's agent for the History card. That creates, with
+mode 0600, the key that signs your records (`signing.seed`, your identity to peers) and the key that signs your
+checkpoints (`checkpoint.seed`), and the store. Back them up. Optional settings:
 
-- `shelf.db`, the shelf;
-- `producer.key`, the key that signs your records, which is your identity to peers;
-- `checkpoint.key`, the key that signs your checkpoints;
-- `store.secret`, the key under which counterparties are fingerprinted.
-
-Back these files up. Optional settings:
-
-- `GOOSE_DEVELOPER`: the developer name your records carry. The default is `goose-loop@v1`.
-- `GOOSE_WITNESSES`: a `witnesses.json` file to check cadence receipts against.
-
-Every half you give carries the deal book's `history_card/1` as a signed staple (the `history_card` member). It carries your shelf-level `standard_history/1` card (the `history_staple` member, under your producer key; it needs a finished `loop_tick`) only when the counterparty asks for it and you approve: `loop_deal_push` and `loop_deal_end_exchange` take `standard_card=true`, and setting it sends your standard card. The receiving side checks both staples under the key the half's steps are signed by.
+- `GOOSE_DEVELOPER`: the developer name your model-call records carry. The default is `goose-loop@v1`.
+- `GOOSE_NO_WITNESS=1`: make the profile with no public witness (the default witness is
+  `witness.agentactioncapsule.org`: ticks then reach the network). Set it before the first use.
+- `GOOSE_SIGNING_KEY_FILE`, `GOOSE_CHECKPOINT_KEY_FILE`: keep an existing node's keys (PKCS#8 PEM or a hex
+  seed) so its key ids stay. The history of an earlier Python home (a `shelf.db`) is **not** carried into the
+  profile: leave the old home as a read-only archive.
 
 ## A deal, tool by tool
 
-Every tool returns one JSON object. A refusal is `{"ok": false, "error": ...}` and seals nothing.
-Halves and requests are files that you move to the other party over your own channel. Nothing
-here moves money: a payment reference is a value you observed.
+Every tool returns one JSON object. A refusal is `{"ok": false, "error": ...}`. A tool that refuses before its verb runs seals nothing; a tool that is cut short part-way (an agreement written to a file that cannot be written, say) is called again with the same arguments and finishes: the decision, the intent and the settled payment are found, not sealed twice.
+The deal's files are what you move to the other party over your own channel. Nothing here moves money: a
+payment reference is a value you observed.
 
 | Step | Buyer | Seller |
 |---|---|---|
 | 12 | `loop_join` | `loop_join` |
 | 01 | `loop_seal` (a model call you made: provider, model id, prompt, completion) | |
-| 04 | `loop_admit` (the seller's two keys from its `loop_join`, `GO`) | `loop_admit` (the buyer's two keys, `GO`) |
-| 05 | `loop_deal_open` (item, price, rail, the user's words; its first step cites your GO), then `loop_deal_push` | |
-| 04 | `loop_deal_bundle` (your admission and your record of the deal, one bundle) | |
-| 05 | | `loop_deal_respond` (the buyer's half: offer, acceptance, commit), then `loop_deal_push` |
-| 05 | `loop_deal_reconcile` (the seller's half: same terms?) | |
-| 06 | `loop_settle` (the payment reference you saw on the rail), then `loop_pay_opening` (opens the pay record's reference commitment, for a checker), `loop_settlement_disclosure` (your signed count of the settlements on that rail) | `loop_settlement_disclosure` |
-| 05 | `loop_deal_end_exchange` (asks for the seller's half and writes yours), then `loop_deal_reconcile` on the half the seller sends | the same, for the buyer's half |
-| 06 | `loop_deal_close` (`received` or `not_received`; cites the checkpoint of the half you hold) | `loop_deal_close` |
-| 05 | each side runs `loop_deal_push` and the other `loop_deal_reconcile` on its final half | |
-| 09 | `loop_dispute_ask`, then `loop_dispute_poll` until `received` (the referee's Result, over the mailbox) | the same |
-| 02 | `loop_tick`, then `loop_book_bundle` (a record of a book, e.g. the one `loop_seal` returned) | `loop_tick` |
+| 04 | `loop_admit` (the seller's key from its `loop_join`, `GO`) | `loop_admit` (the buyer's key, `GO`) |
+| 05 | `loop_deal_open` (item, price, rail, the user's words): the offer file | |
+| 04 | `loop_deal_bundle` (your decision on the peer and your record of the deal, one bundle, both disclosed: the deal's terms and peer, never your words) | |
+| 05 | | `loop_deal_respond` (keeps the offer, runs the admission, agrees): the agreement file |
+| 05 | `loop_deal_reconcile` (keeps the seller's agreement), then `loop_deal_agree`: the agreement file | `loop_deal_reconcile` (keeps the buyer's agreement) |
+| 06 | `loop_settle` (the payment reference you saw on the rail). A pause returns the card to show the user; `loop_deal_approve` seals their answer, then `loop_settle` again with the `check_id`: the payer leg | `loop_deal_reconcile` (keeps it), then `loop_deal_received` (what you received): the payee leg |
+| 06 | `loop_deal_reconcile` (keeps the payee leg) | `loop_deal_deliver` (a commit review that pauses the same way, then the act): the delivery file |
+| 06 | `loop_deal_reconcile` (keeps the delivery), `loop_deal_close` (`received` or `not_received`: the statement) | `loop_deal_close` |
+| 06 | `loop_deal_reconcile` (keeps the seller's statement), then `loop_deal_report` (waits for the tick that covers the deal) | the same for the buyer's |
+| 09 | not built on x-deal-v1 yet: [#830](https://github.com/action-state-group/evidencebook/issues/830) | |
+| 02 | `loop_tick`, then `loop_book_bundle` (a record of a node book, e.g. the one `loop_seal` returned) | `loop_tick` |
 | cards | `loop_standard_history`, `loop_history_card` | the same |
 | 03 | `loop_advertise` | `loop_advertise` |
 | 07 | `loop_ask_mailbox`, then `loop_ask_mailbox_poll` | `loop_mailbox_poll` (the node answers by polling its mailbox) |
 
-`loop_book_bundle` writes the record's Evidence Bundle (`go run ./test/interop/verify FILE` checks it); beside it go `checkpoint.cose` and, with `GOOSE_WITNESSES` (a directory of one witness), that witness's receipt for this very
-checkpoint (`witness-receipt.json`, also in the bundle's `checkpoint.witnesses`) and `witnesses.json`; a witnessed cadence
-tick adds `cadence-checkpoint.cose`, `cadence-witness-receipt.json` and the `x-cadence-witness/v0` extension.
+The final review of an act (`deal check`) pauses when the user must answer: a price the agent picked, a rail
+with no card protection. `loop_settle` and `loop_deal_deliver` then return `paused: true` and the card in `say`.
+Show it as it is, seal only what the user answers (`loop_deal_approve`), and call the tool again with the
+`check_id`. A leg or an act the tool seals returns `person_signature: missing` until the person has signed it: say "settled, as the agent's records show", never that the user signed. The scripted run plays the user: its answers are the script's, and its records say what the script said, not what a person consented to.
+
+A deal is admitted by `capsule-engine admission evaluate` over the pack in `admission-pack.json` (capsule-engine's
+`ladder` conformance pack, `asg/admission_test/0.1.0`: **a test pack, not a policy for real deals**: its trust roots are placeholders (`ctl-trusted`, `judge-a`, `witness-a`), so a node that deals for real gives its own pack), for this price and currency. The node seals the decision (`deal admit`) and the agreement
+cites it. With this pack a deal under one USD is a GO; a larger price asks for more (from one USD the peer's `history_card/1` and a settled exchange with you, from ten USD also two vouches) and the tool refuses
+(answer the asks in capsule-engine, or give the node a pack of your own). `loop_admit` is the node's own GO or NO on
+a peer, sealed in the node book before any deal: a NO stops every deal with it.
+
+`loop_book_bundle` writes the record's Evidence Bundle (`capsulectl-deal verify --bundle FILE` checks it). To carry a
+witness's receipt for the checkpoint, submit the checkpoint statement (`loop_book` writes it) to the witness and pass the
+receipt file and the witness directory.
 
 `loop_seal` seals the model call as a `runtime_claimed` effect record of the node book and writes the Capsule
 (with its `signature` and `key_id`) to a file; `go run ./test/interop/goose-capsule FILE` checks it.
@@ -97,84 +114,61 @@ tick adds `cadence-checkpoint.cose`, `cadence-witness-receipt.json` and the `x-c
 your node book as the record's payload, so don't seal a prompt you would not disclose with the book; the completion is
 kept by digest only.
 
-`loop_settlement_disclosure` is step 06's count. It writes the node's signed `settlement-disclosure/v1`: how many final
-settlements on a rail the node's own deal books hold (a buyer's: its `pay` acts on the rail; a seller's: deals closed
-`received`), labelled with the rail's latest ledger sequence you observed. It reads no rail and moves no money. The loop compares
-it with the rail's own count. `loop_pay_opening` writes the opening of the buyer's `pay` record's committed local event: with the deal's half
-(`loop_deal_push`) a checker recomputes the record's payment-reference commitment and reads the reference you observed on
-the rail. It discloses that reference (a settlement id or payment hash, never a preimage), only when you call it.
-
 `loop_advertise` is step 03. It writes the node's `evidence-commitment/1`, which says how the node can be asked and what it
-can answer, and never counts anything. It also writes the node's disclosure policy. Both are signed with your signing key.
-The files are `<node_id>.json` and `policies/<node_id>.json`, laid out as they go under `nodes/commitments/` in the loop
-repository (evidence-network/loop, `steps/03-advertise.md`), where you add them by pull request. The tool publishes nothing.
-`node_id` is your node's id in the loop's list; the default is your signing key. The commitment staples your node book's
-`history_card/1`, built as `Book.Staple` builds it (over `checkpoints`, pinned to the newest checkpoint, with a nonce); the commitment carries the reply only, since `evidence-commitment/1` has no member for the request. It does not staple a card for each deal, since those would publish every deal id. The node book's card
-does show the book's size, which grows with every record it holds, deal openings included. By default it says a person approves each answer (`human_gated`) and that an
-asker waits `PT24H` before recording an absence. `endpoint`, `bindings`, `answers_within` and `human_gated` change that.
-`loop_join` returns the same commitment and policy, and writes them when you give it `commitment_dir`. The loop's
-`scripts/check_commitment.py` is the check: CI runs it on the scripted run's commitments, with the loop checked out at the
-commit the workflow pins.
+can answer, and never counts anything. It also writes the node's disclosure policy. Both are signed with your signing key,
+in this process. The files are `<node_id>.json` and `policies/<node_id>.json`, laid out as they go under `nodes/commitments/`
+in the loop repository (evidence-network/loop, `steps/03-advertise.md`), where you add them by pull request. The tool publishes
+nothing. `node_id` is your node's id in the loop's list; the default is your signing key. The commitment staples the
+profile's `history_card/2` (`deal standard-history staple`); the commitment carries the reply only, since
+`evidence-commitment/1` has no member for the request. By default it says a person approves each answer (`human_gated`) and
+that an asker waits `PT24H` before recording an absence. `endpoint`, `bindings`, `answers_within` and `human_gated`
+change that. `loop_join` returns the same commitment and policy, and writes them when you give it `commitment_dir`. The
+loop's `scripts/check_commitment.py` is the check.
 
 `loop_advertise` with `relays` (comma-separated `wss://` URLs, the relays the node reads) is what makes the node askable with no
 listener: the commitment then names `ask.nostr {mailbox_key, relays}` (the node's own secp256k1 mailbox key, `mailbox.key`,
 mode 0600), and `poll_interval` (seconds) is how often you promise to call `loop_mailbox_poll`. `answers_within` may not be
-shorter than `poll_interval`; the tool refuses it otherwise.
+shorter than `poll_interval`, nor than 90 seconds (a book records no absence window shorter than a minute after the request).
 
 Step 07 over the mailbox (binding `nostr-mailbox-v0`, experimental; the exchange is `evidence-interop/1`'s, carried unchanged):
 
 - **Answering.** `loop_mailbox_poll` reads the evidence requests addressed to the node's mailbox key on its relays and answers
-  each from the node book under the node key: `history_card/1` and `checkpoints` to anyone, and for anything else the node's
-  disclosure policy decides, with a signed refusal (never silence) for a request outside it. An answered request is sealed in
-  the node book (`goose_mailbox_answered`), so a restart does not answer it again. Call it at least as often as `poll_interval`.
+  each from the node book under the node key (`deal node respond`): `history_card/1` and `history_card/2` to anyone, and for
+  anything else the node's default policy decides, with a signed refusal (never silence) for a request outside it. An answered
+  request is sealed in the node book (`goose_mailbox_answered`), so a restart does not answer it again. Call it at least as often
+  as `poll_interval`.
 - **Asking.** `loop_ask_mailbox` takes the asked node's commitment file, verifies its signature, seals the request in your node
   book, and publishes it to the mailbox the commitment names with a `deadline` of its `answers_within`. `loop_ask_mailbox_poll`
   then returns `answered` (the reply verified under the asked node's listed keys and recorded: an artifact or a signed
   refusal), `pending`, or `absent` once the deadline has passed with no recorded answer, which records the absence against the
   node, or `transport_error` when no relay could be read (it records nothing: poll again). The ask uses `history_card/2` on the
-  `checkpoints` subject when the commitment's `answers.derivations` lists it, else `history_card/1`, unless you name a
-  derivation. Replies up to the book's 8 MiB limit are read from the relay. A reply that arrives after the absence is kept beside it (`goose_mailbox_late`, signature-checked, `late: true`) and
-  never rewrites it (binding §5.3). Arrival is judged by your clock at the poll that first sees the reply, so poll at least
-  as often as the asked node's `answers_within`.
-  `loop_book_bundle` with `disclose` writes the outcome's Evidence Bundle with the headers of the outcome and of the
-  request it cites revealed, and the reply bytes the response record keeps (`capsulectl verify --bundle` reads it).
+  `checkpoints` subject when the commitment's `answers.derivations` lists it, unless you name a derivation. A reply that arrives
+  after the absence is kept beside it (`goose_mailbox_late`, signature-checked, `late: true`) and never rewrites it (binding
+  §5.3). Arrival is judged by your clock at the poll that first sees the reply, so poll at least as often as the asked node's
+  `answers_within`.
 - The events are not encrypted (binding §8, N-3). Use a relay that authenticates its readers.
 
-The other tools are `loop_import` (your existing ledger), `loop_book` (a book's size and
-checkpoint), `loop_probe` (re-check everything on the shelf), and `loop_ask` and `loop_ask_reply`
-(an evidence request you send, and its verified answer).
+The other tools are `loop_book` (a node book's checkpoint), `loop_probe` (the deals this profile holds and the node book's
+checkpoint), and `loop_ask` and `loop_ask_reply` (an evidence request you send, and its verified answer).
 
-Step 09 is the dispute: the referee the deal terms name seals a Result (capsule-engine's `referee`), and
-that Result reaches each judged party's own book over the AAC Nostr mailbox
-(`nostr-mailbox-v0`, experimental). This uses the binding's event kinds, addressing and reply checks to
-carry a Result, which is not an evidence envelope, so it is not a conforming use of the binding
-(§4.2); extending the binding for it is tracked in https://github.com/action-state-group/agent-action-capsule/issues/549. Goose has no inbound listener, so the party polls. The terms
-name the referee's `mailbox_key`, its `relays`, `private_relays: true` and `answers_within` (seconds). `loop_dispute_ask`
-publishes a request to that mailbox, with a deadline of `answers_within`; its `poll_interval`
-may not be longer than `answers_within`. `loop_dispute_poll` fetches the replies once. It returns
-`received`, `pending` or, once the deadline has passed with no reply, `absent`, which it seals
-once as `goose_dispute_absent` (a reply that arrives later is still taken); `transport_error` when no
-relay could be read, which seals nothing (poll again). Both tools take the
-deal file `{"buyer": {"half", "action", "terms"}, "seller": {...}}`: each party's signed half and the
-opening of its commitment.
+## Not here
 
-A Result is accepted only if capsule-engine's check passes, after the node binds each opening to
-its signed half. It refuses, and seals the refusal with its code as `goose_dispute_refused`, a Result
-that does not verify, that is not signed by the referee both halves' terms name, that names other
-halves, or about a deal this node's key sealed no half of. An accepted Result is sealed as
-`goose_dispute_received` and **cites** the two judged halves, which the book holds as
-`goose_dispute_half` records. The record holds the SHA-256 of the Result's bytes (`result_digest`),
-not the bytes, and both parties' books hold the same digest. The referee's side of the exchange
-(`nostr_mailbox.serve_round`) is the part of the referee node that answers a request with the Result.
-The tools need `capsule-engine` installed beside the node: a release that has `capsule_engine.referee`
-(0.3.0 does not), or until one ships the commit CI uses,
-`pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"`,
-and `pip install "websockets==17.4"` for the mailbox. The events are not encrypted (binding §8, N-3), and a Result names both halves and the
-referee, so the terms must declare `private_relays: true`, relays that only the two parties and the referee can read, or the
-node refuses to ask. Use a relay that authenticates its readers until the binding specifies encryption.
+- **Step 09, the dispute** (a referee's Result), ran on x-deal-v0 halves and is not built on x-deal-v1:
+  [#830](https://github.com/action-state-group/evidencebook/issues/830) (`deal dispute`, the offer's adjudicator's
+  `deal ruling`, `deal receive`).
+- **The rail-wide settlement disclosure and the payment-reference opening** (step 06's `loop_settlement_disclosure` and
+  `loop_pay_opening`) counted and opened v0 records. `deal settlement` reads one deal; a verb for the count over a rail
+  is still to be built.
+- **Importing a flat ledger** (`loop_import`) is not built in capsulectl. A node that has a capsule-emit ledger keeps it
+  as it is.
+- **The Mesh node's half check** (`goose-deal-half/1`, capsules-plugin v0.1.8): a v1 deal has no half file; its files are
+  checked by `deal receive`.
 
-`scripted_run.py` runs that table, except step 09 (which needs a referee node; `tests/test_dispute.py` runs it), with two nodes, each a `loop_server.py` process spoken to
-over MCP stdio, as Goose speaks to it:
+## Run the scripted run
+
+`scripted_run.py` runs that table (except step 09) with two nodes, each a `loop_server.py` process spoken to
+over MCP stdio, as Goose speaks to it. It takes about six minutes: a report rests on a cadence checkpoint, and a tick is due
+about every five.
 
 ```bash
 .venv/bin/python python/examples/goose/scripted_run.py /tmp/goose-run
@@ -185,81 +179,31 @@ With `GOOSE_CARD_SERVICE` set to a service file ([Registering your card](#regist
 
 ## What each side seals
 
-The buyer's deal book holds the records capsulectl deal seals for a retail purchase:
-the baseline, the check before paying, its verdict, the approval under your standing intent, the
-`pay` act, the outcome and the close.
+Each side's deal book holds the records of an x-deal-v1 deal: its agreement (citing its admission decision and,
+for the buyer, the intent), the payment leg it wrote (the buyer's payer leg, the seller's payee leg), the seller's
+delivery, and its statement on the deal's two rows (`paid_as_agreed`, owed by the buyer, and `delivered`, owed by the seller; `received` says both were met, `not_received` says the buyer's `delivered` or the seller's `paid_as_agreed` was not). The final review's check and the user's answer are sealed too. Your own
+words (what you asked, the payment reference) appear in a record only as commitments; their openings stay in your store.
 
-The seller's book holds the typed action records the profile requires when you sell (x-deal-v0
-§9): the baseline, the task authority, the offer, the buyer's acceptance (its half, by digest),
-the `commit` act, the outcome and the close.
-
-Your own words (what you asked, the payment reference) appear in a record only as commitments.
-Their openings stay in your shelf.
-
-A deal counts on your card once it reaches `pay` or `commit`. It counts as `stamped_by_both` once
-your node has verified the counterparty's final half (x-deal-v0 §11).
-
-A counterparty's half is checked against the two keys your admission pinned. Its steps must be
-signed by the peer's signing key, and its checkpoint, which commits exactly those steps, must be
-signed by the peer's checkpoint key. Each step must also chain to the one before it, carry its
-deal-step header, and commit its record. The records must pass the profile's record checks and
-its chain rules, as checked by the reference checker `dealprofile/x-deal-v0/check_profile.py`. In
-a copy of the example outside this repository, point `GOOSE_CHECK_PROFILE` at that file.
-
-### Step 05: what each clause of the loop maps to
-
-The loop's step 05 asserts that the halves cite each other's checkpoints, that the halves are
-pushed at completion and the receiver holds the pushed bytes by record id, and that the receiver
-seals a record citing the counterparty half and the checkpoint it came under. Goose has no
-record-push; its own records answer each clause (evidencebook#303):
-
-| Clause | Goose record |
-|---|---|
-| each half cites the other's checkpoint | the **close** step's record header carries, beside its chain parent, one `cites` link to the SHA-256 of the checkpoint statement of the counterparty's half this node holds (x-deal-v0 §1) |
-| the halves are exchanged at completion | `loop_deal_end_exchange`, at the exchange's end and before the outcome and close: it seals this node's request for the counterparty's half (`goose_half_asked`) and, unless `share=false`, writes this node's own half |
-| the receiver holds the pushed bytes by record id | `loop_deal_reconcile` seals `goose_half_received`: the half's bytes are the note's payload, and its statement names the half's final record id (`final_record_id`), the half's digest and the checkpoint digest |
-| the receiver's record cites the counterparty half and its checkpoint | that note cites this node's request and states the checkpoint digest the close then cites |
-| verified | `verify_half` on the half, which also checks the half's links: the chain parent exactly once on every step after the baseline, the baseline's one extra cite (its admission) never read as a checkpoint, checkpoints only on a close |
-
-Each side's pre-close half is exchanged first because a close cannot cite a checkpoint that covers
-the other side's close. `loop_deal_close` refuses when this node holds no counterparty half;
-`uncited=true` closes anyway when the counterparty never answered. The final halves are still
-exchanged and reconciled afterwards: a held half that ends in a close is the card's `stamped_by_both`.
-
-A closed deal takes no more steps. If `loop_deal_respond` is cut short part-way, call it again
-with the same half: it seals only the steps the deal does not hold yet.
-
-## Bringing an existing ledger
-
-If Goose has been sealing into a capsule-emit ledger, run `loop_import` with its path, once.
-The node trusts the ledger's own signing key, copies every record in order exactly as it was
-sealed, and checks that the shelf holds the same records in the same order. It holds the
-ledger's writer lock throughout, and refuses while another writer (an older Goose server) holds
-it, so stop that server first. Only after the check does it move
-the old files to `GOOSE_HOME/archive/pre-shelf/`. If anything does not match, the old files stay
-where they are and the import refuses. Running it again after an interruption resumes it.
-
-The old ledger's signing key is not moved, and it stays the key those records verify under. New
-records are signed with `producer.key`.
+A deal counts on your card as the profile counts it (x-deal-v1 PROFILE §11); the card is what `deal standard-history card`
+derives from the store, and nothing in this example computes it.
 
 ## Checking a card
 
-A relying party that holds your signing key re-derives your card from a copy of your shelf with
-Go's evidencebook:
+The card is a bundle that `capsulectl-deal verify --bundle` checks offline from the file alone, which is Go's check of it:
 
 ```bash
-go run ./test/interop/goose-card /tmp/goose-run/buyer/shelf.db /tmp/goose-run/buyer-card.json "$(cat /tmp/goose-run/buyer.key)"
+capsulectl-deal --profile goose-buyer verify --bundle /tmp/goose-run/buyer-card.json
 ```
+
+CI runs it on every bundle the scripted run writes (`python/examples/goose/tests`).
 
 ## Registering your card (optional)
 
 A card can be registered on a transparency service, so that a relying party you give the card statement to, and that accepts the service, can check that your key stated this
 card no later than a time. This is off until you name a service: there is no default service, and with
 `GOOSE_CARD_SERVICE` unset `loop_register_card` refuses and nothing is sent. The card is complete without it, and a
-registration that fails changes nothing about the card.
-
-Registration needs `pip install "agent-action-capsule>=0.19.0"` on top of the install above (the package's own pin is
-older); without it `loop_register_card` refuses before sending anything.
+registration that fails changes nothing about the card, but the service may have logged the statement anyway (the error says so). It runs `capsulectl-book card register` (`GOOSE_CAPSULECTL_BOOK`
+names another binary), over the node's `history_card/2`.
 
 `card-service.example.json` names the service this demo uses: capsule-anchor at
 `https://witness.agentactioncapsule.org`, **run by Action State Group**. That is this demo's choice, not a default of the
@@ -270,38 +214,13 @@ independent of the holder. Its `keys` entry is the key the service published (it
 
 ```bash
 export GOOSE_CARD_SERVICE=python/examples/goose/card-service.example.json
-# in Goose, after a finished loop_tick:
+# in Goose, after a finished tick:
 #   loop_register_card out_path=/tmp/goose-run/buyer-card-statement.json
 ```
 
 `loop_register_card` writes the card statement, with the service's Receipt, to `out_path`; keep it beside the card.
-The post is synchronous and every operation (connect, send, each read) times out after 30 seconds with the answer capped at 1 MiB; a service that drips bytes slowly can still take longer than that overall, which is accepted for this demo stand-in. A registration is permanent: the service's log is append-only, and it learns which of your keys registered a card for
+A registration is permanent: the service's log is append-only, and it, and anyone who reads its log, learn which of your keys registered a card for
 which anchor, and when. The statement carries the card's digest, not the card, but a digest does not hide a small card from
-a party that can guess its counts.
-
-A relying party checks it with its own copy of the service's key, never one read from the statement file:
-
-```bash
-go run ./test/interop/goose-card /tmp/goose-run/buyer/shelf.db /tmp/goose-run/buyer-card.json "$(cat /tmp/goose-run/buyer.key)" \
-  /tmp/goose-run/buyer-card-statement.json my-policy.json   # {"witnesses": [{"name": "...", "keys": ["<hex DER key>"]}]}
-```
-
-On a pass it reports `card_registered` PASS and what that shows and no more: that this holder registered this card with
-the named service, at the time in the Receipt (or with no time, when the Receipt states none). It does not show that the service checked the counts, the deals or the
-anchor, that the service authenticated the holder, or that this is your only card, and `anchor_inclusion` stays
-`NOT_CHECKED`.
-
-A Mesh node on capsules-plugin v0.1.8 has no channel to receive a Goose half yet
-(evidencebook#291 adds one). CI instead runs each half through exactly the checks such a node runs
-over a counterparty's half, with the crates that release pins (`test/interop/goose-mesh-check`).
-To run it on a scripted run's halves:
-
-```bash
-cargo build --locked --manifest-path test/interop/goose-mesh-check/Cargo.toml
-test/interop/goose-mesh-check/target/debug/goose-mesh-check /tmp/goose-run/buyer-final-half.json /tmp/goose-run/seller-final-half.json
-```
-
-The card check reads a consistent snapshot of the shelf, so the node may keep running. It accepts the card
-only if Go derives exactly the same bytes as of the tick the card names, and every
-`standard_history/1` property passes. CI runs the scripted run and this check
-(`python/examples/goose/tests`).
+a party that can guess its counts. What a passing Receipt shows, and what it does not, is in
+`capsulectl-book card register --help`; a relying party checks it with its own copy of the service's key
+(`capsulectl-book card check`), never one read from the statement file.
