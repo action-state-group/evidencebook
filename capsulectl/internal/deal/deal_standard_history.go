@@ -1,10 +1,12 @@
 package deal
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -47,10 +49,13 @@ const (
 	shDefaultPolicy = `{"months":3}`
 	// shLogPrefix names the log a card's Capsule is sealed on: one log per
 	// card, as a History's.
-	shLogPrefix  = "standard-history/"
-	shActionID   = "capsulectl-deal-standard-history"
-	shExtension  = "x-standard-history/v0"
-	shSetupNotes = "This node answers History card requests from any requester you name to `deal respond`: the card counts your deals and carries no deal's content. Turn that off with `deal standard-history declare --holder-kind node --no-answer`."
+	shLogPrefix = "standard-history/"
+	shActionID  = "capsulectl-deal-standard-history"
+	shExtension = "x-standard-history/v0"
+	// shAnchorWitnessExtension carries a cll witness's receipt for the
+	// card's anchor checkpoint (shAnchorWitness).
+	shAnchorWitnessExtension = "x-standard-history-anchor-witness/v0"
+	shSetupNotes             = "This node answers History card requests from any requester you name to `deal respond`: the card counts your deals and carries no deal's content. Turn that off with `deal standard-history declare --holder-kind node --no-answer`."
 )
 
 // shSettings is the holder's declaration. HolderKind is explicit and set
@@ -366,7 +371,7 @@ func shPolicyCommand() *cobra.Command {
 }
 
 func shCardCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "card", Short: "Write the History card as a bundle `verify --bundle` checks and the History page draws, as of the newest checkpoint of the profile's cadence", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "card", Short: "Write the History card as a bundle `verify --bundle` checks and the History page draws, as of the newest checkpoint of the profile's cadence", Long: shCardLong, Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		out, _ := c.Flags().GetString("out")
 		shared, _ := c.Flags().GetBool("shared")
 		derivation, _ := c.Flags().GetString("derivation")
@@ -635,6 +640,12 @@ func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool, de
 	if err != nil {
 		return nil, err
 	}
+	// The pinned witness the cadence checks its receipts under, read before
+	// the card's own log replaces s.dp.
+	witnesses, err := pinnedWitnessDirectory(s.p)
+	if err != nil {
+		return nil, err
+	}
 	nonce := make([]byte, 32)
 	if _, err = rand.Read(nonce); err != nil {
 		return nil, err
@@ -678,8 +689,58 @@ func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool, de
 		extensions = map[string]interface{}{}
 	}
 	extensions[shExtension] = block
+	if anchorWitness := shAnchorWitness(h, witnesses); anchorWitness != nil {
+		extensions[shAnchorWitnessExtension] = anchorWitness
+	}
 	b["extensions"] = extensions
 	return b, nil
+}
+
+// shCardLong is the card verb's help.
+const shCardLong = `Write the History card as a bundle ` + "`verify --bundle`" + ` checks and the History page draws, as of the newest checkpoint of the profile's cadence.
+
+Both copies carry the checkpoint the card is as of. When a witness recorded that checkpoint, they also carry that witness's one receipt for it, and nothing about any other checkpoint: a scrapi+https:// witness's receipt in the card's as_of.receipts, or a cll witness's (such as the default hosted witness) in the x-standard-history-anchor-witness/v0 extension. ` + "`capsulectl deal verify --bundle FILE --witness-directory DIR`" + ` checks the second against the card's signed anchor and reports it as reader_witnesses (pass, withheld when the directory does not name the witness, or fail). The witnesses row beside it stays about the card's own log, which no witness sees.`
+
+// shAnchorWitness is the x-standard-history-anchor-witness/v0 block: the one
+// receipt a cll witness (one with no scrapi+ binding, such as the hosted
+// witness) gave for the card's anchor checkpoint, in the checkpoint.witnesses
+// entry form, or nil. A cll receipt's leaf is SHA-256 of the checkpoint
+// payload's digest, not the anchor, so AAC's anchor_witnessed (and with it
+// as_of.receipts, which capsule-viewer checks that way) cannot take it; this
+// block carries it beside the card, and capsulectl's verify ties it to the
+// card's signed anchor (cardAnchorWitnessClaim). It is exactly one receipt
+// over the anchor and nothing else (Sherlock2, evidencebook#891, ops
+// 92151a94): no other checkpoint, nothing that shows the shelf's cadence.
+// The tick's receipt is checked again here under the profile's pinned
+// witness, since a tick may hold one the host checked before evidencebook
+// verified receipts: one that does not pass is left out, and the card is
+// still made. Interim: a witness that answers SCRAPI gives a receipt for the
+// anchor itself, which as_of.receipts carries.
+func shAnchorWitness(h standardHistoryCard, directory witness.Directory) map[string]interface{} {
+	r := h.Tick.Receipt
+	if !h.Tick.Witnessed || r == nil || witness.BindingOf(r.TSURL) != witness.BindingCLL {
+		return nil
+	}
+	entry := map[string]interface{}{
+		"ts_url": r.TSURL, "entry_hash": r.EntryHash,
+		"receipt_b64": base64.StdEncoding.EncodeToString(r.Receipt),
+		"leaf_index":  cli.Integer(r.LeafIndex), "tree_size": cli.Integer(r.TreeSize),
+	}
+	// Checked in the form a reader gets it, the octets this block is written as.
+	raw, err := json.Marshal([]interface{}{entry})
+	if err != nil {
+		return nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var read []interface{}
+	if decoder.Decode(&read) != nil {
+		return nil
+	}
+	if claim, _ := receiptsClaim(read, h.Tick.Checkpoint, &directory, ""); claim.Status != witness.StatusPass {
+		return nil
+	}
+	return map[string]interface{}{"witnesses": []interface{}{entry}}
 }
 
 // shAsOfBlock is the block's as_of: the card's three members, the anchor's
@@ -689,8 +750,9 @@ func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool, de
 // is the anchor digest (IP1 §6.2.2): that is a scrapi+https:// witness's,
 // which the cadence verified before it marked the tick witnessed. A cll
 // witness's leaf is SHA-256 of the checkpoint payload's digest, so its
-// receipt does not cover the anchor and is never written. Both copies carry
-// them: they name no deal.
+// receipt does not cover the anchor and never goes in as_of.receipts: it
+// travels in its own extension (shAnchorWitness). Both copies carry them:
+// they name no deal.
 func shAsOfBlock(h standardHistoryCard) map[string]interface{} {
 	asOf := map[string]interface{}{
 		"anchor": h.AsOf.Anchor, "anchor_time": h.AsOf.AnchorTime, "first_checkpoint_time": h.AsOf.FirstCheckpointTime,

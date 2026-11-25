@@ -54,7 +54,14 @@ func (r *dealReader) Name() string { return dealReaderName }
 
 func (r *dealReader) Witnesses(ctx *cli.ExtensionContext) (aacbundle.ClaimResult, []map[string]any, bool) {
 	claim, receipts, anchored := cadenceClaim(ctx.Value, ctx.Statement, ctx.Directory)
+	// anchored and cadence stay the cadence chain's: a v0 report's as_of never
+	// reads a card's anchor witness.
 	r.anchored, r.cadence = anchored, claim
+	// A History card's anchor receipt (evidencebook#891). Beside a cadence
+	// chain or a deal section it fails, and that failure is the claim.
+	if card, cardReceipts, present := cardAnchorWitnessClaim(ctx.Value, ctx.Result, ctx.SignatureStates, ctx.Statement, ctx.Directory); present {
+		return card, cardReceipts, true
+	}
 	return claim, receipts, anchored
 }
 
