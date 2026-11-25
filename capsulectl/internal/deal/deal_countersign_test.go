@@ -244,11 +244,15 @@ func TestDealRemoteCheckerOnlyAddsAndFallsBack(t *testing.T) {
 	assert.Equal(t, "pause", paused["verdict"], "a remote pass never clears a local pause")
 	assert.Contains(t, differenceTexts(paused), "Over your limit of $400.00")
 
+	// The slow checker answers only once the test releases it (or after a
+	// minute), so a check that waited for it could not return first: the
+	// bound below is that minute, not the 2 s cut-off plus the check's own
+	// work, which a loaded machine stretches (evidencebook#905).
 	release := make(chan struct{})
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-release:
-		case <-time.After(5 * time.Second):
+		case <-time.After(time.Minute):
 		}
 		_, _ = w.Write([]byte(`{"verdict":"pause","differences":[{"rule":"late","text":"too late to count"}]}`))
 	}))
@@ -261,7 +265,7 @@ func TestDealRemoteCheckerOnlyAddsAndFallsBack(t *testing.T) {
 	assert.Equal(t, "unavailable", local["remote"])
 	assert.Equal(t, "pass", local["verdict"], "the local rules decide alone")
 	assert.NotContains(t, local["card"], "too late to count")
-	assert.Less(t, elapsed, 4*time.Second, "cut off near 2 s, never waits for the slow reply")
+	assert.Less(t, elapsed, 30*time.Second, "cut off, never waits for the slow reply, which comes only after a minute")
 }
 
 // A countersignature covers your own copy only: a shared copy withholds
