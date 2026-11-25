@@ -21,7 +21,7 @@ import (
 )
 
 // A party's full answer to its adjudicator's request (evidencebook#861,
-// docs/design/861-four-books.md §2.2, Steven's rulings u207 and u211): the
+// docs/design/861-four-books.md §2.2, Steven's rulings of 2026-11-24, §6): the
 // adjudicator asks each party for the deal with derivation
 // deal_adjudicator_copy/1 and subject {"correlation": <deal id>}, and the
 // party answers with its full adjudicator copy (its whole deal book and the
@@ -363,7 +363,7 @@ func nullID(n xdealv1.Null[string]) *string {
 }
 
 // gatheredSideOut is what `deal ruling` prints of one side of a gathered
-// case, for the ruling's page (Steven's ruling 2, u211): the sources read
+// case, for the ruling's page (Steven's ruling 2 of 2026-11-24, note §6): the sources read
 // (null for one not shown to the adjudicator), the fork position, and each
 // record of the book read with its time and what timed it: the side's own
 // stamps (own_stamp), the other side's held proofs (holder_link), or none.
