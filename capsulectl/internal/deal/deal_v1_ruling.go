@@ -65,6 +65,7 @@ func readCaseCopyFile(path string) (xdealv1.CaseCopy, error) {
 // rulingFlags are the verb's flags, read and checked before the store opens.
 type rulingFlags struct {
 	dealID, row, value, forum, out, dispute string
+	decidedBy                               string
 	against                                 xdealv1.Null[string]
 	final                                   bool
 	remedy                                  *xdealv1.RulingRemedy
@@ -74,7 +75,8 @@ type rulingFlags struct {
 
 func readRulingFlags(c *cobra.Command) (rulingFlags, error) {
 	str := func(name string) string { v, _ := c.Flags().GetString(name); return strings.TrimSpace(v) }
-	f := rulingFlags{dealID: str("deal"), row: str("row"), value: str("value"), forum: str("forum"), out: str("out"), dispute: str("dispute")}
+	f := rulingFlags{dealID: str("deal"), row: str("row"), value: str("value"), forum: str("forum"), out: str("out"), dispute: str("dispute"),
+		decidedBy: str("decided-by")}
 	f.final, _ = c.Flags().GetBool("final")
 	f.copies, _ = c.Flags().GetStringArray("copy")
 	f.answers, _ = c.Flags().GetStringArray("answer")
@@ -110,6 +112,8 @@ func readRulingFlags(c *cobra.Command) (rulingFlags, error) {
 		return f, cli.InputError("give at most two --answer files: each party's answer to your request (`deal respond`)")
 	case len(f.copies)+len(f.answers) == 0:
 		return f, cli.InputError("give each party's copy that opened the case (--copy) or its answer to your request (--answer), at least one")
+	case f.decidedBy != "" && len(f.answers) == 0:
+		return f, cli.InputError("--decided-by needs the parties' answers (--answer): the check reads the case from their books")
 	}
 	kind, due, currency := str("remedy-kind"), str("remedy-due"), str("currency")
 	amount, _ := c.Flags().GetInt64("amount-minor")
@@ -205,7 +209,9 @@ A second final ruling on a row that differs from the first is refused.`,
 	cmd.Flags().StringArray("answer", nil, "A party's full answer to your request for the deal (deal respond); at most one per party")
 	cmd.Flags().StringArray("binding", nil, "A controller-binding record between your key and a party's, to deliver with the ruling (repeatable)")
 	cmd.Flags().String("out", "", "Where to write the file to send (default: standard output)")
+	cmd.Flags().String("decided-by", "", "Rule only as `deal ruling check` decides: the deciding record's id it printed (with --answer)")
 	cmd.AddCommand(dealRulingEntriesCommand())
+	cmd.AddCommand(dealRulingCheckCommand())
 	return cmd
 }
 
@@ -284,21 +290,9 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 			return cli.InputError("the dispute and the copies are not a case for you: " + err.Error())
 		}
 	} else {
-		var answers []xdealv1.CaseAnswer
-		for _, path := range f.answers {
-			a, err := readAnswerFile(path, f.dealID)
-			if err != nil {
-				return err
-			}
-			answers = append(answers, a)
-		}
-		dir, err := pinnedWitnessDirectory(s.p)
+		g, err := s.gatherAnswered(f.dispute, f.copies, f.answers, f.dealID, me)
 		if err != nil {
 			return err
-		}
-		g, err := xdealv1.GatherCase(push.Record, copies, answers, me, dir)
-		if err != nil {
-			return cli.InputError("the dispute, the copies and the answers are not a case for you: " + err.Error())
 		}
 		cs, gathered = g.Case, &g
 	}
@@ -307,6 +301,11 @@ func (s *dealSession) rule(ctx context.Context, c *cobra.Command, f rulingFlags)
 		return cli.InputError("the dispute is of deal " + cs.DealID + ", not " + f.dealID)
 	case cs.Row != f.row:
 		return cli.InputError("the dispute is on row " + cs.Row + ", not " + f.row)
+	}
+	if f.decidedBy != "" {
+		if err := checkDecidedBy(*gathered, f); err != nil {
+			return err
+		}
 	}
 	body := cs.RulingOf(f.value, f.against, f.remedy, f.final, f.forum)
 	// A file already at --out is an earlier run's only if it holds this same
