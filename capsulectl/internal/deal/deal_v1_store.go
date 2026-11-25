@@ -92,18 +92,21 @@ func (s *dealSession) ensureV1Tables(ctx context.Context) error {
 
 // libErr is a deal-store error as the CLI reports it: a refusal of the input
 // is an input error (its argument named by its flag), stored state that
-// disagrees is a conflict, and anything else passes as it is.
+// disagrees is a conflict, and anything else passes as it is. A coded
+// refusal is worded in the CLI's terms (cliRefusals); its Code is never
+// printed.
 func libErr(err error) error {
 	var in *dealapi.InputError
 	if errors.As(err, &in) {
+		reason := cliReason(in.Code, in.Args, in.Reason)
 		if in.Field != "" {
-			return cli.InputError("--" + in.Field + in.Reason)
+			return cli.InputError("--" + in.Field + reason)
 		}
-		return cli.InputError(in.Reason)
+		return cli.InputError(reason)
 	}
 	var conflict *dealapi.ConflictError
 	if errors.As(err, &conflict) {
-		return fmt.Errorf("%w: %s", cli.ErrConflict, conflict.Reason)
+		return fmt.Errorf("%w: %s", cli.ErrConflict, cliReason(conflict.Code, conflict.Args, conflict.Reason))
 	}
 	return err
 }
