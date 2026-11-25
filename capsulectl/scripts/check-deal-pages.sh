@@ -124,7 +124,10 @@ check "deal-receipt-edited: the page carries the edited line" contains receipt-e
 render receipt-edited.html
 check "deal-receipt-edited: the page refuses the copy" contains receipt-edited.html.dom 'data-verify="failed" data-verdict="invalid"'
 check "deal-receipt-edited: the page names the report that does not match" contains receipt-edited.html.dom "data-check=\"deal-report-capsule\">Didn't verify: the deal report carried outside the log does not match its Capsule."
-check "deal-receipt-edited: no receipt is drawn" lacks receipt-edited.html.dom 'data-receipt-module='
+# The deal view (internal/deal/assets/deal-view.js) draws into <div id="deal">:
+# the valid receipt has it, the refused one must not.
+check "deal-receipt: the page draws the deal view" contains receipt.html.dom 'id="deal"'
+check "deal-receipt-edited: no receipt is drawn" lacks receipt-edited.html.dom 'id="deal"'
 check "deal-receipt-edited: the page shows no edited line" lacks receipt-edited.html.dom '<p class="deal-note">A line nobody sealed.</p>'
 check "deal-receipt-edited: no \"not checked\" label" lacks receipt-edited.html.dom 'data-unchecked="x-deal-v0"'
 # The deal-format verdicts come from the plugin (`capsulectl deal verify
