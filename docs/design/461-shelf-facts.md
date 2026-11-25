@@ -250,7 +250,7 @@ It does not check the journal's chain or ask for its openings, and the journal c
 completeness and no tally. It returns each book's latest fact and opening, the coverage start, and
 two separate answers: **recomputed** (everything above passed), and **witnessed** (the anchor has
 a receipt from a named witness with a registration time). A shelf with no witness is a supported
-default (Steven, 2026-11-01, capsule-cli#519): its signed shelf checkpoint is a valid anchor, the result is recomputed and
+default (Steven, 2026-11-01): its signed shelf checkpoint is a valid anchor, the result is recomputed and
 unwitnessed, and every row status computed from it is local. A **dropped book**, a `book_id` in the
 handover whose latest fact a card does not count, is caught by the count: counting the card again
 from the returned latest facts gives a different card, which fails. Counting is

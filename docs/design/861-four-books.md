@@ -345,14 +345,14 @@ buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=4f37c6bfa53b02847
 2. **Ruling against a silent side.** A ruling may go against a silent side, but it may turn only on
    records that side signed itself. Its page says "delivery not shown", names the books shown and
    not shown, and names the source that timed each deciding record (§3.1). The silent side's
-   remedy is a challenge with its own book within the 30-day challenge window (ledger-cloud
-   `ledger_cloud/adjudicator/RUNBOOK.md:74`).
+   remedy is a challenge with its own book within the challenge window (30 days when ruled, ledger-cloud
+   `ledger_cloud/adjudicator/RUNBOOK.md:74`; 7 days since Steven's later ruling of 2026-11-24).
 3. **A fork.** When a side's own book and the copy the other side holds differ at one position
    (§2.3), the branch the counterparty received governs, since the signer showed it to its
    counterparty and the counterparty relied on it. The ruling records `fork_at`, both branches are
    kept and shown, and the page says plainly "the signer's book forked at N".
 4. **The answer deadline.** 7 days, counted from when the request is published, with that time
-   printed on the page. It is a service constant stated in the practice statement, as the 30-day
+   printed on the page. It is a service constant stated in the practice statement, as the
    challenge window is, and stays out of the neutral spec.
 5. **Hosting.** Option A now: Steven runs the ledger-cloud adjudicator on his own machine
    (directory store, no spend); option B only when he chooses (§4.1). Before any cloud move he

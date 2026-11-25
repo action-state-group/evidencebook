@@ -384,7 +384,7 @@ chooses a remedy (4.6).
 | `terms_rows` | REQUIRED | the rows and the named records they hang on (4.2) | design §4.2 |
 | `adjudicator` | REQUIRED, or `null` | `{"key_id", "rules_digest", "rules_url"}`; `null` is an offer with no adjudicator | design §8, "Who it is, and its rules" |
 | `forums` | REQUIRED | the forums the offerer accepts for a dispute (Q4's values): the recourse clause, so no forum is picked at dispute time. Empty exactly when `adjudicator` is `null`, which allows no dispute | evidencebook#404 (Steven, 11-05: "the recourse clause that was agreed", "forums accepted"); Sherlock2 on evidencebook-deal#215, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=6c12438b1a1f6fa3f225b0a1acb8dd5be8e9716534cddef9e39a0e105d4fecc4&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6 |
-| `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); capsule-cli#519 for an empty list; each witness named by its key id with its URL as a hint (Q1, answered) |
+| `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); Steven, 2026-11-01, for an empty list; each witness named by its key id with its URL as a hint (Q1, answered) |
 | `ask` | OPTIONAL | how to ask the offerer for evidence: its evidence commitment's address and digest | design §7, `propose` |
 | `profiles` | OPTIONAL | the deal profile versions the offerer reads | Proposed (2.3) |
 | `listing_digest` | OPTIONAL | the SHA-256 of the published listing bytes this offer answers. A third digest, distinct from `pack_digest` (the deal terms pack) and from the rows digest (`terms_rows`): it names the feed bytes the buyer read, so the two must not be merged | Proposed (3.2, "A listing and its offers"; review round 2; named per Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=211abab2ff32fae38d39cde2d38f111088d936a63ae0734fe5b1404657bf041b&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6) |
@@ -684,7 +684,7 @@ digest. Both agreements name the same witnesses and the same adjudicator, and th
 that each is on its listing before it agrees (design §4.3, witness paragraph; §8, "Who it is").
 The table in 3.3 lists the members.
 
-**Witnesses.** An empty list is allowed (capsule-cli#519, as the How ack records it; design §4.3: "a deal with
+**Witnesses.** An empty list is allowed (Steven, 2026-11-01, as the How ack records it; design §4.3: "a deal with
 no witness that both accept has no record times"). Then no record of the deal has a time, every
 status is local, and a card counts the deal, its rows local (Steven, 2026-11-18, #570). So does a deal whose
 agreement names a witness but none of whose records has a time from one (Steven, 2026-11-19; acceptance 9). A card
@@ -1959,7 +1959,7 @@ verified under (`shelf_record_time.go:20-25`; `461-shelf-facts.md:117-125`).
 - *The library's engineering default today:* an opaque id, the receipt URL, where one URL is one
   witness. That is how the library stores a witness, not a proposal for how the agreement names
   one; the agreement's rule is Steven's.
-- An empty list is allowed under capsule-cli#519; every status is then local.
+- An empty list is allowed under Steven's 2026-11-01 ruling; every status is then local.
 
 Key-id naming needs `RecordTime` to filter by key id (11.1, PR 1). URL naming needs no library
 change.
