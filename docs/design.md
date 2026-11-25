@@ -391,7 +391,10 @@ answers whose material carries no anchor checkpoint. Receipts come from the
 reply's `witness_receipts` member, which is outside the profile and unsigned,
 so a receipt can only ever add `witnessed`: one that does not verify counts
 for nothing. The receipt carrier's size is limited on every reply, a refusal
-too. `witness` is the requester's reading under its own witness directory
+too. Because nothing signs the member, a party on the path can take receipts
+out, and the answer then reads `unwitnessed`, or add more than
+`MaxReplyReceipts`, and the reply is then refused and nothing is recorded; it
+cannot make an answer read `witnessed`. `witness` is the requester's reading under its own witness directory
 when it recorded the answer, not a property of the answer: another reader
 may list other witnesses. The carried receipts stay in the response record's
 original (the reply octets), so anyone holding it can check them again under
