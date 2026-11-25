@@ -32,14 +32,14 @@ the same files.
 Requires Go 1.27 or newer.
 
 ```bash
-go get github.com/action-state-group/evidencebook@v0.9.0
+go get github.com/action-state-group/evidencebook@latest
 ```
 
 The report builder is its own module, so the root module does not depend on
 capsule-cli or the viewer. Add it only for path 2:
 
 ```bash
-go get github.com/action-state-group/evidencebook/report@v0.3.0
+go get github.com/action-state-group/evidencebook/report@latest
 ```
 
 ## Path 0: join the loop
