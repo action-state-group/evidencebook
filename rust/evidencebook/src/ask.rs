@@ -160,7 +160,7 @@ pub fn request(
     // The same reader the responder uses: a request that would not be read
     // as well formed is never sent.
     parse_request(&bytes).map_err(|why| AskError::Invalid(format!("request: {why}")))?;
-    record_request(book, value, bytes, Some(nonce), responder, false)
+    record_request(book, value, bytes, Some(nonce), responder, false, None)
 }
 
 /// Record a request that another tool composed and sent to `responder`,
@@ -178,6 +178,21 @@ pub fn request_sent(
     octets: &[u8],
     responder: &str,
 ) -> Result<SentRequest, AskError> {
+    request_sent_with_commitment(book, octets, responder, None)
+}
+
+/// [`request_sent`] that also keeps `commitment`, a JSON object the requester
+/// held from the responder when it asked (such as the commitment the
+/// responder advertised, kept so a later fetch never changes what the ask is
+/// judged against), in the record's statement beside the request (Go
+/// `Book.RequestSentWithCommitment`). The book keeps it as given and never
+/// reads or checks it; `None` records none.
+pub fn request_sent_with_commitment(
+    book: &mut dyn Book,
+    octets: &[u8],
+    responder: &str,
+    commitment: Option<Map<String, Value>>,
+) -> Result<SentRequest, AskError> {
     let req = crate::respond::read_sent_request(octets).map_err(|reason| {
         AskError::Invalid(format!("not a well-formed request ({})", reason.token()))
     })?;
@@ -193,7 +208,15 @@ pub fn request_sent(
         ));
     }
     let nonce = req.nonce.filter(|n| !n.is_empty());
-    record_request(book, value, octets.to_vec(), nonce, responder, true)
+    record_request(
+        book,
+        value,
+        octets.to_vec(),
+        nonce,
+        responder,
+        true,
+        commitment,
+    )
 }
 
 /// Commit the request `value` (whose JCS is `bytes`), as transmitted to
@@ -205,6 +228,7 @@ fn record_request(
     nonce: Option<String>,
     responder: &str,
     composed_elsewhere: bool,
+    commitment: Option<Map<String, Value>>,
 ) -> Result<SentRequest, AskError> {
     for leaf in 0..book.len() {
         let Some(nonce) = nonce.as_deref() else {
@@ -241,6 +265,9 @@ fn record_request(
         // is well formed, so the record does not vouch for members it keeps
         // unchecked.
         statement.insert("composed_elsewhere".into(), json!(true));
+    }
+    if let Some(commitment) = commitment {
+        statement.insert("commitment".into(), Value::Object(commitment));
     }
     let sealed = book.seal(&Entry {
         record_type: crate::record::record_types::REQUEST.into(),

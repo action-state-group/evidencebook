@@ -1,0 +1,2 @@
+<!-- changelog: rust/evidencebook/CHANGELOG.md -->
+- New `ask::request_sent_with_commitment`: `request_sent` that also keeps a JSON object the requester held from the responder when it asked as the optional `commitment` member of the `evidence_request` statement, as Go `Book.RequestSentWithCommitment` does. The book never reads or checks it. A record without the member reads as before (Mesh-LLM/capsules-plugin#368, row B3).

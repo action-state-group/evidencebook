@@ -4,7 +4,8 @@
 
 use evidencebook::answer::{Record, RecordSource};
 use evidencebook::ask::{
-    record_absence, request, request_sent, AskError, AskedRequest, Book, Entry, SealError, Sealed,
+    record_absence, request, request_sent, request_sent_with_commitment, AskError, AskedRequest,
+    Book, Entry, SealError, Sealed,
 };
 use evidencebook::record::{EpistemicType, Link, LinkType};
 use serde_json::{json, Map, Value};
@@ -330,4 +331,28 @@ fn only_a_well_formed_request_in_jcs_is_recorded_as_sent() {
     request(&mut book, &ask("n-2"), "responder").unwrap();
     let (_, entry, _) = book.records.last().unwrap();
     assert!(entry.statement.get("composed_elsewhere").is_none());
+}
+
+#[test]
+fn a_sent_request_keeps_the_commitment_held_for_its_responder() {
+    let mut book = Mem::at("2026-10-31T12:00:00Z");
+    let octets = br#"{"coverage":{"min_freshness":1},"nonce":"c1","subject":{"checkpoints":null}}"#;
+    let commitment =
+        json!({"digest": "ab".repeat(32), "policy": {"stranger_safe": ["checkpoints"]}});
+    let Value::Object(held) = commitment.clone() else {
+        unreachable!()
+    };
+    let sent = request_sent_with_commitment(&mut book, octets, "responder", Some(held)).unwrap();
+    let (_, entry, _) = book.records.last().unwrap();
+    assert_eq!(entry.statement["commitment"], commitment);
+    assert_eq!(entry.statement["composed_elsewhere"], true);
+    assert_eq!(entry.statement["responder_ref"], "responder");
+    // The request reads back as one recorded without a commitment does.
+    book.clock = "2026-10-31T12:10:00Z".into();
+    record_absence(&mut book, &sent.record_id, "2026-10-31T12:05:00Z", "").unwrap();
+
+    let plain = br#"{"coverage":{"min_freshness":1},"nonce":"c2","subject":{"checkpoints":null}}"#;
+    request_sent(&mut book, plain, "responder").unwrap();
+    let (_, entry, _) = book.records.last().unwrap();
+    assert!(entry.statement.get("commitment").is_none());
 }
