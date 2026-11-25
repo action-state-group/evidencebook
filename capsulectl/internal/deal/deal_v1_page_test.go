@@ -155,6 +155,12 @@ func TestPresentationV1ReceiptPage(t *testing.T) {
 	assert.Equal(t, "verified", got.Verify)
 	assert.Contains(t, got.Text, "capsulectl verify reported its signature check as: pass. This page did not check the signature itself.")
 	assert.NotContains(t, got.Text, "This page checked it itself")
+	// A two-sided copy: the other party's half as capsulectl reported it, and
+	// the file-scoped witness line in place of the log line (capsule-viewer
+	// #420, #421).
+	assert.Contains(t, got.Text, "Signed by both sides: this copy carries the other party's signed agreement")
+	assert.Contains(t, got.Text, "This file carries no witness receipt, so this page could not check a time-stamp itself.")
+	assert.NotContains(t, got.Text, "has vouched for this log")
 	assert.Empty(t, got.Errors)
 }
 
