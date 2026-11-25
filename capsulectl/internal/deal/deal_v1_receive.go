@@ -3,7 +3,6 @@ package deal
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	dealapi "github.com/action-state-group/evidencebook/deal"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
 )
@@ -352,122 +352,6 @@ func proofWords(o *evidencebook.ProofOutcome) string {
 	return storeFault
 }
 
-// noteReceived records what the plugin needs of a record the store took: the
-// offer's payload to answer it, the deal's row, the other side's book and its
-// agreement.
-func (s *dealSession) noteReceived(ctx context.Context, info *receivedInfo) error {
-	if info == nil {
-		return nil
-	}
-	switch {
-	case info.sent != nil && info.kind == xdealv1.TypePropose:
-		prop, _ := proposeOf(info.sent.Record)
-		payload, digest, err := xdealv1.Encode(info.sent.Record)
-		if err != nil {
-			return err
-		}
-		tx, err := s.db.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = tx.Rollback() }()
-		if _, err = tx.ExecContext(ctx, `INSERT INTO deal_versions (deal_id, version, own_log_id, counterparty_log_id, state) VALUES (?, ?, '', '', 'offer_received') ON CONFLICT(deal_id) DO NOTHING`, info.dealID, dealVersionV1); err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO deal_v1 (deal_id, side, role, offer_digest, counterparty_key, counterparty_agreement, own_agreement_id, own_agreement_digest) VALUES (?, ?, ?, ?, ?, '', '', '') ON CONFLICT(deal_id) DO NOTHING`,
-			info.dealID, xdealv1.SideAcceptor, oppositeRole(prop.Role), digest, info.sent.KeyID); err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO deal_v1_offers (offer_digest, deal_id, signer_key, payload, pair) VALUES (?, ?, ?, ?, ?) ON CONFLICT(offer_digest) DO UPDATE SET pair=excluded.pair WHERE deal_v1_offers.pair IS NULL`, digest, info.dealID, info.sent.KeyID, payload, info.raw); err != nil {
-			return err
-		}
-		if err := v1NoteStops(); err != nil {
-			return err
-		}
-		return tx.Commit()
-	case info.sent != nil:
-		state := "declined"
-		if ag, ok := agreeOf(info.sent.Record); ok && ag.Kind == xdealv1.KindCancellation {
-			state = "cancelled"
-		}
-		_, err := s.db.ExecContext(ctx, `UPDATE deal_versions SET state=? WHERE deal_id=? AND state IN ('offered','offer_received')`, state, info.dealID)
-		return err
-	case info.book != nil:
-		d, err := s.v1DealOf(ctx, info.dealID)
-		if err != nil || d == nil {
-			return err
-		}
-		if err = s.ensureOfferedRow(ctx, d); err != nil {
-			return err
-		}
-		// A deal with no layer on the other side has no counterparty: a
-		// record received for it (a referee's ruling) is kept, and no one is
-		// registered as the other side.
-		if noLayer, err := s.v1NoLayer(ctx, d); err != nil || noLayer {
-			return err
-		}
-		if d.CounterpartyLogID == "" {
-			if _, err = s.db.ExecContext(ctx, `UPDATE deal_versions SET counterparty_log_id=? WHERE deal_id=?`, info.book.LogID, info.dealID); err != nil {
-				return err
-			}
-		}
-		if d.CounterpartyKey == "" || d.CounterpartyKey == info.book.KeyID {
-			if _, err = s.db.ExecContext(ctx, `UPDATE deal_v1 SET counterparty_key=? WHERE deal_id=?`, info.book.KeyID, info.dealID); err != nil {
-				return err
-			}
-		}
-		if ag, ok := agreeOf(info.book.Record); ok && ag.Kind == xdealv1.KindAgreement && info.book.Seq == 1 && info.book.LogID == firstNonEmpty(d.CounterpartyLogID, info.book.LogID) {
-			_, err = s.db.ExecContext(ctx, `UPDATE deal_v1 SET counterparty_agreement=? WHERE deal_id=? AND counterparty_agreement=''`, info.book.RecordID, info.dealID)
-		}
-		return err
-	}
-	return nil
-}
-
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
-}
-
-// v1NoteStops is a seam for tests: it stops the bookkeeping of a received offer
-// after its rows were written and before they are committed, as a crash there
-// would.
-var v1NoteStops = func() error { return nil }
-
-// ensureOfferedRow gives an offer this profile sent before the deal's own row
-// existed (slice 1 wrote only deal_versions) the row `deal agree` and the
-// receive bookkeeping update, rebuilt from the stored offer.
-func (s *dealSession) ensureOfferedRow(ctx context.Context, d *v1Deal) error {
-	if d.Side != "" {
-		return nil
-	}
-	var payload []byte
-	var digest string
-	err := s.db.QueryRowContext(ctx, `SELECT payload, record_digest FROM deal_sent WHERE deal_id=? AND kind=? ORDER BY id LIMIT 1`, d.DealID, xdealv1.TypePropose).Scan(&payload, &digest)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	rec, err := xdealv1.Decode(payload)
-	if err != nil {
-		return err
-	}
-	prop, ok := proposeOf(rec)
-	if !ok {
-		return nil
-	}
-	if _, err = s.db.ExecContext(ctx, `INSERT INTO deal_v1 (deal_id, side, role, offer_digest, counterparty_key, counterparty_agreement, own_agreement_id, own_agreement_digest) VALUES (?, ?, ?, ?, '', '', '', '') ON CONFLICT(deal_id) DO NOTHING`,
-		d.DealID, xdealv1.SideOfferer, prop.Role, digest); err != nil {
-		return err
-	}
-	d.Side, d.Role, d.OfferDigest = xdealv1.SideOfferer, prop.Role, digest
-	return nil
-}
-
 // receiveCopy takes the records a copy's x-deal-v1 extension carries: the
 // agreement and every record its rows rely on, each a book pair, in their
 // books' order, each through the same receive as a single file. A ruling
@@ -560,4 +444,18 @@ func mapValues(m map[string]json.RawMessage) []json.RawMessage {
 		out[i] = m[k]
 	}
 	return out
+}
+
+// noteReceived records what the deal store needs of a record the shelf took
+// (Store.NoteReceived): the offer's payload to answer it, the deal's row, the
+// other side's book and its agreement.
+func (s *dealSession) noteReceived(ctx context.Context, info *receivedInfo) error {
+	if info == nil {
+		return nil
+	}
+	st, err := s.dealStore(ctx)
+	if err != nil {
+		return err
+	}
+	return libErr(st.NoteReceived(ctx, dealapi.Received{Sent: info.sent, Book: info.book, Pair: info.raw}))
 }

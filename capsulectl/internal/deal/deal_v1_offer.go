@@ -2,8 +2,6 @@ package deal
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"slices"
 	"strings"
 
@@ -71,51 +69,17 @@ needs 'deal set-version x-deal-v1 --migrate' once.`,
 				if err := s.ensureV1Tables(ctx); err != nil {
 					return err
 				}
-				var (
-					dealID  string
-					payload []byte
-					digest  string
-				)
-				if op, err := s.findSentOp(ctx, request); err != nil {
-					return err
-				} else if op != nil && op.state != sentWritten {
-					// A run that stopped: its record is fixed, whatever the clock says now.
-					dealID, payload, digest = op.dealID, op.payload, op.recordDigest
-				} else {
-					if dealID, err = newV1DealID(); err != nil {
-						return err
-					}
-					now := v1Now()
-					body.StatedAt = now
-					rec := xdealv1.Record{
-						Block: xdealv1.Block{Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, DealID: dealID, RecordType: xdealv1.TypePropose, At: now},
-						Body:  body,
-					}
-					if err = xdealv1.CheckSealed(rec, xdealv1.SealContext{}); err != nil {
-						return cli.InputError("the offer does not pass the x-deal-v1 checks: " + err.Error())
-					}
-					if payload, digest, err = xdealv1.Encode(rec); err != nil {
-						return err
-					}
-				}
-				if _, err := s.db.ExecContext(ctx, `INSERT INTO deal_versions (deal_id, version, own_log_id, counterparty_log_id, state) VALUES (?, ?, '', '', 'offered') ON CONFLICT(deal_id) DO NOTHING`, dealID, dealVersionV1); err != nil {
-					return err
-				}
-				if _, err := s.db.ExecContext(ctx, `INSERT INTO deal_v1 (deal_id, side, role, offer_digest, counterparty_key, counterparty_agreement, own_agreement_id, own_agreement_digest) VALUES (?, ?, ?, ?, '', '', '', '') ON CONFLICT(deal_id) DO NOTHING`,
-					dealID, xdealv1.SideOfferer, body.Role, digest); err != nil {
-					return err
-				}
-				pair, err := s.sendV1(ctx, request, dealID, xdealv1.TypePropose, payload, digest)
+				sent, err := s.store.Offer(ctx, body, request)
 				if err != nil {
-					return err
+					return libErr(err)
 				}
-				if err = s.writePair(ctx, c, out, digest, request, pair); err != nil {
+				if err = s.writeSent(ctx, c, out, sent); err != nil {
 					return err
 				}
 				if out == "" {
 					return nil
 				}
-				res := map[string]any{"deal_id": dealID, "offer": digest, "file": out}
+				res := map[string]any{"deal_id": sent.DealID, "offer": sent.Digest, "file": out}
 				if body.To.V == nil {
 					res["note"] = "this offer names no key: it is to a party that keeps no signed records of its own, so there is nothing to send. It stays with you; agree to it yourself with `deal agree` once your admission decision and intent are sealed"
 				}
@@ -152,69 +116,17 @@ to --out (standard output with none). An offer is cancelled once.`,
 				if err := s.ensureV1Tables(ctx); err != nil {
 					return err
 				}
-				var dealID string
-				err := s.db.QueryRowContext(ctx, `SELECT deal_id FROM deal_sent WHERE record_digest=? AND kind=?`, offer, xdealv1.TypePropose).Scan(&dealID)
-				if errors.Is(err, sql.ErrNoRows) {
-					return cli.InputError("this profile wrote no offer with the digest " + offer)
-				}
+				sent, err := s.store.CancelOffer(ctx, offer, request)
 				if err != nil {
-					return err
+					return libErr(err)
 				}
-				op, err := s.findSentOp(ctx, request)
-				if err != nil {
-					return err
-				}
-				if op != nil && op.state == sentWritten {
-					return cli.InputError("this offer is already cancelled: `deal offer cancel` writes one cancellation per offer")
-				}
-				if op != nil && op.pair == nil {
-					// A cancellation the journal holds but whose file was never made
-					// cannot be rebuilt: it is repeated as a new operation (§4.2).
-					held, err := s.journalHolds(ctx, op.recordDigest)
-					if err != nil {
-						return err
-					}
-					if held {
-						if _, err = s.db.ExecContext(ctx, `UPDATE deal_sent SET request_digest=request_digest||':superseded:'||id WHERE record_digest=? AND request_digest=?`, op.recordDigest, request); err != nil {
-							return err
-						}
-						op = nil
-					}
-				}
-				var (
-					payload []byte
-					digest  string
-				)
-				if op != nil {
-					payload, digest = op.payload, op.recordDigest
-				} else {
-					rec := xdealv1.Record{
-						Block: xdealv1.Block{Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, DealID: dealID, RecordType: xdealv1.TypeAgree, At: v1Now()},
-						Body:  xdealv1.AgreeBody{Kind: xdealv1.KindCancellation, Offer: xdealv1.RefTo(offer)},
-					}
-					if err = xdealv1.CheckSealed(rec, xdealv1.SealContext{OfferExists: true}); err != nil {
-						return cli.InputError("the cancellation does not pass the x-deal-v1 checks: " + err.Error())
-					}
-					if payload, digest, err = xdealv1.Encode(rec); err != nil {
-						return err
-					}
-				}
-				pair, err := s.sendV1(ctx, request, dealID, xdealv1.KindCancellation, payload, digest)
-				if err != nil {
-					return err
-				}
-				// The deal's state first: a run that stops before the file is made
-				// leaves the operation unwritten, and its re-run writes the file.
-				if _, err = s.db.ExecContext(ctx, `UPDATE deal_versions SET state='cancelled' WHERE deal_id=?`, dealID); err != nil {
-					return err
-				}
-				if err = s.writePair(ctx, c, out, digest, request, pair); err != nil {
+				if err = s.writeSent(ctx, c, out, sent); err != nil {
 					return err
 				}
 				if out == "" {
 					return nil
 				}
-				return cli.Output(c, map[string]any{"deal_id": dealID, "cancelled": offer, "file": out})
+				return cli.Output(c, map[string]any{"deal_id": sent.DealID, "cancelled": offer, "file": out})
 			})
 		},
 	}

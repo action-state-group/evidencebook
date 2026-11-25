@@ -3,11 +3,9 @@ package deal
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -17,7 +15,6 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
-	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
 )
 
@@ -34,41 +31,6 @@ const (
 	// dealVersionFile is the profile's version setting, beside the store
 	// like the History card's settings.
 	dealVersionFile = "deal_version"
-)
-
-// dealV1Schema holds what the plugin keeps locally for a v1 deal and for
-// every send. deal_versions says which version a deal is, so a version is
-// never found by opening a book; deal_sent is one row per record sent whole,
-// written before it is sealed so a re-run finds it (§4.2). They are created
-// by the first v1 verb, never by a v0 command.
-var dealV1Schema = []string{
-	`CREATE TABLE IF NOT EXISTS deal_versions (
-	deal_id TEXT PRIMARY KEY,
-	version TEXT NOT NULL,
-	own_log_id TEXT NOT NULL,
-	counterparty_log_id TEXT NOT NULL,
-	state TEXT NOT NULL
-)`,
-	`CREATE TABLE IF NOT EXISTS deal_sent (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	record_digest TEXT NOT NULL,
-	request_digest TEXT NOT NULL,
-	deal_id TEXT NOT NULL,
-	kind TEXT NOT NULL,
-	payload BLOB NOT NULL,
-	state TEXT NOT NULL,
-	pair BLOB,
-	written INTEGER NOT NULL DEFAULT 0,
-	UNIQUE (record_digest, request_digest)
-)`,
-}
-
-// Send states: a row is stored as sealing before SealSent is called, sealed
-// once the pair is stored, and written once the file is out.
-const (
-	sentSealing = "sealing"
-	sentSealed  = "sealed"
-	sentWritten = "written"
 )
 
 // dealVersionSetting is what the profile writes new deals as: x-deal-v1,
@@ -265,126 +227,9 @@ func backupPath(p cli.Profile) (string, error) {
 // v1Now is the time a v1 record carries: the deal clock, whole seconds.
 func v1Now() string { return cli.DealClock().UTC().Format(time.RFC3339) }
 
-// newV1DealID mints a deal id, as `deal open` does.
-func newV1DealID() (string, error) {
-	id := make([]byte, 8)
-	if _, err := rand.Read(id); err != nil {
-		return "", err
-	}
-	return "deal-" + hex.EncodeToString(id), nil
-}
-
 func v1Request(parts ...[]byte) string {
 	sum := sha256.Sum256(bytes.Join(parts, []byte{0}))
 	return hex.EncodeToString(sum[:])
-}
-
-// sentOp is a row of deal_sent.
-type sentOp struct {
-	recordDigest, requestDigest, dealID, kind, state string
-	payload, pair                                    []byte
-}
-
-// findSentOp is the operation a request left behind, if any: it is looked
-// up by the verb's own inputs, so a re-run needs no digest from the user.
-func (s *dealSession) findSentOp(ctx context.Context, requestDigest string) (*sentOp, error) {
-	var op sentOp
-	err := s.db.QueryRowContext(ctx,
-		`SELECT record_digest, request_digest, deal_id, kind, payload, state, pair FROM deal_sent WHERE request_digest=? ORDER BY rowid DESC LIMIT 1`,
-		requestDigest).Scan(&op.recordDigest, &op.requestDigest, &op.dealID, &op.kind, &op.payload, &op.state, &op.pair)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &op, nil
-}
-
-// sealSentLib is the library's SealSent; a test replaces it to make the call
-// fail the ways the library says it can.
-var sealSentLib = func(ctx context.Context, shelf *evidencebook.Shelf, e evidencebook.Entry, actionID string) (evidencebook.Record, evidencebook.SentCapsule, error) {
-	return shelf.SealSent(ctx, e, actionID)
-}
-
-// offerTermsLeg is the terms leg an offer's sent Capsule carries as its
-// settlement member (§6.3): the offer's, when its terms have exactly one
-// payment row, and none otherwise (the library refuses the member on an offer
-// with no payment row or several).
-func offerTermsLeg(payload []byte) (json.RawMessage, error) {
-	rec, err := xdealv1.Decode(payload)
-	if err != nil {
-		return nil, err
-	}
-	prop, ok := proposeOf(rec)
-	if !ok || len(xdealv1.PaymentRows(prop.TermsRows)) != 1 {
-		return nil, nil
-	}
-	return xdealv1.TermsLeg(rec)
-}
-
-// sendV1 seals a journal record that leaves the shelf whole and returns its
-// pair, the standalone Capsule with the record (§4.2). A re-run of the same
-// request finds the operation row and never seals a record twice: a pair
-// already stored is written again; a row still sealing with no pair is sealed
-// once more only when the journal holds no record of that digest.
-func (s *dealSession) sendV1(ctx context.Context, requestDigest, dealID, kind string, payload []byte, digest string) (pair []byte, err error) {
-	if _, err = s.shelf.Journal(ctx); err != nil {
-		return nil, err
-	}
-	op, err := s.findSentOp(ctx, requestDigest)
-	if err != nil {
-		return nil, err
-	}
-	if op != nil && op.state != sentWritten {
-		payload, digest, dealID = op.payload, op.recordDigest, op.dealID
-	} else {
-		op = nil
-	}
-	if op != nil && op.pair != nil {
-		return op.pair, nil
-	}
-	if op == nil {
-		if _, err = s.db.ExecContext(ctx,
-			`INSERT INTO deal_sent (record_digest, request_digest, deal_id, kind, payload, state) VALUES (?, ?, ?, ?, ?, ?)`,
-			digest, requestDigest, dealID, kind, payload, sentSealing); err != nil {
-			return nil, err
-		}
-	} else {
-		held, err := s.journalHolds(ctx, digest)
-		if err != nil {
-			return nil, err
-		}
-		if held {
-			return nil, fmt.Errorf("%w: the record %s was sealed but its file was not made, and the library cannot rebuild it: for an offer, cancel it with `deal offer cancel`", cli.ErrConflict, digest)
-		}
-	}
-	entry := evidencebook.Entry{
-		RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{payload},
-	}
-	if kind == xdealv1.TypePropose {
-		leg, lerr := offerTermsLeg(payload)
-		if lerr != nil {
-			return nil, lerr
-		}
-		if leg != nil {
-			entry.Members = map[string]json.RawMessage{xdealv1.SettlementMember: leg}
-		}
-	}
-	rec, sent, err := sealSentLib(ctx, s.shelf, entry, dealID+xdealv1.SentSuffix)
-	if err != nil && rec.RecordID == "" {
-		return nil, err
-	}
-	// A record with an error is stored and its Capsule comes with it: the
-	// file is made from that Capsule and the record is not sealed again.
-	pair, perr := xdealv1.Pair(sent.Capsule, sent.Envelope, sent.Payload)
-	if perr != nil {
-		return nil, errors.Join(err, perr)
-	}
-	if _, serr := s.db.ExecContext(ctx, `UPDATE deal_sent SET pair=?, state=? WHERE record_digest=? AND request_digest=?`, pair, sentSealed, digest, requestDigest); serr != nil {
-		return nil, errors.Join(err, serr)
-	}
-	return pair, nil
 }
 
 // journalRecords reads the whole journal in order, across its windows on a
@@ -415,69 +260,6 @@ func (s *dealSession) journalHolds(ctx context.Context, digest string) (bool, er
 		}
 	}
 	return false, nil
-}
-
-// writePair writes a pair to path, or to the command's output with no path,
-// and marks the operation written. A file already at path holding the same
-// pair is the earlier run's: it counts as written.
-func (s *dealSession) writePair(ctx context.Context, c *cobra.Command, path, digest, requestDigest string, pair []byte) error {
-	data := append(bytes.Clone(pair), '\n')
-	if path == "" {
-		if _, err := c.OutOrStdout().Write(data); err != nil {
-			return err
-		}
-	} else if err := cli.AtomicFile(path, data, false); err != nil {
-		if prev, rerr := os.ReadFile(path); rerr != nil || !bytes.Equal(prev, data) {
-			return err
-		}
-	}
-	_, err := s.db.ExecContext(ctx, `UPDATE deal_sent SET state=?, written=1 WHERE record_digest=? AND request_digest=?`, sentWritten, digest, requestDigest)
-	return err
-}
-
-// journalRecord is the x-deal-v1 record the journal holds under payload
-// digest digest (nil when the journal's record there is not one), and
-// whether the journal holds one.
-func (s *dealSession) journalRecord(ctx context.Context, digest string) (rec *xdealv1.Record, held bool, err error) {
-	j, records, err := s.journalRecords(ctx)
-	if err != nil {
-		return nil, false, err
-	}
-	for _, r := range records {
-		for _, c := range r.Header.PayloadCommitments {
-			if c != digest {
-				continue
-			}
-			payload, err := j.ResolvePayload(ctx, r.RecordID, digest)
-			if err != nil {
-				return nil, false, err
-			}
-			r, err := xdealv1.Decode(payload)
-			if err != nil {
-				return nil, true, nil
-			}
-			return &r, true, nil
-		}
-	}
-	return nil, false, nil
-}
-
-// sentOfferPair is the pair of the offer whose record digest is given, for the
-// status provider's payment check: the pair this profile sent, else the pair
-// it received. An offer with neither (one received before the pair was kept)
-// has no pair: the check is then not run, which the provider says of a nil
-// pair.
-func (s *dealSession) sentOfferPair(ctx context.Context, offerDigest string) ([]byte, error) {
-	var pair []byte
-	err := s.db.QueryRowContext(ctx, `SELECT pair FROM deal_sent WHERE record_digest=? AND kind=? AND pair IS NOT NULL ORDER BY rowid DESC LIMIT 1`,
-		offerDigest, xdealv1.TypePropose).Scan(&pair)
-	if errors.Is(err, sql.ErrNoRows) {
-		err = s.db.QueryRowContext(ctx, `SELECT pair FROM deal_v1_offers WHERE offer_digest=? AND pair IS NOT NULL`, offerDigest).Scan(&pair)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-	}
-	return pair, err
 }
 
 // initMigratesStore makes `deal init` start a new store in the new layout; a

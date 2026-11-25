@@ -192,9 +192,8 @@ func TestDealAdmitFinishesARunThatStopped(t *testing.T) {
 	_, digest, err := xdealv1.Encode(payload)
 	require.NoError(t, err)
 	withSession(t, func(s *dealSession) {
-		_, err := s.db.ExecContext(t.Context(), dealV1AdmitTable)
-		require.NoError(t, err)
-		_, err = s.db.ExecContext(t.Context(), `INSERT INTO deal_v1_admits (deal_id, admit_digest, payload) VALUES (?, ?, ?)`, h.dealID, digest, payload)
+		require.NoError(t, s.ensureV1Tables(t.Context()))
+		_, err := s.db.ExecContext(t.Context(), `INSERT INTO deal_v1_admits (deal_id, admit_digest, payload) VALUES (?, ?, ?)`, h.dealID, digest, payload)
 		require.NoError(t, err)
 		held, err := s.journalHolds(t.Context(), digest)
 		require.NoError(t, err)
