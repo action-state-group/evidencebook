@@ -225,7 +225,8 @@ func (s *dealSession) fullAnswer(ctx context.Context, p cli.Profile, d *v1Deal, 
 	if _, err := xdealv1.VerifyReport(pair, snap.Book.Agreement); err != nil {
 		return nil, nil, cli.InputError("the report sealed with this profile's signing key does not verify against your agreement (" + err.Error() + "): the key that signed the agreement must sign the report; run it with the profile you agreed with (--profile)")
 	}
-	bundle, err := s.v1ReportBundle(ctx, d.OwnLogID, snap, pair, digest)
+	// No counterparty half: only a keep copy carries it (evidencebook#850).
+	bundle, err := s.v1ReportBundle(ctx, d.OwnLogID, snap, pair, digest, nil)
 	if err != nil {
 		return nil, nil, err
 	}
