@@ -13,8 +13,8 @@ ledger-cloud main `9e52270`. File references are to those commits; `PROFILE.md` 
   "gets four books": each side sends its own book and the book it received from the other, so a
   silent counterparty is still covered by the other side's copy. A request from the adjudicator
   defaults to full disclosure ("I think so. That's right.", 00:14:23). Ops records it as a
-  DECISION: `action-state-ops` `evidence-network/inbox.md:596` (Steven, 2026-11-24,
-  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=0c3bb8740ccff751e35f940c3f3ae6805708176b18c49d17f9f6e0661158edf8).
+  DECISION: `action-state-ops` `evidence-network/inbox.md:596` (Steven, 2026-11-24; recorded on
+  #861, https://github.com/action-state-group/evidencebook/issues/861#issuecomment-7167573031).
 - **Steven rules the what**: §6 records his rulings (2026-11-24). **Ethan decides the how and the order**: §5.
 - Out of this note: deploys and spend (Steven's), and evidencebook#833's files.
 
@@ -333,10 +333,9 @@ Each PR is reviewed under the usual rules; Steven ruled on §6 on 2026-11-24, so
 ## 6. Steven's rulings (the what)
 
 Steven accepted Sherlock2's recommendation on all five questions on 2026-11-24 ("yes i agree on
-these recs", buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9e8836b14b0026311c43ba5eddc2df7ecd1abb01fd0252c5769a088bff69c6aa&thread=440510368f48f25851cb3b3476a5d116f1b9acb9bb41833b3fb55b5a74faaddb).
+these recs"; recorded on #861, https://github.com/action-state-group/evidencebook/issues/861#issuecomment-7167573031).
 Ops records it as a DECISION refining the 2026-11-24 call's ruling (§0): `action-state-ops`
-`evidence-network/inbox.md:607`. The recommendation he accepted is
-buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=4f37c6bfa53b02847a3ebeb5cbfd882472d257f67fc2d86589dbae9e9d3e0a7d&thread=440510368f48f25851cb3b3476a5d116f1b9acb9bb41833b3fb55b5a74faaddb.
+`evidence-network/inbox.md:607`. The recommendation he accepted is the five items below.
 
 1. **Full disclosure contents.** A party's answer gives the adjudicator its whole deal book and
    every record of the other side's book it received (§2.2), without the other side's consent
