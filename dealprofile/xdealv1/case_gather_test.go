@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -703,4 +704,37 @@ func TestCaseGatherVectorsReplay(t *testing.T) {
 	for _, c := range file.Cases {
 		replayGather(t, c)
 	}
+}
+
+// readOpening reads an opening copy that carries two of its signer's
+// records at one seq as a fork there: both, and every record after them, are
+// fork evidence, and the records read stop before it (round 2 of #877).
+func TestReadOpeningForked(t *testing.T) {
+	f := newFourBooks(t)
+	_, pair, x := holderBundle(t, f.h.buyer, "buyer", f.buyerLog, copyAt(gatherAsOf, dealprofile.AudienceAdjudicator))
+	// Another record at the buyer's seq 2, sealed on a fresh shelf under the
+	// buyer's key: the buyer contradicting itself.
+	q := newParty(t, "buyer fork")
+	q.cfg.Signer = f.h.buyer.cfg.Signer
+	originals, err := evidencebook.OpenOriginalsFile(context.Background(), filepath.Join(q.dir, "originals2.jsonl"), "x-deal-v1", f.h.buyer.cfg.Signer.PublicKey())
+	require.NoError(t, err)
+	q.cfg.Originals, q.cfg.Path = originals, filepath.Join(q.dir, "fork.db")
+	q.open()
+	book := mustOpen(t, f.h.buyer, f.buyerLog)
+	q.seal(f.buyerLog, readBack(t, book, 1).Record)
+	other := readBack(t, book, 2).Record
+	other.Block.At = "2026-11-01T12:20:00Z"
+	otherID, otherPair := q.seal(f.buyerLog, other)
+	require.NotEqual(t, f.b2, otherID)
+	x.Book.ReliedOn[f.b2] = f.dispute
+	x.Book.ReliedOn[otherID] = otherPair
+
+	cc, err := readCaseCopy(CaseCopy{Report: pair, Extension: extJSON(t, x)}, f.adjudicator.key())
+	require.NoError(t, err)
+	op, err := readOpening(CaseCopy{Report: pair, Extension: extJSON(t, x)}, cc)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), op.forkAt)
+	assert.ElementsMatch(t, []string{f.b2, otherID}, recordIDs(op.forked))
+	assert.Contains(t, op.records, uint64(1))
+	assert.NotContains(t, op.records, uint64(2))
 }
