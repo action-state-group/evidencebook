@@ -51,6 +51,9 @@ type Case struct {
 	Forum       string
 	RulesDigest string
 	LogID       string
+	// Sources is what a gathered case (GatherCase) read each side's book
+	// from, nil for a case CheckCase read; RulingOf writes it in the ruling.
+	Sources *RulingSources
 }
 
 // caseCopy is a verified adjudicator copy.
@@ -245,7 +248,7 @@ func (c Case) RulingOf(value string, against Null[string], remedy *RulingRemedy,
 		forum = c.Forum
 	}
 	return RulingBody{Row: c.Row, Keys: c.Keys, Against: against, Value: value, Remedy: remedy, Read: c.Read,
-		Forum: forum, RulesDigest: c.RulesDigest, Final: final}
+		Sources: c.Sources, Forum: forum, RulesDigest: c.RulesDigest, Final: final}
 }
 
 // SealedRuling is a ruling in the case book: its place, record id, record
@@ -291,6 +294,16 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 		return SealedRuling{}, caseErr("the ruling's read is not what the case read")
 	case body.RulesDigest != c.RulesDigest:
 		return SealedRuling{}, caseErr("the ruling names other rules than the agreement's")
+	case !sameSources(body.Sources, c.Sources):
+		return SealedRuling{}, caseErr("the ruling's sources are not what the case read")
+	case c.Sources != nil && body.Against.V != nil && !shownOf(c, *body.Against.V):
+		// Steven's ruling 2 (u211): a ruling against a side turns only on
+		// records that side signed, so with none of its records shown there is
+		// nothing it may turn on. Records kept as fork evidence count: they
+		// are the side's own, and the fork is its own equivocation. What a
+		// finding turned on is the adjudicator's; this is the part the
+		// library can check.
+		return SealedRuling{}, caseErr("the ruling goes against the %s, none of whose records the case read", *body.Against.V)
 	}
 	wantBody, err := bodyBytes(body)
 	if err != nil {
@@ -368,6 +381,41 @@ func SealRuling(ctx context.Context, shelf *evidencebook.Shelf, c Case, body Rul
 	return SealedRuling{}, fmt.Errorf("%w: the case book kept changing while the ruling was sealed", evidencebook.ErrBusy)
 }
 
+// shownOf reports whether the case shows any record of role's book: one
+// read, a source shown, or a fork whose branches are kept as evidence.
+func shownOf(c Case, role string) bool {
+	if readOf(c.Read, role).V != nil {
+		return true
+	}
+	if role == RoleBuyer {
+		b := c.Sources.Buyer
+		return b.Own.V != nil || b.HeldBySeller.V != nil || b.ForkAt > 0
+	}
+	s := c.Sources.Seller
+	return s.Own.V != nil || s.HeldByBuyer.V != nil || s.ForkAt > 0
+}
+
+// readOf is the read of role's book.
+func readOf(r RulingRead, role string) Null[string] {
+	if role == RoleBuyer {
+		return r.Buyer
+	}
+	return r.Seller
+}
+
+// sameSources reports whether two sources members are the same, both absent
+// included.
+func sameSources(a, b *RulingSources) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	eq := func(x, y Null[string]) bool {
+		return (x.V == nil) == (y.V == nil) && (x.V == nil || *x.V == *y.V)
+	}
+	return eq(a.Buyer.Own, b.Buyer.Own) && eq(a.Buyer.HeldBySeller, b.Buyer.HeldBySeller) && a.Buyer.ForkAt == b.Buyer.ForkAt &&
+		eq(a.Seller.Own, b.Seller.Own) && eq(a.Seller.HeldByBuyer, b.Seller.HeldByBuyer) && a.Seller.ForkAt == b.Seller.ForkAt
+}
+
 // sameRead reports whether two reads name the same records.
 func sameRead(a, b RulingRead) bool {
 	eq := func(x, y Null[string]) bool {
@@ -400,8 +448,11 @@ func bodyBytes(body RulingBody) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var doc any
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	// decodeJSON keeps numbers as json.Number, which JCS takes; a float64
+	// (json.Unmarshal's) it refuses, so a ruling with a remedy amount or
+	// sources could not be sealed.
+	doc, err := decodeJSON(raw)
+	if err != nil {
 		return nil, err
 	}
 	return canonical.JCS(doc)

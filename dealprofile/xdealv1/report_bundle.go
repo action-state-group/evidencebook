@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 
+	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
@@ -25,9 +26,16 @@ import (
 // {record, header, payload}. The relied-on records are those of every row
 // the holder computed, so a copy whose rows are withheld (an adjudicator's)
 // or not started carries the same records as one that lists them.
+//
+// A full adjudicator copy (evidencebook#861, report_full.go) also carries
+// Records, every record of the holder's deal book by record id, and
+// Received, the copy of the other side's book it holds (absent when it holds
+// none).
 type ReportBook struct {
 	Agreement json.RawMessage            `json:"agreement"`
 	ReliedOn  map[string]json.RawMessage `json:"relied_on"`
+	Records   map[string]json.RawMessage `json:"records,omitempty"`
+	Received  *ReportReceived            `json:"received,omitempty"`
 }
 
 // ReportBundle is the x-deal-v1 bundle extension: the sealed report's
@@ -38,8 +46,9 @@ type ReportBundle struct {
 }
 
 // reportWithBook builds the report and gathers its book from pairs, the
-// book pair of each record the snapshot read, by record id.
-func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte) (Report, ReportBook, error) {
+// book pair of each record the snapshot read, by record id, and, for a full
+// adjudicator copy, what the holder holds of the deal (fullInputs).
+func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte, in fullInputs) (Report, ReportBook, error) {
 	r, rows, err := buildReport(rb, c)
 	if err != nil {
 		return Report{}, ReportBook{}, err
@@ -62,7 +71,24 @@ func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte) (Repo
 			}
 		}
 	}
+	if c.Full {
+		if c.Audience != dealprofile.AudienceAdjudicator {
+			return Report{}, ReportBook{}, fmt.Errorf("xdealv1: report: only an adjudicator's copy is full")
+		}
+		if book.Records, book.Received, err = fullBook(rb, pairs, in); err != nil {
+			return Report{}, ReportBook{}, err
+		}
+	}
 	return r, book, nil
+}
+
+// fullInputs is what a full adjudicator copy reads beyond the snapshot's
+// book pairs: every record the holder holds for the deal, and the stamp
+// proofs held from the counterparty for its log.
+type fullInputs struct {
+	logID  string
+	held   []evidencebook.HeldRecord
+	proofs []evidencebook.HeldProof
 }
 
 // VerifyReportBundle checks a sealed v1 report (its pair, as VerifyReport
@@ -96,12 +122,35 @@ func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte) (Repo
 // adjudicator's records have no log bound, and in an adjudicator's copy,
 // which names no counterparty prefix, the counterparty's records are bound
 // only to one log.
+//
+// A full adjudicator copy, one whose book carries records, is also checked
+// as VerifyFullCopy says.
 func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
-	bad := func(format string, args ...any) (ReportRead, error) {
-		return ReportRead{}, stageErr(StageReport, "the x-deal-v1 extension: "+format, args...)
+	read, _, err := verifyReportBundle(report, ext)
+	return read, err
+}
+
+// VerifyFullCopy is VerifyReportBundle for a full adjudicator copy
+// (evidencebook#861): a copy whose book carries no records is refused, and
+// what the copy shows is returned (FullCopy; verifyFullCopy gives the
+// checks).
+func VerifyFullCopy(report, ext []byte) (ReportRead, FullCopy, error) {
+	read, full, err := verifyReportBundle(report, ext)
+	if err != nil {
+		return ReportRead{}, FullCopy{}, err
+	}
+	if full == nil {
+		return ReportRead{}, FullCopy{}, stageErr(StageReport, "the x-deal-v1 extension: not a full adjudicator copy: its book carries no records")
+	}
+	return read, *full, nil
+}
+
+func verifyReportBundle(report, ext []byte) (ReportRead, *FullCopy, error) {
+	bad := func(format string, args ...any) (ReportRead, *FullCopy, error) {
+		return ReportRead{}, nil, stageErr(StageReport, "the x-deal-v1 extension: "+format, args...)
 	}
 	if err := checkText(ext); err != nil {
-		return ReportRead{}, err
+		return ReportRead{}, nil, err
 	}
 	var x ReportBundle
 	if err := strictUnmarshal(ext, &x); err != nil {
@@ -113,9 +162,12 @@ func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 	if x.Book.Agreement == nil || x.Book.ReliedOn == nil {
 		return bad("the book carries an agreement and a relied_on object")
 	}
+	if x.Book.Received != nil && x.Book.Records == nil {
+		return bad("received is carried only with records, in a full adjudicator copy")
+	}
 	read, err := VerifyReport(report, x.Book.Agreement)
 	if err != nil {
-		return ReportRead{}, err
+		return ReportRead{}, nil, err
 	}
 	r := read.Report
 	if x.SealedReport != read.CapsuleID {
@@ -139,7 +191,7 @@ func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 
 	first, err := VerifyBook(x.Book.Agreement)
 	if err != nil {
-		return ReportRead{}, err
+		return ReportRead{}, nil, err
 	}
 	ag, _ := asAgree(first.Record.Body) // VerifyReport checked it is the agreement
 	other := RoleBuyer
@@ -158,7 +210,7 @@ func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 	for _, id := range slices.Sorted(maps.Keys(x.Book.ReliedOn)) {
 		b, err := VerifyBook(x.Book.ReliedOn[id])
 		if err != nil {
-			return ReportRead{}, err
+			return ReportRead{}, nil, err
 		}
 		if b.RecordID != id {
 			return bad("relied_on %s holds the record %s", id, b.RecordID)
@@ -188,8 +240,16 @@ func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 		}
 		sides[id] = side
 	}
+	var full *FullCopy
+	if x.Book.Records != nil {
+		f, err := verifyFullCopy(x, r, first, ag)
+		if err != nil {
+			return ReportRead{}, nil, err
+		}
+		full = &f
+	}
 	if r.RowsState != RowsListed {
-		return read, nil
+		return read, full, nil
 	}
 	named := map[string]bool{}
 	for _, row := range r.Rows {
@@ -209,5 +269,5 @@ func VerifyReportBundle(report, ext []byte) (ReportRead, error) {
 			return bad("relied_on carries %s, on which no row relies", id)
 		}
 	}
-	return read, nil
+	return read, full, nil
 }

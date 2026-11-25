@@ -167,6 +167,8 @@ def write(v: Any, t: Any) -> Any:
         return {k: write(e, t["map"]) for k, e in v.items()}
     out = {}
     for f in _fields(t):
+        if f.get("omitzero") and f["name"] not in v:
+            continue  # a member the caller never set is Go's zero value, which omitzero leaves out
         fv = v[f["name"]]
         if f.get("omitzero") and is_zero(fv, f["type"]):
             continue

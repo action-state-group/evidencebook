@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
+	aacwitness "github.com/action-state-group/agent-action-capsule/go/witness"
 	evidencebook "github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/internal/detrand"
 	"github.com/stretchr/testify/assert"
@@ -91,6 +92,10 @@ func newPartyKeyed(t *testing.T, name string, checkpointKey ed25519.PrivateKey) 
 // its journal (evidencebook#797).
 var partyWindow *evidencebook.WindowPolicy
 
+// partyWitnesses, when set, is each party's cadence witness directory, so
+// its stamps can be witnessed (case_gather_test.go).
+var partyWitnesses aacwitness.Directory
+
 func (p *party) open() {
 	p.t.Helper()
 	shelf, err := evidencebook.OpenSQLiteShelf(context.Background(), p.cfg)
@@ -103,7 +108,7 @@ func (p *party) open() {
 		status = p.status
 	}
 	c, err := shelf.Cadence(context.Background(), evidencebook.CadenceConfig{LogID: testCadenceLog,
-		Ended: func(context.Context, string) (bool, error) { return false, nil }, Status: status})
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Status: status, Witnesses: partyWitnesses})
 	require.NoError(p.t, err)
 	p.cadence = c
 	// The journal and SealSent need a shelf of book facts.

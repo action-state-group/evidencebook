@@ -138,21 +138,29 @@ func (c *Cadence) StampProof(ctx context.Context, bookID string, n uint64, audie
 	if err != nil {
 		return StampProof{}, err
 	}
+	p, _, err := c.stampProofLocked(ctx, bookID, n, withStatus)
+	return p, err
+}
+
+// stampProofLocked is StampProof under the shelf's lock, with the entry
+// position of the fact it proves.
+func (c *Cadence) stampProofLocked(ctx context.Context, bookID string, n uint64, withStatus bool) (StampProof, uint64, error) {
+	s := c.shelf
 	if n == 0 {
 		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(tick), 0) FROM cadence_ticks WHERE checkpoint_size > 0`).Scan(&n); err != nil {
-			return StampProof{}, err
+			return StampProof{}, 0, err
 		}
 	}
 	tick, err := c.tickLocked(ctx, n)
 	if err != nil {
-		return StampProof{}, err
+		return StampProof{}, 0, err
 	}
 	if tick.Leaves.Stamp == nil || tick.CheckpointSize == 0 {
-		return StampProof{}, fmt.Errorf("%w: tick %d is not a finished stamp", ErrInvalid, n)
+		return StampProof{}, 0, fmt.Errorf("%w: tick %d is not a finished stamp", ErrInvalid, n)
 	}
 	anchor, err := checkpointFromStatement(tick.Checkpoint)
 	if err != nil {
-		return StampProof{}, err
+		return StampProof{}, 0, err
 	}
 	var seq uint64
 	var kind string
@@ -161,23 +169,23 @@ func (c *Cadence) StampProof(ctx context.Context, bookID string, n uint64, audie
 		`SELECT entry_seq, kind, doc, status_opening FROM shelf_entries WHERE book_id = ? AND kind IN (?, ?) AND entry_seq <= ? ORDER BY entry_seq DESC LIMIT 1`,
 		bookID, FactKindBook, FactKindJournal, anchor.Entries).Scan(&seq, &kind, &doc, &so)
 	if errors.Is(err, sql.ErrNoRows) {
-		return StampProof{}, fmt.Errorf("%w: no fact of book %s at stamp %d", ErrNotFound, bookID, n)
+		return StampProof{}, 0, fmt.Errorf("%w: no fact of book %s at stamp %d", ErrNotFound, bookID, n)
 	}
 	if err != nil {
-		return StampProof{}, err
+		return StampProof{}, 0, err
 	}
 	if kind != FactKindBook {
-		return StampProof{}, fmt.Errorf("%w: the journal's facts are proved to nobody", ErrInvalid)
+		return StampProof{}, 0, fmt.Errorf("%w: the journal's facts are proved to nobody", ErrInvalid)
 	}
 	var f BookFact
 	if err := json.Unmarshal(doc, &f); err != nil {
-		return StampProof{}, fmt.Errorf("%w: stored fact %d: %v", ErrCorrupt, seq, err)
+		return StampProof{}, 0, fmt.Errorf("%w: stored fact %d: %v", ErrCorrupt, seq, err)
 	}
 	out := StampProof{Fact: doc, ShelfCheckpoint: tick.Checkpoint}
 	if withStatus {
 		out.StatusOpening = &FactOpening{}
 		if err := json.Unmarshal(so, out.StatusOpening); err != nil {
-			return StampProof{}, fmt.Errorf("%w: stored status opening %d: %v", ErrCorrupt, seq, err)
+			return StampProof{}, 0, fmt.Errorf("%w: stored status opening %d: %v", ErrCorrupt, seq, err)
 		}
 	}
 	// The statement is in the leaves of the stamp that cut the checkpoint:
@@ -185,21 +193,21 @@ func (c *Cadence) StampProof(ctx context.Context, bookID string, n uint64, audie
 	for t := n; t >= 1 && out.BookCheckpoint == nil; t-- {
 		got, err := c.tickLocked(ctx, t)
 		if err != nil {
-			return StampProof{}, err
+			return StampProof{}, 0, err
 		}
 		if leaf, ok := got.Leaves.Deals[f.LogID]; ok && got.Leaves.Stamp != nil && leaf.CheckpointSHA256 == f.CheckpointSHA256 && leaf.Statement != "" {
 			if out.BookCheckpoint, err = base64.RawURLEncoding.DecodeString(leaf.Statement); err != nil {
-				return StampProof{}, fmt.Errorf("%w: tick %d's statement of %s: %v", ErrCorrupt, t, f.LogID, err)
+				return StampProof{}, 0, fmt.Errorf("%w: tick %d's statement of %s: %v", ErrCorrupt, t, f.LogID, err)
 			}
 		}
 	}
 	if out.BookCheckpoint == nil {
-		return StampProof{}, fmt.Errorf("%w: no stored statement for %s's checkpoint %s", ErrCorrupt, f.LogID, f.CheckpointSHA256)
+		return StampProof{}, 0, fmt.Errorf("%w: no stored statement for %s's checkpoint %s", ErrCorrupt, f.LogID, f.CheckpointSHA256)
 	}
 	if out.Inclusion, err = c.log.ProveInclusion(ctx, seq, anchor); err != nil {
-		return StampProof{}, err
+		return StampProof{}, 0, err
 	}
-	return out, nil
+	return out, seq, nil
 }
 
 // receiveProof handles a Receive call's proof part (§3): it verifies the
@@ -328,4 +336,19 @@ func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p Stam
 		return ProofOutcome{}, err
 	}
 	return out, nil
+}
+
+// StampProofRecomputes reports whether recordIDs, the record ids of a book
+// from position 1, recompute the root of the book checkpoint a verified
+// stamp proof carries, as Receive checks a held proof against the records
+// held. It is false when they do not reach the checkpoint's entries.
+func StampProofRecomputes(v VerifiedStampProof, recordIDs []string) (bool, error) {
+	if uint64(len(recordIDs)) < v.BookCheckpoint.Entries {
+		return false, nil
+	}
+	match, _, err := rootRecomputes(v.BookCheckpoint, recordIDs[:v.BookCheckpoint.Entries])
+	if err != nil {
+		return false, fmt.Errorf("%w: a record id: %v", ErrInvalid, err)
+	}
+	return match, nil
 }
