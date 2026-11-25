@@ -134,7 +134,10 @@ The case is read as deal ruling reads it with --answer: the dispute you were
 sent, the case-opening copies (--copy) and the parties' answers (--answer).
 With --ruling, a ruling you sealed, the book of the side the dispute is
 against is read only up to the last record the ruling read, so the check gives the answer the ruling was
-sealed on, whatever the side stated since. Seals nothing.`,
+sealed on, whatever the side stated since. Give the same
+--copy and --answer files the ruling was made on: the ruling names the
+sources of its answers, which are checked, but not the case-opening copies,
+so a check from fewer copies can decide what the ruling could not. Seals nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			str := func(name string) string { v, _ := c.Flags().GetString(name); return strings.TrimSpace(v) }

@@ -100,6 +100,30 @@ func TestTheRulingCheckDecidesOnTheDisputedSidesOwnWord(t *testing.T) {
 	assert.Contains(t, v1Err(t, "ruling", "check", "--deal", h.dealID, "--row", "delivered", "--dispute", dispute,
 		"--answer", later[0], "--answer", later[1]), "not delivered")
 	assert.Contains(t, v1Err(t, ruling("not_met", "none", recordID)...), "--against must be seller")
+
+	adj.act(t)
+	// #952 review: the sealed ruling read against a case on another row, deal or adjudicator is refused, past its type check
+	withSession(t, func(s *dealSession) {
+		me := adj.party.signer
+		rec, _, err := readCaseInputs(dispute, nil)
+		require.NoError(t, err)
+		g, err := s.gatherAnswered(rec, nil, later, h.dealID, me)
+		require.NoError(t, err)
+		_, err = sealedRulingOf(rulingFile, g, me)
+		require.NoError(t, err, "the ruling of this case is accepted")
+		for name, change := range map[string]func(*xdealv1.GatheredCase){
+			"row":  func(g *xdealv1.GatheredCase) { g.Row = "delivered" },
+			"deal": func(g *xdealv1.GatheredCase) { g.DealID = "deal-00000000000000ff" },
+			"book": func(g *xdealv1.GatheredCase) { g.LogID = "case/other" },
+		} {
+			other := g
+			change(&other)
+			_, err := sealedRulingOf(rulingFile, other, me)
+			assert.Error(t, err, name)
+		}
+		_, err = sealedRulingOf(rulingFile, g, "another-adjudicator")
+		assert.ErrorContains(t, err, "not signed by your key")
+	})
 }
 
 func TestTheRulingCheckRefusals(t *testing.T) {
