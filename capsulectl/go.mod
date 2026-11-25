@@ -24,7 +24,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/action-state-group/capsule-engine/go v0.6.0 // indirect
+	github.com/action-state-group/capsule-engine/go v0.8.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.5.1 // indirect
 	github.com/btcsuite/btcd/chainhash/v2 v2.0.0 // indirect
 	github.com/datatrails/go-datatrails-merklelog/mmr v0.4.2-0.20250428132117-275103a34a08 // indirect
@@ -55,3 +55,5 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.58.0 // indirect
 )
+
+tool github.com/action-state-group/capsule-engine/go/cmd/capsule-engine
