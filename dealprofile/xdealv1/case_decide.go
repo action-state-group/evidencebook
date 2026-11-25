@@ -61,7 +61,9 @@ type Decision struct {
 // latest record stating anything on the row decides: not_met decides the row
 // against the owing side. A latest record stating two values on the row, any
 // other latest value, no statement, no record of the owing side read, a fork
-// in its book (its latest statement is then not one statement), the copy of
+// in its book (its latest statement is then not one statement, and GatherCase
+// also finds one against the other side's opening copy), a record of its book
+// the other side's opening copy shows past the book read, the copy of
 // its book the other side holds not read (a fork shown only to the other side
 // could not then be found), or a through record not in the book read needs a
 // person.
@@ -84,6 +86,9 @@ func DecideCase(g GatheredCase, through Null[string]) Decision {
 	side := g.Side(owedBy)
 	if side.ForkAt > 0 {
 		return person("the %s's book has two versions from record %d", owedBy, side.ForkAt)
+	}
+	if len(side.ShownPast) > 0 {
+		return person("the other side's copy shows record %d of the %s's book, past the records read", side.ShownPast[0].Seq, owedBy)
 	}
 	book := side.Book
 	if through.Present && through.IsNull() {

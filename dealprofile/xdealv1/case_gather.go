@@ -68,6 +68,9 @@ type CaseSide struct {
 	Held   Null[string]
 	ForkAt uint64
 	Forked []BookRead
+	// ShownPast is records of this side that the other side's opening copy
+	// carries past the book read: shown to the adjudicator, but not read.
+	ShownPast []BookRead
 }
 
 // GatheredCase is a case read from up to four sources: the Case SealRuling
@@ -108,6 +111,10 @@ type openingRead struct {
 	// them, which records then leaves out.
 	forkAt uint64
 	forked []BookRead
+	// shown is the other side's records the copy carries (the records its
+	// holder relied on that the other side signed), by seq; a seq carrying two
+	// of them holds both.
+	shown map[uint64][]BookRead
 }
 
 // GatherCase reads a dispute, the case-opening adjudicator copies (as
@@ -137,6 +144,11 @@ type openingRead struct {
 // before it. Otherwise the longer source is read. Each record read is timed
 // by the side's own stamps and by the holder's linking facts, the earlier
 // of the two, and says which (CaseRecordTimes).
+//
+// The other side's opening copy is read for this side too: a record of this
+// side it carries that differs from the book read at its seq, or two at one
+// seq, is a fork (evidencebook#944), and one past the book read is kept in
+// ShownPast, shown but not read.
 func GatherCase(dispute []byte, opening []CaseCopy, answers []CaseAnswer, adjudicatorKey string, witnesses aacwitness.Directory) (GatheredCase, error) {
 	if len(answers) > 2 {
 		return GatheredCase{}, caseErr("a case takes at most two full answers, not %d", len(answers))
@@ -211,6 +223,7 @@ func GatherCase(dispute []byte, opening []CaseCopy, answers []CaseAnswer, adjudi
 		holder, hasHolder := ansBy[other]
 		op, hasOpening := openRead[role]
 		side := gatherSide(role, keyOf[role], own, hasOwn, holder, hasHolder, op, hasOpening)
+		reconcileShown(&side, openRead[other].shown)
 		if role == RoleBuyer {
 			g.Buyer = side
 			g.Read.Buyer = side.Read
@@ -236,7 +249,7 @@ func readOpening(c CaseCopy, cc caseCopy) (openingRead, error) {
 	if err != nil {
 		return openingRead{}, err
 	}
-	out := openingRead{records: map[uint64]BookRead{}, size: read.Report.RestsOn.Own.Size, last: cc.last}
+	out := openingRead{records: map[uint64]BookRead{}, size: read.Report.RestsOn.Own.Size, last: cc.last, shown: map[uint64][]BookRead{}}
 	first, err := VerifyBook(x.Book.Agreement)
 	if err != nil {
 		return openingRead{}, err
@@ -247,7 +260,13 @@ func readOpening(c CaseCopy, cc caseCopy) (openingRead, error) {
 		if err != nil {
 			return openingRead{}, err
 		}
-		if b.KeyID != cc.key || b.LogID != first.LogID {
+		if b.KeyID != cc.key {
+			if !slices.ContainsFunc(out.shown[b.Seq], func(x BookRead) bool { return x.RecordID == b.RecordID }) {
+				out.shown[b.Seq] = append(out.shown[b.Seq], b)
+			}
+			continue
+		}
+		if b.LogID != first.LogID {
 			continue
 		}
 		if prev, dup := out.records[b.Seq]; dup && prev.RecordID != b.RecordID {
@@ -508,6 +527,36 @@ func gatherSide(role, key string, own answerRead, hasOwn bool, holder answerRead
 		side.Read = Some(book[len(book)-1].RecordID)
 	}
 	return side
+}
+
+// reconcileShown compares a side's book read with the records of that side
+// the other side's opening copy carries (evidencebook#944): a record there that
+// differs from the book's at its seq, or two of them at one seq, is a fork, kept
+// in Forked with ForkAt its lowest position; a record past the book read is kept
+// in ShownPast, since the book read does not reach it.
+func reconcileShown(side *CaseSide, shown map[uint64][]BookRead) {
+	bySeq := map[uint64]string{}
+	for _, r := range side.Book {
+		bySeq[r.Read.Seq] = r.Read.RecordID
+	}
+	for _, seq := range slices.Sorted(maps.Keys(shown)) {
+		for _, b := range shown[seq] {
+			if b.KeyID != side.Key {
+				continue // not this side's record
+			}
+			id, read := bySeq[seq]
+			switch {
+			case len(shown[seq]) > 1 || read && id != b.RecordID:
+				if side.ForkAt == 0 || seq < side.ForkAt {
+					side.ForkAt = seq
+				}
+				side.Forked = append(side.Forked, b)
+			case !read:
+				side.ShownPast = append(side.ShownPast, b)
+			}
+		}
+	}
+	side.Forked = uniqueBySeq(side.Forked)
 }
 
 // uniqueBySeq is records once each, in seq then record id order.

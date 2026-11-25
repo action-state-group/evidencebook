@@ -10,3 +10,4 @@
 - It only reports: the ruling is still sealed by `SealRuling`, and the ruling record does not carry the decision (no wire change).
 - The rule is Ethan's (2026-11-25), with Sherlock2's tightenings (buzz 4ec88700 and 319f98a4).
 - Rust and Python port it with `GatherCase` (#875, #876).
+- `GatherCase` also reads, for each side, the records of that side the other side's opening copy carries. A record there that differs from the side's book at its seq, or two records at one seq, is a fork: it shows in `fork_at` and in the ruling's `sources`. A record past the book read is kept in the new `CaseSide.ShownPast`. Before this, a fork shown only in the other side's opening copy was missed (#944).

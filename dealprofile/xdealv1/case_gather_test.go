@@ -749,3 +749,39 @@ func TestReadOpeningForked(t *testing.T) {
 	assert.Contains(t, op.records, uint64(1))
 	assert.NotContains(t, op.records, uint64(2))
 }
+
+// evidencebook#944: a record of the seller that the buyer's opening copy
+// carries, different from the seller's own record at that seq, is a fork of
+// the seller's book even when the buyer gives no full answer, so DecideCase
+// needs a person (#943 review: the seller's own book alone would decide).
+func TestGatherCaseFindsAForkInTheOtherSidesOpeningCopy(t *testing.T) {
+	f := newFourBooks(t)
+	dir, err := shelfscript.Directory()
+	require.NoError(t, err)
+	_, pair, x := holderBundle(t, f.h.buyer, "buyer", f.buyerLog, copyAt(gatherAsOf, dealprofile.AudienceAdjudicator))
+	// Another seller record at seq 2, sealed on a fresh shelf under the seller's key.
+	q := newParty(t, "seller fork")
+	q.cfg.Signer = f.h.seller.cfg.Signer
+	originals, err := evidencebook.OpenOriginalsFile(context.Background(), filepath.Join(q.dir, "originals2.jsonl"), "x-deal-v1", f.h.seller.cfg.Signer.PublicKey())
+	require.NoError(t, err)
+	q.cfg.Originals, q.cfg.Path = originals, filepath.Join(q.dir, "fork.db")
+	q.open()
+	book := mustOpen(t, f.h.seller, f.h.sellerLog)
+	q.seal(f.h.sellerLog, readBack(t, book, 1).Record)
+	other := readBack(t, book, 2).Record
+	other.Block.At = "2026-11-01T11:05:00Z"
+	otherID, otherPair := q.seal(f.h.sellerLog, other)
+	require.NotEqual(t, f.s2, otherID)
+	x.Book.ReliedOn[otherID] = otherPair
+	opening := CaseCopy{Report: pair, Extension: extJSON(t, x)}
+
+	seller := f.answer(t, f.h.seller, "seller", f.h.sellerLog)
+	g, err := GatherCase(f.dispute, []CaseCopy{opening}, []CaseAnswer{seller}, f.adjudicator.key(), dir)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), g.Seller.ForkAt)
+	assert.Contains(t, recordIDs(g.Seller.Forked), otherID)
+	assert.Equal(t, int64(2), g.Sources.Seller.ForkAt, "the ruling's sources name the fork")
+	d := DecideCase(g, Null[string]{})
+	assert.Nil(t, d.Decisive)
+	assert.Equal(t, "the seller's book has two versions from record 2", d.NeedsPerson)
+}

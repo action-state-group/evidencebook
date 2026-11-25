@@ -76,6 +76,8 @@ func TestDecideCaseNeedsAPerson(t *testing.T) {
 		"another row only": {CaseSide{Book: decideBook(shortDelivery(item("as_described", ValueNotMet)))}, "the seller stated nothing on row delivered in a record it signed"},
 		"nothing read":     {CaseSide{}, "no record the seller signed was read, so its own word on row delivered is not known"},
 		"forked":           {CaseSide{Book: decideBook(notMet, notMet), ForkAt: 2}, "the seller's book has two versions from record 2"},
+		"a later record shown, not read": {CaseSide{Book: decideBook(notMet), ShownPast: []BookRead{{Seq: 2, RecordID: "rec-02b"}}},
+			"the other side's copy shows record 2 of the seller's book, past the records read"},
 		// a fork shown only to the buyer is found only against the copy the buyer held, so without it a person rules
 		"held copy not read": {CaseSide{Book: decideBook(notMet), Held: NullOf[string]()},
 			"the copy of the seller's book the buyer holds was not read, so a second version of it cannot be ruled out"},
@@ -161,4 +163,42 @@ func TestDecideCaseThroughEdges(t *testing.T) {
 	d = DecideCase(twice, Null[string]{})
 	require.NotNil(t, d.Decisive, d.NeedsPerson)
 	assert.Equal(t, "rec-02", d.Decisive.RecordID, "read whole, the latest not_met decides")
+}
+
+// A record of the side that the other side's opening copy carries is
+// reconciled with the book read (evidencebook#944): a different record at a
+// seq read is a fork, two at one seq are a fork, and one past the book read is
+// kept as shown, not read. Each makes DecideCase need a person.
+func TestReconcileShown(t *testing.T) {
+	notMet := shortDelivery(item("delivered", ValueNotMet))
+	base := func() CaseSide {
+		return CaseSide{Key: "seller-key", Book: decideBook(&AgreeBody{Kind: "agreement"}, notMet), Held: Some("rec-02")}
+	}
+	rec := func(seq uint64, id, key string) BookRead { return BookRead{Seq: seq, RecordID: id, KeyID: key} }
+
+	same := base()
+	reconcileShown(&same, map[uint64][]BookRead{2: {rec(2, "rec-02", "seller-key")}})
+	assert.Zero(t, same.ForkAt)
+	assert.Empty(t, same.ShownPast)
+	require.NotNil(t, DecideCase(decideCase(same), Null[string]{}).Decisive, "the same record shown decides as before")
+
+	differs := base()
+	reconcileShown(&differs, map[uint64][]BookRead{2: {rec(2, "rec-02-other", "seller-key")}})
+	assert.Equal(t, uint64(2), differs.ForkAt)
+	assert.Equal(t, "the seller's book has two versions from record 2", DecideCase(decideCase(differs), Null[string]{}).NeedsPerson)
+
+	two := base()
+	reconcileShown(&two, map[uint64][]BookRead{3: {rec(3, "a", "seller-key"), rec(3, "b", "seller-key")}})
+	assert.Equal(t, uint64(3), two.ForkAt)
+
+	past := base()
+	reconcileShown(&past, map[uint64][]BookRead{3: {rec(3, "rec-03", "seller-key")}})
+	assert.Zero(t, past.ForkAt)
+	require.Len(t, past.ShownPast, 1)
+	assert.Nil(t, DecideCase(decideCase(past), Null[string]{}).Decisive)
+
+	other := base()
+	reconcileShown(&other, map[uint64][]BookRead{2: {rec(2, "x", "buyer-key")}})
+	assert.Zero(t, other.ForkAt, "a record of another key is not this side's")
+	assert.Empty(t, other.ShownPast)
 }
