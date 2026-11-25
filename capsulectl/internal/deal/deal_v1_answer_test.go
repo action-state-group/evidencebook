@@ -1,6 +1,7 @@
 package deal
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -86,7 +87,7 @@ func TestAFullAnswerAndAGatheredRuling(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &a))
 	reqRaw, err := os.ReadFile(request)
 	require.NoError(t, err)
-	assert.JSONEq(t, string(reqRaw), string(a.Request))
+	assert.Equal(t, cli.BytesDigest(bytes.TrimSpace(reqRaw)), cli.BytesDigest(a.Request), "the request's exact bytes")
 	cc, err := caseCopyOfBundle(a.Bundle)
 	require.NoError(t, err)
 	_, full, err := xdealv1.VerifyFullCopy(cc.Report, cc.Extension)
@@ -98,7 +99,7 @@ func TestAFullAnswerAndAGatheredRuling(t *testing.T) {
 	answers := journalAnswers(t)
 	require.Len(t, answers, 1)
 	assert.Equal(t, answerOutcomeEvidence, answers[0].Outcome)
-	assert.Equal(t, cli.BytesDigest(reqRaw), answers[0].Request.Digest)
+	assert.Equal(t, cli.BytesDigest(a.Request), answers[0].Request.Digest, "the journal names the request the file carries")
 	assert.Equal(t, cli.BytesDigest(raw), answers[0].Answer.Digest)
 
 	adj.act(t)
@@ -264,4 +265,46 @@ func TestV1OwnIDsReadsAFullCopy(t *testing.T) {
 		ids := v1OwnIDs(h.dealID, xdealv1.ReportBook{Received: snap.Book.Received})
 		assert.Len(t, ids, 2, "the deal id and the other side's shelf log, from the held copy alone: %v", ids)
 	})
+}
+
+// A request file ending in a newline is answered with its trimmed bytes,
+// whose digest the journal names; an --output already there seals nothing;
+// two answers of one side are refused; and a v0-only store refuses the
+// request with a signed refusal, not a store error.
+func TestAnAnswerEdges(t *testing.T) {
+	h, adj := adjudicatedDeal(t)
+	h.buyer.act(t)
+	dispute := filepath.Join(t.TempDir(), "dispute.json")
+	dealRun(t, "dispute", "--deal", h.dealID, "--row", "paid_as_agreed", "--out", dispute)
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	request := adjudicatorRequest(t, h.dealID)
+	raw, err := os.ReadFile(request)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(request, append(raw, '\n'), 0o600))
+
+	taken := filepath.Join(t.TempDir(), "taken.json")
+	require.NoError(t, os.WriteFile(taken, []byte("x"), 0o600))
+	assert.Contains(t, v1Err(t, "respond", "--request", request, "--requester", adj.party.signer, "--output", taken), "exists")
+	assert.Empty(t, journalAnswers(t), "nothing sealed for an output already there")
+
+	answer := filepath.Join(t.TempDir(), "answer.json")
+	dealRun(t, "respond", "--request", request, "--requester", strings.ToUpper(adj.party.signer), "--output", answer)
+	file, err := os.ReadFile(answer)
+	require.NoError(t, err)
+	var a v1Answer
+	require.NoError(t, json.Unmarshal(file, &a))
+	answers := journalAnswers(t)
+	require.Len(t, answers, 1, "a key id in upper case is the same adjudicator")
+	assert.Equal(t, cli.BytesDigest(raw), answers[0].Request.Digest)
+	assert.Equal(t, cli.BytesDigest(a.Request), answers[0].Request.Digest)
+
+	adj.act(t)
+	assert.Contains(t, v1Err(t, "ruling", "--deal", h.dealID, "--row", "paid_as_agreed", "--value", "met", "--against", "none",
+		"--dispute", dispute, "--answer", answer, "--answer", answer), "two full answers")
+
+	// A store that never held an x-deal-v1 deal.
+	dealFixture(t)
+	got := dealRun(t, "respond", "--request", request, "--requester", adj.party.signer, "--output", filepath.Join(t.TempDir(), "v0.json"))
+	assert.Equal(t, evidencebook.ReasonNoSuchSubject, got["reason"], "%v", got)
 }

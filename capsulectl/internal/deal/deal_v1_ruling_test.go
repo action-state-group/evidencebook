@@ -89,6 +89,8 @@ func TestARulingIsSealedAndEnteredInBothBooks(t *testing.T) {
 	require.NotNil(t, rb.Read.Buyer.V)
 	require.NotNil(t, rb.Read.Seller.V)
 	assert.True(t, strings.HasPrefix(out["case_log"].(string), xdealv1.CaseLogPrefix))
+	assert.Nil(t, rb.Sources, "a ruling from case-opening copies alone names no sources")
+	assert.NotContains(t, out, "sources")
 
 	// Both parties enter it.
 	for _, side := range []v1Side{h.buyer, h.seller} {
