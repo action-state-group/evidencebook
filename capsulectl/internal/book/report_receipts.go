@@ -165,15 +165,20 @@ type dealVerifyResult struct {
 		Status   string   `json:"status"`
 		Findings []string `json:"findings"`
 	} `json:"reader_claims"`
-	GraphClosure        claimStatus `json:"graph_closure"`
-	IntervalCoverage    claimStatus `json:"interval_coverage"`
-	PerRecordMembership claimStatus `json:"per_record_membership"`
-	Checkpoint          claimStatus `json:"checkpoint"`
-	ProducerSignatures  claimStatus `json:"producer_signatures"`
-	Extensions          []struct {
-		Kind   string `json:"kind"`
-		Status string `json:"status"`
-	} `json:"extensions"`
+	GraphClosure        claimStatus           `json:"graph_closure"`
+	IntervalCoverage    claimStatus           `json:"interval_coverage"`
+	PerRecordMembership claimStatus           `json:"per_record_membership"`
+	Checkpoint          claimStatus           `json:"checkpoint"`
+	ProducerSignatures  claimStatus           `json:"producer_signatures"`
+	Extensions          []dealVerifyExtension `json:"extensions"`
+}
+
+// dealVerifyExtension is one entry of deal verify's extensions.
+type dealVerifyExtension struct {
+	Kind     string          `json:"kind"`
+	Status   string          `json:"status"`
+	Findings []string        `json:"findings"`
+	Composed json.RawMessage `json:"composed"`
 }
 
 type claimStatus struct {
@@ -183,8 +188,10 @@ type claimStatus struct {
 
 // producerSelection says whether an INCOMPLETE verdict is a producer
 // selection and nothing else: interval coverage withheld only as
-// selection_not_checkable, every other claim passing, and the deal section
-// read and passing. A Mesh node's receipt is one by design (the log is not
+// selection_not_checkable, every other claim passing, every reader claim
+// passing with no finding, the deal section read and passing with no
+// finding, every other extension passing or uninterpreted with no finding,
+// and no composed member (whose own claims could read INCOMPLETE). A Mesh node's receipt is one by design (the log is not
 // shown whole); the report admits it on the page's own verdict
 // (report.receiptPageGate, evidencebook#870), and this is the deal plugin's
 // half of the same narrow exception. Any other INCOMPLETE stays refused.
@@ -201,13 +208,24 @@ func (r dealVerifyResult) producerSelection() bool {
 			return false
 		}
 	}
+	for _, c := range r.ReaderClaims {
+		if c.Status != "pass" || len(c.Findings) > 0 {
+			return false
+		}
+	}
 	deal := false
 	for _, e := range r.Extensions {
-		if e.Kind == "x-deal-v0" || e.Kind == "x-deal-v1" {
+		if len(e.Findings) > 0 || len(e.Composed) > 0 {
+			return false
+		}
+		switch {
+		case e.Kind == "x-deal-v0" || e.Kind == "x-deal-v1":
 			if e.Status != "pass" {
 				return false
 			}
 			deal = true
+		case e.Status != "pass" && e.Status != "uninterpreted":
+			return false
 		}
 	}
 	return deal

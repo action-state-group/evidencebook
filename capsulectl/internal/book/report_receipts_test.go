@@ -331,10 +331,7 @@ func TestDealVerifyAdmitsOnlyAProducerSelection(t *testing.T) {
 	selection := claimStatus{Status: "withheld", Findings: []string{"selection_not_checkable"}}
 	base := func() dealVerifyResult {
 		r := dealVerifyResult{Verdict: "INCOMPLETE", GraphClosure: pass, IntervalCoverage: selection, PerRecordMembership: pass, Checkpoint: pass, ProducerSignatures: pass}
-		r.Extensions = append(r.Extensions, struct {
-			Kind   string `json:"kind"`
-			Status string `json:"status"`
-		}{"x-deal-v0", "pass"})
+		r.Extensions = []dealVerifyExtension{{Kind: "producer-key/v1", Status: "uninterpreted"}, {Kind: "x-deal-v0", Status: "pass"}}
 		return r
 	}
 	assert.True(t, base().producerSelection())
@@ -347,8 +344,29 @@ func TestDealVerifyAdmitsOnlyAProducerSelection(t *testing.T) {
 		"membership":             func(r *dealVerifyResult) { r.PerRecordMembership.Status = "fail" },
 		"checkpoint":             func(r *dealVerifyResult) { r.Checkpoint.Status = "fail" },
 		"signatures":             func(r *dealVerifyResult) { r.ProducerSignatures.Status = "fail" },
-		"deal section failed":    func(r *dealVerifyResult) { r.Extensions[0].Status = "fail" },
-		"no deal section read":   func(r *dealVerifyResult) { r.Extensions = nil },
+		"deal section failed":    func(r *dealVerifyResult) { r.Extensions[1].Status = "fail" },
+		"no deal section read":   func(r *dealVerifyResult) { r.Extensions = r.Extensions[:1] },
+		"deal section passes with a finding": func(r *dealVerifyResult) {
+			r.Extensions[1].Findings = []string{"unchecked_thing"}
+		},
+		"a reader claim not shown": func(r *dealVerifyResult) {
+			r.ReaderClaims = append(r.ReaderClaims, struct {
+				Status   string   `json:"status"`
+				Findings []string `json:"findings"`
+			}{"not_shown", []string{"sale_not_shown"}})
+		},
+		"a reader claim passing with a finding": func(r *dealVerifyResult) {
+			r.ReaderClaims = append(r.ReaderClaims, struct {
+				Status   string   `json:"status"`
+				Findings []string `json:"findings"`
+			}{"pass", []string{"x"}})
+		},
+		"another extension not passing": func(r *dealVerifyResult) {
+			r.Extensions = append(r.Extensions, dealVerifyExtension{Kind: "x-deal-sale/v0", Status: "not_shown"})
+		},
+		"a composed member": func(r *dealVerifyResult) {
+			r.Extensions = append(r.Extensions, dealVerifyExtension{Kind: "composed/v1", Status: "pass", Composed: json.RawMessage(`{"status":"pass"}`)})
+		},
 	}
 	for name, change := range cases {
 		r := base()
