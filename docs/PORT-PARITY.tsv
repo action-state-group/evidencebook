@@ -14,6 +14,7 @@ package	kind	symbol	feature	rust	python
 .	func	EncodeRequest	request-reply-respond	frozen #131	ported
 .	func	EntryID	shelf	ported	ported
 .	func	EpistemicTypes	originals-and-stores	ported	ported
+.	func	ForeignBundle	counterparty-half	frozen #882	frozen #883
 .	func	KeyID	originals-and-stores	ported	ported
 .	func	LinkTypes	originals-and-stores	ported	ported
 .	func	MigratePayloadDir	originals-and-stores	frozen #640	frozen #639
@@ -161,6 +162,7 @@ package	kind	symbol	feature	rust	python
 .	type	FactOpening	shelf	ported	ported
 .	type	FileStore	originals-and-stores	frozen #640	ported
 .	type	Filter	indexes	ported	frozen #637
+.	type	ForeignRecord	counterparty-half	frozen #882	frozen #883
 .	type	FormatSwitch	shelf	ported	ported
 .	type	Freshness	request-reply-respond	frozen #131	frozen #131
 .	type	Half	reconcile-halves	ported	frozen #643
@@ -488,8 +490,10 @@ dealprofile/xdealv1	func	Digest	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	Encode	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	EntryOf	x-deal-v1	frozen #774	frozen #858
 dealprofile/xdealv1	func	GatherCase	x-deal-v1	frozen #875	frozen #876
+dealprofile/xdealv1	func	HeldCounterpartyHalf	x-deal-v1	frozen #882	frozen #883
 dealprofile/xdealv1	func	HeldRuling	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	KnownTime	x-deal-v1	ported	frozen #653
+dealprofile/xdealv1	func	MakeCounterpartyHalf	x-deal-v1	frozen #882	frozen #883
 dealprofile/xdealv1	func	NameAllRulings	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	NameRulings	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	NewNonce	x-deal-v1	ported	frozen #653
@@ -515,6 +519,7 @@ dealprofile/xdealv1	func	StartFromBooks	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	TermsLeg	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	TrimBookEvidence	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	func	VerifyBook	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	VerifyCounterpartyHalf	x-deal-v1	frozen #882	frozen #883
 dealprofile/xdealv1	func	VerifyFullCopy	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	func	VerifyReport	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	VerifyReportBundle	x-deal-v1	ported	ported
@@ -543,6 +548,7 @@ dealprofile/xdealv1	type	CaseRecord	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	type	CaseSide	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	type	CheckBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Counterparty	x-deal-v1	ported	not needed
+dealprofile/xdealv1	type	CounterpartyHalf	x-deal-v1	frozen #882	frozen #883
 dealprofile/xdealv1	type	Date	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	DisputeBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Entry	x-deal-v1	frozen #774	frozen #858
@@ -550,6 +556,7 @@ dealprofile/xdealv1	type	EntryInput	x-deal-v1	frozen #774	frozen #858
 dealprofile/xdealv1	type	FirstAct	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	FullCopy	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	type	GatheredCase	x-deal-v1	frozen #875	frozen #876
+dealprofile/xdealv1	type	HalfRead	x-deal-v1	frozen #882	frozen #883
 dealprofile/xdealv1	type	Named	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	Null	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	OfferContext	x-deal-v1	ported	ported
