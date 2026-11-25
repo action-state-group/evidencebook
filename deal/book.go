@@ -73,7 +73,7 @@ func (s *Store) SealInBook(ctx context.Context, dealID string, in BookRecord) (S
 	logID := d.OwnLogID
 	if logID == "" {
 		if !isAgreement(in.Body) {
-			return Sealed{}, inputError("deal " + dealID + " has no deal book yet: it opens at your agreement (`deal agree`)")
+			return Sealed{}, coded(CodeAgreeFirst, "", "deal "+dealID+" has no deal book yet: it opens at your agreement (Store.Agree)", dealID)
 		}
 		if logID, err = s.newOwnLogID(); err != nil {
 			return Sealed{}, err
@@ -103,7 +103,7 @@ func (s *Store) SealInBook(ctx context.Context, dealID string, in BookRecord) (S
 	err = placeappend.Append(ctx, book, func(size uint64) (placeappend.Try, error) {
 		opening := size == 0
 		if opening && !isAgreement(in.Body) {
-			return placeappend.Try{}, inputError("deal " + dealID + " has no deal book yet: it opens at your agreement (`deal agree`)")
+			return placeappend.Try{}, coded(CodeAgreeFirst, "", "deal "+dealID+" has no deal book yet: it opens at your agreement (Store.Agree)", dealID)
 		}
 		// One clock read: the record's at, and on a windowed store the time
 		// its book is placed by.
@@ -207,7 +207,7 @@ func (s *Store) SealInBook(ctx context.Context, dealID string, in BookRecord) (S
 		return try, nil
 	}, bookAppendTries)
 	if errors.Is(err, placeappend.ErrKeptChanging) {
-		return Sealed{}, conflictf("the deal book kept changing while the record was sealed; run the command again")
+		return Sealed{}, codedConflict(CodeRecordRetry, "the deal book kept changing while the record was sealed; make the same call again")
 	}
 	return out, err
 }
