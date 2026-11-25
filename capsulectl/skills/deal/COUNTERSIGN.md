@@ -19,38 +19,50 @@ signature covers everything else in that file.
 
 No deal command asks for a countersignature or sends a bundle anywhere: the
 deal commands only check one you already hold. You get one by asking the
-countersigner you chose with `capsulectl countersign request` once the bundle
-(step 1 below) exists; [ASSURANCE.md](ASSURANCE.md) gives the whole sequence
-with that request and says how it differs from the witness that is on by
-default. These commands apply to an x-deal-v0 deal only. With a signature you
-hold:
+countersigner you chose with `capsulectl countersign request` over the
+withheld bundle `deal report --bundle FILE --withheld` writes;
+[ASSURANCE.md](ASSURANCE.md) gives the whole sequence and says how it differs
+from the witness that is on by default. Countersign is served for x-deal-v1
+deals only: an x-deal-v0 deal's report bundle carries its records' contents,
+which `countersign request` refuses. With a signature you hold:
 
 ```sh
-# 1. Write the deal's report bundle.
-capsulectl --profile deal deal report --deal DEAL_ID --bundle bundle.json
+# 1. Write the withheld form of your deal book's bundle (an x-deal-v1 deal).
+capsulectl --profile deal deal report --deal DEAL_ID --bundle bundle.json --withheld
 
 # 2. Attach a countersignature you hold. It is verified before it is written;
 #    one that does not verify is refused, and the file is left unchanged.
 capsulectl --profile deal deal countersign --deal DEAL_ID --bundle bundle.json \
   --entry countersignature.json --directory DIRECTORY
 
-# 3. Render the receipt from that same file, so the signature covers what it shows.
-capsulectl --profile deal deal report --deal DEAL_ID --from-bundle bundle.json \
-  --directory DIRECTORY --html receipt.html --email receipt.eml
+# 3. The report states it.
+capsulectl --profile deal deal report --deal DEAL_ID
 ```
 
 `--directory` is a countersigner directory (an HTTPS URL or a file, as for
 `countersign verify`) that you choose. It resolves which party a signing key
-belongs to. No list is built in. Without `--directory`, both commands use
-the profile's own, `countersign.directory`, set once with `capsulectl profile
-update --profile deal --countersign-directory DIRECTORY`.
+belongs to. No list is built in. Without `--directory`, `deal countersign`
+uses the profile's own, `countersign.directory`, set once with `capsulectl
+profile update --profile deal --countersign-directory DIRECTORY`; the report
+uses only that one.
 
 `deal countersign` refuses a bundle that is not this deal's own. The bundle
-must verify, its log must be the deal's, its checkpoint must be signed by
-this profile's checkpoint key, its root must be one of the deal's steps, and
-its deal extension must name this deal. Without `--entry`,
-`deal countersign` only verifies the countersignatures the file already
-carries.
+must verify, its log must be the deal's own deal book, its checkpoint must be
+one that book holds (the same signed statement), and its root must be a record
+of the book under that checkpoint. Without `--entry`, `deal countersign` only
+verifies the countersignatures the file already carries. On an x-deal-v0 deal
+it checks the report bundle instead (its checkpoint signed by this profile's
+checkpoint key, its root one of the deal's steps, its deal extension naming
+this deal), and `deal report --from-bundle FILE --directory DIRECTORY` renders
+the receipt from it.
+
+The withheld bundle carries each record of your deal book as its signed
+Capsule (the record's time, the signing key and digests), the checkpoint and
+its proofs, and the profile's signing key as its producer key, so a
+countersignature by that key reads `self_countersigned`. It carries none of
+the records' contents, no report and none of the other side's records, so a
+countersignature over it covers your deal book through one record and not
+the report: the report's `countersign.covers` says so.
 
 ## Kept with the bundle it covers
 
@@ -58,7 +70,8 @@ Every countersignature `deal countersign` verifies is kept in the deal store
 with the exact bundle it covers, so a later report still has it whichever
 file you keep. A countersignature covers that one bundle and never a later
 one: a later report never attaches it to its own bundle. It states it in
-`grade.countersign` instead, verified again against the stored bundle, with
+`grade.countersign` instead (on an x-deal-v1 deal, in the report's
+`countersign`), verified again against the stored bundle, with
 the steps it covers (`through_step` of `steps`), the signer resolved against
 the profile's `countersign.directory` only (never a `--directory` given to
 the report, so who asks never changes it), its `recomputed_at` (the signer's

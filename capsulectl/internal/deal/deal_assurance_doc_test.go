@@ -2,11 +2,13 @@ package deal
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
-	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,44 +40,97 @@ func attachInPlace(t *testing.T, bundlePath string, entry cli.CountersignatureEn
 	require.NoError(t, os.WriteFile(bundlePath, raw, 0o600))
 }
 
-// ASSURANCE.md's sequence on an x-deal-v0 deal: the bundle, then the entry
-// `countersign request` leaves in that same file (`request` itself needs a
-// live HTTPS countersigner, so a fixture signs the entry), then `deal
-// countersign` with no --entry, then the receipt from that file.
-func TestAssuranceDocSequenceRunsOnAV0Deal(t *testing.T) {
+// countersignRequest runs capsule-cli's `countersign request` on file
+// against a local HTTPS service whose certificate the client does not trust:
+// a bundle the request takes fails only there, after every check of the
+// bundle and the profile, and nothing leaves the machine.
+func countersignRequest(t *testing.T, file string) error {
+	t.Helper()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("the countersign request reached the service")
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	t.Cleanup(srv.Close)
+	out, err := invoke(t, "", "countersign", "request", "--profile", "deal", "--service", srv.URL, "--window", "30d", "--bundle", file)
+	require.Error(t, err, out)
+	return err
+}
+
+// An x-deal-v0 deal has no countersign path (evidencebook#865: x-deal-v0 is
+// frozen): its report bundle carries a disclosures member, so step 2 of the
+// sequence, the real `countersign request`, refuses it, and --withheld is
+// refused for it. ASSURANCE.md says countersign is served for x-deal-v1
+// deals only.
+func TestAssuranceDocSequenceIsRefusedOnAV0Deal(t *testing.T) {
 	dealFixture(t)
 	dealID := openJetSki(t)
 	_, bundlePath, _, _ := dealReportFiles(t, dealID)
-	digest, err := aacbundle.BundleDigest(readBundleFile(t, bundlePath))
-	require.NoError(t, err)
-	entry, signerKey := countersignerEntry(t, digest, []cli.CountersignCheck{{Name: "range membership", Result: "established"}})
-	directory := countersignerDirectoryFile(t, "Example Countersigner", signerKey)
-
-	attachInPlace(t, bundlePath, entry)
-	attached := dealRun(t, "countersign", "--deal", dealID, "--bundle", bundlePath, "--directory", directory)
-	assert.Equal(t, "countersigned", asView(t, attached["countersign"]).Rung)
-	out, _, html, _ := dealReportFiles(t, dealID, "--from-bundle", bundlePath, "--directory", directory)
-	assert.Equal(t, "countersigned", asView(t, out["countersign"]).Rung)
-	assert.Equal(t, "countersigned", pageCountersign(t, html).Rung)
-}
-
-// An x-deal-v1 deal (the default for a new deal) has no countersign path:
-// `deal countersign` is refused, and the generic `countersign request` refuses
-// the v1 report bundle, which carries a disclosures member. ASSURANCE.md says
-// so; this fails when a v1 path lands, so the doc is changed with it.
-func TestAssuranceDocSaysAV1DealHasNoCountersignPath(t *testing.T) {
-	h := agreedBoth(t, offerTo)
-	h.buyer.act(t)
-	file := filepath.Join(t.TempDir(), "bundle.json")
-	dealRun(t, "report", "--deal", h.dealID, "--bundle", file)
-	directory := filepath.Join(t.TempDir(), "none.json")
-	assert.Contains(t, v1Err(t, "countersign", "--deal", h.dealID, "--bundle", file, "--directory", directory), "not served for x-deal-v1 deals yet")
-	out, err := invoke(t, "", "countersign", "request", "--profile", "deal", "--service", "https://countersigner.example", "--window", "30d", "--bundle", file)
-	require.Error(t, err, out)
-	assert.Contains(t, err.Error(), "refuses a bundle carrying disclosures")
+	assert.Contains(t, countersignRequest(t, bundlePath).Error(), "refuses a bundle carrying disclosures")
+	_, err := invoke(t, "", "--profile", "deal", "deal", "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "w.json"), "--withheld")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "countersign is served for x-deal-v1 deals only")
 
 	doc, err := os.ReadFile(filepath.Join("..", "..", "skills", "deal", "ASSURANCE.md"))
 	require.NoError(t, err)
-	assert.Contains(t, string(doc), "x-deal-v1")
-	assert.Contains(t, string(doc), "x-deal-v0")
+	assert.Contains(t, string(doc), "Countersign is served for x-deal-v1 deals only")
+}
+
+// ASSURANCE.md's sequence on an x-deal-v1 deal (the default): the withheld
+// bundle, which `countersign request` takes (it fails only at the untrusted
+// test service); the entry the service would return, signed by a fixture and
+// attached as the request attaches it; `deal countersign`; then the report,
+// which says countersigned, and countersigned in part once the book has a
+// record after the signed one.
+func TestAssuranceDocSequenceRunsOnAV1Deal(t *testing.T) {
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	file := filepath.Join(t.TempDir(), "bundle.json")
+	out := dealRun(t, "report", "--deal", h.dealID, "--bundle", file, "--withheld")
+	assert.Equal(t, true, out["withheld"])
+	assert.Nil(t, out["sealed_report"], "the withheld file carries no report, so none is sealed")
+	b := readBundleFile(t, file)
+	for _, member := range []string{"disclosures", "disclosure_record"} {
+		assert.NotContains(t, b, member)
+	}
+	assert.Equal(t, []string{producerKeyExtension}, mapKeys(b["extensions"].(map[string]interface{})), "only the producer key: no payload, book or report")
+	assert.Equal(t, "selected", b["completeness"].(map[string]interface{})["payloads_mode"])
+	err := countersignRequest(t, file)
+	assert.NotContains(t, err.Error(), "disclosures")
+	assert.Contains(t, err.Error(), "certificate", "the request took the bundle and failed only at the untrusted service")
+
+	before := dealRun(t, "report", "--deal", h.dealID)
+	assert.Equal(t, "not_countersigned", asStamp(t, before["countersign"]).Finding)
+
+	entry, signerKey := countersignerEntry(t, mustDigest(t, b), []cli.CountersignCheck{{Name: "range membership", Result: "established"}})
+	directory := countersignerDirectoryFile(t, "Example Countersigner", signerKey)
+	attachInPlace(t, file, entry)
+	attached := dealRun(t, "countersign", "--deal", h.dealID, "--bundle", file, "--directory", directory)
+	assert.Equal(t, "countersigned", asView(t, attached["countersign"]).Rung)
+
+	// The report states the stored countersignature, resolved against the
+	// profile's countersigner directory.
+	_, err = invoke(t, "", "profile", "update", "--profile", "deal", "--countersign-directory", directory)
+	require.NoError(t, err)
+	stamp := asStamp(t, dealRun(t, "report", "--deal", h.dealID)["countersign"])
+	assert.Equal(t, "countersigned", stamp.Rung)
+	assert.Equal(t, "Example Countersigner", stamp.Signer)
+	assert.Equal(t, stamp.ThroughStep, stamp.Steps)
+	assert.Contains(t, stamp.Covers, "not this report, and not the other side's records")
+
+	// A record after the signed one: countersigned in part.
+	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	later := asStamp(t, dealRun(t, "report", "--deal", h.dealID)["countersign"])
+	assert.Equal(t, "countersigned_in_part", later.Rung)
+	assert.Less(t, later.ThroughStep, later.Steps)
+}
+
+func asStamp(t *testing.T, v any) dealGradeCountersign {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	var g dealGradeCountersign
+	require.NoError(t, json.Unmarshal(raw, &g))
+	return g
 }

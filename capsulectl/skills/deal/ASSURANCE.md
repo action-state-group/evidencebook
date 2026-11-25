@@ -12,31 +12,27 @@ whether that counts for it.
 | | Witness (default) | Countersign (manual) |
 |---|---|---|
 | What it proves | The deal's checkpoint, and so the records it covers, existed by the time the witness signed it; a later rewrite of the chain is detectable | A named party signed the digest of one exact Evidence Bundle file |
-| What the third party sees | One checkpoint per tick of the cadence: hashes, a size that grows by the same amount every tick, and a time on the cadence. Never content, how many deals there are, or when they happen | The bundle it is asked to sign: digests, plus anything you chose to disclose in it |
-| What it covers | Every deal under that checkpoint | That one bundle, through one step; steps after it need a new countersignature |
+| What the third party sees | One checkpoint per tick of the cadence: hashes, a size that grows by the same amount every tick, and a time on the cadence. Never content, how many deals there are, or when they happen | The withheld bundle it is asked to sign: each record of your deal book as its signed Capsule (the record's time, the signing key and digests), the checkpoint and its proofs. None of the records' contents, no report, none of the other side's records. A countersigner that guesses a record's exact contents can check the guess against its digest |
+| What it covers | Every deal under that checkpoint | Your deal book through one record, as digests; records after it need a new countersignature. Not the report, and not the other side's records |
 | Who starts it | `capsulectl deal init` sets it up; opt out with `--no-witness` | You, per deal and per bundle; nothing requests one automatically |
-| What the receipt says | "Sealed, witness pending" until the next tick of the cadence, then "Witnessed" (`assurance.rung` is `self_attested` until a receipt verifies, then `witnessed`, or `witnessed_in_part` while steps sealed after the last witnessed tick are uncovered; `witness_state` is `unverified` and the rung stays `self_attested` when a receipt held does not verify) | `countersigned` only when the signature verifies and the directory you chose lists the signer; a signer the directory lacks, or the producer's own key, is not a rung |
+| What the receipt says | "Sealed, witness pending" until the next tick of the cadence, then "Witnessed" (`assurance.rung` is `self_attested` until a receipt verifies, then `witnessed`, or `witnessed_in_part` while steps sealed after the last witnessed tick are uncovered; `witness_state` is `unverified` and the rung stays `self_attested` when a receipt held does not verify) | `deal report` prints `countersign.rung` `countersigned` only when a stored signature verifies and the profile's countersigner directory lists the signer, and `countersigned_in_part` once your deal book has records after the signed one; a signer the directory lacks, or the producer's own key, is not a rung |
 | Choose it when | You want any deal checked by a third party without doing anything, and are content that it learns only checkpoint hashes | A counterparty or auditor needs a named party to have signed this exact bundle, and you accept that party seeing it |
 
 ## Switch a deal to countersign
 
-**Only an x-deal-v0 deal can be countersigned today.** A new deal is x-deal-v1
-by default (`deal init`), and for it nothing in capsulectl gets a countersignature
-or shows one on its receipt: `deal countersign` answers "not served for
-x-deal-v1 deals yet", `deal report` has no `--from-bundle`, `--directory` or
-`--html` for it, and `countersign request` refuses the v1 report bundle because
-it carries a disclosures member. A v1 deal stays witnessed (default) and
-self-attested otherwise; a countersign path for v1 is not built
-([evidencebook#865](https://github.com/action-state-group/evidencebook/issues/865)
-tracks it). The steps below are for a v0 deal.
+**Countersign is served for x-deal-v1 deals only**, the default for a new deal
+(`deal init`). An x-deal-v0 deal cannot get a countersignature: its report
+bundle carries its records' contents, and `countersign request` refuses a bundle
+that does (`deal countersign` on it only checks one you already hold).
 
 Witnessing stays on unless you turn it off. To add a countersignature you ask a
-countersigner of your choice, which updates your bundle file, and attach it.
-Nothing here is automatic.
+countersigner of your choice, which updates your bundle file, and keep it with
+the deal. Nothing here is automatic.
 
 ```sh
-# 1. Write the deal's report bundle.
-capsulectl --profile deal deal report --deal DEAL_ID --bundle bundle.json
+# 1. Write the withheld form of your deal book's bundle at its last
+#    checkpoint: the file a countersigner is shown, with no record's contents.
+capsulectl --profile deal deal report --deal DEAL_ID --bundle bundle.json --withheld
 
 # 2. Ask the countersigner you chose for a signature over that bundle. It
 #    attaches the returned entry to bundle.json, in place. --window is the
@@ -49,14 +45,18 @@ capsulectl --profile deal countersign request --service COUNTERSIGNER_URL \
 capsulectl --profile deal deal countersign --deal DEAL_ID --bundle bundle.json \
   --directory DIRECTORY
 
-# 4. Render the receipt from that same file.
-capsulectl --profile deal deal report --deal DEAL_ID --from-bundle bundle.json \
-  --directory DIRECTORY --html receipt.html
+# 4. The report now states it.
+capsulectl --profile deal deal report --deal DEAL_ID
 ```
 
 `DIRECTORY` lists the countersigners you trust; none is built in. Set it once
-with `capsulectl profile update --profile deal --countersign-directory DIRECTORY`.
-[COUNTERSIGN.md](COUNTERSIGN.md) says what each rung and finding means.
+with `capsulectl profile update --profile deal --countersign-directory DIRECTORY`:
+the report resolves signers against that directory only. The report's
+`countersign` says how far the signature reaches (`through_step` of `steps`
+records of your deal book) and, in `covers`, that it covers neither the report
+nor the other side's records. An x-deal-v1 report has no receipt page yet, and a
+History card never says countersigned. [COUNTERSIGN.md](COUNTERSIGN.md) says what
+each rung and finding means.
 
 ## Other implementations
 
