@@ -2344,10 +2344,19 @@ func dealCheckCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+		// The counterparty's History, verified under the host's keys before
+		// anything runs or is sealed (capsule-cli#327 design §5.2).
+		receivedHist, err := readReceivedHistory(c)
+		if err != nil {
+			return err
+		}
 		return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
 			if isSaleLog(dealID) {
 				if len(received) > 0 {
 					return cli.InputError("--received goes with a check on a deal; a sale's post check runs no rules checker")
+				}
+				if receivedHist != nil {
+					return cli.InputError("--history goes with a check on a deal; a sale's post check runs no rules checker")
 				}
 				return s.checkPost(ctx, c, dealID, events, snap, staleAfter)
 			}
@@ -2363,6 +2372,12 @@ func dealCheckCommand() *cobra.Command {
 			}
 			if len(received) > 0 && len(s.p.RulesChecker.Command) == 0 {
 				return cli.InputError("--received needs a pinned rules checker to hand the cards to; this profile has none")
+			}
+			if receivedHist != nil && !s.v1 {
+				return cli.InputError("--history goes with an x-deal-v1 deal's check; this deal is an x-deal-v0 deal")
+			}
+			if receivedHist != nil && len(s.p.RulesChecker.Command) == 0 {
+				return cli.InputError("--history needs a pinned rules checker to hand the counterparty's History to; this profile has none")
 			}
 			// The profile's pinned materiality predicate, read before anything
 			// is sealed: one that cannot be read, or no longer has the pinned
@@ -2569,7 +2584,19 @@ func dealCheckCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				rules = runRulesChecker(ctx, s.p, dealRole(events), input, history)
+				// Given --history, the run whose rules are sealed reads the
+				// counterparty's verified History (D1 (a)); the cards' notice
+				// run below reads the input without it, as before.
+				checked := input
+				if receivedHist != nil {
+					if checked, _, err = withReceivedHistory(input, receivedHist); err != nil {
+						return err
+					}
+				}
+				rules = runRulesChecker(ctx, s.p, dealRole(events), checked, history)
+				if receivedHist != nil {
+					rules = rulesGivenHistory(rules)
+				}
 				rules.Notice = ""
 				if len(received) > 0 {
 					// The sealed rules above come from a run given no cards.
@@ -2690,6 +2717,8 @@ func dealCheckCommand() *cobra.Command {
 	cmd.Flags().String("input", "", "Snapshot JSON: the action and exactly what is about to happen")
 	cmd.Flags().Duration("stale-after", 15*time.Minute, "How long the check stays current; the approval text says when it goes stale")
 	cmd.Flags().String("received", "", "A JSON array of cards received about the counterparty, handed to the rules checker in a second run read for its notice only: never stored, sealed or shared")
+	cmd.Flags().StringArray("history", nil, "On an x-deal-v1 deal: the counterparty's History (a personal_history_basic/1 file, exactly as received), verified under --counterparty-key before any check runs and handed to the rules checker whose verdict is sealed; one document per flag, at most one of each kind. A document that does not verify refuses the check")
+	cmd.Flags().StringSlice("counterparty-key", nil, "With --history: the counterparty's key (64 lowercase hex), from your deployment policy, never from the History or anything the counterparty sent; repeat or comma-separate for several")
 	return cmd
 }
 
