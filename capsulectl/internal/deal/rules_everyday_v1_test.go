@@ -332,3 +332,37 @@ func TestAV1HistoryActKeepsItsOwnDealsFingerprints(t *testing.T) {
 	assert.Equal(t, sealedA["counterparty_profile"], act["counterparty_profile"], "the payee keyed per profile")
 	assert.NotNil(t, act["counterparty_profile"])
 }
+
+// An earlier x-deal-v1 act whose link to its check is broken (its
+// authorization names a record the deal does not hold) is never read as a
+// payment to a new merchant without saying so: the history is not complete,
+// and the rule that keys on earlier payments does not pass.
+func TestAV1HistoryActWithABrokenCheckLinkIsIncomplete(t *testing.T) {
+	h := everydayBuyer(t)
+	pinEverydayLimits(t, 7000, 10000)
+	payOn(t, h.dealID, everydayPayCheck(t, h.dealID, 6000, v1LnHash))
+	withSession(t, func(s *dealSession) {
+		var n int
+		var local string
+		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT n, local FROM deal_v1_events WHERE deal_id=? AND kind='act'`, h.dealID).Scan(&n, &local))
+		var ev map[string]any
+		require.NoError(t, json.Unmarshal([]byte(local), &ev))
+		act := ev["act"].(map[string]any)
+		require.NotEmpty(t, act["authorized_by"])
+		act["authorized_by"] = strings.Repeat("ee", 32) // no record of the deal
+		raw, err := json.Marshal(ev)
+		require.NoError(t, err)
+		_, err = s.db.ExecContext(t.Context(), `UPDATE deal_v1_events SET local=? WHERE deal_id=? AND n=?`, string(raw), h.dealID, n)
+		require.NoError(t, err)
+		history, scope, err := s.rulesHistory(t.Context())
+		require.NoError(t, err)
+		require.Len(t, history, 1)
+		assert.False(t, scope.Complete, "a broken link is said, not read as a new merchant")
+		assert.Nil(t, history[0].(map[string]interface{})["counterparty_profile"])
+	})
+
+	g := againWith(t, h)
+	out := everydayPayCheck(t, g.dealID, 6000, strings.Repeat("cd", 32))
+	assert.Equal(t, false, out["rules"].(map[string]any)["history"].(map[string]any)["complete"])
+	assert.NotEqual(t, "pass", rulesFinding(t, out, "r02-ordinary-purchase")["verdict"])
+}
