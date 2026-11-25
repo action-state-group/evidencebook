@@ -137,7 +137,17 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 // person who made the call. Field, when set, names the argument at fault
 // (admit, intent, input, reason) and the message is Field followed by
 // Reason, so a command line can put its own flag name in front.
-type InputError struct{ Field, Reason string }
+//
+// Code, when set, names a refusal whose message tells the caller which call
+// of this package to make next, and Args holds the values that message
+// names, in the order the Code's doc lists. A caller with its own names for
+// those calls, such as a command line, can word the refusal itself from Code
+// and Args.
+type InputError struct {
+	Field, Reason string
+	Code          Code
+	Args          []string
+}
 
 func (e *InputError) Error() string { return e.Field + e.Reason }
 
@@ -147,15 +157,86 @@ func inputError(reason string) error { return &InputError{Reason: reason} }
 // directly (" is not ...", "'s admit is ...").
 func fieldError(field, reason string) error { return &InputError{Field: field, Reason: reason} }
 
+// coded is an InputError with its Code and Args.
+func coded(code Code, field, reason string, args ...string) error {
+	return &InputError{Field: field, Reason: reason, Code: code, Args: args}
+}
+
 // ConflictError reports stored state that disagrees with the call: a record
 // sealed but not recorded, a book that kept changing, a second decision.
-type ConflictError struct{ Reason string }
+// Code and Args are as on [InputError].
+type ConflictError struct {
+	Reason string
+	Code   Code
+	Args   []string
+}
 
 func (e *ConflictError) Error() string { return e.Reason }
 
 func conflictf(format string, args ...any) error {
 	return &ConflictError{Reason: fmt.Sprintf(format, args...)}
 }
+
+// codedConflict is a ConflictError with its Code and Args.
+func codedConflict(code Code, reason string, args ...string) error {
+	return &ConflictError{Reason: reason, Code: code, Args: args}
+}
+
+// Code names a refusal of this package whose message names the call to make
+// next. The values are for the caller's own process: a program may match on
+// them or word the refusal in its own terms, but they are not vocabulary to
+// write into output, a record or a message. The constants are stable:
+// renaming or removing one breaks a caller that matches on it.
+type Code string
+
+// The coded refusals. Each lists, in order, the Args its message names.
+const (
+	// CodeCancelAgain: the offer is already cancelled. No Args.
+	CodeCancelAgain Code = "cancel-again"
+	// CodeDeclineUnknownOffer: the profile holds no offer with this digest.
+	// Args: the offer digest.
+	CodeDeclineUnknownOffer Code = "decline-unknown-offer"
+	// CodeDeclineOwnOffer: the caller wrote the offer it declines. No Args.
+	CodeDeclineOwnOffer Code = "decline-own-offer"
+	// CodeDeclineAgain: the offer is already declined. No Args.
+	CodeDeclineAgain Code = "decline-again"
+	// CodeAdmitNotAdmitted: the admission decision does not admit the deal.
+	// Args: the decision's verdict.
+	CodeAdmitNotAdmitted Code = "admit-not-admitted"
+	// CodeAdmitUnknownDeal: the store holds no x-deal-v1 deal with this id.
+	// Args: the deal id.
+	CodeAdmitUnknownDeal Code = "admit-unknown-deal"
+	// CodeAdmitAgain (a ConflictError): the deal already has another
+	// admission decision. Args: the deal id, the decision's digest.
+	CodeAdmitAgain Code = "admit-again"
+	// CodeAgreeUnknownOffer: the profile holds no offer with this digest.
+	// Args: the offer digest.
+	CodeAgreeUnknownOffer Code = "agree-unknown-offer"
+	// CodeAgreeDeclineUnfinished: a decline of the offer was begun and did
+	// not finish. No Args.
+	CodeAgreeDeclineUnfinished Code = "agree-decline-unfinished"
+	// CodeAgreeBeforeReceive: the offerer agrees before it has received the
+	// acceptor's agreement. No Args.
+	CodeAgreeBeforeReceive Code = "agree-before-receive"
+	// CodeAgreeNoAdmit: the deal has no admission decision. Args: the deal
+	// id.
+	CodeAgreeNoAdmit Code = "agree-no-admit"
+	// CodeAgreeAdmitNotOwn (Field admit): the admission decision named is not
+	// the one the deal holds. Args: the decision named, the deal's own, the
+	// deal id.
+	CodeAgreeAdmitNotOwn Code = "agree-admit-not-own"
+	// CodeAgreeAdmitOtherDeal (Field admit): the admission decision named was
+	// sealed for another deal. Args: the decision named, the other deal's id,
+	// the deal id.
+	CodeAgreeAdmitOtherDeal Code = "agree-admit-other-deal"
+	// CodeAgreeFirst: a record for a deal book that has not opened; it opens
+	// at the holder's agreement. Args: the deal id.
+	CodeAgreeFirst Code = "agree-first"
+	// CodeOfferNotRebuilt (a ConflictError): a record sent whole was sealed
+	// but its pair was not made, and the store cannot rebuild it. Args: the
+	// record digest.
+	CodeOfferNotRebuilt Code = "offer-not-rebuilt"
+)
 
 // now is the store's clock, in UTC.
 func (s *Store) now() time.Time { return s.cfg.Now().UTC() }

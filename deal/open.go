@@ -96,7 +96,7 @@ func (s *Store) CancelOffer(ctx context.Context, offerDigest, request string) (S
 		return Sent{}, err
 	}
 	if op != nil && op.state == sentWritten {
-		return Sent{}, inputError("this offer is already cancelled: `deal offer cancel` writes one cancellation per offer")
+		return Sent{}, coded(CodeCancelAgain, "", "this offer is already cancelled: Store.CancelOffer writes one cancellation per offer")
 	}
 	if op != nil && op.pair == nil {
 		if gone, err := s.supersede(ctx, op); err != nil {
@@ -151,10 +151,10 @@ func (s *Store) DeclineOffer(ctx context.Context, offerDigest, reason, request s
 		return Sent{}, err
 	}
 	if held == nil {
-		return Sent{}, inputError("this profile holds no offer with the digest " + offerDigest + ": receive it first (`deal receive`)")
+		return Sent{}, coded(CodeDeclineUnknownOffer, "", "this profile holds no offer with the digest "+offerDigest+": receive it first (Store.NoteReceived)", offerDigest)
 	}
 	if held.Own {
-		return Sent{}, inputError("you wrote this offer: withdraw it with `deal offer cancel`")
+		return Sent{}, coded(CodeDeclineOwnOffer, "", "you wrote this offer: withdraw it with Store.CancelOffer")
 	}
 	prop, ok := proposeOf(held.Record)
 	if !ok {
@@ -187,7 +187,7 @@ func (s *Store) DeclineOffer(ctx context.Context, offerDigest, reason, request s
 		return Sent{}, err
 	}
 	if op != nil && op.state == sentWritten {
-		return Sent{}, inputError("this offer is already declined: `deal offer decline` writes one decline per offer")
+		return Sent{}, coded(CodeDeclineAgain, "", "this offer is already declined: Store.DeclineOffer writes one decline per offer")
 	}
 	if op != nil && op.pair == nil && d.State != open {
 		// Nothing of it left the shelf, and the deal moved on (a cancellation
@@ -317,7 +317,7 @@ func (s *Store) Agree(ctx context.Context, cad *evidencebook.Cadence, offerDiges
 		return Agreement{}, err
 	}
 	if offer == nil {
-		return Agreement{}, inputError("this profile holds no offer with the digest " + offerDigest + ": `deal receive FILE` takes one")
+		return Agreement{}, coded(CodeAgreeUnknownOffer, "", "this profile holds no offer with the digest "+offerDigest+": Store.NoteReceived takes one", offerDigest)
 	}
 	prop, _ := proposeOf(offer.Record)
 	dealID := offer.Record.Block.DealID
@@ -336,7 +336,7 @@ func (s *Store) Agree(ctx context.Context, cad *evidencebook.Cadence, offerDiges
 	if pending, err := s.pendingDecline(ctx, dealID); err != nil {
 		return Agreement{}, err
 	} else if pending {
-		return Agreement{}, inputError("you began to decline this offer and it did not finish: run `deal offer decline` again to finish it. A declined offer has no deal to agree to.")
+		return Agreement{}, coded(CodeAgreeDeclineUnfinished, "", "you began to decline this offer and it did not finish: call Store.DeclineOffer again to finish it. A declined offer has no deal to agree to.")
 	}
 	// An agreement already sealed is returned again, never sealed twice.
 	if err := s.repairIfStopped(ctx, d); err != nil {
@@ -393,7 +393,7 @@ func (s *Store) Agree(ctx context.Context, cad *evidencebook.Cadence, offerDiges
 	} else if noLayer {
 		cptyKey = ""
 	} else if d.CounterpartyAgreement == "" {
-		return Agreement{}, inputError("the acceptor's agreement has not been received: `deal receive FILE` takes it, and you agree after")
+		return Agreement{}, coded(CodeAgreeBeforeReceive, "", "the acceptor's agreement has not been received: Store.NoteReceived takes it, and you agree after")
 	} else {
 		heldAcceptor = d.CounterpartyAgreement
 	}

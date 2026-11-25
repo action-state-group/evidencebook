@@ -63,7 +63,7 @@ func ParseAdmission(engineOutput []byte, at time.Time) (Admission, error) {
 		return Admission{}, inputError("capsule-engine's decision has no tier (a NO), so it is not sealed and no agreement can cite it: this deal is not admitted")
 	}
 	if !*out.AdmitsDeal {
-		return Admission{}, inputError(fmt.Sprintf("capsule-engine says this decision (%s) does not admit the deal: an agreement cites only one that does. If it asks for answers, answer them and run `capsule-engine admission evaluate --admit FILE` again with them; then run `deal admit` with the new output. A LIMIT whose tier does not hold the deal admits a smaller deal only", out.Verdict))
+		return Admission{}, coded(CodeAdmitNotAdmitted, "", fmt.Sprintf("capsule-engine says this decision (%s) does not admit the deal: an agreement cites only one that does. If it asks for answers, answer them and run `capsule-engine admission evaluate --admit FILE` again with them; then pass the new output to ParseAdmission and Store.Admit. A LIMIT whose tier does not hold the deal admits a smaller deal only", out.Verdict), out.Verdict)
 	}
 	// The body is sealed exactly as the engine printed it: Decode refuses a
 	// member the profile does not name, and Check runs the profile's schema
@@ -113,7 +113,7 @@ func (s *Store) Admit(ctx context.Context, dealID string, a Admission) (string, 
 		return "", err
 	}
 	if d == nil {
-		return "", inputError("deal " + dealID + " is not an x-deal-v1 deal this profile holds: make or receive its offer first (`deal offer`, `deal receive`)")
+		return "", coded(CodeAdmitUnknownDeal, "", "deal "+dealID+" is not an x-deal-v1 deal this profile holds: make or receive its offer first (Store.Offer, Store.NoteReceived)", dealID)
 	}
 	if d.State == "cancelled" || d.State == "declined" {
 		return "", inputError("this deal's offer is " + d.State + ": there is no deal to admit")
@@ -152,7 +152,7 @@ func (s *Store) sealAdmit(ctx context.Context, dealID string, payload []byte) (s
 		case sameAdmitBody(stored, payload):
 			payload = stored
 		case held:
-			return "", conflictf("deal %s already has an admission decision, %s, and `deal agree` cites that one: a deal has one, so to decide again, start a new deal", dealID, digest)
+			return "", codedConflict(CodeAdmitAgain, "deal "+dealID+" already has an admission decision, "+digest+", and Store.Agree cites that one: a deal has one, so to decide again, start a new deal", dealID, digest)
 		default:
 			if digest, err = s.bindAdmit(ctx, dealID, payload, true); err != nil {
 				return "", err
@@ -334,18 +334,18 @@ func (s *Store) agreementAdmit(ctx context.Context, dealID, admit string) (strin
 	}
 	switch {
 	case admit == "" && own == "":
-		return "", inputError("deal " + dealID + " has no admission decision: seal capsule-engine's with `deal admit --deal " + dealID + " --input FILE`, which an agreement cites")
+		return "", coded(CodeAgreeNoAdmit, "", "deal "+dealID+" has no admission decision: seal capsule-engine's with Store.Admit, which an agreement cites", dealID)
 	case admit == "":
 		return own, nil
 	case own != "" && admit != own:
-		return "", fieldError("admit", " "+admit+" is not this deal's admission decision: `deal admit` sealed "+own+" for deal "+dealID+", and the agreement cites that one")
+		return "", coded(CodeAgreeAdmitNotOwn, "admit", " "+admit+" is not this deal's admission decision: Store.Admit sealed "+own+" for deal "+dealID+", and the agreement cites that one", admit, own, dealID)
 	}
 	other, err := s.admitDealOf(ctx, admit)
 	if err != nil {
 		return "", err
 	}
 	if other != "" && other != dealID {
-		return "", fieldError("admit", " "+admit+" is the admission decision `deal admit` sealed for deal "+other+", not for deal "+dealID)
+		return "", coded(CodeAgreeAdmitOtherDeal, "admit", " "+admit+" is the admission decision Store.Admit sealed for deal "+other+", not for deal "+dealID, admit, other, dealID)
 	}
 	return admit, nil
 }

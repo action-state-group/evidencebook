@@ -179,6 +179,23 @@ func (p *side) receiveAgreement(ag Agreement) {
 	require.NoError(p.t, p.store.NoteReceived(p.t.Context(), Received{Book: &read}))
 }
 
+// assertCoded checks a coded refusal's Code and its exact Args.
+func assertCoded(t *testing.T, err error, code Code, args ...string) {
+	t.Helper()
+	var ie *InputError
+	var ce *ConflictError
+	switch {
+	case errors.As(err, &ie):
+		assert.Equal(t, code, ie.Code)
+		assert.Equal(t, args, ie.Args)
+	case errors.As(err, &ce):
+		assert.Equal(t, code, ce.Code)
+		assert.Equal(t, args, ce.Args)
+	default:
+		t.Fatalf("want a coded refusal %s, got %v", code, err)
+	}
+}
+
 func inputReason(t *testing.T, err error) string {
 	t.Helper()
 	var ie *InputError
@@ -310,6 +327,7 @@ func TestCancelOffer(t *testing.T) {
 	require.NoError(t, buyer.store.MarkWritten(ctx, c))
 	_, err = buyer.store.CancelOffer(ctx, offer.Digest, "c")
 	assert.Contains(t, inputReason(t, err), "this offer is already cancelled")
+	assertCoded(t, err, CodeCancelAgain)
 
 	d, err := buyer.store.Deal(ctx, offer.DealID)
 	require.NoError(t, err)
@@ -337,8 +355,10 @@ func TestDeclineOffer(t *testing.T) {
 
 	_, err = seller.store.DeclineOffer(ctx, offer.Digest, "", "d")
 	assert.Contains(t, inputReason(t, err), "receive it first")
+	assertCoded(t, err, CodeDeclineUnknownOffer, offer.Digest)
 	_, err = buyer.store.DeclineOffer(ctx, offer.Digest, "", "d")
 	assert.Contains(t, inputReason(t, err), "you wrote this offer")
+	assertCoded(t, err, CodeDeclineOwnOffer)
 	_, err = seller.store.DeclineOffer(ctx, offer.Digest, "bored", "d")
 	var ie *InputError
 	require.ErrorAs(t, err, &ie)
@@ -361,6 +381,7 @@ func TestDeclineOffer(t *testing.T) {
 	require.NoError(t, seller.store.MarkWritten(ctx, again))
 	_, err = seller.store.DeclineOffer(ctx, offer.Digest, "", "d")
 	assert.Contains(t, inputReason(t, err), "already declined")
+	assertCoded(t, err, CodeDeclineAgain)
 
 	// The offerer takes the decline: its offer is declined.
 	held, err := buyer.store.HeldOffer(ctx, offer.Digest)
@@ -412,6 +433,7 @@ func TestAdmit(t *testing.T) {
 	require.NoError(t, err)
 	_, err = seller.store.Admit(ctx, "deal-0000000000000000", a)
 	assert.Contains(t, inputReason(t, err), "make or receive its offer first")
+	assertCoded(t, err, CodeAdmitUnknownDeal, "deal-0000000000000000")
 
 	first, err := seller.store.Admit(ctx, offer.DealID, a)
 	require.NoError(t, err)
@@ -432,6 +454,7 @@ func TestAdmit(t *testing.T) {
 	_, err = seller.store.Admit(ctx, offer.DealID, other)
 	var ce *ConflictError
 	require.ErrorAs(t, err, &ce)
+	assertCoded(t, err, CodeAdmitAgain, offer.DealID, first)
 
 	// Agreed, the decision cannot change.
 	_, err = seller.store.Agree(ctx, seller.cadence, offer.Digest, AgreeOptions{})
@@ -449,11 +472,13 @@ func TestAgreeRefusals(t *testing.T) {
 
 	_, err = seller.store.Agree(ctx, seller.cadence, offer.Digest, AgreeOptions{})
 	assert.Contains(t, inputReason(t, err), "holds no offer with the digest")
+	assertCoded(t, err, CodeAgreeUnknownOffer, offer.Digest)
 
 	// The offerer agrees only once it holds the acceptor's agreement.
 	buyer.admit(offer.DealID)
 	_, err = buyer.store.Agree(ctx, buyer.cadence, offer.Digest, AgreeOptions{})
 	assert.Contains(t, inputReason(t, err), "the acceptor's agreement has not been received")
+	assertCoded(t, err, CodeAgreeBeforeReceive)
 
 	// An offer to another key is not agreed to.
 	other.receiveSent(offer.Pair, nil)
@@ -465,9 +490,10 @@ func TestAgreeRefusals(t *testing.T) {
 	seller.receiveSent(offer.Pair, nil)
 	_, err = seller.store.Agree(ctx, seller.cadence, offer.Digest, AgreeOptions{})
 	assert.Contains(t, inputReason(t, err), "has no admission decision")
+	assertCoded(t, err, CodeAgreeNoAdmit, offer.DealID)
 
 	// An admit or an intent that is not in the journal, or is another type.
-	seller.admit(offer.DealID)
+	own := seller.admit(offer.DealID)
 	_, err = seller.store.Agree(ctx, seller.cadence, offer.Digest, AgreeOptions{Intent: strings.Repeat("1", 64)})
 	var ie *InputError
 	require.ErrorAs(t, err, &ie)
@@ -477,6 +503,7 @@ func TestAgreeRefusals(t *testing.T) {
 	require.ErrorAs(t, err, &ie)
 	assert.Equal(t, "admit", ie.Field)
 	assert.Contains(t, ie.Reason, "is not this deal's admission decision")
+	assertCoded(t, err, CodeAgreeAdmitNotOwn, strings.Repeat("2", 64), own, offer.DealID)
 }
 
 func TestAnOfferToAPartyWithNoLayer(t *testing.T) {
@@ -537,6 +564,7 @@ func TestSealInBookRetriesATakenPlace(t *testing.T) {
 	require.NoError(t, err)
 	_, err = buyer.store.SealInBook(ctx, other.DealID, BookRecord{Body: statement})
 	assert.Contains(t, inputReason(t, err), "has no deal book yet")
+	assertCoded(t, err, CodeAgreeFirst, other.DealID)
 }
 
 func TestAStoppedSendIsFinishedOnce(t *testing.T) {
@@ -608,6 +636,7 @@ func TestAStoppedDeclineExcludesAnAgreement(t *testing.T) {
 	sealSent = real
 	_, err = seller.store.Agree(ctx, seller.cadence, offer.Digest, AgreeOptions{})
 	assert.Contains(t, inputReason(t, err), "you began to decline this offer")
+	assertCoded(t, err, CodeAgreeDeclineUnfinished)
 	// Running the decline again finishes it.
 	dec, err := seller.store.DeclineOffer(ctx, offer.Digest, "", "d")
 	require.NoError(t, err)
@@ -705,6 +734,7 @@ func TestASentRecordWithNoPairIsSealedAgainOrRefused(t *testing.T) {
 	var ce *ConflictError
 	require.ErrorAs(t, err, &ce)
 	assert.Contains(t, ce.Reason, "was sealed but its file was not made")
+	assertCoded(t, err, CodeOfferNotRebuilt, other.Digest)
 }
 
 func TestAgreeCitesOnlyTheDealsOwnAdmit(t *testing.T) {
@@ -736,7 +766,8 @@ func TestAgreeCitesOnlyTheDealsOwnAdmit(t *testing.T) {
 	var ie *InputError
 	require.ErrorAs(t, err, &ie)
 	assert.Equal(t, "admit", ie.Field)
-	assert.Contains(t, ie.Reason, "is the admission decision `deal admit` sealed for deal "+second.DealID)
+	assert.Contains(t, ie.Reason, "is the admission decision Store.Admit sealed for deal "+second.DealID)
+	assertCoded(t, err, CodeAgreeAdmitOtherDeal, admitSecond, second.DealID, first.DealID)
 
 	// The deal's own admit, named, is cited.
 	ag, err := seller.store.Agree(ctx, seller.cadence, second.Digest, AgreeOptions{Admit: admitSecond})
