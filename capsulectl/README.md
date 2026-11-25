@@ -81,9 +81,10 @@ has no `attestation` command). Without it, `SHA256SUMS` is the only check
 
 `capsulectl plugin install` names a plugin by its handshake, not by the file
 name, checks that it is built for the installed core, and refuses a mismatch.
-`capsulectl plugin ls` then lists both plugins, and also lists
-`capsulectl-deal.d` under `refused` ("not a regular file"): that is the deal
-view's folder, not a plugin, and nothing is wrong.
+`capsulectl plugin ls` then lists both plugins. A core up to
+`v0.1.0-rc53` also lists `capsulectl-deal.d` under `refused` ("not a regular
+file"): that is the deal view's folder, not a plugin, and nothing is wrong
+(capsule-cli#635).
 
 ## The History card page
 
