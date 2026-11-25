@@ -143,11 +143,11 @@ window in the range by the pack's digest, pinning its final checkpoint; the hold
 window's journal); the requester runs `RecordWindowChain` and `ReportFromWindows`; anyone runs
 `VerifyReportCoverage`, which names every gap.
 
-**The what, decided: (b).** Sherlock2 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=1dec2d22e3d3ea0f518f464c400e513478db0ebb12aeac18be4b714f468401a1&thread=d90677151450165ee08197e67e240adfba3e7710092e6598167404fea5a143ba):
+**The what, decided: (b).** Sherlock2 ([#797 record, item 1](https://github.com/action-state-group/evidencebook/issues/797#issuecomment-7167643874)):
 (b), because a report that passes coverage with every agreement, perform and settle left out is a
 false green; a deal's line says it runs past the window: "deal <log id> answered over its whole
 book, through <checkpoint>". In the discussion round on the twin's points
-(buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=721fff7f33a117bd9fc69692dbe8e19f1b291c74b2bb77c7b58ea4c6a7a8d6b8&thread=d90677151450165ee08197e67e240adfba3e7710092e6598167404fea5a143ba):
+([#797 record, item 2](https://github.com/action-state-group/evidencebook/issues/797#issuecomment-7167643874)):
 the #606 limit (rows proven in the holder's log; field values the holder's word; no proof that no
 row was left out) is stated once per report beside the coverage section, and again on anything
 shown on its own, such as one deal's answer or a single-deal view. The question as asked: A window's journal holds offers, admissions,

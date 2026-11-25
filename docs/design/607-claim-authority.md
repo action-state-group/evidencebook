@@ -11,10 +11,10 @@ Steven's ruling of 2026-11-19 on evidencebook-deal#207 (ops `company-oss/inbox.m
 adjudicator copy only, the claims its agent made without authority, by an explicit per-share
 opt-in, default off, and **never on the counterparty copy**. Sherlock confirmed that keeping the
 claim and moving the seller's verdict off it is a fix under that ruling, not a new consent
-question (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=2abeb751210e53195d88667f4c9babdf6c5d6545790c54d22859e79067d017c4).
+question ([#607 record, item 1](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)).
 Steven's 2026-11-21 ruling on the adjudicator copy ("yes, uniformly": it hides the claims and
 their words unless the seller opts in;
-buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=7d9210a9ffeaa627876cbb939d9ef3c61ac0ed9520d2cc118f2a29f72b5bf87d)
+[#607 record, item 2](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806))
 is carried out by evidencebook-deal#231 and is kept as is here.
 
 When this item and evidencebook-deal#244 are done, a counterparty copy of a seller's deal carries
@@ -177,7 +177,7 @@ PROFILE.md gains a paragraph under rule 12 and section 4's "Where openings trave
     against). Section 6 says why.
 - **An adjudicator copy** is evidencebook-deal#231's: by default it withholds every agent claim,
   every `claim_authority` and the represent trail (Sherlock on evidencebook-deal#245,
-  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=effe0673354608775358f3fa42a5ac47106fb4a3f0e34b99b6679f2b6667a5b5);
+  [#607 record, item 3](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806));
   with the seller's opt-in (all or nothing per deal) it carries all of them.
 
 ## 6. Versioning and existing books
@@ -225,7 +225,7 @@ deal with the same party. Its counterparty copy lacks steps the buyer may know h
 happened can tell they were not authorized, never why. Unlike the position hint, this can prove that a step was not
 authorized. Closing it would mean withholding every act and outcome, including the offers rule 10
 gives the buyer in full. Sherlock routed it to Steven with the recommendation to accept it as a
-stated limit (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dc33a5bc87d97eefbfca7fc7e858f7837d9ddaa2f57749752a296f695f9590c2&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
+stated limit ([#607 record, item 4](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)).
 
 ## 8. Work in evidencebook
 
@@ -263,33 +263,33 @@ it runs the reference checker, the same tag's `check_profile.py`.
 - The copy rule that withholds the represent trail from the counterparty copy changes what the
   buyer sees (today it sees the seller's checks and approvals of representations). It is needed for
   that ruling (section 2, leaks 2 and 3), and it is part of the same door confirmation.
-- Sherlock confirmed the first two (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=0597a2f1589b5578d4ff3f083c97e4f482f480aa344bbcbf1cfaa1714bb8579e&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
+- Sherlock confirmed the first two ([#607 record, item 5](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)).
 - Two calls were Steven's, each with Sherlock's recommendation "yes" (same thread): the old-shape
   claims a buyer no longer sees on existing deals (section 6), since no format change can reach
   them (Sherlock2's rule in 2abeb751), and the positional limit (section 7). Steven: "607 yes"
-  (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=c0fa0900a46e53bdd791f7179cbc8b555064113ca118608b6cfaecc6e179a993),
+  ([#607 record, item 6](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)),
   recorded by Sherlock as (1) old-shape claims withheld uniformly with no flag and (2) the
   position hint accepted, its limit stated in PROFILE.md and the CHANGELOG (ops 58970b48;
-  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=f1bfdf6cd0d1548052f4e4cc08e8f20610571c18231eae9ab07d5ec7d3b8b3e5).
+  [#607 record, item 7](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)).
 - Withholding every evaluation and every unchecked act's outcome from a rule 12 deal's
   counterparty copy (leak 4): inside that ruling, no Steven call (Sherlock,
-  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=ebc66c63feee9b572ae7f483687ab8d375cce8d25f6f41a2ff84457fd93160e6&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260),
+  [#607 record, item 8](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)),
   on two conditions: the rule is scoped by deal ("this deal follows rule 12"), with no per-record
   branching inside such a deal; and evidencebook-deal#244 tests that on the probe deal (an ordered
   claim with no check, then an offer) the string `required_representation_missing` is in no
   disclosed record of the counterparty copy and the copy still verifies.
 - evidencebook#613's additions (every answer to a check, every telling, every close): inside
   that ruling, no new product meaning (Sherlock,
-  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=69334be4443defcbd62abab6c808751efffd19ef2be2a413ddbcec1d7dc06e7a&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260),
+  [#607 record, item 9](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)),
   narrowed to answers to a check, and widened to every telling in place of only the unauthorized
   ones, Sherlock's decision (withholding only the latter branches on the verdict); the report says
   "not shared" where no end outcome is disclosed
-  (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dc33a5bc87d97eefbfca7fc7e858f7837d9ddaa2f57749752a296f695f9590c2&thread=5d78d8545f22a3e27ccdf1fac5266bad8afc474f69c151e9b52d7b6177481260).
+  ([#607 record, item 4](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)).
   The second limit of section 7 was Steven's call, asked in the same message (with
   `material_fields_changed` and a share check in a later deal with the same party added in
-  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=e847a49fa3d8c376391330275c0c5ad720b137e708b770d2f16ae762308f30c3&thread=0ff395c6f7124ca77b9172d4e78fb87cf249649b0b44d45667f4cf8b5e68878e);
+  [#607 record, item 10](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806));
   Steven accepted it ("1 yes",
-  buzz://message?channel=0aa5b48e-4d4d-420a-a9b6-c14c2b4a3ec0&id=edb00af7bfb4bed00dbbc340c2e4f4a2693b74b6da45fb347864b7c3a88146a3&thread=e24765fd0b04cdf01a7cf4fc624478466c9a96bdcb56e204aee7c53c2c7d05d4).
+  [#607 record, item 11](https://github.com/action-state-group/evidencebook/issues/607#issuecomment-7167662806)).
 
 ## 10. Test plan
 
