@@ -22,6 +22,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/dealprofile"
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -74,6 +75,14 @@ type dealRules struct {
 	Grade string `json:"grade,omitempty"`
 	// History is what the checker was given beside the record.
 	History *dealRulesHistory `json:"history,omitempty"`
+	// ReceivedHistory binds, by digest, the counterparty's verified History
+	// the run read (`deal check --history`, capsule-cli#327 §5.4): set when
+	// the checker was started with it, whatever it answered, and sealed on
+	// an x-deal-v1 verdict as its received_history member (v1Record). Its
+	// AloneDeny marks a deny the checker gave only given the History, which
+	// the check asks about instead (D1 condition 1, effectiveRulesVerdict);
+	// Verdict keeps the checker's deny, so the bound input re-checks.
+	ReceivedHistory *xdealv1.ReceivedHistoryDigests `json:"received_history,omitempty"`
 	// Notice is the checker's one line for the person (external-check-result/v0
 	// notice), as the run reported it. Only the run that was given received
 	// cards is read for it (receivedNotice); json:"-" keeps it out of every
@@ -337,7 +346,7 @@ func sealableRules(r dealRules, localValues []string) dealRules {
 		why = why[i+len("refusing to seal: "):]
 	}
 	return dealRules{Status: "not_evaluated", Cause: "unreadable", CheckerSHA256: r.CheckerSHA256,
-		Reason: "the rules checker's answer could not be sealed (" + why + ")"}
+		Reason: "the rules checker's answer could not be sealed (" + why + ")", ReceivedHistory: r.ReceivedHistory}
 }
 
 // rulesDeclaredNotMeasured is the reason a checker gives for a rule its
@@ -444,6 +453,12 @@ func rulesDifferences(r *dealRules) []dealDifference {
 	if r == nil {
 		return nil
 	}
+	if historyAloneDeny(r) {
+		// Read as the escalation condition 1 allows, with a line saying why.
+		asked := *r
+		asked.Verdict = effectiveRulesVerdict(r)
+		return append(rulesDifferences(&asked), dealDifference{Question: "safety", Rule: "rules_escalate", Text: historyAloneText})
+	}
 	if r.Status == "not_evaluated" {
 		return []dealDifference{{Question: "safety", Rule: "rules_not_checked", Text: "Your rules were not checked: " + r.Reason}}
 	}
@@ -500,6 +515,28 @@ func rulesDifferences(r *dealRules) []dealDifference {
 		out = append(out, dealDifference{Question: "safety", Rule: rule, Text: "Your rules (" + r.RulesetID + "): " + r.Verdict})
 	}
 	return out
+}
+
+// historyAloneText says why a deny reads as a question: the counterparty's
+// History alone never decides no (D1 condition 1).
+const historyAloneText = "Your rules would refuse this only because of the counterparty's History, which never refuses on its own: you decide"
+
+// effectiveRulesVerdict is the rules verdict a check acts on: the checker's,
+// except a deny History alone caused, which asks (escalate).
+func effectiveRulesVerdict(r *dealRules) string {
+	switch {
+	case r == nil:
+		return ""
+	case historyAloneDeny(r):
+		return "escalate"
+	}
+	return r.Verdict
+}
+
+// historyAloneDeny is whether r is a deny the checker gave only given the
+// counterparty's History.
+func historyAloneDeny(r *dealRules) bool {
+	return r.Verdict == "deny" && r.ReceivedHistory != nil && r.ReceivedHistory.AloneDeny
 }
 
 func compactJSON(raw json.RawMessage) string {

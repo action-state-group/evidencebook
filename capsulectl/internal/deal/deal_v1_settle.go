@@ -528,6 +528,9 @@ func (s *dealSession) checkRecord(ctx context.Context, dealID, digest string) (*
 
 // settleIn is what `deal settle` reads from its flags.
 type settleIn struct {
+	// history is the counterparty's History a pay check read, given again
+	// to --sent (readReceivedHistory), or nil.
+	history                                               *receivedHistory
 	dealID, check, status, row, reverses, supersedes, out string
 	sent, noRef                                           bool
 	ref                                                   paymentRefFlags
@@ -653,6 +656,13 @@ func dealSettleCommand() *cobra.Command {
 			case !in.sent && in.out == "":
 				return cli.InputError("--out is required: the file to send")
 			}
+			var err error
+			if in.history, err = readReceivedHistory(c); err != nil {
+				return err
+			}
+			if in.history != nil && !in.sent {
+				return cli.InputError("--history goes with --sent: the payment is checked again there against the History its check read")
+			}
 			v1ReceiveContext(c)
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
 				return s.settle(ctx, c, in)
@@ -663,6 +673,8 @@ func dealSettleCommand() *cobra.Command {
 	f.String("deal", "", "The x-deal-v1 deal (required)")
 	f.String("check", "", "Your passing pay check (or cancel check, for a refund) that a payment rests on: the check_id deal check printed (or the check record's digest)")
 	f.Bool("sent", false, "Before the handoff: check the payment and count it as in flight; seals no leg")
+	f.StringArray("history", nil, "With --sent, when the pay check read the counterparty's History (deal check --history): the same History files, verified again, so the payment is checked against what the check read")
+	f.StringSlice("counterparty-key", nil, "With --history: the same counterparty key the check used, from your deployment policy")
 	f.String("status", "", "settled or failed for a payment when the rail answers; pending, settled or failed for what you received")
 	f.String("row", "", "The payment row (default: the offer's only one)")
 	f.String("reverses", "", "A leg of your own book that this leg refunds")
@@ -896,7 +908,7 @@ func (s *dealSession) settleSent(ctx context.Context, c *cobra.Command, a *v1Act
 		return err
 	}
 	if cb.Action == "pay" {
-		if err := s.recheckAtSend(ctx, in.dealID, events, in.check); err != nil {
+		if err := s.recheckAtSend(ctx, in.dealID, events, in.check, in.history); err != nil {
 			return err
 		}
 	}

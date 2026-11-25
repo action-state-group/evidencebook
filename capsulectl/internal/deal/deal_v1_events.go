@@ -334,6 +334,11 @@ func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) ([]byte, stri
 	if rtype == "check" && ev.Snapshot != nil && ev.Snapshot.PaymentRef != "" {
 		nb["payment_ref"] = ev.Snapshot.PaymentRef
 	}
+	// The counterparty's History the rules read, by digest (`deal check
+	// --history`): v1's own member beside v0's closed body_verdict.
+	if rtype == "verdict" && ev.Check != nil && ev.Check.Rules != nil && ev.Check.Rules.ReceivedHistory != nil {
+		nb["received_history"] = ev.Check.Rules.ReceivedHistory
+	}
 	if v1NonceTypes[rtype] {
 		nonce, err := xdealv1.NewNonce()
 		if err != nil {
