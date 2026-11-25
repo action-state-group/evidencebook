@@ -4,6 +4,7 @@ package deal
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -57,6 +58,10 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 			given = includeUnauthorizedFlag
 		}
 		return cli.InputError("--" + given + " chooses what an x-deal-v0 adjudicator's copy carries; it does not apply to an x-deal-v1 report")
+	case f.Changed("withheld") && !f.Changed("bundle"):
+		return cli.InputError("--withheld writes the withheld form of your deal book's bundle, the one a countersigner is shown: use it with --bundle FILE")
+	case f.Changed("withheld") && f.Changed("share") && f.Lookup("share").Value.String() != dealprofile.AudienceKeep:
+		return cli.InputError("--withheld writes the bundle you ask a countersigner to sign (`countersign request`); it is not a copy for the other side or an adjudicator: drop --share")
 	case f.Changed("out") && f.Changed("bundle"):
 		return cli.InputError("--out writes the sealed report and --bundle the Evidence Bundle that carries it: choose one")
 	case readOnly && (f.Changed("out") || f.Changed("bundle") || f.Changed("share") || f.Changed("to")):
@@ -204,6 +209,13 @@ func runV1Report(c *cobra.Command) (err error) {
 	// evidencebook#729), no v1 act carries one, so every act is one PROFILE
 	// §8 says must not be relied on: the report says so beside settled.
 	result := map[string]any{"deal_id": dealID, "report": snap.Report, "settled_note": personSignatureNote}
+	// The countersign stamp from the stored countersignatures, beside the
+	// report and never in the sealed payload (evidencebook#865).
+	countersign, err := s.v1StoredCountersign(ctx, d)
+	if err != nil {
+		return err
+	}
+	result["countersign"] = countersign
 	// The payment rows' notes sit beside the report, keyed by row id, so the
 	// printed report stays the payload that is sealed (evidencebook#771).
 	var ids []string
@@ -216,6 +228,9 @@ func runV1Report(c *cobra.Command) (err error) {
 		return err
 	} else if len(notes) > 0 {
 		result["row_notes"] = notes
+	}
+	if withheld, _ := c.Flags().GetBool("withheld"); withheld {
+		return s.writeV1Withheld(c, dealID, d, snap, out, result)
 	}
 	if out != "" {
 		pair, digest, err := s.sealV1Report(p, snap.Report, at)
@@ -463,11 +478,49 @@ func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, 
 // in it would make every later report refuse it. The bundle is checked as a
 // reader checks it before it is returned.
 func (s *dealSession) v1ReportBundle(ctx context.Context, logID string, snap xdealv1.ReportSnapshot, pair []byte, sealed string) ([]byte, error) {
+	var carried struct {
+		Record     json.RawMessage `json:"record"`
+		AgentInput json.RawMessage `json:"agent_input"`
+	}
+	if err := json.Unmarshal(pair, &carried); err != nil {
+		return nil, err
+	}
+	reportExt, err := json.Marshal(map[string]json.RawMessage{"record": carried.Record, "agent_input": carried.AgentInput})
+	if err != nil {
+		return nil, err
+	}
+	v1Ext, err := json.Marshal(xdealv1.ReportBundle{SealedReport: sealed, Book: snap.Book})
+	if err != nil {
+		return nil, err
+	}
+	raw, err := s.v1BookBundle(ctx, logID, snap.Report.DealCheckpoint,
+		map[string]json.RawMessage{xdealv1.Profile: v1Ext, dealprofile.ReportExtension: reportExt}, nil)
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := cli.DecodeBundleJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := cli.VerifyProducedBundle(decoded, true); err != nil {
+		return nil, err
+	}
+	if err := checkProducedReport(decoded); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// v1BookBundle is the deal book's Evidence Bundle at checkpoint at: every
+// record of the book up to it with its payload, and the extensions given.
+// The book is not written to: the checkpoint is one it has and no
+// disclosure record is appended. A producerKey, when given, is declared in
+// the producer-key/v1 extension.
+func (s *dealSession) v1BookBundle(ctx context.Context, logID string, at dealprofile.Checkpoint, extensions map[string]json.RawMessage, producerKey ed25519.PublicKey) ([]byte, error) {
 	book, err := s.shelf.Open(ctx, logID)
 	if err != nil {
 		return nil, err
 	}
-	at := snap.Report.DealCheckpoint
 	cps, err := book.Checkpoints(ctx)
 	if err != nil {
 		return nil, err
@@ -492,37 +545,11 @@ func (s *dealSession) v1ReportBundle(ctx context.Context, logID string, snap xde
 	for _, r := range records {
 		ids = append(ids, r.RecordID)
 	}
-	var carried struct {
-		Record     json.RawMessage `json:"record"`
-		AgentInput json.RawMessage `json:"agent_input"`
-	}
-	if err := json.Unmarshal(pair, &carried); err != nil {
-		return nil, err
-	}
-	reportExt, err := json.Marshal(map[string]json.RawMessage{"record": carried.Record, "agent_input": carried.AgentInput})
-	if err != nil {
-		return nil, err
-	}
-	v1Ext, err := json.Marshal(xdealv1.ReportBundle{SealedReport: sealed, Book: snap.Book})
-	if err != nil {
-		return nil, err
-	}
 	b, err := book.Bundle(ctx, evidencebook.BundleRequest{
 		Root: ids[len(ids)-1], Include: ids, Payloads: evidencebook.PayloadsAll,
-		At: anchor, DisclosureRecordedElsewhere: true,
-		Extensions: map[string]json.RawMessage{xdealv1.Profile: v1Ext, dealprofile.ReportExtension: reportExt},
+		At: anchor, DisclosureRecordedElsewhere: true, Extensions: extensions, ProducerKey: producerKey,
 	})
 	if err != nil {
-		return nil, err
-	}
-	decoded, err := cli.DecodeBundleJSON(b.JSON)
-	if err != nil {
-		return nil, err
-	}
-	if err := cli.VerifyProducedBundle(decoded, true); err != nil {
-		return nil, err
-	}
-	if err := checkProducedReport(decoded); err != nil {
 		return nil, err
 	}
 	return b.JSON, nil

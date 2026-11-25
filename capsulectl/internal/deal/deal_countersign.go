@@ -229,6 +229,51 @@ func decodeCountersignEntries(path string) ([]cli.CountersignatureEntry, error) 
 	return entries, nil
 }
 
+var errNoCountersignDirectory = cli.InputError("--directory is required when the profile names no countersigner directory (profile update --countersign-directory): a countersigner directory URL or file you choose, to resolve who signed")
+
+// countersignBundle is `deal countersign` once b is known to be this deal's
+// bundle, read from bundlePath: it attaches the entries at entryPath (when
+// given), verifies every countersignature b carries against directory,
+// keeps a verified one with the exact bundle it covers, and rewrites
+// bundlePath when something was attached.
+func (s *dealSession) countersignBundle(c *cobra.Command, dealID string, b map[string]interface{}, bundlePath, entryPath, directory string) error {
+	ctx := c.Context()
+	if entryPath != "" {
+		entries, err := decodeCountersignEntries(entryPath)
+		if err != nil {
+			return err
+		}
+		if err = cli.AttachCountersignatures(b, entries); err != nil {
+			return err
+		}
+	}
+	view, err := dealCountersignVerify(ctx, b, directory, s.p)
+	if err != nil {
+		return err
+	}
+	// Every countersignature that verified is kept with the exact bundle it
+	// covers, so a later report states it (deal_grade.go) whichever file the
+	// user keeps.
+	if view.Finding != "not_countersigned" {
+		if err = s.storeCountersigned(ctx, dealID, b); err != nil {
+			return err
+		}
+	}
+	out := map[string]any{"deal_id": dealID, "bundle": bundlePath, "countersign": view}
+	if entryPath != "" {
+		data, err := json.Marshal(b)
+		if err != nil {
+			return err
+		}
+		if err = cli.AtomicFile(bundlePath, data, true); err != nil {
+			return err
+		}
+		out["attached"] = true
+	}
+	cli.Speak(out, s.p, func(w cli.Wording) cli.Narration { return countersignLine(w, view) })
+	return cli.Output(c, out)
+}
+
 func dealCountersignCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "countersign", Short: "Verify (and with --entry, attach) a countersignature on this deal's report bundle and keep it with that bundle; sends nothing", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		bundlePath, _ := c.Flags().GetString("bundle")
@@ -237,51 +282,25 @@ func dealCountersignCommand() *cobra.Command {
 		if bundlePath == "" {
 			return cli.InputError("--bundle is required: this deal's report bundle file, from `deal report --bundle`")
 		}
+		// An x-deal-v1 deal checks its bundle against its deal book
+		// (deal_v1_countersign.go).
+		if v1, err := v1DealOfFlag(c); err != nil {
+			return err
+		} else if v1 {
+			return runV1Countersign(c, bundlePath, entryPath, directory)
+		}
 		return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
 			if directory == "" {
 				directory = profileCountersignDirectory(s.p)
 			}
 			if directory == "" {
-				return cli.InputError("--directory is required when the profile names no countersigner directory (profile update --countersign-directory): a countersigner directory URL or file you choose, to resolve who signed")
+				return errNoCountersignDirectory
 			}
 			b, err := s.dealBundleOf(bundlePath, dealID, events)
 			if err != nil {
 				return err
 			}
-			if entryPath != "" {
-				entries, err := decodeCountersignEntries(entryPath)
-				if err != nil {
-					return err
-				}
-				if err = cli.AttachCountersignatures(b, entries); err != nil {
-					return err
-				}
-			}
-			view, err := dealCountersignVerify(ctx, b, directory, s.p)
-			if err != nil {
-				return err
-			}
-			// Every countersignature that verified is kept with the exact
-			// bundle it covers, so a later report states it (deal_grade.go)
-			// whichever file the user keeps.
-			if view.Finding != "not_countersigned" {
-				if err = s.storeCountersigned(ctx, dealID, b); err != nil {
-					return err
-				}
-			}
-			out := map[string]any{"deal_id": dealID, "bundle": bundlePath, "countersign": view}
-			if entryPath != "" {
-				data, err := json.Marshal(b)
-				if err != nil {
-					return err
-				}
-				if err = cli.AtomicFile(bundlePath, data, true); err != nil {
-					return err
-				}
-				out["attached"] = true
-			}
-			cli.Speak(out, s.p, func(w cli.Wording) cli.Narration { return countersignLine(w, view) })
-			return cli.Output(c, out)
+			return s.countersignBundle(c, dealID, b, bundlePath, entryPath, directory)
 		})
 	}}
 	cmd.Flags().String("deal", "", "Deal ID from `deal open`")

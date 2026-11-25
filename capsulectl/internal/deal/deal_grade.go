@@ -75,6 +75,10 @@ type dealGradeCountersign struct {
 	ThroughStep  int    `json:"through_step,omitempty"`
 	Steps        int    `json:"steps,omitempty"`
 
+	// Covers says, for an x-deal-v1 deal with a rung, what the signed
+	// bundle covers and what it does not.
+	Covers string `json:"covers,omitempty"`
+
 	Finding   string                       `json:"finding,omitempty"`
 	Directory string                       `json:"directory,omitempty"`
 	Entries   []dealStoredCountersignature `json:"entries,omitempty"`
@@ -218,8 +222,26 @@ ON CONFLICT(deal_id, bundle_digest) DO UPDATE SET bundle=excluded.bundle`,
 // profile's countersigner directory only, so the rung never depends on who
 // asks. Nothing is attached to any other bundle.
 func (s *dealSession) storedCountersign(ctx context.Context, events []sealedEvent) (dealGradeCountersign, error) {
-	out := dealGradeCountersign{Directory: profileCountersignDirectory(s.p)}
+	steps := map[string]int{}
+	for i, se := range events {
+		steps[se.CapsuleID] = i + 1
+	}
 	dealID := events[0].Event.DealID
+	return s.storedCountersignOf(ctx, dealID, len(events), func(raw []byte) (map[string]interface{}, int, error) {
+		b, err := s.dealBundleCheck(raw, dealID, events)
+		if err != nil {
+			return nil, 0, err
+		}
+		return b, steps[fmt.Sprint(b["root"])], nil
+	})
+}
+
+// storedCountersignOf is storedCountersign over a deal of total steps whose
+// stored bundles check reads: it returns the bundle as this deal's and how
+// far into the deal its root reaches (step 1 to total), or an error when the
+// stored bundle no longer checks as this deal's.
+func (s *dealSession) storedCountersignOf(ctx context.Context, dealID string, total int, check func(raw []byte) (map[string]interface{}, int, error)) (dealGradeCountersign, error) {
+	out := dealGradeCountersign{Directory: profileCountersignDirectory(s.p)}
 	rows, err := s.db.QueryContext(ctx, `SELECT bundle_digest, bundle FROM deal_countersignatures WHERE deal_id=? ORDER BY stored_at, bundle_digest`, dealID)
 	if err != nil {
 		// A store no writer has opened since this build has no such table,
@@ -250,17 +272,13 @@ func (s *dealSession) storedCountersign(ctx context.Context, events []sealedEven
 		return out, err
 	}
 	client := &http.Client{Timeout: 10 * time.Second}
-	steps := map[string]int{}
-	for i, se := range events {
-		steps[se.CapsuleID] = i + 1
-	}
 	// Once the directory could not be read, it is not read again for the
 	// next stored bundle: each attempt can wait out the client's timeout
 	// while the store's lock is held.
 	unreadable := false
 	for _, r := range held {
-		b, err := s.dealBundleCheck(r.raw, dealID, events)
-		through, reason := 0, ""
+		b, through, err := check(r.raw)
+		reason := ""
 		var reports []cli.CountersignatureReport
 		switch {
 		case err != nil:
@@ -274,9 +292,6 @@ func (s *dealSession) storedCountersign(ctx context.Context, events []sealedEven
 				unreadable, reason = true, "directory_unreadable"
 			}
 		}
-		if err == nil {
-			through = steps[fmt.Sprint(b["root"])]
-		}
 		if reason != "" {
 			// Not checked here: the entries are named, never counted.
 			unchecked, _ := cli.DecodeBundleJSON(r.raw)
@@ -285,14 +300,14 @@ func (s *dealSession) storedCountersign(ctx context.Context, events []sealedEven
 				m, _ := e.(map[string]interface{})
 				signer, _ := m["signer"].(map[string]interface{})
 				keyID, _ := signer["key_id"].(string)
-				out.Entries = append(out.Entries, dealStoredCountersignature{State: "unchecked", UncheckedReason: reason, KeyID: keyID, ThroughStep: through, Steps: len(events), BundleDigest: r.digest})
+				out.Entries = append(out.Entries, dealStoredCountersignature{State: "unchecked", UncheckedReason: reason, KeyID: keyID, ThroughStep: through, Steps: total, BundleDigest: r.digest})
 			}
 			continue
 		}
 		for _, rep := range reports {
 			out.Entries = append(out.Entries, dealStoredCountersignature{
 				State: rep.State, Signer: rep.SignerName, KeyID: rep.Signer.KeyID, RecomputedAt: rep.RecomputedAt,
-				Receipt: rep.Receipt, ThroughStep: through, Steps: len(events), BundleDigest: r.digest,
+				Receipt: rep.Receipt, ThroughStep: through, Steps: total, BundleDigest: r.digest,
 			})
 		}
 	}
@@ -317,7 +332,7 @@ func (s *dealSession) storedCountersign(ctx context.Context, events []sealedEven
 		// Countersigned in part, like witnessed in part, when the deal has
 		// steps after every resolved countersignature's bundle.
 		out.Rung = "countersigned"
-		if decides.ThroughStep < len(events) {
+		if decides.ThroughStep < total {
 			out.Rung = "countersigned_in_part"
 		}
 		out.Signer, out.RecomputedAt, out.ThroughStep, out.Steps = decides.Signer, decides.RecomputedAt, decides.ThroughStep, decides.Steps
