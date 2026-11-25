@@ -305,7 +305,9 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   or by hand with `capsulectl --profile deal deal tick`, which retries
   pending deliveries whether or not a tick is due. They go oldest first,
   since the witness takes a checkpoint only after its predecessor, and a
-  run stops at the first one the witness does not take. A run without
+  run stops at the first one that gets no receipt and has not failed for
+  good (one failed for good is passed over, and the witness decides on the
+  next without it). A run without
   `--wait-up-to` also stops once it has spent `--deliver-for` (5s by
   default) on deliveries, checked between them; each row it left is listed
   in `pending` with `not_tried_this_run: true` and its stored reason, for a
