@@ -487,22 +487,6 @@ is only one); `--withdraw` takes back your open dispute on the row. The user
 sends the file to the other side. What goes to the referee is the user's
 to make, not yours.
 
-The adjudicator (the referee the agreement names) may ask the user for the
-deal: a request file whose derivation is `deal_adjudicator_copy/1`. The answer
-is the user's whole deal book and the copy of the other side's book the user
-holds, with the book's stamps; there is no part-answer. Tell the user what
-leaves (the whole deal book and the copy of the other side's book) and answer
-only when the user says to:
-
-```sh
-capsulectl --profile deal deal respond --request request.json --requester ADJUDICATOR_KEY --output answer.json
-```
-
-`ADJUDICATOR_KEY` is the key id the agreement names for the adjudicator; a
-request for a deal the user does not hold, or from anyone else, is refused. The
-user sends `answer.json` to the adjudicator. The answer is recorded in the user's
-journal. The private floor and the agent's claims are never in it.
-
 The ruling is the referee's own record, which reaches you as a file. Keep it,
 and write the statement that enters it in the user's book:
 
@@ -522,11 +506,12 @@ user that line as it is: the referee's key is a party's, or bound to one.
 Never say a referee is independent. A controller binding the user holds, such
 as one the referee's operator publishes, is checked with `--binding FILE`.
 
-A ruling read from the parties' answers also says what the adjudicator read each
-side's book from (`sources`). Tell the user any "not shown to the adjudicator"
+A ruling read from the parties' answers also says what the referee read each
+side's book from (`sources`). Tell the user each source it lists as not shown,
 as it is: a side that did not answer is not said to have refused, and a ruling
 against it rests only on records it signed. A `fork` line means that side
-signed two different records at one place.
+signed two different records at one place. A request from the referee for the
+deal is the user's to answer, never yours (`deal respond --help` says how).
 
 To challenge a ruling the user holds, by the digest `deal receive` printed:
 
