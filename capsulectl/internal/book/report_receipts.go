@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
-	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
+	"github.com/action-state-group/capsule-viewer/go/emitter"
+	"github.com/action-state-group/capsule-viewer/go/receipt"
 	"github.com/action-state-group/evidencebook/report"
 )
 
@@ -35,7 +36,7 @@ type receiptEntry struct {
 }
 
 // readReceipts reads --receipts, a JSON list of receiptEntry, into the
-// report's Receipts with the deal view as the module that opens them. An empty
+// report's Receipts with capsule-viewer's receipt modules as the modules that open them. An empty
 // path carries nothing (nil: the page is the page built without the flag). The
 // builder never decides what the share policy allows: the caller's file does,
 // and report.Build maps each entry to the deal whose claims cite its exchange
@@ -90,18 +91,26 @@ func readReceipts(path string) (*report.Receipts, error) {
 			deals[i].Bundle = string(e.Receipt)
 		}
 	}
-	module, err := assets.Module()
-	if err != nil {
-		return nil, err
+	// The page opens each receipt with capsule-viewer's receipt modules, the
+	// one receipt renderer (capsule-viewer#383): an owner's or counterparty's
+	// copy with the unilateral module, a seller's with the seller module.
+	var modules []emitter.Module
+	for _, kind := range []string{receipt.Unilateral, receipt.Seller} {
+		module, err := receipt.Module(kind)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, module)
 	}
-	return &report.Receipts{Module: module, Deals: deals, Gate: dealVerify}, nil
+	return &report.Receipts{Modules: modules, Deals: deals, Gate: dealVerify}, nil
 }
 
 // receiptVerifyTimeout bounds one receipt's `capsulectl deal verify`.
 const receiptVerifyTimeout = 2 * time.Minute
 
 // dealVerify is each carried receipt's own check: the deal plugin's
-// `capsulectl deal verify --bundle` must call it VALID (evidencebook#735).
+// `capsulectl deal verify --bundle` must call it VALID (evidencebook#735),
+// or INCOMPLETE only as a producer selection (producerSelection).
 // capsule-cli's page gate reads no deal section since rc50 (#609), and this
 // plugin links no deal code, so it calls the deal plugin through the command
 // line, by the capsulectl that launched it (CAPSULECTL_BIN, else capsulectl
@@ -124,13 +133,7 @@ func dealVerify(bundle []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), receiptVerifyTimeout)
 	defer cancel()
 	out, runErr := exec.CommandContext(ctx, bin, "deal", "verify", "--bundle", path).Output()
-	var result struct {
-		Verdict      string `json:"verdict"`
-		ReaderClaims []struct {
-			Status   string   `json:"status"`
-			Findings []string `json:"findings"`
-		} `json:"reader_claims"`
-	}
+	var result dealVerifyResult
 	if json.Unmarshal(out, &result) != nil || result.Verdict == "" {
 		why := "it printed no verdict"
 		if runErr != nil {
@@ -138,7 +141,7 @@ func dealVerify(bundle []byte) error {
 		}
 		return cli.InputError("capsulectl deal verify --bundle could not check the receipt (" + why + "): --receipts needs the deal plugin installed")
 	}
-	if result.Verdict != "VALID" {
+	if result.Verdict != "VALID" && !result.producerSelection() {
 		var findings []string
 		for _, c := range result.ReaderClaims {
 			if c.Status == "fail" {
@@ -152,6 +155,62 @@ func dealVerify(bundle []byte) error {
 		return cli.InputError("capsulectl deal verify --bundle calls it " + strings.ToUpper(result.Verdict) + why + "; check it with that command")
 	}
 	return nil
+}
+
+// dealVerifyResult is the part of `capsulectl deal verify --bundle`'s report
+// dealVerify reads.
+type dealVerifyResult struct {
+	Verdict      string `json:"verdict"`
+	ReaderClaims []struct {
+		Status   string   `json:"status"`
+		Findings []string `json:"findings"`
+	} `json:"reader_claims"`
+	GraphClosure        claimStatus `json:"graph_closure"`
+	IntervalCoverage    claimStatus `json:"interval_coverage"`
+	PerRecordMembership claimStatus `json:"per_record_membership"`
+	Checkpoint          claimStatus `json:"checkpoint"`
+	ProducerSignatures  claimStatus `json:"producer_signatures"`
+	Extensions          []struct {
+		Kind   string `json:"kind"`
+		Status string `json:"status"`
+	} `json:"extensions"`
+}
+
+type claimStatus struct {
+	Status   string   `json:"status"`
+	Findings []string `json:"findings"`
+}
+
+// producerSelection says whether an INCOMPLETE verdict is a producer
+// selection and nothing else: interval coverage withheld only as
+// selection_not_checkable, every other claim passing, and the deal section
+// read and passing. A Mesh node's receipt is one by design (the log is not
+// shown whole); the report admits it on the page's own verdict
+// (report.receiptPageGate, evidencebook#870), and this is the deal plugin's
+// half of the same narrow exception. Any other INCOMPLETE stays refused.
+func (r dealVerifyResult) producerSelection() bool {
+	if r.Verdict != "INCOMPLETE" {
+		return false
+	}
+	c := r.IntervalCoverage
+	if c.Status != "withheld" || len(c.Findings) != 1 || c.Findings[0] != "selection_not_checkable" {
+		return false
+	}
+	for _, claim := range []claimStatus{r.GraphClosure, r.PerRecordMembership, r.Checkpoint, r.ProducerSignatures} {
+		if claim.Status != "pass" {
+			return false
+		}
+	}
+	deal := false
+	for _, e := range r.Extensions {
+		if e.Kind == "x-deal-v0" || e.Kind == "x-deal-v1" {
+			if e.Status != "pass" {
+				return false
+			}
+			deal = true
+		}
+	}
+	return deal
 }
 
 // entryKeysOnce refuses a JSON object that is not an object, names a key
