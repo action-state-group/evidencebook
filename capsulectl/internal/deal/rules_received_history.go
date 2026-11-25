@@ -165,16 +165,17 @@ func verifyReceivedHistory(path string, raw []byte, keys []string) (receivedHist
 		}
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not verified: " + why + ". It is not attributable to this counterparty, so the check does not run")
 	}
-	document, err := compactDocument(raw)
+	document, err := jcsReadyDocument(raw)
 	if err != nil {
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " cannot be handed to the rules checker: " + err.Error())
 	}
 	return receivedHistoryDoc{Kind: personalhistory.Name, RequestBinding: receivedHistoryBound, Document: document}, nil
 }
 
-// compactDocument is the document as received, its values, numbers and key
-// order kept, which RFC 8785 can digest (no float or unsafe integer).
-func compactDocument(raw []byte) (json.RawMessage, error) {
+// jcsReadyDocument is the document's bytes exactly as received, once it is
+// known that RFC 8785 can digest it (no float or unsafe integer), so the
+// member's input_sha256 can be computed.
+func jcsReadyDocument(raw []byte) (json.RawMessage, error) {
 	var v any
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.UseNumber()
@@ -248,5 +249,9 @@ func rulesGivenHistory(r dealRules) dealRules {
 		return r
 	}
 	r.Reason = "the rules checker did not evaluate the check given the counterparty's History (" + r.Cause + ")"
+	if r.Cause == "ruleset_changed" {
+		// What to do next is capsulectl's own words, not the checker's.
+		r.Reason += rePinHint
+	}
 	return r
 }

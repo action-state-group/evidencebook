@@ -352,3 +352,45 @@ func TestReceivedHistoryIsNeverShareable(t *testing.T) {
 		assert.False(t, strings.HasSuffix(k, "_digest") || strings.HasSuffix(k, "_commitment") || dealShareKeys[k], k)
 	}
 }
+
+// Given the History, the other causes whose reason would carry the checker's
+// own text say the cause alone too: an answer that cannot be read, and one
+// that reports another ruleset (whose id is the checker's word); the latter
+// keeps capsulectl's re-pin hint.
+func TestReceivedHistoryOtherCausesKeepTheCauseAlone(t *testing.T) {
+	marker := "definition-of-theirs"
+	for name, tc := range map[string]struct {
+		body, cause string
+	}{
+		"an unreadable answer": {`printf '%s' '{"schema":"external-check-result/v0","ruleset_id":"` + marker + `"}'`, "unreadable"},
+		"another ruleset":      {`printf '%s' '{"schema":"external-check-result/v0","ruleset_id":"` + marker + `","definition_digest":"` + strings.Repeat("cd", 32) + `","verdict":"allow","findings":[]}'`, "ruleset_changed"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := openedV1(t)
+			recordingChecker(t, tc.body)
+			out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
+				"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+			rules := out["rules"].(map[string]any)
+			assert.Equal(t, tc.cause, rules["cause"])
+			if tc.cause == "ruleset_changed" {
+				assert.Contains(t, rules["reason"], strings.TrimSpace(rePinHint), "the re-pin hint is capsulectl's own")
+			}
+			rawOut, err := json.Marshal(out)
+			require.NoError(t, err)
+			assert.NotContains(t, string(rawOut), marker)
+			assert.NotContains(t, v1Stored(t, h.dealID), marker)
+			require.NotNil(t, sealedVerdictHistory(t, h.dealID), "the checker started with the History: bound")
+		})
+	}
+}
+
+// An evaluated answer that cannot be sealed is downgraded to unreadable
+// (sealableRules) and still binds the History the run read.
+func TestReceivedHistoryStaysBoundThroughADowngrade(t *testing.T) {
+	h := openedV1(t)
+	recordingChecker(t, checkerPrints("allow", `{"id":"x","check":"mail ann@example.com","verdict":"pass"}`))
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
+		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	assert.Equal(t, "unreadable", out["rules"].(map[string]any)["cause"])
+	require.NotNil(t, sealedVerdictHistory(t, h.dealID))
+}
