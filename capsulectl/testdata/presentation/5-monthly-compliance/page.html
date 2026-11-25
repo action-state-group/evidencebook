@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-cFvIze0DHg4HfsZO3Xap5i+CNnH/x7bHV+ZzuLwP1eU=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-zpwy4068Y9scM1bTDNrSJGth8TPCV6oVS12xGSJ1vMQ='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-U8eJxA9THMbZNcRRn2UEzqwEGLuClTQyJxmKBJJk4sc=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-zpwy4068Y9scM1bTDNrSJGth8TPCV6oVS12xGSJ1vMQ='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Evidence Graph</title>
     <style>
@@ -1672,12 +1672,12 @@ var EvidenceGraph = (() => {
     encoders[Type.float.major] = encodeFloat;
     return encoders;
   }
-  function objectToTokens(obj2, options = {}, refStack) {
-    const typ = is(obj2);
+  function objectToTokens(obj3, options = {}, refStack) {
+    const typ = is(obj3);
     const customTypeEncoder = options && options.typeEncoders && /** @type {OptionalTypeEncoder} */
     options.typeEncoders[typ] || typeEncoders[typ];
     if (typeof customTypeEncoder === "function") {
-      const tokens = customTypeEncoder(obj2, typ, options, refStack);
+      const tokens = customTypeEncoder(obj3, typ, options, refStack);
       if (tokens != null) {
         return tokens;
       }
@@ -1686,7 +1686,7 @@ var EvidenceGraph = (() => {
     if (!typeEncoder) {
       throw new Error(`${encodeErrPrefix} unsupported type: ${typ}`);
     }
-    return typeEncoder(obj2, typ, options, refStack);
+    return typeEncoder(obj3, typ, options, refStack);
   }
   function sortMapEntries(entries, options) {
     const mapSorter2 = (
@@ -1933,18 +1933,18 @@ var EvidenceGraph = (() => {
          * @param {object|any[]} obj
          * @param {Reference|undefined} parent
          */
-        constructor(obj2, parent2) {
-          this.obj = obj2;
+        constructor(obj3, parent2) {
+          this.obj = obj3;
           this.parent = parent2;
         }
         /**
          * @param {object|any[]} obj
          * @returns {boolean}
          */
-        includes(obj2) {
+        includes(obj3) {
           let p = this;
           do {
-            if (p.obj === obj2) {
+            if (p.obj === obj3) {
               return true;
             }
           } while (p = p.parent);
@@ -1955,11 +1955,11 @@ var EvidenceGraph = (() => {
          * @param {object|any[]} obj
          * @returns {Reference}
          */
-        static createCheck(stack, obj2) {
-          if (stack && stack.includes(obj2)) {
+        static createCheck(stack, obj3) {
+          if (stack && stack.includes(obj3)) {
             throw new Error(`${encodeErrPrefix} object contains circular references`);
           }
-          return new _Ref(obj2, stack);
+          return new _Ref(obj3, stack);
         }
       };
       simpleTokens = {
@@ -1978,13 +1978,13 @@ var EvidenceGraph = (() => {
          * @param {Reference} [_refStack]
          * @returns {TokenOrNestedTokens}
          */
-        number(obj2, _typ, _options, _refStack) {
-          if (!Number.isInteger(obj2) || !Number.isSafeInteger(obj2)) {
-            return new Token(Type.float, obj2);
-          } else if (obj2 >= 0) {
-            return new Token(Type.uint, obj2);
+        number(obj3, _typ, _options, _refStack) {
+          if (!Number.isInteger(obj3) || !Number.isSafeInteger(obj3)) {
+            return new Token(Type.float, obj3);
+          } else if (obj3 >= 0) {
+            return new Token(Type.uint, obj3);
           } else {
-            return new Token(Type.negint, obj2);
+            return new Token(Type.negint, obj3);
           }
         },
         /**
@@ -1994,11 +1994,11 @@ var EvidenceGraph = (() => {
          * @param {Reference} [_refStack]
          * @returns {TokenOrNestedTokens}
          */
-        bigint(obj2, _typ, _options, _refStack) {
-          if (obj2 >= BigInt(0)) {
-            return new Token(Type.uint, obj2);
+        bigint(obj3, _typ, _options, _refStack) {
+          if (obj3 >= BigInt(0)) {
+            return new Token(Type.uint, obj3);
           } else {
-            return new Token(Type.negint, obj2);
+            return new Token(Type.negint, obj3);
           }
         },
         /**
@@ -2008,8 +2008,8 @@ var EvidenceGraph = (() => {
          * @param {Reference} [_refStack]
          * @returns {TokenOrNestedTokens}
          */
-        Uint8Array(obj2, _typ, _options, _refStack) {
-          return new Token(Type.bytes, obj2);
+        Uint8Array(obj3, _typ, _options, _refStack) {
+          return new Token(Type.bytes, obj3);
         },
         /**
          * @param {any} obj
@@ -2018,8 +2018,8 @@ var EvidenceGraph = (() => {
          * @param {Reference} [_refStack]
          * @returns {TokenOrNestedTokens}
          */
-        string(obj2, _typ, _options, _refStack) {
-          return new Token(Type.string, obj2);
+        string(obj3, _typ, _options, _refStack) {
+          return new Token(Type.string, obj3);
         },
         /**
          * @param {any} obj
@@ -2028,8 +2028,8 @@ var EvidenceGraph = (() => {
          * @param {Reference} [_refStack]
          * @returns {TokenOrNestedTokens}
          */
-        boolean(obj2, _typ, _options, _refStack) {
-          return obj2 ? simpleTokens.true : simpleTokens.false;
+        boolean(obj3, _typ, _options, _refStack) {
+          return obj3 ? simpleTokens.true : simpleTokens.false;
         },
         /**
          * @param {any} _obj
@@ -2058,8 +2058,8 @@ var EvidenceGraph = (() => {
          * @param {Reference} [_refStack]
          * @returns {TokenOrNestedTokens}
          */
-        ArrayBuffer(obj2, _typ, _options, _refStack) {
-          return new Token(Type.bytes, new Uint8Array(obj2));
+        ArrayBuffer(obj3, _typ, _options, _refStack) {
+          return new Token(Type.bytes, new Uint8Array(obj3));
         },
         /**
          * @param {any} obj
@@ -2068,8 +2068,8 @@ var EvidenceGraph = (() => {
          * @param {Reference} [_refStack]
          * @returns {TokenOrNestedTokens}
          */
-        DataView(obj2, _typ, _options, _refStack) {
-          return new Token(Type.bytes, new Uint8Array(obj2.buffer, obj2.byteOffset, obj2.byteLength));
+        DataView(obj3, _typ, _options, _refStack) {
+          return new Token(Type.bytes, new Uint8Array(obj3.buffer, obj3.byteOffset, obj3.byteLength));
         },
         /**
          * @param {any} obj
@@ -2078,23 +2078,23 @@ var EvidenceGraph = (() => {
          * @param {Reference} [refStack]
          * @returns {TokenOrNestedTokens}
          */
-        Array(obj2, _typ, options, refStack) {
-          if (!obj2.length) {
+        Array(obj3, _typ, options, refStack) {
+          if (!obj3.length) {
             if (options.addBreakTokens === true) {
               return [simpleTokens.emptyArray, new Token(Type.break)];
             }
             return simpleTokens.emptyArray;
           }
-          refStack = Ref.createCheck(refStack, obj2);
+          refStack = Ref.createCheck(refStack, obj3);
           const entries = [];
           let i = 0;
-          for (const e of obj2) {
+          for (const e of obj3) {
             entries[i++] = objectToTokens(e, options, refStack);
           }
           if (options.addBreakTokens) {
-            return [new Token(Type.array, obj2.length), entries, new Token(Type.break)];
+            return [new Token(Type.array, obj3.length), entries, new Token(Type.break)];
           }
-          return [new Token(Type.array, obj2.length), entries];
+          return [new Token(Type.array, obj3.length), entries];
         },
         /**
          * @param {any} obj
@@ -2103,18 +2103,18 @@ var EvidenceGraph = (() => {
          * @param {Reference} [refStack]
          * @returns {TokenOrNestedTokens}
          */
-        Object(obj2, typ, options, refStack) {
+        Object(obj3, typ, options, refStack) {
           const isMap = typ !== "Object";
-          const keys = isMap ? obj2.keys() : Object.keys(obj2);
-          const maxLength = isMap ? obj2.size : keys.length;
+          const keys = isMap ? obj3.keys() : Object.keys(obj3);
+          const maxLength = isMap ? obj3.size : keys.length;
           let entries;
           if (maxLength) {
             entries = new Array(maxLength);
-            refStack = Ref.createCheck(refStack, obj2);
+            refStack = Ref.createCheck(refStack, obj3);
             const skipUndefined = !isMap && options.ignoreUndefinedProperties;
             let i = 0;
             for (const key of keys) {
-              const value = isMap ? obj2.get(key) : obj2[key];
+              const value = isMap ? obj3.get(key) : obj3[key];
               if (skipUndefined && value === void 0) {
                 continue;
               }
@@ -2150,10 +2150,10 @@ var EvidenceGraph = (() => {
          * @param {Reference} [refStack]
          * @returns {TokenOrNestedTokens}
          */
-        Tagged(obj2, _typ, options, refStack) {
+        Tagged(obj3, _typ, options, refStack) {
           return [
-            new Token(Type.tag, obj2.tag),
-            objectToTokens(obj2.value, options, refStack)
+            new Token(Type.tag, obj3.tag),
+            objectToTokens(obj3.value, options, refStack)
           ];
         }
       };
@@ -2198,7 +2198,7 @@ var EvidenceGraph = (() => {
   function tokenToMap(token, tokeniser, options) {
     const useMaps = options.useMaps === true;
     const rejectDuplicateMapKeys = options.rejectDuplicateMapKeys === true;
-    const obj2 = useMaps ? void 0 : {};
+    const obj3 = useMaps ? void 0 : {};
     const m = useMaps ? /* @__PURE__ */ new Map() : void 0;
     for (let i = 0; i < token.value; i++) {
       const key = tokensToObject(tokeniser, options);
@@ -2215,7 +2215,7 @@ var EvidenceGraph = (() => {
         throw new Error(`${decodeErrPrefix} non-string keys not supported (got ${typeof key})`);
       }
       if (rejectDuplicateMapKeys) {
-        if (useMaps && m.has(key) || !useMaps && Object.hasOwn(obj2, key)) {
+        if (useMaps && m.has(key) || !useMaps && Object.hasOwn(obj3, key)) {
           throw new Error(`${decodeErrPrefix} found repeat map key "${key}"`);
         }
       }
@@ -2226,12 +2226,12 @@ var EvidenceGraph = (() => {
       if (useMaps) {
         m.set(key, value);
       } else if (key === "__proto__") {
-        Object.defineProperty(obj2, key, { value, configurable: true, enumerable: true, writable: true });
+        Object.defineProperty(obj3, key, { value, configurable: true, enumerable: true, writable: true });
       } else {
-        obj2[key] = value;
+        obj3[key] = value;
       }
     }
-    return useMaps ? m : obj2;
+    return useMaps ? m : obj3;
   }
   function* tokenToMapEntries(token, tokeniser, options) {
     for (let i = 0; i < token.value; i++) {
@@ -13730,28 +13730,32 @@ ${body}
   var isObj = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
   var obj = (value) => isObj(value) ? value : {};
   async function dealStandaloneReport(bundle) {
+    const failed3 = await dealStandaloneReportFailures(bundle);
+    return failed3 === null ? null : failed3.length === 0 ? "pass" : "fail";
+  }
+  async function dealStandaloneReportFailures(bundle) {
     const value = obj(bundle);
     const extensions2 = obj(value["extensions"]);
     if (!(STANDALONE in extensions2) || DEAL_V1 in extensions2) return null;
     if (!ed25519Available()) return null;
-    return await standaloneReportHolds(value, extensions2) ? "pass" : "fail";
+    return standaloneReportFailures(value, extensions2);
   }
-  async function standaloneReportHolds(value, extensions2) {
+  async function standaloneReportFailures(value, extensions2) {
+    const failed3 = /* @__PURE__ */ new Set();
     const section = extensions2[DEAL_V0];
-    if (!isObj(section) || Object.keys(section).length !== 1) return false;
+    if (!isObj(section) || Object.keys(section).length !== 1) return ["report"];
     const id = section[POINTER];
     const x = extensions2[STANDALONE];
     if (typeof id !== "string" || !isObj(x) || Object.keys(x).length !== 2)
-      return false;
+      return ["report"];
     const record = x["record"];
     const input = x["agent_input"];
     if (!isObj(record) || !isObj(input) || record["capsule_id"] !== id || record["action_id"] !== REPORT_ACTION)
-      return false;
+      return ["report"];
     const reportKey = await verifiedProducerKey(record);
-    if (reportKey === void 0) return false;
     const last = await lastStepRecord(value);
-    if (last === void 0) return false;
-    if (await verifiedProducerKey(last) !== reportKey) return false;
+    if (reportKey === void 0 || last === void 0 || await verifiedProducerKey(last) !== reportKey)
+      failed3.add("signer");
     const capsule = {};
     for (const [k, v] of Object.entries(record))
       if (k !== "signature" && k !== "key_id") capsule[k] = v;
@@ -13759,24 +13763,26 @@ ${body}
       capsule,
       disclosures: { agent_input: input }
     });
-    if (!disclosed.ok || disclosed.disclosuresMatched !== 1) return false;
+    if (!disclosed.ok || disclosed.disclosuresMatched !== 1)
+      failed3.add("capsule");
     const logId = obj(value["completeness_certificate"])["log_id"];
-    if (typeof logId !== "string" || !logId.startsWith("deal/")) return false;
     const audience = input["audience"];
-    if (input["type"] !== "deal_report" || input["profile"] !== DEAL_V0 || typeof audience !== "string" || !COPY_AUDIENCES.has(audience) || input["deal_id"] !== logId.slice("deal/".length))
-      return false;
+    if (typeof logId !== "string" || !logId.startsWith("deal/") || input["type"] !== "deal_report" || input["profile"] !== DEAL_V0 || typeof audience !== "string" || !COPY_AUDIENCES.has(audience) || input["deal_id"] !== logId.slice("deal/".length))
+      failed3.add("report");
     const checkpoint = obj(value["checkpoint"]);
     const bound = input["deal_checkpoint"];
-    if (!isObj(bound) || Object.keys(bound).length !== 3) return false;
-    const boundSize = jsonUint(bound["mmr_size"]);
+    const boundSize = isObj(bound) ? jsonUint(bound["mmr_size"]) : void 0;
     const size = jsonUint(checkpoint["mmr_size"]);
-    if (bound["log_id"] !== logId || boundSize === void 0 || size === void 0 || boundSize !== size || bound["root"] !== checkpoint["root"])
-      return false;
+    if (!isObj(bound) || Object.keys(bound).length !== 3 || typeof logId !== "string" || bound["log_id"] !== logId || boundSize === void 0 || size === void 0 || boundSize !== size || bound["root"] !== checkpoint["root"])
+      failed3.add("checkpoint");
     const records = Array.isArray(value["records"]) ? value["records"] : [];
-    if (records.some((r) => obj(r)["action_id"] === REPORT_ACTION)) return false;
+    if (records.some((r) => obj(r)["action_id"] === REPORT_ACTION))
+      failed3.add("second");
     const asOf = instant(obj(obj(input["report"])["lifecycle"])["as_of"]);
     const signed = instant(checkpoint["timestamp"]);
-    return asOf !== void 0 && signed !== void 0 && asOf === signed;
+    if (asOf === void 0 || signed === void 0 || asOf !== signed)
+      failed3.add("checkpoint");
+    return ["report", "second", "signer", "capsule", "checkpoint"].filter((f) => failed3.has(f));
   }
   async function verifiedProducerKey(record) {
     const id = record["capsule_id"];
@@ -13869,6 +13875,70 @@ ${body}
     const at = /* @__PURE__ */ new Date(0);
     at.setUTCFullYear(year, month - 1, day);
     return at;
+  }
+
+  // src/verifier-report.ts
+  var isObj2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  var obj2 = (v) => isObj2(v) ? v : {};
+  var VERIFIER_REPORT_VERSION = "capsule-cli-result/v1";
+  var DEAL_V12 = "x-deal-v1";
+  var STANDALONE2 = "x-deal-report/v0";
+  function verifierReportReading(context, given) {
+    let report = given;
+    if (typeof given === "string")
+      try {
+        report = JSON.parse(given);
+      } catch {
+        return null;
+      }
+    const extensionsOf = obj2(obj2(context.bundle)["extensions"]);
+    if (!(DEAL_V12 in extensionsOf) || !(STANDALONE2 in extensionsOf)) return null;
+    const r = obj2(report);
+    if (r["spec_version"] !== VERIFIER_REPORT_VERSION) return null;
+    const digest2 = context.verification.bundleDigest;
+    if (typeof digest2 !== "string" || r["bundle_digest"] !== digest2) return null;
+    const identity2 = r["record_identity"];
+    const records = Array.isArray(obj2(context.bundle)["records"]) ? obj2(context.bundle)["records"] : [];
+    const ids = new Set(
+      records.map((x) => obj2(x)["capsule_id"]).filter((id) => typeof id === "string")
+    );
+    if (!isObj2(identity2) || Object.keys(identity2).length !== ids.size || !Object.keys(identity2).every((id) => ids.has(id)))
+      return null;
+    const extensions2 = Array.isArray(r["extensions"]) ? r["extensions"] : [];
+    const entry = extensions2.map(obj2).find((e) => e["kind"] === DEAL_V12 && e["report"] === "standalone");
+    if (entry === void 0) return null;
+    if (entry["status"] !== "pass") return { kind: "fail", why: "report" };
+    const verdict2 = r["verdict"];
+    if (verdict2 === "VALID") return { kind: "pass" };
+    const coverage = obj2(r["interval_coverage"]);
+    const findings = coverage["findings"];
+    if (verdict2 === "INCOMPLETE" && coverage["status"] === "withheld" && Array.isArray(findings) && findings.length === 1 && findings[0] === "selection_not_checkable" && [
+      "graph_closure",
+      "per_record_membership",
+      "checkpoint",
+      "producer_signatures"
+    ].every((claim) => obj2(r[claim])["status"] === "pass"))
+      return { kind: "pass" };
+    return {
+      kind: "fail",
+      why: "verdict",
+      verdict: typeof verdict2 === "string" && verdict2 !== "" ? verdict2 : "not valid"
+    };
+  }
+  function withVerifierReport(context) {
+    const extensions2 = [
+      ...context.verification.extensions,
+      {
+        kind: DEAL_V12,
+        status: "pass",
+        report: "standalone",
+        integrityCovered: true
+      }
+    ];
+    return {
+      ...context,
+      verification: { ...context.verification, extensions: extensions2 }
+    };
   }
 
   // src/builtin-manifests.ts
@@ -14033,7 +14103,7 @@ ${body}
   var BUILTIN_SECTION_MANIFESTS = Object.freeze([BUILTIN_MANIFEST_COMPOSED]);
 
   // src/chart-spec.ts
-  var isObj2 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  var isObj3 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   var ChartRefusal = class extends Error {
     reason;
     pointer;
@@ -14083,7 +14153,7 @@ ${body}
     );
   }
   function readDay(value, at) {
-    if (isObj2(value)) {
+    if (isObj3(value)) {
       onlyKeys(value, ["year", "month", "date", "utc"], at);
       const { year, month, date, utc } = value;
       if (utc === true && Number.isInteger(year) && Number.isInteger(month) && Number.isInteger(date)) {
@@ -14099,7 +14169,7 @@ ${body}
     );
   }
   function readPredicate(value, at) {
-    need(isObj2(value), void 0, at, "a predicate object");
+    need(isObj3(value), void 0, at, "a predicate object");
     const p = value;
     for (const kind of ["and", "or"])
       if (Object.hasOwn(p, kind)) {
@@ -14185,7 +14255,7 @@ ${body}
   function resolveField(header, path2) {
     let at = header;
     for (const name of path2.split(".")) {
-      if (!isObj2(at) || !Object.hasOwn(at, name)) return MISSING;
+      if (!isObj3(at) || !Object.hasOwn(at, name)) return MISSING;
       at = at[name];
     }
     return at;
@@ -14224,7 +14294,7 @@ ${body}
     }
   }
   function readChannel(value, at) {
-    need(isObj2(value), void 0, at, "an encoding object");
+    need(isObj3(value), void 0, at, "an encoding object");
     const c = value;
     onlyKeys(c, ["field", "type", "aggregate", "timeUnit", "title"], at);
     const type = need(
@@ -14277,7 +14347,7 @@ ${body}
     return out;
   }
   function readWindow(value, at) {
-    need(isObj2(value), void 0, at, "{field, from, to}");
+    need(isObj3(value), void 0, at, "{field, from, to}");
     const w = value;
     onlyKeys(w, ["field", "from", "to"], at);
     const field = readField(w.field, pointerOf(at, "field"));
@@ -14302,11 +14372,11 @@ ${body}
     return { field, from, to };
   }
   function readStatement(value, at) {
-    need(isObj2(value), void 0, at, "an object");
+    need(isObj3(value), void 0, at, "an object");
     const s = value;
     onlyKeys(s, ["population", "window", "runs", "values"], at);
     const pop = s.population;
-    need(isObj2(pop), void 0, pointerOf(at, "population"), "{count}");
+    need(isObj3(pop), void 0, pointerOf(at, "population"), "{count}");
     onlyKeys(pop, ["count"], pointerOf(at, "population"));
     const count2 = pop.count;
     need(
@@ -14321,7 +14391,7 @@ ${body}
     if (Object.hasOwn(s, "runs")) {
       const r = s.runs;
       const rat = pointerOf(at, "runs");
-      need(isObj2(r), void 0, rat, "{filter, field}");
+      need(isObj3(r), void 0, rat, "{filter, field}");
       onlyKeys(r, ["filter", "field"], rat);
       out.runs = {
         filter: readPredicate(r.filter, pointerOf(rat, "filter")),
@@ -14337,7 +14407,7 @@ ${body}
     );
     values.forEach((v, i) => {
       const vat = pointerOf(pointerOf(at, "values"), i);
-      need(isObj2(v), void 0, vat, "a group object");
+      need(isObj3(v), void 0, vat, "a group object");
       onlyKeys(v, [...CHANNELS, "not_run"], vat);
       if (Object.hasOwn(v, "not_run"))
         need(
@@ -14360,7 +14430,7 @@ ${body}
       }
       return void 0;
     }
-    if (isObj2(value))
+    if (isObj3(value))
       for (const [k, v] of Object.entries(value)) {
         const found = inexactNumber(v, pointerOf(at, k));
         if (found !== void 0) return found;
@@ -14368,7 +14438,7 @@ ${body}
     return void 0;
   }
   function readChartSpec(value) {
-    need(isObj2(value), void 0, "", "a Vega-Lite object");
+    need(isObj3(value), void 0, "", "a Vega-Lite object");
     const inexact = inexactNumber(value, "");
     if (inexact !== void 0)
       refuse(
@@ -14393,11 +14463,11 @@ ${body}
     );
     need(spec.$schema === SCHEMA, void 0, "/$schema", SCHEMA);
     const data = spec.data;
-    need(isObj2(data), void 0, "/data", '{"name": "dataset"}');
+    need(isObj3(data), void 0, "/data", '{"name": "dataset"}');
     onlyKeys(data, ["name"], "/data");
     need(data.name === "dataset", void 0, "/data/name", '"dataset"');
     let mark;
-    if (isObj2(spec.mark)) {
+    if (isObj3(spec.mark)) {
       onlyKeys(spec.mark, ["type"], "/mark");
       mark = need(
         MARKS.includes(spec.mark.type),
@@ -14422,7 +14492,7 @@ ${body}
       );
       spec.transform.forEach((t, i) => {
         const at = pointerOf("/transform", i);
-        need(isObj2(t), void 0, at, "{filter: predicate}");
+        need(isObj3(t), void 0, at, "{filter: predicate}");
         onlyKeys(t, ["filter"], at);
         need(
           Object.hasOwn(t, "filter"),
@@ -14434,7 +14504,7 @@ ${body}
       });
     }
     const encoding = spec.encoding;
-    need(isObj2(encoding), void 0, "/encoding", "an object");
+    need(isObj3(encoding), void 0, "/encoding", "an object");
     onlyKeys(encoding, CHANNELS, "/encoding");
     const channels = {};
     for (const name of CHANNELS)
@@ -14444,7 +14514,7 @@ ${body}
           pointerOf("/encoding", name)
         );
     const usermeta = spec.usermeta;
-    need(isObj2(usermeta), void 0, "/usermeta", "{capsule: statement}");
+    need(isObj3(usermeta), void 0, "/usermeta", "{capsule: statement}");
     onlyKeys(usermeta, ["capsule"], "/usermeta");
     const statement = readStatement(
       usermeta.capsule,
@@ -14521,9 +14591,9 @@ ${body}
       refuse("chart-dataset-invalid", "the dataset plan has no nodes");
     const out = [];
     for (const node of nodes) {
-      if (!isObj2(node) || node.operator !== "traditional.window") continue;
+      if (!isObj3(node) || node.operator !== "traditional.window") continue;
       const p = node.params;
-      if (!isObj2(p) || typeof p.field !== "string" || !isCalendarDate(p.from) || !isCalendarDate(p.to))
+      if (!isObj3(p) || typeof p.field !== "string" || !isCalendarDate(p.from) || !isCalendarDate(p.to))
         refuse(
           "chart-dataset-invalid",
           "a window node of the dataset plan has no {field, from, to}"
@@ -14809,12 +14879,12 @@ ${body}
   }
 
   // src/report-view.ts
-  var isObj3 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  var isObj4 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   var refuse2 = (reason, message, pointer) => {
     throw new ChartRefusal(reason, message, pointer);
   };
   var ID = /^[a-z][a-z0-9_]{0,31}$/u;
-  var isView = (value) => isObj3(value) && Object.hasOwn(value, "view");
+  var isView = (value) => isObj4(value) && Object.hasOwn(value, "view");
   var keyChannel = (chart) => chart.keys.find((k) => k !== "x");
   function onlyKeys2(value, allowed, at) {
     for (const key of Object.keys(value))
@@ -14828,7 +14898,7 @@ ${body}
   var ROLES = ["activity", "judgment", "adjudication"];
   var CLASSES = ["good", "bad", "open"];
   function readEntry(value, at, seen, lane = false) {
-    if (!isObj3(value))
+    if (!isObj4(value))
       return refuse2("view-unsupported-member", `${at} must be an object`, at);
     onlyKeys2(
       value,
@@ -14868,7 +14938,7 @@ ${body}
     }
     if (value.classes !== void 0) {
       const c = value.classes;
-      if (!isObj3(c) || Object.keys(c).length === 0)
+      if (!isObj4(c) || Object.keys(c).length === 0)
         refuse2(
           "view-unsupported-member",
           `${at}/classes must be a non-empty object`,
@@ -15046,7 +15116,7 @@ ${body}
     };
   }
   function checkView(value, dataset) {
-    if (!isObj3(value))
+    if (!isObj4(value))
       return refuse2("view-unsupported-member", "a view must be an object", "");
     const kind = value.view;
     const checkOne = (id, spec, at) => {
@@ -15221,7 +15291,7 @@ ${body}
   }
 
   // src/chart-dataset.ts
-  var isObj4 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  var isObj5 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   var RECORD_HEADER_MEMBER = "evidence_record_header";
   var DATASET_VERSION = "evidence-dataset-v0";
   var HEX642 = /^[0-9a-f]{64}$/u;
@@ -15230,15 +15300,15 @@ ${body}
   };
   function digestRef(value, what) {
     if (value === void 0) return void 0;
-    if (!isObj4(value) || value.digest_alg !== "SHA-256" || typeof value.digest !== "string" || !HEX642.test(value.digest))
+    if (!isObj5(value) || value.digest_alg !== "SHA-256" || typeof value.digest !== "string" || !HEX642.test(value.digest))
       return invalid(`${what} is not {digest_alg: "SHA-256", digest: <64-hex>}`);
     return value.digest;
   }
   function resultDocument2(context, result3) {
     const member = disclosureOf(context, result3.capsuleId, result3.member);
-    if (member.state !== "disclosed" || !isObj4(member.payload)) return void 0;
+    if (member.state !== "disclosed" || !isObj5(member.payload)) return void 0;
     const document2 = result3.form === "book" ? member.payload.statement : member.payload;
-    return isObj4(document2) ? document2 : void 0;
+    return isObj5(document2) ? document2 : void 0;
   }
   async function digestOf(value) {
     try {
@@ -15252,7 +15322,7 @@ ${body}
   async function documentsByDigest(context) {
     const found = /* @__PURE__ */ new Map();
     const consider = async (value) => {
-      if (!isObj4(value) || value.dataset_version === void 0 && !(isObj4(value.header) && value.header.ir_version !== void 0))
+      if (!isObj5(value) || value.dataset_version === void 0 && !(isObj5(value.header) && value.header.ir_version !== void 0))
         return;
       const digest2 = await digestOf(value);
       if (digest2 !== void 0) found.set(digest2, value);
@@ -15262,10 +15332,10 @@ ${body}
         const disclosed = disclosureOf(context, record.capsule_id, member);
         if (disclosed.state !== "disclosed") continue;
         await consider(disclosed.payload);
-        if (isObj4(disclosed.payload)) await consider(disclosed.payload.statement);
+        if (isObj5(disclosed.payload)) await consider(disclosed.payload.statement);
       }
       const inline = record[RECORD_HEADER_MEMBER];
-      if (isObj4(inline)) await consider(inline.statement);
+      if (isObj5(inline)) await consider(inline.statement);
     }
     return found;
   }
@@ -15273,7 +15343,7 @@ ${body}
     const found = /* @__PURE__ */ new Map();
     for (const record of context.records) {
       const inline = record[RECORD_HEADER_MEMBER];
-      if (isObj4(inline)) {
+      if (isObj5(inline)) {
         const digest3 = await digestOf(inline);
         if (digest3 !== void 0)
           found.set(digest3, { header: inline, recordId: record.capsule_id });
@@ -15281,7 +15351,7 @@ ${body}
       }
       const digest2 = committedDigest(record, "agent_input");
       const disclosed = disclosureOf(context, record.capsule_id, "agent_input");
-      if (digest2 !== void 0 && disclosed.state === "disclosed" && isObj4(disclosed.payload))
+      if (digest2 !== void 0 && disclosed.state === "disclosed" && isObj5(disclosed.payload))
         found.set(digest2, {
           header: disclosed.payload,
           recordId: record.capsule_id
@@ -15312,7 +15382,7 @@ ${body}
     const rows = [];
     let last = -1;
     for (const raw of dataset.rows) {
-      if (!isObj4(raw) || Object.keys(raw).sort().join(",") !== "digest,digest_alg,record_type,seq" || !Number.isSafeInteger(raw.seq) || raw.seq <= last || typeof raw.record_type !== "string" || raw.digest_alg !== "SHA-256" || typeof raw.digest !== "string" || !HEX642.test(raw.digest))
+      if (!isObj5(raw) || Object.keys(raw).sort().join(",") !== "digest,digest_alg,record_type,seq" || !Number.isSafeInteger(raw.seq) || raw.seq <= last || typeof raw.record_type !== "string" || raw.digest_alg !== "SHA-256" || typeof raw.digest !== "string" || !HEX642.test(raw.digest))
         return invalid(
           "a dataset row is not {seq, record_type, digest_alg, digest}, in seq order"
         );
@@ -17696,12 +17766,12 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
   var MAX_LABELS = 8;
   var MAX_LABEL = 60;
   var EXTENSION = /^x-[a-z0-9][a-z0-9._-]*$/u;
-  var isObj5 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  var isObj6 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
   function str(value, max) {
     return typeof value === "string" && value.length > 0 && value.length <= max ? value : void 0;
   }
   function readScope(value) {
-    if (!isObj5(value)) return void 0;
+    if (!isObj6(value)) return void 0;
     const pack = str(value.pack, 120);
     const salting = str(value.salting, 60);
     const saltId = str(value.salt_id, 120);
@@ -17710,7 +17780,7 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
     return { pack, tier: value.tier, salting, saltId };
   }
   function readEntry2(value, grouped) {
-    if (!isObj5(value)) return void 0;
+    if (!isObj6(value)) return void 0;
     const labels = value.request_labels;
     if (!Array.isArray(labels) || labels.length > MAX_LABELS || labels.some((l) => str(l, MAX_LABEL) === void 0))
       return void 0;
@@ -17723,7 +17793,7 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
     let halves;
     if (value.halves !== void 0) {
       const h = value.halves;
-      if (!isObj5(h) || !Number.isSafeInteger(h.present) || !Number.isSafeInteger(h.of) || h.present < 0 || h.of < 1 || h.present > h.of)
+      if (!isObj6(h) || !Number.isSafeInteger(h.present) || !Number.isSafeInteger(h.of) || h.present < 0 || h.of < 1 || h.present > h.of)
         return void 0;
       halves = { present: h.present, of: h.of };
     }
@@ -17749,13 +17819,13 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
     };
   }
   function readSubjectHistory(document2) {
-    if (!isObj5(document2)) return void 0;
+    if (!isObj6(document2)) return void 0;
     const found = Object.entries(document2).filter(
-      ([key, member]) => EXTENSION.test(key) && isObj5(member) && isObj5(member.subject_history)
+      ([key, member]) => EXTENSION.test(key) && isObj6(member) && isObj6(member.subject_history)
     );
     if (found.length !== 1) return void 0;
     const block = found[0][1].subject_history;
-    if (!isObj5(block.conversations)) return void 0;
+    if (!isObj6(block.conversations)) return void 0;
     const scope = readScope(block.handle_scope);
     const operator = scope?.tier === "operator";
     const grouped = operator || scope?.tier === "shared" && scope.salting === "per-share";
@@ -18346,10 +18416,10 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
   }
   function builtCommit() {
     if (false) return void 0;
-    return commitPrefix("c6bb35516b0733b9cd070c632bf6d7efc05c83b9");
+    return commitPrefix("cf31a173f04f7b33e5168c7212ca64d02bafa608");
   }
   var commit = builtCommit();
-  var unreleased = false;
+  var unreleased = true;
   var VIEWER_BUILD = {
     viewer: "@action-state-group/capsule-viewer",
     viewerVersion: "0.27.2",
@@ -26615,18 +26685,18 @@ ${key}`);
     return block;
   }
   function backfillOnly(document2) {
-    const isObj6 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-    if (!isObj6(document2) || !isObj6(document2["coverage_report"])) return false;
+    const isObj7 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+    if (!isObj7(document2) || !isObj7(document2["coverage_report"])) return false;
     const requirements = document2["coverage_report"]["requirements"];
     if (!Array.isArray(requirements)) return false;
     let records = 0;
     for (const requirement of requirements) {
-      if (!isObj6(requirement)) return false;
+      if (!isObj7(requirement)) return false;
       const list2 = requirement["sources"];
       if (list2 === void 0) continue;
       if (!Array.isArray(list2)) return false;
       for (const source of list2) {
-        if (!isObj6(source)) return false;
+        if (!isObj7(source)) return false;
         const { contemporaneous_count: live, backfilled_count: back } = source;
         const total = source["record_count"];
         if (live !== 0 || !Number.isSafeInteger(total) || total < 0 || back !== total)
@@ -26789,28 +26859,28 @@ ${pad.repeat(depth)}`;
   var COMPLIANCE_KEY_V1 = "eu-ai-act-compliance/v1";
   var COMPLIANCE_KEY_V2 = "eu-ai-act-obligations-report/v2";
   function readFinding(value, key) {
-    const obj2 = object12(value);
-    const id = str2(obj2?.id);
-    const ownerDue = str2(obj2?.owner_due);
+    const obj3 = object12(value);
+    const id = str2(obj3?.id);
+    const ownerDue = str2(obj3?.owner_due);
     if (key === COMPLIANCE_KEY_V2) {
-      const observed = str2(obj2?.observed);
+      const observed = str2(obj3?.observed);
       if (id === void 0 || observed === void 0 || ownerDue === void 0)
         return void 0;
       return { id, observed, ownerDue };
     }
-    const severity = str2(obj2?.severity);
-    const recommendation = str2(obj2?.recommendation);
+    const severity = str2(obj3?.severity);
+    const recommendation = str2(obj3?.recommendation);
     if (id === void 0 || severity === void 0 || recommendation === void 0 || ownerDue === void 0)
       return void 0;
     return { id, severity, recommendation, ownerDue };
   }
   function readRow(value, key) {
-    const obj2 = object12(value);
-    const criterionId = str2(obj2?.criterion_id);
-    const name = str2(obj2?.name);
+    const obj3 = object12(value);
+    const criterionId = str2(obj3?.criterion_id);
+    const name = str2(obj3?.name);
     if (criterionId === void 0 || name === void 0) return void 0;
-    const notEvaluableNote = str2(obj2?.not_evaluable_note);
-    const finding = obj2?.finding === void 0 ? void 0 : readFinding(obj2.finding, key);
+    const notEvaluableNote = str2(obj3?.not_evaluable_note);
+    const finding = obj3?.finding === void 0 ? void 0 : readFinding(obj3.finding, key);
     return {
       criterionId,
       name,
@@ -26819,23 +26889,23 @@ ${pad.repeat(depth)}`;
     };
   }
   function readApplicability(value) {
-    const obj2 = object12(value);
-    const status2 = obj2?.status === "in_force" || obj2?.status === "future" ? obj2.status : void 0;
-    const note = str2(obj2?.note);
+    const obj3 = object12(value);
+    const status2 = obj3?.status === "in_force" || obj3?.status === "future" ? obj3.status : void 0;
+    const note = str2(obj3?.note);
     if (status2 === void 0 || note === void 0) return void 0;
     return { status: status2, note };
   }
   function readObligation(value, extension) {
-    const obj2 = object12(value);
-    const key = str2(obj2?.key);
-    const article = str2(obj2?.article);
-    const title = str2(obj2?.title);
-    const plain2 = str2(obj2?.plain);
-    const method = str2(obj2?.method);
-    const applicability = readApplicability(obj2?.applicability);
+    const obj3 = object12(value);
+    const key = str2(obj3?.key);
+    const article = str2(obj3?.article);
+    const title = str2(obj3?.title);
+    const plain2 = str2(obj3?.plain);
+    const method = str2(obj3?.method);
+    const applicability = readApplicability(obj3?.applicability);
     if (key === void 0 || article === void 0 || title === void 0 || plain2 === void 0 || method === void 0 || applicability === void 0)
       return void 0;
-    const rows = Array.isArray(obj2?.rows) ? obj2.rows.flatMap((r) => {
+    const rows = Array.isArray(obj3?.rows) ? obj3.rows.flatMap((r) => {
       const row2 = readRow(r, extension);
       return row2 === void 0 ? [] : [row2];
     }) : [];
@@ -26844,18 +26914,18 @@ ${pad.repeat(depth)}`;
       article,
       title,
       plain: plain2,
-      judgedTerms: strArray(obj2?.judged_terms),
+      judgedTerms: strArray(obj3?.judged_terms),
       applicability,
       method,
       rows
     };
   }
   function readQualityProtocol(value) {
-    const obj2 = object12(value);
-    if (obj2 === void 0) return void 0;
-    const protocol = str2(obj2.protocol);
-    const cadence = str2(obj2.cadence);
-    const note = str2(obj2.note);
+    const obj3 = object12(value);
+    if (obj3 === void 0) return void 0;
+    const protocol = str2(obj3.protocol);
+    const cadence = str2(obj3.cadence);
+    const note = str2(obj3.note);
     if (protocol === void 0 && cadence === void 0 && note === void 0)
       return void 0;
     return {
@@ -27830,11 +27900,40 @@ ${pad.repeat(depth)}`;
     table3.append(thead, body);
     host.append(table3);
   }
-  function renderCheckLists(host, lists, verifierHint) {
+  var STANDALONE_REPORT_FAILED = {
+    verifier: "Didn't verify: capsulectl deal verify reported that the deal report carried outside the log did not pass.",
+    // Filled with the verdict capsulectl reported (standaloneReportLine).
+    verdict: "Didn't verify: capsulectl deal verify reported this bundle as {verdict}.",
+    report: "Didn't verify: the deal report carried outside the log is not a report of this deal.",
+    second: "Didn't verify: this deal's log has more than one report record, so the page can't tell which report counts.",
+    signer: "Didn't verify: the deal report carried outside the log was not signed by the deal's last step.",
+    capsule: "Didn't verify: the deal report carried outside the log does not match its Capsule.",
+    checkpoint: "Didn't verify: the deal report carried outside the log was not made at this deal's checkpoint."
+  };
+  var STANDALONE_REPORT_CHECK = "deal-report-";
+  var standaloneReportLine = (failure, verdict2) => (
+    // A function replacement, so no "$" in the verdict is read as a pattern.
+    STANDALONE_REPORT_FAILED[failure].replace(
+      "{verdict}",
+      () => verdict2 ?? "not valid"
+    )
+  );
+  function renderCheckLists(host, lists, verifierHint, reportFailed = [], verdict2) {
     const groups = [
       ["page", CHECKED_ON_THIS_PAGE, lists.page],
-      ["failed", FAILED_ON_THIS_PAGE, lists.failed],
-      ["not-checked", NOT_CHECKED_ON_THIS_PAGE, lists.notChecked]
+      [
+        "failed",
+        FAILED_ON_THIS_PAGE,
+        [
+          ...lists.failed,
+          ...reportFailed.map((f) => `${STANDALONE_REPORT_CHECK}${f}`)
+        ]
+      ],
+      [
+        "not-checked",
+        NOT_CHECKED_ON_THIS_PAGE,
+        lists.notChecked
+      ]
     ];
     for (const [which, heading, ids] of groups) {
       if (ids.length === 0) continue;
@@ -27844,7 +27943,10 @@ ${pad.repeat(depth)}`;
       for (const id of ids) {
         const item = element6(
           "li",
-          verificationCheckWords(
+          id.startsWith(STANDALONE_REPORT_CHECK) ? standaloneReportLine(
+            id.slice(STANDALONE_REPORT_CHECK.length),
+            verdict2
+          ) : verificationCheckWords(
             id,
             which === "not-checked" ? "notChecked" : which,
             lists
@@ -27869,8 +27971,9 @@ ${pad.repeat(depth)}`;
     scope.dataset.checks = "scope";
     host.append(scope);
   }
-  async function renderVerificationPage(root, context, styled, applied, refused, citedSigners, verifierHint, depth, stamps, charts, contract, l3, checkedId) {
+  async function renderVerificationPage(root, context, styled, applied, refused, citedSigners, verifierHint, depth, stamps, charts, contract, l3, checkedId, reportFailed = [], verdict2) {
     const { bundle, verification: verified } = context;
+    const passed = bundleVerified(verified) && reportFailed.length === 0;
     const section = element6("section");
     section.dataset.page = "verification";
     let page = section;
@@ -27939,11 +28042,11 @@ ${pad.repeat(depth)}`;
     page.append(recordPageStyle);
     let result3;
     try {
-      result3 = bundleVerified(verified) ? await resultRootOf(context) : void 0;
+      result3 = passed ? await resultRootOf(context) : void 0;
     } catch {
       result3 = void 0;
     }
-    const read = bundleVerified(verified) ? await recordEntries(context, result3) : /* @__PURE__ */ new Map();
+    const read = passed ? await recordEntries(context, result3) : /* @__PURE__ */ new Map();
     const rawRecords = /* @__PURE__ */ new Map();
     for (const raw of Array.isArray(object13(bundle).records) ? object13(bundle).records : [])
       if (typeof object13(raw).capsule_id === "string")
@@ -27954,7 +28057,7 @@ ${pad.repeat(depth)}`;
       model.uncheckpointedCount,
       model.coverage,
       {
-        verified: bundleVerified(verified),
+        verified: passed,
         read,
         kind: (id) => recordKind(rawRecords.get(id), read.get(id)),
         build: (id, record) => {
@@ -27975,14 +28078,23 @@ ${pad.repeat(depth)}`;
     renderCompletenessStatement(page, model.completeness);
     renderChecks(page, model.checks);
     renderExtensions(page, extensions2, presentationRefusalNotices(refused));
-    renderCheckLists(page, model.checkLists, verifierHint);
+    renderCheckLists(page, model.checkLists, verifierHint, reportFailed, verdict2);
     page.append(element6("p", model.verifyIndependentlyLine));
     const folded = document.createElement("details");
     folded.className = "cv-checked";
     folded.id = checkedId;
     folded.dataset.checked = "";
-    folded.open = !bundleVerified(verified) || depth === "L2";
-    const line = checkedSummaryLine(bundleVerified(verified), model);
+    folded.open = !passed || depth === "L2";
+    const line = checkedSummaryLine(passed, {
+      ...model,
+      checkLists: {
+        ...model.checkLists,
+        failed: [
+          ...model.checkLists.failed,
+          ...reportFailed.map((f) => `${STANDALONE_REPORT_CHECK}${f}`)
+        ]
+      }
+    });
     const heading = element6("summary");
     heading.append(
       element6("strong", CHECKED_SECTION_TITLE),
@@ -29297,7 +29409,8 @@ ${pad.repeat(depth)}`;
       return "unreadable";
     }
     const context = await buildVerifiedBundleContext(bundle);
-    if (await dealStandaloneReport(bundle) === "fail") return "unverified";
+    if ((await dealStandaloneReportFailures(bundle) ?? []).length > 0)
+      return "unverified";
     const registry = options.registry ?? defaultRegistry;
     const resolution = await registry.resolve(
       context,
@@ -29314,16 +29427,24 @@ ${pad.repeat(depth)}`;
     });
     return "opened";
   }
-  async function renderVerifiedContext(context, root, options) {
+  async function renderVerifiedContext(checkedContext, root, options) {
+    const reading = options.verifierReport === void 0 || !bundleVerified(checkedContext.verification) ? null : verifierReportReading(checkedContext, options.verifierReport);
+    const context = checkedContext;
+    const moduleContext = reading?.kind === "pass" ? withVerifierReport(context) : context;
+    const verdictLine = reading?.kind === "fail" && reading.why === "verdict" ? reading.verdict : void 0;
     const { bundle, verification } = context;
-    const verified = bundleVerified(verification);
+    const reportFailed = bundleVerified(verification) ? [
+      ...reading?.kind === "fail" ? [reading.why === "report" ? "verifier" : "verdict"] : [],
+      ...await dealStandaloneReportFailures(bundle) ?? []
+    ] : [];
+    const verified = bundleVerified(verification) && reportFailed.length === 0;
     const registry = options.registry ?? defaultRegistry;
     let refusal;
     let selected;
     let resolution;
     try {
-      resolution = await registry.resolve(
-        context,
+      resolution = reportFailed.length > 0 ? { kind: "refusal" } : await registry.resolve(
+        moduleContext,
         options.audience ?? DEFAULT_AUDIENCE,
         options.format ?? DEFAULT_FORMAT
       );
@@ -29340,7 +29461,7 @@ ${pad.repeat(depth)}`;
     if (resolution.kind === "module")
       selected = {
         module: resolution.module,
-        model: await resolution.module.buildModel(context)
+        model: await resolution.module.buildModel(moduleContext)
       };
     let section;
     if (verified && refusal === void 0) {
@@ -29371,7 +29492,15 @@ ${pad.repeat(depth)}`;
       declaredProducerKeys(bundle),
       context.countersigners
     );
-    const bannerModel = verificationBanner(context, stamps);
+    const bannerModel = reportFailed.length > 0 ? {
+      ...verificationBanner(context, stamps),
+      // AAC's own banner for a bundle that did not verify.
+      state: "failed",
+      line: VERIFICATION_BANNER_LINES.refused,
+      verdict: "invalid",
+      detail: "",
+      refusal: UNVERIFIED_BUNDLE_REFUSAL
+    } : verificationBanner(context, stamps);
     const records = object13(bundle).records;
     const coverage = {
       uncheckpointed: bannerModel.uncheckpointed,
@@ -29705,7 +29834,9 @@ ${pad.repeat(depth)}`;
         ),
         voice: options.voice ?? "shared"
       } : void 0,
-      checkedSectionId(root)
+      checkedSectionId(root),
+      reportFailed,
+      verdictLine
     );
     const summary = root.querySelector("[data-verify-summary]");
     if (summary !== null) summary.textContent = checkedLine;
