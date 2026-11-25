@@ -5,11 +5,11 @@ package deal
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/disclosure"
 	"github.com/action-state-group/agent-action-capsule/go/envelope"
-	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
 	"github.com/action-state-group/agent-action-capsule/go/witness"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
@@ -84,9 +84,7 @@ func cardAnchorWitnessClaim(value map[string]interface{}, result aacbundle.Verif
 	disclosures, _ := value["disclosures"].(map[string]interface{})
 	d, _ := disclosures[rootID].(map[string]interface{})
 	card, _ := d["agent_input"].(map[string]interface{})
-	switch card["derivation"] {
-	case standardhistory.Derivation, standardhistory.Derivation3, standardhistory.Derivation4:
-	default:
+	if derivation, _ := card["derivation"].(string); !slices.Contains(shCardDerivations, derivation) {
 		return fail("card_unverified")
 	}
 

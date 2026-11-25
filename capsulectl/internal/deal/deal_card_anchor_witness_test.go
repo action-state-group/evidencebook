@@ -156,7 +156,10 @@ func TestACardCarriesNoAnchorWitnessItCannotCheck(t *testing.T) {
 		require.NoError(t, err)
 		c.p.Checkpoint.PublicKey = hex.EncodeToString(other)
 		require.NoError(t, cli.SaveProfile(c.p, true))
-		path := c.card(t, "standard_history/1", false)
+		path := filepath.Join(t.TempDir(), "card.json")
+		out, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--derivation", "standard_history/1", "--out", path)
+		require.NoError(t, err)
+		assert.Contains(t, out, "witness receipt left out")
 		assert.NotContains(t, readBundle(t, path)["extensions"], shAnchorWitnessExtension)
 	})
 }
@@ -330,16 +333,22 @@ func TestTheWriterLeavesOutADamagedAnchorReceipt(t *testing.T) {
 		h, err := s.standardHistory(t.Context(), 0)
 		require.NoError(t, err)
 		require.NotNil(t, h.Tick.Receipt)
-		assert.NotNil(t, shAnchorWitness(h, directory), "the intact receipt")
+		block, leftOut := shAnchorWitness(h, directory)
+		assert.NotNil(t, block, "the intact receipt")
+		assert.False(t, leftOut)
 		intact := *h.Tick.Receipt
 		damaged := intact
 		damaged.Receipt = append([]byte(nil), damaged.Receipt...)
 		damaged.Receipt[len(damaged.Receipt)-1] ^= 0xff
 		h.Tick.Receipt = &damaged
-		assert.Nil(t, shAnchorWitness(h, directory))
+		block, leftOut = shAnchorWitness(h, directory)
+		assert.Nil(t, block)
+		assert.True(t, leftOut, "a held receipt that does not verify is reported as left out")
 		// A directory with no usable row for the witness checks nothing.
 		h.Tick.Receipt = &intact
-		assert.Nil(t, shAnchorWitness(h, witness.Directory{}))
+		block, leftOut = shAnchorWitness(h, witness.Directory{})
+		assert.Nil(t, block)
+		assert.True(t, leftOut)
 	})
 }
 
