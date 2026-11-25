@@ -30,6 +30,12 @@ import (
 // not read (staples are history_card/2 only).
 
 const (
+	// receivedHistoryKind is the one History kind `--history` reads: a
+	// personal_history_basic/1 History (H3), per Steven's u527 (1). Which
+	// kind follows Steven's ruling on asg-agent-team-ethan#391, which may
+	// supersede u527 (1); a switch changes this constant and the verifier
+	// call in verifyReceivedHistory.
+	receivedHistoryKind  = personalhistory.Name
 	receivedHistoryAbout = "counterparty"
 	// receivedHistoryBound is an H3's request_binding: each answer is bound
 	// to the request octets in the file (PH §8.2). A staple that answers no
@@ -139,17 +145,17 @@ func verifyReceivedHistory(path string, raw []byte, keys []string) (receivedHist
 		kind = profile
 	}
 	switch kind {
-	case personalhistory.Name:
+	case receivedHistoryKind:
 	case historyCardStaple2, evidenceCommitment:
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a stapled history card: this build cannot verify a stapled " + historyCardStaple2 + " yet (capsule-cli#567), so it is not read")
 	case historyCardStaple1:
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a " + historyCardStaple1 + " staple: a stapled card is read as " + historyCardStaple2 + " only")
 	default:
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not a History this check reads: want a " + personalhistory.Name + " History")
+		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not a History this check reads: want a " + receivedHistoryKind + " History")
 	}
 	file, err := personalhistory.ParseFile(raw)
 	if err != nil {
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not a one-file History (" + personalhistory.Name + ", PH §8.2): " +
+		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not a one-file History (" + receivedHistoryKind + ", PH §8.2): " +
 			strings.TrimPrefix(err.Error(), personalhistory.ErrInvalid.Error()+": "))
 	}
 	report, err := cli.HistoryVerdict(file, keys)
@@ -169,7 +175,7 @@ func verifyReceivedHistory(path string, raw []byte, keys []string) (receivedHist
 	if err != nil {
 		return receivedHistoryDoc{}, cli.InputError("--history " + path + " cannot be handed to the rules checker: " + err.Error())
 	}
-	return receivedHistoryDoc{Kind: personalhistory.Name, RequestBinding: receivedHistoryBound, Document: document}, nil
+	return receivedHistoryDoc{Kind: receivedHistoryKind, RequestBinding: receivedHistoryBound, Document: document}, nil
 }
 
 // jcsReadyDocument is the document's bytes exactly as received, once it is

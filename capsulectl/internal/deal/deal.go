@@ -2718,7 +2718,7 @@ func dealCheckCommand() *cobra.Command {
 	cmd.Flags().String("input", "", "Snapshot JSON: the action and exactly what is about to happen")
 	cmd.Flags().Duration("stale-after", 15*time.Minute, "How long the check stays current; the approval text says when it goes stale")
 	cmd.Flags().String("received", "", "A JSON array of cards received about the counterparty, handed to the rules checker in a second run read for its notice only: never stored, sealed or shared")
-	cmd.Flags().StringArray("history", nil, "On an x-deal-v1 deal: the counterparty's History (a personal_history_basic/1 file, exactly as received), verified under --counterparty-key before any check runs and handed to the rules checker whose verdict is sealed; one document per flag, at most one of each kind. A document that does not verify refuses the check")
+	cmd.Flags().StringArray("history", nil, "On an x-deal-v1 deal: the counterparty's History (a "+receivedHistoryKind+" file, exactly as received), verified under --counterparty-key before any check runs and handed to the rules checker whose verdict is sealed; one document per flag, at most one of each kind. A document that does not verify refuses the check")
 	cmd.Flags().StringSlice("counterparty-key", nil, "With --history: the counterparty's key (64 lowercase hex), from your deployment policy, never from the History or anything the counterparty sent; repeat or comma-separate for several")
 	return cmd
 }
