@@ -218,6 +218,13 @@ func TestAnEditedCardAnchorWitnessFails(t *testing.T) {
 		"a receipt over another checkpoint": {edit: func(b map[string]any) {
 			exts(b)[shAnchorWitnessExtension] = exts(otherCard)[shAnchorWitnessExtension]
 		}, directory: otherDirectory},
+		"a receipt whose signature is broken": {edit: func(b map[string]any) {
+			e := entries(b)[0].(map[string]any)
+			raw, err := base64.StdEncoding.DecodeString(e["receipt_b64"].(string))
+			require.NoError(t, err)
+			raw[len(raw)-1] ^= 0xff
+			e["receipt_b64"] = base64.StdEncoding.EncodeToString(raw)
+		}},
 		"a tampered receipt": {edit: func(b map[string]any) {
 			e := entries(b)[0].(map[string]any)
 			e["entry_hash"] = hex.EncodeToString(make([]byte, sha256.Size))
@@ -311,4 +318,48 @@ func parseDirectory(t *testing.T, path string) witness.Directory {
 	d, err := witness.ParseDirectory(raw)
 	require.NoError(t, err)
 	return d
+}
+
+// A held receipt whose bytes are damaged does not check under the pinned
+// witness, so the writer leaves it out; the same tick's intact receipt goes in.
+func TestTheWriterLeavesOutADamagedAnchorReceipt(t *testing.T) {
+	c := witnessV0Seller(t)
+	directory, err := pinnedWitnessDirectory(c.p)
+	require.NoError(t, err)
+	withSession(t, func(s *dealSession) {
+		h, err := s.standardHistory(t.Context(), 0)
+		require.NoError(t, err)
+		require.NotNil(t, h.Tick.Receipt)
+		assert.NotNil(t, shAnchorWitness(h, directory), "the intact receipt")
+		intact := *h.Tick.Receipt
+		damaged := intact
+		damaged.Receipt = append([]byte(nil), damaged.Receipt...)
+		damaged.Receipt[len(damaged.Receipt)-1] ^= 0xff
+		h.Tick.Receipt = &damaged
+		assert.Nil(t, shAnchorWitness(h, directory))
+		// A directory with no usable row for the witness checks nothing.
+		h.Tick.Receipt = &intact
+		assert.Nil(t, shAnchorWitness(h, witness.Directory{}))
+	})
+}
+
+// The claim withholds when the bundle's own checkpoint did not verify, and
+// fails when the root card is not signed by its key.
+func TestTheCardAnchorClaimNeedsAVerifiedBundle(t *testing.T) {
+	c := witnessV0Seller(t)
+	b := readBundle(t, c.card(t, "standard_history/1", true))
+	root := b["root"].(string)
+	result := aacbundle.VerificationResult{Disclosures: []aacbundle.DisclosureResult{{CapsuleID: root, Member: "agent_input", Status: disclosure.Match}}}
+	directory := parseDirectory(t, c.directory(t))
+
+	claim, _, present := cardAnchorWitnessClaim(b, result, map[string]string{root: envelope.Authored}, nil, &directory)
+	require.True(t, present)
+	assert.Equal(t, "withheld", claim.Status)
+	assert.Equal(t, []string{"checkpoint_unverified"}, claim.Findings)
+
+	for _, state := range []string{"", "invalid"} {
+		claim, _, _ = cardAnchorWitnessClaim(b, result, map[string]string{root: state}, bundleStatement(t, b), &directory)
+		assert.Equal(t, "fail", claim.Status, state)
+		assert.Equal(t, []string{"card_unverified"}, claim.Findings, state)
+	}
 }

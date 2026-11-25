@@ -3,6 +3,8 @@
 package deal
 
 import (
+	"strings"
+
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/spf13/cobra"
@@ -140,6 +142,9 @@ func dealCopyPageGate(value map[string]interface{}) error {
 	return cli.PageGateWith(value, newDealReader)
 }
 
+// cardAnchorVerifyHelp is what verify adds to its help for a History card.
+const cardAnchorVerifyHelp = "On a History card bundle (deal standard-history card), reader_witnesses with receipts via card_anchor is the check of the card's anchor witness receipt (x-standard-history-anchor-witness/v0) against the card's signed anchor, under --witness-directory; the witnesses row beside it is about the card's own log, which no witness sees."
+
 // WithDealVerify makes the tree's `verify --bundle` the plugin's reader verb
 // (evidencebook#735): `capsulectl deal verify --bundle FILE
 // [--witness-directory FILE]` reaches the plugin's tree, where it is the
@@ -153,6 +158,7 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 			continue
 		}
 		core := c.RunE
+		c.Long = strings.TrimSpace(c.Long + "\n\n" + cardAnchorVerifyHelp)
 		c.Flags().String(stampProofFlag, "", "With --bundle on your own x-deal-v1 copy: the proof file deal checkpoint proof wrote for it; the copy's x-deal-v1 entry reports witnessed (verified, failed, or withheld when no --witness-directory is given), which never changes the verdict")
 		c.RunE = func(c *cobra.Command, args []string) error {
 			bundle, _ := c.Flags().GetString("bundle")
