@@ -44,7 +44,7 @@ profile, never the deal profile, and only after you have read
 | show | the user's deals | `deal list --json` |
 | show | one deal, its receipt, or the copy for the other side | `deal report` |
 | show | a sealed Result's report page | `book report build` (book profile) |
-| show | the user's History card | `deal standard-history card` |
+| show | the user's History card, as a file the History page draws | `deal standard-history card` |
 
 To ask another party's book over the profile's transport (`book remote
 request`), stop and ask a human. `book request` on a remote profile is its
