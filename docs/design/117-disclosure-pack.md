@@ -141,6 +141,8 @@ document and does not change the envelope.
 ```
 
 The values above are a person's defaults (§5); §4 gives each tier's ceiling and §5 the budget rules.
+`history_card/1` stays listed although it is no longer an asked form (u632 Q3), because a responder
+may still answer it, as Mesh does (§4).
 
 **Holder settings that are not disclosure.** Muse's `name`, `holder`, `round`, `window`, `staple`,
 `more_than_standard`, `receipt` and `asked_log_retention_days` (`disclosure_policy.go:86-112`) go in
