@@ -325,13 +325,16 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
 - A delivery that reached the witness but got no answer in time is reported
   as "pending: the witness was reached but its answer did not come in time,
   so the witness or the network to it is slow" (reason `witness_timeout`).
-  It retries on its own and needs no network grant;
-  `capsulectl doctor --check-witness` reports it with `timed_out: true`.
+  It is tried again on a later capsulectl run, after a wait that grows up
+  to an hour; do not ask for a network grant for it.
+  `capsulectl doctor --check-witness` reports `timed_out: true` when its own
+  probe reaches the witness and gets no answer in time.
 - A delivery refused with HTTP 403 is reported as "pending: the request was
   refused (HTTP 403), by the witness or by a network gate on this host",
   with the same standing-grant text (reason `refused`): a host's network
   gate can answer 403 in the witness's place, so the text never claims
-  the witness refused. It is retried at every tick, and a delivery an
+  the witness refused. It is tried again on a later capsulectl run, after a
+  wait that grows up to an hour, and a delivery an
   earlier build stored as failed for good after a 403 is retried at the
   next tick.
 
