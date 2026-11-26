@@ -43,9 +43,16 @@ pub struct ActAuthorization {
     pub approval_digest: String,
     /// The approval is the person's (approver user or agent_card), so it
     /// needs the person's signature over `approval_digest`. It is set too for
-    /// a standing-intent approval whose verdict's rules did not allow the act
-    /// on their own (`rules_not_evaluable`).
+    /// a standing-intent approval whose verdict carries no rules block
+    /// (`rules_not_recorded`) or rules that did not allow the act on their
+    /// own (`rules_not_evaluable`).
     pub needs_person_signature: bool,
+    /// The act rests on a standing-intent approval whose verdict carries no
+    /// rules block: nothing records which rules, if any, evaluated the
+    /// person's caps for it, so it escalates to the person (Sherlock2's
+    /// ruling ops bb59237c, after u503; evidencebook#983; Go
+    /// `RulesNotRecorded`).
+    pub rules_not_recorded: bool,
     /// The act rests on a standing-intent approval whose verdict's rules
     /// did not allow the act on their own ([`rules_unevaluated`]): it
     /// escalates to the person whatever the verdict's result says (u503;
@@ -183,14 +190,22 @@ pub fn check_authorizations(
             approval: journal[ai].clone(),
             approval_digest: w.digests[ai].clone(),
             needs_person_signature: person_approver(&ab.approver),
+            rules_not_recorded: false,
             rules_not_evaluable: false,
             limit_approvals: Vec::new(),
             intent: String::new(),
         };
         if ab.approver == "standing_intent" {
-            if rules_unevaluated(w.verdict[&vi].rules.as_ref()) {
-                a.rules_not_evaluable = true;
-                a.needs_person_signature = true;
+            match w.verdict[&vi].rules.as_ref() {
+                None => {
+                    a.rules_not_recorded = true;
+                    a.needs_person_signature = true;
+                }
+                Some(r) if rules_unevaluated(Some(r)) => {
+                    a.rules_not_evaluable = true;
+                    a.needs_person_signature = true;
+                }
+                Some(_) => {}
             }
             a.limit_approvals = w.limits_at[&ai]
                 .iter()
