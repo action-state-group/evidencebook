@@ -18,8 +18,8 @@ github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261126135949-bebf078
 github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261126135949-bebf07847d97/go.mod h1:D6U6Q9b4cEFb8McPyqInxANbVPCaoDFCM0KJk3CTwG4=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0 h1:AcIdYJq6vkhzBMQGsXm/AmfAqGLNAVLaNHXfambPVf0=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
-github.com/action-state-group/evidencebook v0.26.1-0.20261126233506-3d14a4a516ba h1:cSLn0E8ISFCX4Yai5d8/ZUO3frxOblHO3s7H/aomSAw=
-github.com/action-state-group/evidencebook v0.26.1-0.20261126233506-3d14a4a516ba/go.mod h1:HVnvMUEWl+Ot6Bnfzq4WtsdN0JC8w0AwM8rLTj5fsgs=
+github.com/action-state-group/evidencebook v0.26.1-0.20261126235535-e7c5128c75b2 h1:gad8zTbaQsTq9Cb5Q5qh0FqXJZKBUH4lYNex0EhFqfY=
+github.com/action-state-group/evidencebook v0.26.1-0.20261126235535-e7c5128c75b2/go.mod h1:HVnvMUEWl+Ot6Bnfzq4WtsdN0JC8w0AwM8rLTj5fsgs=
 github.com/action-state-group/evidencebook/report v0.9.0 h1:9mzpOCX9ZgRSp7x/40N/Tl1kR4jsBlkUQ6E6DSuJhX0=
 github.com/action-state-group/evidencebook/report v0.9.0/go.mod h1:72eqc1fS+ifsgIGlFBn31L5+3hr02HREjfFt2PMWTOU=
 github.com/btcsuite/btcd/btcec/v2 v2.5.1 h1:zDnj4h0PTlFz69xIhoGGXYkkkYxPgTv/AfjBxQQLlnE=
