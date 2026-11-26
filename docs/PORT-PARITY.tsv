@@ -22,6 +22,7 @@ package	kind	symbol	feature	rust	python
 .	func	NewOpening	originals-and-stores	frozen #640	ported
 .	func	NewRecordIDIndex	indexes	frozen #638	frozen #637
 .	func	NewSCITTReceiptSubstrate	substrates	frozen #650	frozen #649
+.	func	NewSubjectIDIndex	subject-convention	frozen #1012	frozen #1013
 .	func	NewSubjectIndex	indexes	frozen #638	frozen #637
 .	func	NewTokenIndex	indexes	frozen #638	frozen #637
 .	func	NewWindowLimiter	request-reply-respond	ported	ported
@@ -49,6 +50,7 @@ package	kind	symbol	feature	rust	python
 .	func	SamePayloadCommitments	reconcile-halves	ported	frozen #643
 .	func	StampProofRecomputes	shelf	frozen #875	frozen #876
 .	func	StatusOfClose	reconcile-halves	frozen #644	frozen #643
+.	func	SubjectBundleDefinition	subject-convention	frozen #1012	frozen #1013
 .	func	SuccessorSince	window-books	frozen #798	frozen #799
 .	func	SyncedFile	originals-and-stores	frozen #640	frozen #639
 .	func	VerifyBookEvidence	shelf	frozen #875	frozen #876
@@ -63,6 +65,7 @@ package	kind	symbol	feature	rust	python
 .	func	VerifyOpenings	shelf	ported	ported
 .	func	VerifyReportCoverage	window-books	frozen #798	frozen #799
 .	func	VerifyStampProof	shelf	ported	ported
+.	func	VerifySubjectBundle	subject-convention	frozen #1012	frozen #1013
 .	func	VerifyWindowChain	window-books	frozen #798	frozen #799
 .	func	VerifyWitnessReceipt	shelf	frozen #774	ported
 .	func	VerifyWitnessReceiptTime	shelf	frozen #774	ported
@@ -283,7 +286,13 @@ package	kind	symbol	feature	rust	python
 .	type	Store	originals-and-stores	frozen #640	ported
 .	type	StoredRecord	originals-and-stores	ported	ported
 .	type	Subject	request-reply-respond	frozen #131	ported
+.	type	SubjectBundle	subject-convention	frozen #1012	frozen #1013
+.	type	SubjectBundleRequest	subject-convention	frozen #1012	frozen #1013
+.	type	SubjectCloseStatement	subject-convention	frozen #1012	frozen #1013
+.	type	SubjectExtension	subject-convention	frozen #1012	frozen #1013
 .	type	SubjectKind	request-reply-respond	ported	frozen #131
+.	type	SubjectProjection	subject-convention	frozen #1012	frozen #1013
+.	type	SubjectRootStatement	subject-convention	frozen #1012	frozen #1013
 .	type	Substrate	substrates	ported	ported
 .	type	SubstrateEntry	substrates	frozen #650	frozen #649
 .	type	SubstrateInfo	substrates	frozen #650	frozen #649
@@ -296,6 +305,7 @@ package	kind	symbol	feature	rust	python
 .	type	VerificationEntry	request-reply-respond	frozen #131	frozen #131
 .	type	VerifiedBundle	evidence-bundle	frozen #636	frozen #635
 .	type	VerifiedStampProof	shelf	ported	ported
+.	type	VerifiedSubject	subject-convention	frozen #1012	frozen #1013
 .	type	VerifiedWindow	window-books	frozen #798	frozen #799
 .	type	VerifyChainOptions	window-books	frozen #798	frozen #799
 .	type	Window	window-books	frozen #798	frozen #799

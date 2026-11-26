@@ -98,6 +98,20 @@ type Book struct {
 	// is released: Respond answers from one without holding the lock.
 	log   []Record
 	roots map[string]IndexRoot
+	// commitEmptyRoot names the index whose empty root the checkpoint in
+	// progress commits although it is lazy (proveKeyRangeLocked).
+	commitEmptyRoot string
+	// recommitRoot names the index whose root the checkpoint in progress
+	// commits again even when unchanged, so its index_root record covers
+	// the whole log (a subject bundle's proof, subjectFullLocked).
+	recommitRoot string
+	// forgeSubjects turns off the subject convention's admission checks, so
+	// a test can write the dishonest book a verifier must catch. Nothing
+	// outside the package's tests sets it.
+	forgeSubjects bool
+	// subjects are the subjects the book holds (subject.go), kept with the
+	// log in admitLocked and recover.
+	subjects []subjectOf
 	// pending is a record already in the store whose substrate append
 	// failed. It holds the next position until the append succeeds, so a
 	// transient substrate error never lets two records claim one seq.
@@ -162,7 +176,7 @@ func Open(ctx context.Context, cfg Config) (*Book, error) {
 		b.operational = operational
 	}
 	if b.index == nil {
-		b.index = []AuthenticatedIndex{NewRecordIDIndex(), NewSubjectIndex()}
+		b.index = []AuthenticatedIndex{NewRecordIDIndex(), NewSubjectIndex(), NewSubjectIDIndex()}
 	}
 	if b.discovery == nil {
 		b.discovery = NewTokenIndex()
@@ -198,6 +212,7 @@ func (b *Book) recover(ctx context.Context) error {
 		}
 		b.records[record.RecordID] = record
 		b.log = append(b.log, record)
+		b.trackSubjectLocked(record)
 	}
 	committed, err := b.commitments.Size(ctx)
 	if err != nil {
@@ -273,6 +288,7 @@ func (b *Book) flushPendingLocked(ctx context.Context) error {
 func (b *Book) admitLocked(ctx context.Context, record Record) error {
 	b.records[record.RecordID] = record
 	b.log = append(b.log, record)
+	b.trackSubjectLocked(record)
 	if err := errors.Join(b.operational.Add(ctx, record), b.discovery.Add(ctx, record), b.addAuthenticated(record)); err != nil {
 		return fmt.Errorf("index record %s: %w", record.RecordID, err)
 	}
@@ -588,6 +604,9 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if err := validateHeader(header); err != nil {
 		return Record{}, err
 	}
+	if err := b.checkSubjectEntryLocked(header); err != nil {
+		return Record{}, err
+	}
 	headerBytes, err := canonicalJSON(header)
 	if err != nil {
 		return Record{}, fmt.Errorf("%w: header: %v", ErrInvalid, err)
@@ -829,8 +848,13 @@ func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoin
 			break
 		}
 		root := index.Root()
-		if b.roots[root.Index] == root {
+		if b.roots[root.Index] == root && root.Index != b.recommitRoot {
 			continue
+		}
+		if lazy, ok := index.(lazyIndex); ok && !lazy.commitsWhenEmpty() && root.Size == 0 && root.Index != b.commitEmptyRoot {
+			if _, committed := b.roots[root.Index]; !committed {
+				continue
+			}
 		}
 		statement, err := json.Marshal(struct {
 			IndexRoot
