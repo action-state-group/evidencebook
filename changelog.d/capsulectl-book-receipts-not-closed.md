@@ -1,4 +1,0 @@
-### Added: `book report build --receipts` takes `{"exchange_capsule_id", "not_closed": true}` for a deal that had not closed when the page was built ([#778](https://github.com/action-state-group/evidencebook/issues/778))
-
-- A deal that had not closed (an invoiced exchange with no settlement or delivery recorded yet) has no receipt, and `held` would say its holder chose to keep one off the page. `not_closed` says the deal had not closed when the page was built; capsule-viewer draws "No receipt: this deal had not closed when this page was built." (capsule-viewer#358). Exactly one of `receipt`, `held` and `not_closed` per entry; a deal with no entry still reads "Receipt not carried with this page" (a page built wrong).
-- `capsulectl/go.mod` requires `report` v0.6.0, the release with `Receipt.NotClosed` (evidencebook#784) and capsule-viewer go v0.23.0, whose page runtime draws the line.

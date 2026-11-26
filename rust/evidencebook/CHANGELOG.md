@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Register a Standard History card on a SCITT transparency service, opt-in and with no default service ([#618](https://github.com/action-state-group/evidencebook/issues/618), agent-action-capsule `spec/standard-history-v0.md` §13; the Go side is #616): module `card_registration` with `build_card_statement` (byte for byte with Go), `register_card` (the host's `CardStatementRegistrar` posts the statement; a signer that is not the envelope's responder is refused before anything is posted), `attach_card_receipt` (keeps a Receipt only when it passes alone under the relying party's transparency policy, at most 16) and `check_card_registered` (AAC's `witness::check_card_registered`). Registration shows that the card existed by a time and nothing else: `anchor_inclusion` stays `NOT_CHECKED`, nothing shows the holder registered no other card, and the check is never a card property or a level. The crate reaches no service itself.
+
+A date inside a check's text ("2 nights from 2026-12-10") is no longer refused as a raw phone number: a phone-shaped run that is only ISO dates set apart by white space passes the personal-data scan, and a real number beside a date, or a date glued to digits or phone punctuation, is still refused (evidencebook#791).
+
+### Changed: `deal::v1::start` reads an offerer that counts no acceptor agreement as awaiting (#878)
+
+- An offerer that holds no acceptor agreement it counts now reads as awaiting before agree_by and not started after, as an acceptor does, instead of an error (Steven's ruling u217: the acceptor forked at its first record and the offerer names neither branch). One holding an acceptor agreement on another offer or rows is still refused. The shared vectors `offerer-holds-none` in `testdata/deal-v1/start/vectors.json` cover it.
+
+- Port the x-deal-v1 case book rules to the Rust holder, as Go has them (#774). New `deal::v1::case_log_id` and `CASE_LOG_PREFIX` (the deal's one case log per offer and adjudicator). The receive profile's `admit` takes a ruling only on that log, an adjudicator that holds a deal's case book admits both parties' deal-book records, and `proof_sender` binds a case book's stamp proof to the adjudicator key the agreement names (a forked first ruling refuses it) and gives the party as the sender of that party's agreement proof. New `deal::v1::held_ruling` finds a held ruling by its record digest and reports one not held as unavailable (`None`). The shared holder transcripts (`testdata/deal-v1/holder/transcripts.json`) are now replayed in Rust, byte for byte with Go's recorded pairs, proofs and answers, except the two scenarios that seal book records with Capsule members, which the Rust book does not carry.
+
+- New `ask::request_sent_with_commitment`: `request_sent` that also keeps a JSON object the requester held from the responder when it asked as the optional `commitment` member of the `evidence_request` statement, as Go `Book.RequestSentWithCommitment` does. The book never reads or checks it. It is the requester's own copy, and the responder does not sign it in this record, so no card, count or check may read it as "the responder committed to X"; only a later step that verifies the object under the responder's key can give it that weight. A record without the member reads as before (Mesh-LLM/capsules-plugin#368, row B3).
+
+### Added: a verdict's `received_history` on x-deal-v1 (evidencebook#666)
+
+- `deal::v1::VerdictBody` reads and writes the optional `received_history` member (`ReceivedHistoryDigests`: `history_sha256`, `input_sha256`, `alone_deny`), beside v0's closed body, as Go does. The vendored x-deal-v1 schema carries it. A reader from an earlier release refuses a verdict that carries it. This is a scoped exception to the port freeze, for this member only.
+
 ## 0.0.26 (2026-11-23)
 
 Every pull request merged since 0.0.25 that changed the crate:

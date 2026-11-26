@@ -393,3 +393,34 @@ The Go shelf's hooks from #484, #490, #517, #525, #526, #528 and #530, which the
   differential check compares the verifier with Go's.
 
 - The Goose loop reference can register its `standard_history/1` card on a transparency service its host names ([#620](https://github.com/action-state-group/evidencebook/issues/620)): `loop_register_card` and `GOOSE_CARD_SERVICE` (a service file, `card-service.example.json` names this demo's choice, capsule-anchor run by Action State Group), `scripted_run.py` registers each node's card only when a service is named, and `go run ./test/interop/goose-card` takes the statement and the relying party's own policy and reports `card_registered`. Opt-in with no default service; the card is complete without it; `anchor_inclusion` stays `NOT_CHECKED`. The registration code is the demo's own (`python/examples/goose/card_registration.py`), not part of the `evidencebook` package, and needs agent-action-capsule 0.19.0.
+
+A date inside a check's text ("2 nights from 2026-12-10") is no longer refused as a raw phone number: a phone-shaped run that is only ISO dates set apart by white space passes the personal-data scan, and a real number beside a date, or a date glued to digits or phone punctuation, is still refused (evidencebook#791).
+
+### Changed: `evidencebook.deal.v1.start` reads an offerer that counts no acceptor agreement as awaiting (#878)
+
+- An offerer that holds no acceptor agreement it counts now reads as awaiting before agree_by and not started after, as an acceptor does, instead of an error (Steven's ruling u217). One holding an acceptor agreement on another offer or rows is still refused. The shared vectors `offerer-holds-none` cover it.
+
+- The Goose loop reference's offers carry the agreed price in their terms (`terms.price_minor`), so a Goose deal counts on the node's `standard_history/3` card in its value band; before, every Goose deal counted as unpriced (evidencebook#888).
+
+### Changed: the Goose loop reference runs on capsulectl (evidencebook#624)
+
+- `python/examples/goose` is now a client of the `capsulectl-deal` plugin: each tool is one or two capsulectl verbs on the node's own profile (`GOOSE_HOME` is the profile's `HOME`), and the example opens no store and imports none of the `evidencebook` package. It needs `capsulectl-deal` and capsule-engine's `capsule-engine` (go/v0.6.0 or later) on `PATH` (`GOOSE_CAPSULECTL_DEAL`, `GOOSE_CAPSULE_ENGINE`).
+- Its deals are x-deal-v1, not x-deal-v0: the files of the exchange (offer, agreement, payment legs, delivery, statements) replace `goose-deal-half/1`. `loop_deal_open`, `loop_deal_respond`, `loop_deal_reconcile`, `loop_settle`, `loop_deal_close` change their inputs and outputs, and `loop_deal_agree`, `loop_deal_approve`, `loop_deal_received`, `loop_deal_deliver` and `loop_deal_report` are new. A deal's admission is capsule-engine's decision sealed with `deal admit`; `loop_admit` takes only the peer's signing key. The final review of an act pauses for the user's answer.
+- A node's history is not carried over: its old `shelf.db` is a read-only archive and the new profile starts empty (keep the keys with `GOOSE_SIGNING_KEY_FILE` and `GOOSE_CHECKPOINT_KEY_FILE`). The cards are now `history_card/2` and `standard_history/3`; the commitment staples `history_card/2`.
+- Removed from the example: `loop_import` (a flat ledger is not imported), `loop_dispute_ask` and `loop_dispute_poll` (step 09 on x-deal-v1 is evidencebook#830), `loop_settlement_disclosure` and `loop_pay_opening` (step 06's rail-wide count needs a verb that is not built), `loop_deal_push` and `loop_deal_end_exchange`, the stand-ins `card_registration.py` and `card_service.py` (card registration is `capsulectl-book card register`), `deal_records.py`, and `test/interop/goose-card` and `test/interop/goose-mesh-check`: Go's check of a card is `capsulectl-deal verify --bundle`, and a Mesh node on capsules-plugin v0.1.8 checks x-deal-v0 halves only.
+
+- `evidencebook.deal.v1.holder` follows Go's case book rules (evidencebook#615): `case_log_id` (the log id of an adjudicator's case book of a deal), `held_ruling` (a held ruling by its record digest), `admit` refusing a ruling that is not on the deal's case log, `proof_sender` binding a case book's stamp proof to the adjudicator key the agreement names (a forked first ruling refuses it), and an adjudicator that holds a deal's case book admitting both parties' deal-book records.
+
+- `evidencebook.deal.v1` follows Go's adjudicator rules (evidencebook#779): `check_case` reads a dispute and one or both parties' adjudicator copies as a case (`Case`, `CaseCopy`), `check_case_record` takes a later withdrawal or challenge, and `seal_ruling` seals a ruling once in the deal's case book (`SealedRuling`, `RulingConflictError`). `evidencebook.cadence.verify_witness_receipt_time` (and `verify_witness_receipt_for_reader`) verify a witness receipt another party sent for its checkpoint and give its registration time, as Go's `VerifyWitnessReceiptTime` and `VerifyWitnessReceipt`.
+
+### Added: a verdict's `received_history` on x-deal-v1 (evidencebook#666)
+
+- `evidencebook.deal.v1` reads the optional `received_history` member of a verdict body (with its `alone_deny`) beside v0's closed body, as Go does. The vendored x-deal-v1 schema and the Go types table carry it. A reader from an earlier release refuses a verdict that carries it. This is a scoped exception to the freeze, for this member only.
+
+### Fixed (breaking): `evidencebook.deal.v1.payment_check` runs on the payment's own legs beside a refund (evidencebook#722)
+
+- A refund or remedy leg citing the offer's terms leg no longer stops the check with `refund_cites_offer`. That let a 1-unit refund turn a failing payment into "not checked".
+- The check now runs on the payment's own legs. Those refund legs, when not superseded, are listed in the new `PaymentResult.not_checked`, and a status row counts them in `check_not_checked`. This matches Go byte for byte, on the shared vectors.
+- A payment leg is now superseded only by a later payment leg answering the same terms leg that AAC's verifier reads beside the offer. Before, a refund, a leg of another terms leg, or a malformed leg carrying `supersedes` could take the payment leg out of the check, which read "not agreed" instead of failed. A refund is still superseded by any later leg of its side. `not_checked` is the dataclass's last field, so positional construction is unchanged.
+- `REASON_REFUND_CITES_OFFER` is removed.
+- This is a correctness fix to a function the package already has, not a new port.

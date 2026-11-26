@@ -1,2 +1,0 @@
-<!-- changelog: capsulectl/CHANGELOG-deal.md -->
-- Removed `deal node referee receive` (evidencebook#624). It took a referee's Result against two parties' x-deal-v0 halves, and its only caller was the Goose reference node, which no longer has halves. The Result's path on x-deal-v1 is `deal dispute`, the offer's adjudicator's `deal ruling` and `deal receive`; carrying it between a node and its adjudicator is tracked in evidencebook#830.

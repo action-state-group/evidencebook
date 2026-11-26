@@ -1,4 +1,0 @@
-### Changed: `capsulectl deal standard-history staple` builds `history_card/2` only (#626)
-
-- Offer staples carry `history_card/2` only: the profile's History card as a sampled chain of its cadence checkpoints, with no deal counts, at any length (`Cadence.HistoryCard2`, #690). `--derivation` stays, with `history_card/2` as its default and only value. `history_card/1` and `standard_history/1` are refused with the reason, because they are no longer stapled, and the standard card stays behind a signed ask (`deal respond`, unchanged). `--deal` is removed, and a staple no longer seals an answered record. The output keeps its shape, `derivation` plus `staple` (`request`, `reply`), with no `deal_id`. This requires evidencebook at b09f2037 (#690).
-- A caller passing `--derivation history_card/1` or `standard_history/1`, or `--deal`, must drop them.
