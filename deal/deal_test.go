@@ -81,7 +81,7 @@ func newSideWindowed(t *testing.T, name string, window *evidencebook.WindowPolic
 	p.store, err = Open(ctx, Config{
 		Shelf: shelf, DB: p.db, SigningKey: p.key.Public().(ed25519.PublicKey),
 		CheckpointKey: checkpointKey.Public().(ed25519.PublicKey), ShelfLogID: testCadenceLog,
-		Now: clock, Random: detrand.New("deal store tests\x00" + name + " store"),
+		Now: clock, Random: detrand.New("deal store tests\x00" + name + " store"), ReceiveProfile: profile,
 	})
 	require.NoError(t, err)
 	p.cadence, err = shelf.Cadence(ctx, evidencebook.CadenceConfig{LogID: testCadenceLog,

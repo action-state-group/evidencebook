@@ -3,6 +3,7 @@
 package xdealv1
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -631,4 +632,69 @@ func journalOf(in evidencebook.StatusInput) evidencebook.JournalReader {
 		return in.Journal
 	}
 	return nil
+}
+
+// Status is the status value of the holder's deal book logID (design §8.1)
+// as it stands now: the value BookValues gives the next stamp, built from
+// what the shelf holds, without a stamp. It writes nothing and needs no
+// checkpoint. It refuses a book that is not a v1 deal book and a shelf with
+// no journal (it never creates one), and reports ErrBusy when what it reads
+// kept changing while it was read. Each shelf call takes the shelf's lock,
+// so it is never called from a stamp or a Receive.
+func (p *StatusProvider) Status(ctx context.Context, logID string) (StatusValue, error) {
+	if p.Shelf == nil {
+		return StatusValue{}, fmt.Errorf("xdealv1: the status provider has no shelf")
+	}
+	book, err := p.Shelf.Open(ctx, logID)
+	if err != nil {
+		return StatusValue{}, err
+	}
+	first, err := book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: 1})
+	if err != nil {
+		return StatusValue{}, err
+	}
+	notV1 := fmt.Errorf("xdealv1: status: book %s is not an x-deal-v1 deal book", logID)
+	if len(first) != 1 {
+		return StatusValue{}, notV1
+	}
+	journal, err := p.Shelf.ExistingJournalView(ctx)
+	if err != nil {
+		return StatusValue{}, err
+	}
+	if journal == nil {
+		return StatusValue{}, fmt.Errorf("xdealv1: status: the shelf has no journal, which holds the deal's offer")
+	}
+	// A read takes several shelf calls (the holder's book, what is held of
+	// the deal, the counterparty's counted prefix and proofs), each under the
+	// lock on its own, so a record received between two of them can make one
+	// read disagree with itself. The value is the one two reads in a row
+	// agree on, with the holder's book the same size throughout.
+	var last []byte
+	for attempt := 0; attempt < 5; attempt++ {
+		size := book.Size()
+		b, _, _, _, ok, err := p.statusBooks(ctx, evidencebook.StatusInput{BookID: first[0].RecordID, LogID: logID, Book: book, Journals: journal})
+		if err != nil {
+			return StatusValue{}, err
+		}
+		if !ok {
+			return StatusValue{}, notV1
+		}
+		if book.Size() != size {
+			last = nil
+			continue
+		}
+		v, err := BuildStatus(b)
+		if err != nil {
+			return StatusValue{}, err
+		}
+		now, err := jcsJSON(v)
+		if err != nil {
+			return StatusValue{}, err
+		}
+		if bytes.Equal(now, last) {
+			return v, nil
+		}
+		last = now
+	}
+	return StatusValue{}, fmt.Errorf("%w: status: book %s kept changing while it was read", evidencebook.ErrBusy, logID)
 }

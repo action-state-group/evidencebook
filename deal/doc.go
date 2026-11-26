@@ -17,6 +17,27 @@
 //   - [Store.Agree] seals the agreement, the first record of a new deal book,
 //     and returns it with the stamp proof the other side's first act waits on.
 //
+// Once both sides agree, the deal's acts and what each side says of them go
+// in the holder's deal book:
+//
+//   - [Store.Perform] is the design's deal.perform: an act the holder did,
+//     resting on its passing commit check, sealed only when x-deal-v1's
+//     authorization accepts it over the deal's journal ([Store.Authorize],
+//     [Store.DealJournal]) and, for the first act, once the other side's
+//     stamp proof covers the holder's agreement;
+//   - [Store.Statement] is deal.statement: how rows went;
+//   - [Store.Settle] is deal.settle for what the holder received, a payee
+//     leg;
+//   - [Store.Dispute], [Store.WithdrawDispute] and [Store.Challenge] are
+//     deal.dispute: a dispute of a row before the agreement's adjudicator,
+//     its withdrawal, and a challenge of a ruling;
+//   - [Store.Status] is deal.status: the deal book's status value now.
+//
+// Each of these called again with the same input seals nothing and returns
+// the record already sealed (Acted.Again), so a caller that stopped can
+// make the same call again. A caller adds its own check of a record before
+// it is sealed with [BeforeSeal].
+//
 // [Store.Admit] seals the result of book.admit, capsule-engine's admission
 // decision, which an agreement cites; it evaluates nothing.
 // [Store.NoteReceived] records what [evidencebook.Shelf.Receive] kept of the
@@ -28,7 +49,10 @@
 // the books: which deals it holds and in what state (deal_versions, deal_v1),
 // the offers it received (deal_v1_offers), each record sent whole
 // (deal_sent) and each admission decision bound to its deal
-// (deal_v1_admits). capsulectl-deal keeps its deals in the same tables, so a
+// (deal_v1_admits). Two more tables are created for capsulectl-deal, which
+// writes them: each deal's local step list (deal_v1_events), from which
+// [Store.DealJournal] reads the journal records a deal's steps bind, and
+// each payer leg's send (deal_v1_sends). capsulectl-deal keeps its deals in the same tables, so a
 // deal store written by either opens in the other.
 //
 // Every call can be run again after a failure. A record sent whole is
