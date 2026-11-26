@@ -313,7 +313,7 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   in `pending` with `not_tried_this_run: true` and its stored reason, for a
   later tick.
 - A delivery whose request never reached the witness (refused, unresolved,
-  timed out, or stopped by a proxy) is reported as "pending: network consent
+  timed out before connecting, or stopped by a proxy) is reported as "pending: network consent
   needed, or no network", in the poll's output and on the receipt: on an
   agent host that asks before network access, that is what a missing grant
   looks like. Ticks run unattended, so choose "Always allow this site" for
@@ -322,6 +322,11 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   it covers agentactioncapsule.org and every subdomain of it. The message
   names the site for whichever witness the profile uses, and
   `capsulectl doctor --check-witness` says the same.
+- A delivery that reached the witness but got no answer in time is reported
+  as "pending: the witness was reached but its answer did not come in time,
+  so the witness or the network to it is slow" (reason `witness_timeout`).
+  It retries on its own and needs no network grant;
+  `capsulectl doctor --check-witness` reports it with `timed_out: true`.
 - A delivery refused with HTTP 403 is reported as "pending: the request was
   refused (HTTP 403), by the witness or by a network gate on this host",
   with the same standing-grant text (reason `refused`): a host's network
