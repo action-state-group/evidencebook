@@ -192,7 +192,7 @@ On the command line these are `capsulectl book report build --seal` and
 | Step | Function |
 |---|---|
 | answer | `Book.Respond` answers request octets as received, in the same encoding: a signed envelope carrying the canonical Artifact, or a signed refusal with exactly one registered reason |
-| who is answered | `RespondOptions.AuthenticatedRequester`, set only from the transport's own authentication. With it empty, only the `checkpoints` subject and the `history_card/1` derivation are answered |
+| who is answered | `RespondOptions.AuthenticatedRequester`, set only from the transport's own authentication. With it empty, only the `checkpoints` subject and the `history_card/1` and `history_card/2` derivations are answered |
 | what is shared | `SharePolicy` (`DefaultSharePolicy` answers counterparties) |
 | a History for one recipient | `Book.RegisterDerivation` registers a derivation definition; its identifier binds the document alone, and only its recipient is answered |
 | carriage | `Book.A2A` and `Book.MCP` carry the same Artifact, byte for byte |
