@@ -123,8 +123,9 @@ portable_checks() {
   # included (capsule-viewer 0.4.0), so it reads verified with no check unrun.
   check "the page says its bundle verified" contains page.html.dom 'class="cv-pill" data-verify="verified"'
   check "the page ran every check" no_check_unrun page.html.dom
-  check "the page renders the deal" contains page.html.dom '<h1>Receipt</h1>'
-  check "the page says its text is sealed and checked" contains page.html.dom 'data-sealed="x-deal-v0"'
+  # capsule-viewer's x-deal-v0 receipt module draws the page (evidencebook#869).
+  check "the page renders the deal" contains page.html.dom 'class="cv-kit" data-receipt-module="capsuleviewer.receipt.unilateral/v0">'
+  check "the page says its text is sealed and checked" contains page.html.dom 'data-sealed="x-deal-report"'
   page_bundle page.html >bundle.json
   check "every bundle record is on the deal's book" on_book bundle.json
 
@@ -140,13 +141,13 @@ portable_checks() {
     contains page.html.dom "<summary>Records in this bundle: $(jq length records.json) records, by capsule id</summary>"
   local line
   line=$(record_line records.json proposed-action/v0 '"About to \(.action) \(money)"')
-  check "the page shows what the proposed action says ($line)" contains page.html.dom "<span>$line</span>"
+  check "the page shows what the proposed action says ($line)" contains page.html.dom "<p data-sealed-text=\"step-line\">The receipt's line: $line</p>"
   line=$(record_line records.json action-evaluation/v0 'if .disposition == "DO" and .findings == [] then "Check: no differences" else "(evaluated \(.disposition))" end')
-  check "the page shows what the evaluation says ($line)" contains page.html.dom "<span>$line</span>"
+  check "the page shows what the evaluation says ($line)" contains page.html.dom "<p data-sealed-text=\"step-line\">The receipt's line: $line</p>"
   # An act is its own item: the page says it once, as the item's line
   # (capsule-cli#341), and that line says what the action record says.
   local did
-  did=$(grep -o '<details data-self="[0-9a-f]*"><summary>[^<]*</summary>' page.html.dom | sed 's/.*<summary>//; s/<\/summary>//')
+  did=$(grep -o '<p data-sealed-text="item"><span data-time="[^"]*">[^<]*</span> · Did: [^<]*</p>' page.html.dom | sed 's/.* · //; s/<\/p>$//')
   line=$(record_line records.json action-record/v0 '"Did: \(.action) \(money)"')
   check "the page's line for the act says what the action record says ($line)" contains_text "$did" "$line "
   line=$(record_line records.json action-record/v0 '" by \(.rail)"')
