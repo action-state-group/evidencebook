@@ -2,6 +2,7 @@ package deal
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -9,7 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
@@ -190,6 +193,9 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 	if err != nil {
 		return nil, nil, err
 	}
+	if waiting, err = withReanchorDue(ctx, t.Log, waiting, p, service); err != nil {
+		return nil, nil, err
+	}
 	delivered, pending = []uint64{}, []map[string]any{}
 	var deadline time.Time
 	if budget > 0 {
@@ -237,8 +243,9 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 			pending = append(pending, row)
 			s.migrated = migrated
 			// Failed for good, the witness decides on the next one without
-			// it (selectedWitness); otherwise every later one waits for it.
-			stopped = !state.Permanent
+			// it (selectedWitness); otherwise every later one waits for it,
+			// a refused one due for its re-anchor included.
+			stopped = !failedForGood(state, p)
 			continue
 		}
 		n, found, err := tickAtSize(ctx, c, w.CheckpointSize)
@@ -698,4 +705,35 @@ func (s *dealSession) fileWitnessState(ctx context.Context, dealID string, b map
 		return map[string]interface{}{"state": "not_carried"}, err
 	}
 	return state, nil
+}
+
+// failedForGood reports a delivery that is never tried again, as the core's
+// own status reads it: a row stored as failed that a later run re-anchors
+// (a continuity 409 refused again, capsule-cli#649) is still pending.
+func failedForGood(state cll.WitnessState, p cli.Profile) bool {
+	_, text := cli.WitnessPendingReason(state, p.Checkpoint.Endpoint)
+	return state.Permanent && strings.HasPrefix(text, cli.WitnessNotDelivered)
+}
+
+// withReanchorDue is waiting with every row to service that is stored as
+// failed but still pending (failedForGood), oldest first. The log's own
+// pending list leaves out every row stored as failed, so a re-anchor that
+// got no answer (a timeout, a spent budget) would otherwise wait for the
+// next checkpoint's delivery, and the tick would report nothing pending.
+func withReanchorDue(ctx context.Context, log cll.Backend, waiting []cll.WitnessState, p cli.Profile, service string) ([]cll.WitnessState, error) {
+	state, err := log.LoadCLL(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := waiting
+	for _, w := range state.Witnesses {
+		if w.WitnessID == service && w.Receipt == nil && w.Permanent && !failedForGood(w, p) {
+			out = append(out, w)
+		}
+	}
+	if len(out) == len(waiting) {
+		return waiting, nil
+	}
+	slices.SortStableFunc(out, func(a, b cll.WitnessState) int { return cmp.Compare(a.CheckpointSize, b.CheckpointSize) })
+	return out, nil
 }
