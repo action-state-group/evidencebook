@@ -12,8 +12,8 @@ name: capsulectl
 #
 # A pull request runs the plain tests and the race detector only over the
 # packages it changes (.github/scripts/race-packages.sh), never internal/deal's
-# race pass (ten shards of about twelve minutes): lanes run that locally before
-# push (CLAUDE.md). Push to main and the nightly run the full race suite, four
+# race pass (ten shards of about twelve minutes): scripts/pre-push.sh races it
+# locally before push when the change reaches it (CLAUDE.md). Push to main and the nightly run the full race suite, four
 # jobs at a time so pull requests keep runners, and a red run there opens or
 # comments on an issue (evidencebook#925).
 

@@ -19,8 +19,10 @@
 #   also    GLOB=PKG: a path matching it also marks PKG changed (a package
 #           whose tests read another package's files)
 #   exclude never raced on a pull request: internal/deal's race pass is ten
-#           shards of about twelve minutes; it runs on push to main, the
-#           nightly, and locally before push (CLAUDE.md)
+#           shards of about twelve minutes; it runs on push to main and the
+#           nightly. RACE_PACKAGES_LOCAL=1 (scripts/pre-push.sh) drops the
+#           exclusions, so an excluded package is raced like any other when
+#           the change reaches it (evidencebook#973)
 # Globs match the repository-root relative path; `*` also matches `/`.
 set -euo pipefail
 
@@ -45,6 +47,8 @@ case "${1:-}" in
     exit 2
     ;;
 esac
+
+[[ "${RACE_PACKAGES_LOCAL:-}" != 1 ]] || exclude=()
 
 cd "$(git rev-parse --show-toplevel)/$module_dir"
 prefix=""

@@ -23,7 +23,7 @@ shard_count=${BASH_REMATCH[2]}
 
 # Arguments are passed to go test. Two passes: the race detector, under which the
 # slowest single-goroutine case loops run a fixed sample (see
-# internal/deal/race_sample_test.go; CAPSULE_TEST_RACE_FULL=1 runs them all),
+# raceSample in internal/deal/corehelpers_test.go; CAPSULE_TEST_RACE_FULL=1 runs them all),
 # then every case without it.
 #
 # CI runs the passes as separate jobs and splits the race pass across several:
