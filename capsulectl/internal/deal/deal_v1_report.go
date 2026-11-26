@@ -277,7 +277,7 @@ func runV1Report(c *cobra.Command) (err error) {
 				if err != nil {
 					return err
 				}
-				page, err := v1ReportPage(ctx, bundle, dealVerifyCommand(out), proof, dirPath)
+				page, err := v1ReportPage(ctx, bundle, dealVerifyCommand(out), proof, dirPath, v1CountersignedCopy(countersign))
 				if err != nil {
 					return err
 				}

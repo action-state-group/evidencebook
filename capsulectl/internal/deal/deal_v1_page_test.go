@@ -266,7 +266,7 @@ func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
 	require.NoError(t, err)
 	dir, err := filepath.Abs(filepath.Join(witnessedVectors, "witnesses.json"))
 	require.NoError(t, err)
-	page, err := v1ReportPage(t.Context(), keep, "capsulectl deal verify --bundle receipt.html", proof, dir)
+	page, err := v1ReportPage(t.Context(), keep, "capsulectl deal verify --bundle receipt.html", proof, dir, nil)
 	require.NoError(t, err)
 	report := pageVerifyReport(t, page)
 	var entry map[string]any
