@@ -296,6 +296,12 @@ func TestAV1WithheldBundleOfADealWithPayments(t *testing.T) {
 			}
 		}
 		assert.ElementsMatch(t, legs[name], shown, "%s's bundle shows exactly its own legs, as sealed", name)
+		// The docs promise the countersigner never sees a preimage. An
+		// x-deal-v1 settle takes none (deal settle has no such input), so the
+		// property checked is that no member of that name reaches the file.
+		written, readErr := os.ReadFile(file)
+		require.NoError(t, readErr)
+		assert.NotContains(t, strings.ToLower(string(written)), "preimage", "%s's bundle carries no preimage", name)
 		err := countersignRequest(t, file)
 		assert.Contains(t, err.Error(), "certificate", "%s: the request took the bundle and failed only at the untrusted service", name)
 	}
