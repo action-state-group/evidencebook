@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -169,4 +171,111 @@ func TestOnlyTheNodeBundleWritesACadenceChain(t *testing.T) {
 		}
 		assert.Zero(t, n, f)
 	}
+}
+
+// A pinned evidence request whose head is a report sealed with
+// witness_coverage gets a signed refusal (coverage_unsatisfiable), never the
+// copy, and no report of the responder's moves the pinned head.
+func TestAPinnedRequestForACoverageReportIsRefused(t *testing.T) {
+	inLogReports(t)
+	dealFixture(t)
+	id := dealRun(t, "open", "--input", writeJSON(t, crossPartyBuyerOpen))["deal_id"].(string)
+	buyer := thisDealParty(t)
+	dealFixture(t)
+	dealRun(t, "open", "--records", "typed", "--deal-id", id, "--input", writeJSON(t, sellerTyped))
+	seller := thisDealParty(t)
+	party(t, seller.config)
+	var pin map[string]any
+	withSession(t, func(s *dealSession) {
+		ctx := t.Context()
+		require.NoError(t, s.useDeal(ctx, id, false))
+		events, err := s.loadBook(ctx, id)
+		require.NoError(t, err)
+		report, err := s.dealReportFor(ctx, events)
+		require.NoError(t, err)
+		ext, err := s.dealReportExtension(events, report, dealCopyAudience, dealVerifyCommand("bundle.json"), dealPrivate{}, map[string]bool{})
+		require.NoError(t, err)
+		ext["witness_coverage"] = map[string]any{"steps_witnessed": json.Number("1"), "steps": json.Number("2")}
+		_, err = s.dealSealReport(ctx, id, dealCopyAudience, "", ext)
+		require.NoError(t, err)
+		cp, err := cli.CutCheckpoint(ctx, localOnly(s.dp), s.t.Log)
+		require.NoError(t, err)
+		record, err := checkpoint.ParseRecord(cp.Bytes)
+		require.NoError(t, err)
+		pin = map[string]any{"root": record.Root, "mmr_size": record.MMRSize}
+	})
+	before := len(bookRecords(t, id))
+	asked := askFor(t, buyer, seller, id, map[string]any{"expected_pin": pin})
+	assert.Equal(t, "refusal", asked.outcome)
+	assert.Contains(t, fmt.Sprint(asked.response), "coverage_unsatisfiable")
+	party(t, seller.config)
+	assert.Equal(t, before, len(bookRecords(t, id)), "no new report moves the pinned head")
+}
+
+// A deal witnessed through an earlier checkpoint that already held every
+// step (a report sealed after it moved the checkpoint, adding no step): the
+// holder's line says every step is witnessed through that earlier
+// checkpoint, never this checkpoint.
+func TestEveryStepWitnessedThroughAnEarlierCheckpoint(t *testing.T) {
+	inLogReports(t)
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	dealID := retailDeal(t)
+	*now = now.Add(2 * time.Hour)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), key)
+	dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "first.json"))
+	a := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "second.json"))["assurance"].(map[string]any)
+	held := a["holder_witnessed"].(map[string]any)
+	require.Equal(t, "part", held["extent"], "the sealed reports moved the checkpoint past the witnessed tick")
+	assert.Equal(t, held["steps_witnessed"], held["steps"])
+	assert.Contains(t, a["text"], "steps witnessed by")
+	assert.Contains(t, a["text"], "through an earlier checkpoint")
+	assert.NotContains(t, a["text"], "this checkpoint witnessed")
+}
+
+// --from-bundle on a file whose checkpoint a later step has passed, after a
+// tick witnessed the later checkpoint: a state read now does not hold for
+// the file's checkpoint, so it says not_carried, not scheduled.
+func TestReportFromAnOlderFileSaysNotCarried(t *testing.T) {
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	dealID := retailDeal(t)
+	_, older, _, _ := dealReportFiles(t, dealID)
+	*now = now.Add(10 * time.Minute)
+	dealRun(t, "note", "--deal", dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"counterparty","text":"Your order has shipped."}`))
+	*now = now.Add(2 * time.Hour)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), key)
+	from, _, _, _ := dealReportFiles(t, dealID, "--from-bundle", older)
+	assert.Equal(t, "not_carried", from["assurance"].(map[string]any)["witness_state"])
+	assert.NotContains(t, from["assurance"].(map[string]any)["text"], "Witness pending")
+}
+
+// A copy that carries a receipt on its own checkpoint (checkpoint.witnesses)
+// is witnessed by that receipt alone: nothing of the holder's shelf (its
+// tick time, its covered steps) describes it, even when the holder's own
+// state is witnessed in part through the cadence.
+func TestADirectReceiptIsReadWithoutTheShelf(t *testing.T) {
+	b := map[string]interface{}{"checkpoint": map[string]interface{}{"witnesses": []interface{}{
+		map[string]interface{}{"ts_url": "https://witness.example/checkpoints", "entry_hash": "ab", "receipt_b64": "AA=="},
+	}}}
+	producer := map[string]interface{}{
+		"state": "witnessed", "extent": "part", "steps_witnessed": json.Number("2"), "steps": json.Number("5"),
+		"checkpoint_at": "2026-10-04T09:00:00Z",
+		"cadence":       map[string]interface{}{"witnesses": []interface{}{map[string]interface{}{"ts_url": "https://shelf-witness.example"}}},
+	}
+	a := dealAssuranceRung(b, producer)
+	assert.Equal(t, "witnessed", a["rung"])
+	assert.Equal(t, "witness.example", a["witness"])
+	assert.NotContains(t, a, "checkpoint_at")
+	assert.NotContains(t, a, "steps_witnessed")
+	assert.NotContains(t, a, "holder_witnessed")
+	assert.NotContains(t, a["text"], "2026-10-04T09:00:00Z")
 }

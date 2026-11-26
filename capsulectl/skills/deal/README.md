@@ -342,14 +342,13 @@ the receipt and `deal report` name them: **scheduled** (not yet in a tick),
 pending"), **witnessed** and **unverified** (a witness receipt is held but does not verify under the witness the profile names now, such as a tampered receipt, one signed by another key, or a witness key rotated since the receipt was verified (while the deal is still open it is witnessed again once the new witness signs a later tick; a closed deal stays unverified); the report says the receipt did not verify, and the rung stays self-attested).
 
 A step sealed after the last witnessed tick does not undo what the witness
-holds. The report then reads **witnessed in part**: "steps 1 to k of n" are
-witnessed, and the rest are sealed on this device, witness pending, until a
-later tick carries them. The bundle carries the earlier, witnessed
-checkpoint of the deal and an MMR consistency proof that the current
-checkpoint extends it. Of the ticks that hold a deal checkpoint, the newest
-whose receipt verifies is used, so a later tick still waiting for its receipt
+holds: "steps 1 to k of n" are witnessed through the earlier checkpoint, and
+the rest are sealed on this device, witness pending, until a later tick
+carries them. Of the ticks that hold a deal checkpoint, the newest whose
+receipt verifies is used, so a later tick still waiting for its receipt
 never hides an earlier one that came back. Every `deal report`, plain JSON
 included, names its rung.
+
 A copy written since u225 (evidencebook#958) carries no cadence chain: the
 chain shows your shelf's position and cadence, which no copy discloses. Its
 rung is then self-attested unless it carries a witness receipt on the deal's
@@ -547,11 +546,12 @@ against the step's seal; the words shown come from this device's local
 store. If a byte was changed, the page says "This report did not verify"
 instead. Message text appears only when an anomaly cites that message.
 
-When a witness receipt the copy carries covers its checkpoint (a receipt on
-the deal's own checkpoint, or in a copy written before u225 the cadence chain
-above, re-checked against the pinned witness key when the report is made),
-the page and the email say "Witnessed" instead of "Sealed
-by my agent", and otherwise say whether it is scheduled, pending or unverified (a held receipt that fails the check). The page does not
+The page's witness line reads only what the copy carries: a receipt on the
+deal's own checkpoint, or in a copy written before u225 the cadence chain
+above. A new copy of a deal witnessed only through the cadence carries
+neither, so the page reads "missing" there; the holder's own witnessing is in
+the report's `assurance`, never on the page. The email states no witness of
+its own: it points the reader at `capsulectl deal verify`. The page does not
 check the receipt itself and says so; `capsulectl deal verify --bundle FILE
 --witness-directory DIRECTORY.json` does, against a witness directory the
 reader chooses. Making a report never contacts the witness.

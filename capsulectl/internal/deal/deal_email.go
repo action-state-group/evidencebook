@@ -90,7 +90,12 @@ func holderWitnessedLine(chain map[string]interface{}) string {
 	if chain["extent"] == "part" {
 		k, _ := JSONUint(chain["steps_witnessed"])
 		n, _ := JSONUint(chain["steps"])
-		if k < n {
+		if k >= n {
+			// Every step, through an earlier checkpoint: a sealed report
+			// after it moved the checkpoint without adding a step.
+			return fmt.Sprintf("Your own profile reports all %d steps witnessed by %s, through %s, as capsulectl reported from your own book. ", n, host, cut("an earlier checkpoint")) + notCarried
+		}
+		{
 			rest := "the later steps are not witnessed yet"
 			switch r, _ := chain["rest"].(map[string]interface{}); r["state"] {
 			case "scheduled":

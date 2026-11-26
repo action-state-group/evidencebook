@@ -71,9 +71,10 @@ func TestCadenceExtensionEntryByState(t *testing.T) {
 	assert.Equal(t, "part", read["extent"])
 }
 
-// An unwitnessed bundle carries no witness state; a report made from the
-// file reads this profile's own state for its checkpoint ("scheduled"), as
-// the same deal's own report does (evidencebook#737, #958).
+// An unwitnessed bundle carries no witness state, so a report made from the
+// file says so ("not_carried"): a pending state read now may not hold for
+// the file's checkpoint; the same deal's own report says "scheduled"
+// (evidencebook#737, #958).
 func TestReportFromAnUnwitnessedBundleDoesNotGuessTheWitnessState(t *testing.T) {
 	public, _, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -88,10 +89,8 @@ func TestReportFromAnUnwitnessedBundleDoesNotGuessTheWitnessState(t *testing.T) 
 	assert.NotContains(t, b["extensions"], DealCadenceExtension)
 	assert.NotContains(t, b["extensions"], DealParentWitnessExtension)
 
-	// No copy carries a chain since u225, so a report made from the file says
-	// what this profile's own book holds for its checkpoint.
 	from, _, _, _ := dealReportFiles(t, dealID, "--from-bundle", bundlePath)
-	assert.Equal(t, "scheduled", from["assurance"].(map[string]any)["witness_state"])
-	assert.Equal(t, "scheduled", from["grade"].(map[string]any)["witness"].(map[string]any)["state"])
+	assert.Equal(t, "not_carried", from["assurance"].(map[string]any)["witness_state"])
+	assert.Equal(t, "not_carried", from["grade"].(map[string]any)["witness"].(map[string]any)["state"])
 	assert.Equal(t, "self_attested", from["assurance"].(map[string]any)["rung"])
 }

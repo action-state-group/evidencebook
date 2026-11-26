@@ -14,5 +14,5 @@ The witnessed cadence chain (`parent-log-witness/v1`) shows the holder's shelf p
   - That line is in the holder's own output only, never in a copy, its page or its email.
 - **The deal page's witness line** reads "missing" for a new copy, as for any copy without a chain.
 - **Old copies.** Copies written before this change still verify, their chain checked as before. A report sealed before it that states `witness_coverage` is not shown in a new copy:
-  - `deal report` with that held report, and a History, are refused with a hint to seal a current report;
+  - a History is refused with a hint to seal a current report;
   - an evidence request pinned to it is answered with a signed refusal (`coverage_unsatisfiable`).
