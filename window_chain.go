@@ -716,7 +716,8 @@ func (v VerifiedWindow) next() WindowTree {
 // verifyBoundary checks a window's boundary (evidencebook#807): its
 // checkpoint, that the final tree extends it, and that every record after
 // it up to the close record is in the tail, contiguous, and a close/v1 for
-// a period inside the window or an index root. The tail is positional, so a
+// a period inside the window, a held_bundle such a Close cites, or an index
+// root. The tail is positional, so a
 // record whose commit time was set back cannot be left out of it.
 func verifyBoundary(cw ChainWindow, final signedCheckpoint, w Window, recordKey string, opts VerifyChainOptions, fail func(string, string, ...any)) (*WindowTree, bool) {
 	label, b := w.Label, cw.Boundary
@@ -747,6 +748,9 @@ func verifyBoundary(cw ChainWindow, final signedCheckpoint, w Window, recordKey 
 		fail(label, "window %s's tail carries %d of the %d records after its boundary", label, len(b.Tail), want)
 		return nil, false
 	}
+	// held is each late held_bundle no late Close has cited yet, by record
+	// id: a Close citing a peer Close holds that bundle just before itself.
+	held := map[string]uint64{}
 	for i, t := range b.Tail {
 		seq := bcp.Entries + 1 + uint64(i)
 		h, key, err := windowChainRecord(t.Record, final, seq, t.Proof)
@@ -773,10 +777,23 @@ func verifyBoundary(cw ChainWindow, final signedCheckpoint, w Window, recordKey 
 				fail(label, "window %s holds a late Close at %d that is not a close/v1 for a period inside it", label, seq)
 				return nil, false
 			}
+			for _, target := range h.LinksTo(Cites) {
+				delete(held, target)
+			}
+		case RecordTypeHeldBundle:
+			if heldForClose(h) != nil {
+				fail(label, "window %s holds a late held_bundle record at %d that no Close relies on", label, seq)
+				return nil, false
+			}
+			held[t.Record.RecordID] = seq
 		default:
 			fail(label, "window %s holds a late %s record at %d", label, h.RecordType, seq)
 			return nil, false
 		}
+	}
+	for _, seq := range held {
+		fail(label, "window %s holds a late held_bundle record at %d that no late Close cites", label, seq)
+		return nil, false
 	}
 	return &WindowTree{LogID: cw.LogID, Entries: bcp.Entries, Root: bcp.Root}, true
 }

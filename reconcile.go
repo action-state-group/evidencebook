@@ -443,8 +443,11 @@ func isHalf(h Header, recordType string) bool {
 	return h.Correlation != nil && (recordType == "" || h.RecordType == recordType)
 }
 
-// Acknowledge records that this book has seen and holds a counterparty's
-// Close, which is what makes that Close AGREED from the counterparty's side.
+// Acknowledge records that this book has seen a counterparty's Close and
+// agrees with it, which is what makes that Close AGREED from the
+// counterparty's side. It names the Close by its record id and holds no copy
+// of it: no reconcile relies on it, so under the custody profile's item 24
+// the peer's account is held by digest (evidencebook#116).
 func (b *Book) Acknowledge(ctx context.Context, peerCloseID, counterparty string) (Record, error) {
 	return b.Append(ctx, Entry{RecordType: RecordTypeAcknowledgement, EpistemicType: ProducerClaim, CounterpartyRef: counterparty, Links: []Link{{Type: Acknowledges, Target: peerCloseID}}})
 }

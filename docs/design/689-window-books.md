@@ -328,21 +328,25 @@ checkpoint is stored; a next window's open record is written from the stored bou
 `final_*`. With grace 0 the boundary checkpoint is the final one and the chain is as in §5.
 
 **Admission.** In grace a window book takes only a close/v1 Close (read with `ReadClose`, its
-period inside the window, a superseding Close included; a legacy body is refused) and the index
-roots its own checkpoints commit; at or after `End + Grace` it takes nothing, rolled or not. An
-acknowledgement or rebuttal goes in the current window at any time, as do a Close sealed after
-the grace and `reconcile` (which adds no record).
+period inside the window, a superseding Close included; a legacy body is refused), the
+`held_bundle` such a Close relies on (`relied_by` `close`: a Close citing a peer Close appends
+the peer bundle just before itself, evidencebook#116, after checking that the window takes the
+Close), and the index roots its own checkpoints commit; at or after `End + Grace` it takes
+nothing, rolled or not. An acknowledgement or rebuttal goes in the current window at any time,
+as do a Close sealed after the grace and `reconcile` (which adds no record).
 
 **Chain v2.** Each window entry also carries the boundary checkpoint (with receipts when the host
 has them), a CLL consistency proof from the boundary tree to the final tree, and the **tail**:
 every leaf after the boundary up to the close record, each with its inclusion proof under the
 final checkpoint. `VerifyWindowChain` checks the next window's `previous` against the boundary
 tree, the consistency proof, that the tail is contiguous from the boundary's last leaf + 1 to
-the close record, and that every tail record is a close/v1 for a period inside the window or a
-strictly decoded `index_root`; any other record is a named finding (`window 2026-10 holds a
+the close record, and that every tail record is a close/v1 for a period inside the window, a
+strictly decoded `index_root`, or a `held_bundle` a later close/v1 in the tail cites; any other
+record, an uncited `held_bundle` included, is a named finding (`window 2026-10 holds a
 late <type> record at <seq>`), as is a missing leaf. The boundary is positional, so a backdated
 `committed_at` cannot hide a record; once a window took its boundary its book refuses every
-record but a Close for its period, whatever the clock reads. What a chain does not show: that a
+record but a Close for its period and the `held_bundle` that Close relies on, whatever the clock
+reads. What a chain does not show: that a
 holder did not delay a window's boundary past its end to place ordinary records before it. With witnesses named, the boundary and final checkpoints
 must each carry a verifying receipt. `WindowChainVersion` becomes 2; a version 1 chain (grace 0)
 still verifies.
@@ -375,7 +379,8 @@ help, `--grace` and its refusals (no store is left behind), `book close` last mo
 and after it, an ordinary record after a window ends landing in the current window, `book window
 list`, a chain refused over a window in grace, the boundary checkpoint queued for the witness,
 `close --bundle-out` in grace (anchored at that window's checkpoint, its disclosure record in the
-current window, since a window in grace takes only Closes); an old store opening with grace 0
+current window, since a window in grace takes only Closes and the `held_bundle` a Close relies
+on); an old store opening with grace 0
 is the root package's test.
 capsulectl-book has no verb that writes an acknowledgement or rebuttal; the root package's tests
 show a window in grace refusing every record but a Close inside it, so such records go to the
