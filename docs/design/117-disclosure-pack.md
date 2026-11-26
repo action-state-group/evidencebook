@@ -37,8 +37,8 @@ Later rulings this profile must hold (ops `company-oss/inbox.md`):
 - **u640** (Steven 2026-11-26, evidencebook#998, ops commit `7cb1ace0`): the countersigner sees the
   asking party's own payment legs (side, amount sent or received with the receive fee, routing fee,
   payment reference such as a Lightning hash, status, observed time, the terms leg paid), never a
-  preimage, never the counterparty's legs. The signed message:
-  buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=f7c948e3b379990d3b64e66e8b75d61d2925a261dc35b6d5803e4e2b52d81929&thread=ef685ec74988588082dd26f1ce927be64f50b1bc831290d7e8e2964f15a1a7f4
+  preimage, never the counterparty's legs. Recorded on evidencebook#998:
+  https://github.com/action-state-group/evidencebook/issues/998#issuecomment-7200960006
 
 ## 1. What exists today
 
@@ -371,8 +371,8 @@ so a caller that passes one gets the same answers.
 ## 10. What-questions, answered
 
 Asked of the Sherlock2 twin first, then of Sherlock2 (evidencebook#1005, PM review at `f5b57223`,
-https://github.com/action-state-group/evidencebook/pull/1005#issuecomment-7202292872; Buzz
-buzz://message?channel=ef9c2983-4bef-4df0-96a9-a34748edfe2b&id=9a81d719709cbacca6cb1be15febb97d3d154db97d19168c5b0da1e9ec826bd8&thread=095a449da655820998644c35b891ccb31ff5e7bbbbdd4428d72637ba45f84f0e).
+https://github.com/action-state-group/evidencebook/pull/1005#issuecomment-7202292872, verified at
+`246e7ba9` in https://github.com/action-state-group/evidencebook/pull/1005#issuecomment-7202356769).
 Sherlock2's answers decide; none leaves a decision for Steven.
 
 1. **The entitlement table (§3).** An entitlement, not a widening: both countersigner rows add
