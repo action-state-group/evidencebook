@@ -55,6 +55,27 @@ deal. This section only points to them; each is described where it lives.
 | get the report | `Book.EvaluatePack` runs a capsule-engine rules pack over those acts, then seals the Evidence Result and returns the bundle rooted at it; `report.Build` renders that bundle under `report.View{Card: "obligation", ContractReport: true}`, and `report.SealPage` seals the page | root module, then the report module ([Path 1](#path-1-write-a-terms-pack-and-seal-a-result), [Path 2](#path-2-build-a-report)) |
 | open a deal | `deal.Open` opens a deal store on your shelf; `Store.Offer` seals an offer to send whole; each side records what it receives from the other with `Shelf.Receive` and `Store.NoteReceived`; `Store.Agree` then seals the holder's agreement to the offer, which opens the deal book and cites the deal's admission decision (`Store.Admit`), the acceptor first and the offerer once it holds the acceptor's agreement ([package `deal`](https://pkg.go.dev/github.com/action-state-group/evidencebook/deal)); `capsulectl deal offer`, `deal receive` and `deal agree` do the same from the command line | root module (package `deal`) |
 
+After deal.open, the rest of the Integrated Design's Deal API is package
+`deal` too:
+
+| Design call | Go | What it does |
+|---|---|---|
+| deal.check | `Store.Check` | seals the caller's check and verdict; it evaluates nothing, and the verdict's rules members are the caller's claim (the library runs and attests no rules). The person's approval is sealed with `Store.SealJournal` |
+| deal.perform | `Store.Perform` | seals an act resting on a passing check whose verdict the person approved; the first act waits on the other side's stamp proof |
+| deal.settle | `Store.SendPayment`, then `Store.Settle` | a payment the holder makes: opened before the rail, sealed as the payer leg when the rail answers; `Store.Settle` alone seals what the holder received |
+| deal.statement | `Store.Statement` | says how rows went |
+| deal.dispute | `Store.Dispute`, `Store.WithdrawDispute`, `Store.Challenge` | disputes a row before the agreement's adjudicator, takes the dispute back, or challenges a ruling |
+| deal.status | `Store.Status` | the deal book's status value now |
+| book.admit | capsule-engine's admission evaluation, sealed with `Store.Admit` | the decision an agreement cites |
+| book.card | `Cadence.HistoryCard` | a book's history card |
+| book.ask | `Book.Request`, then `Book.RecordResponse` | asks a counterparty for evidence and keeps its answer |
+| book.answer | `Shelf.Respond` | answers a request |
+
+Example: [a deal from offer to status](https://pkg.go.dev/github.com/action-state-group/evidencebook/deal#example-package-ADealFromOfferToStatus)
+(`deal/example_test.go`). It opens a deal between two shelves, checks,
+approves and performs a delivery, and reads the deal's status, importing
+only this module.
+
 Example: [`Book.EvaluatePack`](https://pkg.go.dev/github.com/action-state-group/evidencebook#example-Book.EvaluatePack)
 (`example_frontdoor_test.go`). It records three purchases and evaluates them
 under capsule-engine's Everyday Rules 0.3.8 (`pack.LoadEveryday038()`). Its

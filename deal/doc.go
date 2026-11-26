@@ -26,8 +26,11 @@
 //     [Store.DealJournal]) and, for the first act, once the other side's
 //     stamp proof covers the holder's agreement;
 //   - [Store.Statement] is deal.statement: how rows went;
-//   - [Store.Settle] is deal.settle for what the holder received, a payee
-//     leg;
+//   - [Store.SendPayment] and [Store.Settle] are deal.settle: a payment the
+//     holder makes is opened with SendPayment before it goes to the rail,
+//     then sealed as its payer leg with Settle, citing its check, when the
+//     rail answers; what the holder received is a payee leg, sealed with
+//     Settle alone;
 //   - [Store.Dispute], [Store.WithdrawDispute] and [Store.Challenge] are
 //     deal.dispute: a dispute of a row before the agreement's adjudicator,
 //     its withdrawal, and a challenge of a ruling;
@@ -37,6 +40,23 @@
 // the record already sealed (Acted.Again), so a caller that stopped can
 // make the same call again. A caller adds its own check of a record before
 // it is sealed with [BeforeSeal].
+//
+// deal.check is [Store.Check]: it seals the caller's check and its verdict
+// in the deal's journal, and evaluates nothing. The caller evaluates the
+// act against the participant's own rules and the deal's terms; the
+// verdict, its rules members included (which checker, which definition), is
+// the caller's own word, and this package runs and attests no rules. A
+// verdict with no rules block is refused, and xdealv1.CheckActs escalates
+// an act under a standing intent that rests on one. The person's answer is
+// an approval record, and every other journal record of a deal (its intent,
+// a message, a claim, evidence) is sealed the same way, with
+// [Store.SealJournal], the one writer of a deal's journal records and its
+// local step list ([Store.Steps]).
+//
+// The design's book.card, book.ask and book.answer are the shelf's own:
+// evidencebook.Cadence.HistoryCard derives a book's card, evidencebook.Book.Request
+// asks a counterparty for evidence (and Book.RecordResponse keeps the
+// answer), and evidencebook.Shelf.Respond answers a request.
 //
 // [Store.Admit] seals the result of book.admit, capsule-engine's admission
 // decision, which an agreement cites; it evaluates nothing.
@@ -49,10 +69,12 @@
 // the books: which deals it holds and in what state (deal_versions, deal_v1),
 // the offers it received (deal_v1_offers), each record sent whole
 // (deal_sent) and each admission decision bound to its deal
-// (deal_v1_admits). Two more tables are created for capsulectl-deal, which
-// writes them: each deal's local step list (deal_v1_events), from which
-// [Store.DealJournal] reads the journal records a deal's steps bind, and
-// each payer leg's send (deal_v1_sends). capsulectl-deal keeps its deals in the same tables, so a
+// (deal_v1_admits), each deal's local step list (deal_v1_events), from
+// which [Store.DealJournal] reads the journal records a deal's steps bind,
+// and each payer leg's send (deal_v1_sends). A step's local form is the
+// caller's own JSON, which the store keeps and returns unread
+// (capsulectl-deal keeps its card's events there); a step written without
+// one stores null. capsulectl-deal keeps its deals in the same tables, so a
 // deal store written by either opens in the other.
 //
 // Every call can be run again after a failure. A record sent whole is
