@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -111,6 +110,9 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 	if err != nil {
 		return nil, err
 	}
+	if heldReport != "" && sealedReportCarriesWitnessCoverage(b, heldReport) {
+		return nil, heldReportCoverageError(dealID)
+	}
 	offLog, err := s.reportsOffLog(ctx, dealID)
 	if err != nil {
 		return nil, err
@@ -124,8 +126,7 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 		}
 		defer func() { s.reportAt = time.Time{} }()
 	}
-	coverage := witnessCoverage(events, cadence)
-	ext, err := s.dealReportExtension(events, report, audience, verifyCommand, private, withhold, coverage)
+	ext, err := s.dealReportExtension(events, report, audience, verifyCommand, private, withhold)
 	if err != nil {
 		return nil, err
 	}
@@ -145,16 +146,12 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 		if b, cadence, err = s.dealAssemble(ctx, events, withhold); err != nil {
 			return nil, err
 		}
-		// The sealed section states the witness coverage of the steps, which
-		// the report's own entry, after them, cannot change; a tick between
-		// the two reads could, and the report is then made again.
-		if after := witnessCoverage(events, cadence); !reflect.DeepEqual(after, coverage) {
-			return nil, cli.Hint(cli.ErrConflict, "the deal's witness state changed while the report was sealed: run the report again")
-		}
 		ext = map[string]interface{}{dealprofile.ReportPointer: id}
 	}
+	// The copy carries no witnessed chain (u219, u225: it shows the holder's
+	// shelf position and cadence); cadence is the holder's own state, for
+	// the holder's output only.
 	extensions := map[string]interface{}{dealprofile.Profile: ext}
-	setCadenceExtension(extensions, cadence)
 	s.hostCadence = cadence
 	if standalone != nil {
 		extensions[dealprofile.ReportExtension] = standalone
@@ -255,14 +252,11 @@ func (s *dealSession) dealAssembleAtCheckpoint(ctx context.Context, events []sea
 
 // dealReportExtension is a copy's deal section: for a shared copy, the one
 // rewritten for its audience; for the user's own copy, the full report.
-func (s *dealSession) dealReportExtension(events []sealedEvent, report dealReport, audience, verifyCommand string, private dealPrivate, withhold map[string]bool, coverage map[string]interface{}) (map[string]interface{}, error) {
+func (s *dealSession) dealReportExtension(events []sealedEvent, report dealReport, audience, verifyCommand string, private dealPrivate, withhold map[string]bool) (map[string]interface{}, error) {
 	if audience != cli.DealAudienceKeep {
 		ext := dealShareExtension(events, report, audience, private, withhold, s.shareUnchecked)
 		if !s.reportAt.IsZero() {
 			ext["lifecycle"] = shareLifecycle(buildDealLifecycle(events, s.reportAt))
-		}
-		if coverage != nil {
-			ext["witness_coverage"] = coverage
 		}
 		ext["did_line"] = dealDidLine(dealDidSources(events))
 		ext["verify_command"] = verifyCommand
@@ -373,9 +367,6 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 	if opening := saleAuthorityOpening(events); opening != nil {
 		ext["sale_authority_opening"] = opening
 	}
-	if coverage != nil {
-		ext["witness_coverage"] = coverage
-	}
 	if report.Money != nil {
 		money, err := bundleJSON(report.Money)
 		if err != nil {
@@ -403,40 +394,6 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 		ext[key] = generic
 	}
 	return ext, nil
-}
-
-// witnessCoverage names, in the user's terms, what a receipt covering only
-// part of a deal covers: the acts in the witnessed steps, and the acts in
-// the steps still witness-pending ("the payment is witnessed; the
-// cancellation is not yet"). Acts are named without payee or reference, so
-// a shared copy carries it as it is. Nil unless the deal is witnessed in
-// part.
-func witnessCoverage(events []sealedEvent, cadence map[string]interface{}) map[string]interface{} {
-	if cadence["state"] != "witnessed" || cadence["extent"] != "part" {
-		return nil
-	}
-	k, err := JSONUint(cadence["steps_witnessed"])
-	if err != nil || k == 0 || int(k) >= len(events) {
-		return nil
-	}
-	currency := events[0].Event.Open.Terms.Currency
-	acts := func(from []sealedEvent) string {
-		var names []string
-		for _, se := range from {
-			if a := se.Event.Act; a != nil {
-				names = append(names, dealShareAct(*a, currency))
-			}
-		}
-		return strings.Join(names, "; ")
-	}
-	out := map[string]interface{}{"steps_witnessed": cli.Integer(k), "steps": cli.Integer(uint64(len(events)))}
-	if covered := acts(events[:k]); covered != "" {
-		out["witnessed_acts"] = covered
-	}
-	if pending := acts(events[k:]); pending != "" {
-		out["pending_acts"] = pending
-	}
-	return out
 }
 
 // dealReportHTML renders one local, self-contained page: the bundle, the
@@ -806,4 +763,28 @@ func holdsOutcomeNote(events []sealedEvent) bool {
 		}
 	}
 	return false
+}
+
+// errHeldReportWitnessCoverage is a copy that would disclose a report sealed
+// before u225 that states witness coverage ("steps 1 to k witnessed"), which
+// no copy carries the chain for any more (evidencebook#958). The signed
+// report is never edited: a copy that would show it is refused.
+var errHeldReportWitnessCoverage = errors.New("the sealed report states a witness coverage this copy no longer carries")
+
+func heldReportCoverageError(dealID string) error {
+	return cli.Hint(fmt.Errorf("%w: %w", cli.ErrConflict, errHeldReportWitnessCoverage), "deal "+dealID+"'s sealed report states which steps a witness covered, and copies no longer carry the witness chain that shows it (it would show your shelf's position and cadence); seal a current report with `deal report --deal "+dealID+" --bundle FILE`, then use that one")
+}
+
+// sealedReportCarriesWitnessCoverage is whether the sealed report record id,
+// as the bundle b discloses it, states witness_coverage.
+func sealedReportCarriesWitnessCoverage(b map[string]interface{}, id string) bool {
+	disclosures, _ := b["disclosures"].(map[string]interface{})
+	d, _ := disclosures[id].(map[string]interface{})
+	input, _ := d["agent_input"].(map[string]interface{})
+	if _, ok := input["witness_coverage"]; ok {
+		return true
+	}
+	report, _ := input["report"].(map[string]interface{})
+	_, ok := report["witness_coverage"]
+	return ok
 }

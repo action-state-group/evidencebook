@@ -151,9 +151,14 @@ func TestARC16StoreMovesOntoItsShelf(t *testing.T) {
 	require.NoError(t, err, out)
 	var b map[string]any
 	require.NoError(t, json.Unmarshal(mustRead(t, path), &b))
-	chain := b["extensions"].(map[string]any)["parent-log-witness/v1"].(map[string]any)
+	assert.NotContains(t, b["extensions"], "parent-log-witness/v1", "a copy carries no chain (u225)")
+	// The holder's own chain for it, as copies carried it before, verifies.
+	chained := withHolderChain(t, p, deals.Closed, path)
+	var withChain map[string]any
+	require.NoError(t, json.Unmarshal(mustRead(t, chained), &withChain))
+	chain := withChain["extensions"].(map[string]any)["parent-log-witness/v1"].(map[string]any)
 	assert.Equal(t, "witnessed", chain["state"])
-	requireParentWitness(t, mustRead(t, path), "")
+	requireParentWitness(t, mustRead(t, chained), "")
 
 	// Later evidence on the closed deal brings it back into the tick.
 	dealRun(t, "note", "--deal", deals.Closed, "--kind", "evidence", "--email", filepath.Join(merchantFixture, "confirmation.eml"))
@@ -435,7 +440,9 @@ func TestWitnessStandingFollowsTheProfilesWitness(t *testing.T) {
 	assert.Equal(t, "all", witness["extent"])
 	path := filepath.Join(t.TempDir(), "later.json")
 	dealRun(t, "report", "--deal", deals.Later, "--bundle", path)
-	result, err := verifyWithDirectory(t, path, writeDirectory(t, rawKeyRow(p.Checkpoint.Endpoint, other)))
+	// The copy carries no chain (u225); the holder's own chain, as copies
+	// carried it before, runs through the new witness's tick.
+	result, err := verifyWithDirectory(t, withHolderChain(t, p, deals.Later, path), writeDirectory(t, rawKeyRow(p.Checkpoint.Endpoint, other)))
 	require.NoError(t, err)
 	status, _ := bundleWitnesses(result)
 	assert.Equal(t, "pass", status, "the bundle's chain runs through the new witness's tick")

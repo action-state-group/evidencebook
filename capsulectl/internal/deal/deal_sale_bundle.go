@@ -133,7 +133,7 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 	} else if err := s.useDeal(ctx, saleID, false); err != nil {
 		return nil, nil, err
 	}
-	b, cadence, err := s.dealAssemble(ctx, events, nil)
+	b, _, err := s.dealAssemble(ctx, events, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -145,7 +145,6 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 		section["threads_predate_registration"] = true
 	}
 	extensions := map[string]interface{}{dealprofile.Profile: section, DealSaleExtension: map[string]interface{}{"threads": threads}}
-	setCadenceExtension(extensions, cadence)
 	b["extensions"] = extensions
 	if err = cli.VerifyProducedBundle(b, true); err != nil {
 		return nil, nil, err

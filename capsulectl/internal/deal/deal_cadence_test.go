@@ -200,15 +200,28 @@ func TestDealWitnessStatesAreShownAsTheyAre(t *testing.T) {
 	deliver(t, p, cadenceSize(t, p), key)
 	witnessed := report("up")
 	assurance := witnessed["assurance"].(map[string]any)
-	assert.Equal(t, "witnessed", assurance["rung"])
+	// The copy carries no witness chain (u219, u225): its rung is the copy's,
+	// and the holder's own witnessing is said in attributed voice.
+	assert.Equal(t, "self_attested", assurance["rung"])
+	assert.Equal(t, "not_carried", assurance["witness_state"])
+	assert.Equal(t, "all", assurance["holder_witnessed"].(map[string]any)["extent"])
+	assert.Contains(t, assurance["text"], "Your own profile reports this checkpoint witnessed by")
 	assert.NotContains(t, strings.ToLower(assurance["text"].(string)), "verified")
 	page := string(mustRead(t, filepath.Join(dir, "up.html")))
 	// The page states no witness of its own: the core's lists and verdict
 	// stand alone (Steven's banner ruling on capsule-cli#341).
 	assert.NotContains(t, page, "Witnessed through")
 
-	bundlePath := filepath.Join(dir, "up.json")
-	result, err := verifyWithDirectory(t, bundlePath, writeDirectory(t, rawKeyRow(endpoint, public)))
+	copyPath := filepath.Join(dir, "up.json")
+	assert.NotContains(t, readBundle(t, copyPath)["extensions"], DealParentWitnessExtension)
+	result, err := verifyWithDirectory(t, copyPath, writeDirectory(t, rawKeyRow(endpoint, public)))
+	require.NoError(t, err)
+	assert.Equal(t, "VALID", result["verdict"])
+	assert.NotContains(t, result, "reader_witnesses", "the copy claims no witness")
+
+	// The holder's own chain, as an older copy carried it, still verifies.
+	bundlePath := withHolderChain(t, p, dealID, copyPath)
+	result, err = verifyWithDirectory(t, bundlePath, writeDirectory(t, rawKeyRow(endpoint, public)))
 	require.NoError(t, err)
 	status, _ := bundleWitnesses(result)
 	assert.Equal(t, "pass", status, "deal checkpoint -> tree path -> cadence entry -> witnessed cadence checkpoint")
@@ -283,7 +296,9 @@ func TestDealChangedWitnessKeyIsUnverified(t *testing.T) {
 	dealID := retailDeal(t)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), key)
-	assert.Equal(t, "witnessed", dealRun(t, "report", "--deal", dealID)["grade"].(map[string]any)["witness"].(map[string]any)["state"])
+	first := dealRun(t, "report", "--deal", dealID)
+	assert.Equal(t, "not_carried", first["grade"].(map[string]any)["witness"].(map[string]any)["state"], "the grade is the copy's")
+	assert.Contains(t, first["assurance"], "holder_witnessed")
 
 	p.Checkpoint.PublicKey = hex.EncodeToString(other)
 	require.NoError(t, cli.SaveProfile(p, true))
@@ -299,7 +314,9 @@ func TestDealChangedWitnessKeyIsUnverified(t *testing.T) {
 	*now = now.Add(2 * time.Hour)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), otherKey)
-	assert.Equal(t, "witnessed", dealRun(t, "report", "--deal", dealID)["grade"].(map[string]any)["witness"].(map[string]any)["state"])
+	again := dealRun(t, "report", "--deal", dealID)
+	assert.Equal(t, "not_carried", again["grade"].(map[string]any)["witness"].(map[string]any)["state"])
+	assert.Equal(t, "all", again["assurance"].(map[string]any)["holder_witnessed"].(map[string]any)["extent"])
 }
 
 func TestDealTamperedReceiptIsUnverified(t *testing.T) {
@@ -351,9 +368,12 @@ func TestDealWitnessedInPartWithAnUnverifiedRest(t *testing.T) {
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), stranger)
 	a := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))["assurance"].(map[string]any)
-	assert.Equal(t, "witnessed_in_part", a["rung"])
-	assert.Contains(t, a["text"], "The rest did not verify")
-	assert.NotContains(t, a["text"], "Witness pending for the rest")
+	assert.Equal(t, "self_attested", a["rung"], "the copy carries no chain")
+	assert.Equal(t, "part", a["holder_witnessed"].(map[string]any)["extent"])
+	assert.Contains(t, a["text"], "Your own profile reports steps 1 to")
+	assert.Contains(t, a["text"], "the later steps did not verify")
+	assert.NotContains(t, a["text"], "next tick")
+	assert.NotContains(t, a["text"], "this checkpoint witnessed", "part coverage never says this checkpoint is witnessed")
 }
 
 // A deal never sent to the witness is not a failed check.
@@ -424,12 +444,12 @@ func TestDealCadencePadsToTheBucket(t *testing.T) {
 	deliver(t, p, cadenceSize(t, p), key)
 	bundlePath := filepath.Join(t.TempDir(), "b.json")
 	report := dealRun(t, "report", "--deal", dealID, "--bundle", bundlePath)
-	assert.Equal(t, "witnessed", report["assurance"].(map[string]any)["rung"])
+	assert.Equal(t, "all", report["assurance"].(map[string]any)["holder_witnessed"].(map[string]any)["extent"])
 	assert.NotContains(t, strings.ToLower(report["trail"].(string)), "padding")
 	for _, item := range report["did"].([]any) {
 		assert.NotContains(t, strings.ToLower(item.(map[string]any)["text"].(string)), "padding")
 	}
-	result, err := verifyWithDirectory(t, bundlePath, writeDirectory(t, rawKeyRow(endpoint, public)))
+	result, err := verifyWithDirectory(t, withHolderChain(t, p, dealID, bundlePath), writeDirectory(t, rawKeyRow(endpoint, public)))
 	require.NoError(t, err)
 	status, _ := bundleWitnesses(result)
 	assert.Equal(t, "pass", status, "padding entries are ordinary leaves to the proof")
@@ -670,17 +690,18 @@ func TestDealIsWitnessPendingUntilATick(t *testing.T) {
 	page = filepath.Join(t.TempDir(), "r2.html")
 	report = dealRun(t, "report", "--deal", dealID, "--html", page)
 	a = report["assurance"].(map[string]any)
-	assert.Equal(t, "witnessed", a["rung"])
-	assert.Equal(t, "2026-09-27T18:07:00Z", a["checkpoint_at"], "the tick's time, coarsened to the minute")
-	assert.Contains(t, a["text"], "signed this receipt's checkpoint, cut at 2026-09-27T18:07:00Z at a cadence tick after its steps")
-	cadence := embeddedBundle(t, string(mustRead(t, page)))["extensions"].(map[string]any)[DealParentWitnessExtension].(map[string]any)
-	assert.Equal(t, "2026-09-27T18:07:00Z", cadence["checkpoint_at"], "the page reads it from the bundle")
+	assert.Equal(t, "self_attested", a["rung"], "the copy carries no chain (u225)")
+	assert.Equal(t, "not_carried", a["witness_state"])
+	assert.Contains(t, a["text"], "Your own profile reports this checkpoint witnessed by")
+	assert.NotContains(t, embeddedBundle(t, string(mustRead(t, page)))["extensions"], DealParentWitnessExtension, "the page's bundle carries no chain")
 }
 
-// The report names its rung from what it can show. A step sealed after the
-// last tick no longer drops the report to self-attested: the witnessed
-// earlier checkpoint is carried with a consistency proof to the current one,
-// and the report says which steps the witness covers.
+// The report names its rung from what the copy carries, and the holder's own
+// witnessing in attributed voice (u225): a step sealed after the last tick
+// is witnessed through the earlier checkpoint, with a consistency proof to
+// the current one, and the holder's line says which steps the witness
+// covers. The chain itself, as copies carried it before u225, still
+// verifies under every name it was carried under.
 func TestDealReportRungWitnessedInPart(t *testing.T) {
 	public, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -702,20 +723,26 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), key)
 	all, _ := report("all")
-	assert.Equal(t, "witnessed", all["rung"])
-	assert.Equal(t, "2026-10-04T09:00:00Z", all["checkpoint_at"])
-	assert.Contains(t, all["text"], "cut at 2026-10-04T09:00:00Z")
+	// The copy carries no chain (u225): its rung is its own, and the holder's
+	// witnessing is said in attributed voice.
+	assert.Equal(t, "self_attested", all["rung"])
+	assert.Equal(t, "all", all["holder_witnessed"].(map[string]any)["extent"])
+	assert.Contains(t, all["text"], "Your own profile reports this checkpoint witnessed by")
 
 	// One more step after the tick.
 	*now = now.Add(10 * time.Minute)
 	dealRun(t, "note", "--deal", dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"counterparty","text":"Your order has shipped."}`))
-	part, partPath := report("part")
-	assert.Equal(t, "witnessed_in_part", part["rung"])
-	k, n := part["steps_witnessed"].(float64), part["steps"].(float64)
+	part, copyPath := report("part")
+	assert.Equal(t, "self_attested", part["rung"])
+	held := part["holder_witnessed"].(map[string]any)
+	assert.Equal(t, "part", held["extent"])
+	k, n := held["steps_witnessed"].(float64), held["steps"].(float64)
 	assert.Equal(t, k+1, n)
-	assert.Contains(t, part["text"], fmt.Sprintf("That signature covers steps 1 to %d of %d", int(k), int(n)))
-	assert.Contains(t, part["text"], fmt.Sprintf("Steps %d to %d are sealed by my agent on this device only", int(k)+1, int(n)))
-	assert.Contains(t, part["text"], "Witness pending for the rest: the current checkpoint goes to the witness at the next tick")
+	assert.Contains(t, part["text"], fmt.Sprintf("Your own profile reports steps 1 to %d of %d witnessed by", int(k), int(n)))
+	assert.Contains(t, part["text"], "the later steps go to the witness at the next tick")
+	assert.NotContains(t, part["text"], "this checkpoint witnessed")
+	// The holder's chain, as copies carried it before u225, still verifies.
+	partPath := withHolderChain(t, p, dealID, copyPath)
 	// What the page shows a reader is checked rendered, in Chrome
 	// (TestPresentationDealWitnessLine): the page's source always carries
 	// the deal view's words, so it proves nothing here.
@@ -729,11 +756,10 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 	// named its log deal_log_id): each verifies, and the rung reads the same.
 	{
 		var written map[string]any
-		require.NoError(t, json.Unmarshal(mustRead(t, partPath), &written))
+		require.NoError(t, json.Unmarshal(mustRead(t, copyPath), &written))
 		exts := written["extensions"].(map[string]any)
-		require.Contains(t, exts, DealParentWitnessExtension)
-		for _, name := range []string{DealCadenceExtension, "cadence-witness/v0", "x-deal-cadence-v0"} {
-			require.NotContains(t, exts, name)
+		for _, name := range []string{DealParentWitnessExtension, DealCadenceExtension, "cadence-witness/v0", "x-deal-cadence-v0"} {
+			require.NotContains(t, exts, name, "a new copy carries no chain")
 		}
 	}
 	for _, name := range []string{DealParentWitnessExtension, "x-cadence-witness/v0", "cadence-witness/v0", "x-deal-cadence-v0"} {
@@ -791,16 +817,15 @@ func TestDealReportRungWitnessedInPart(t *testing.T) {
 	*now = time.Date(2026, 10, 4, 10, 0, 0, 0, time.UTC)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	pending, _ := report("pending")
-	assert.Equal(t, "witnessed_in_part", pending["rung"])
-	assert.Contains(t, pending["text"], "Witness pending for the rest.")
+	assert.Equal(t, "part", pending["holder_witnessed"].(map[string]any)["extent"])
+	assert.Contains(t, pending["text"], "the later steps are not witnessed yet")
 
 	// Once that receipt is in, every step is witnessed.
 	deliver(t, p, cadenceSize(t, p), key)
 	full, _ := report("full")
-	assert.Equal(t, "witnessed", full["rung"])
-	assert.Equal(t, "2026-10-04T10:00:00Z", full["checkpoint_at"])
+	assert.Equal(t, "all", full["holder_witnessed"].(map[string]any)["extent"])
 	plain := dealRun(t, "report", "--deal", dealID)["assurance"].(map[string]any)
-	assert.Equal(t, "witnessed", plain["rung"], "the plain report states the rung too")
+	assert.Equal(t, "all", plain["holder_witnessed"].(map[string]any)["extent"], "the plain report says it too")
 }
 
 // A later tick still waiting for its receipt never hides an earlier tick,
@@ -817,8 +842,9 @@ func TestDealReportUsesTheNewestVerifiedTick(t *testing.T) {
 	*now = time.Date(2026, 10, 4, 10, 0, 0, 0, time.UTC)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	assurance := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))["assurance"].(map[string]any)
-	assert.Equal(t, "witnessed", assurance["rung"])
-	assert.Equal(t, "2026-10-04T09:00:00Z", assurance["checkpoint_at"])
+	held := assurance["holder_witnessed"].(map[string]any)
+	assert.Equal(t, "all", held["extent"])
+	assert.Equal(t, "2026-10-04T09:00:00Z", held["at"], "the verified tick, not the pending one")
 }
 
 func TestMMRLeafCount(t *testing.T) {

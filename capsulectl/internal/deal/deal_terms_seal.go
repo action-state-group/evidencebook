@@ -426,7 +426,6 @@ func (s *dealSession) shareTermsResult(c *cobra.Command, dealID string, events [
 		return err
 	}
 	extensions := map[string]interface{}{}
-	setCadenceExtension(extensions, cadence)
 	b["extensions"] = extensions
 	if err = cli.VerifyProducedBundle(b, true); err != nil {
 		return err

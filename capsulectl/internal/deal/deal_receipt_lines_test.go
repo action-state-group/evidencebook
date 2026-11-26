@@ -598,8 +598,13 @@ func TestTheRealRuntimeReadsAWitnessedParentLogWitnessBundle(t *testing.T) {
 	dealID := retailDeal(t)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), key)
+	// A new copy carries no chain (u225); a page made from a copy that
+	// carries one, as copies did before, is what this reads.
+	copyPath := filepath.Join(t.TempDir(), "copy.json")
+	dealRun(t, "report", "--deal", dealID, "--bundle", copyPath)
+	chained := withHolderChain(t, p, dealID, copyPath)
 	page := filepath.Join(t.TempDir(), "page.html")
-	dealRun(t, "report", "--deal", dealID, "--html", page)
+	dealRun(t, "report", "--deal", dealID, "--from-bundle", chained, "--html", page)
 	require.Contains(t, string(mustRead(t, page)), "parent-log-witness/v1", "the page's bundle carries the chain as v1")
 
 	got := renderPageUnderNode(t, node, page)

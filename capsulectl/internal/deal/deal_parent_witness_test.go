@@ -6,7 +6,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
@@ -53,9 +52,8 @@ func requireParentWitness(t *testing.T, raw []byte, directoryPath string) {
 // name (Sherlock2, buzz 8c3ec04f): its words come from the producer's state.
 func TestCadenceExtensionEntryByState(t *testing.T) {
 	for _, state := range []string{"scheduled", "pending", "unverified", "not_configured"} {
-		extensions := map[string]interface{}{}
-		setCadenceExtension(extensions, map[string]interface{}{"state": state})
-		assert.Empty(t, extensions, state)
+		_, _, ok := cadenceExtensionEntry(map[string]interface{}{"state": state})
+		assert.False(t, ok, state)
 	}
 	chain := map[string]interface{}{"state": "witnessed", "extent": "all", "salt": "s", "cadence": map[string]interface{}{"log_id": "c"}}
 	name, block, ok := cadenceExtensionEntry(chain)
@@ -73,40 +71,10 @@ func TestCadenceExtensionEntryByState(t *testing.T) {
 	assert.Equal(t, "part", read["extent"])
 }
 
-// A sale's bundle and a History's deals carry their witnessed chain as
-// parent-log-witness/v1 too, and AAC's verifier checks it.
-func TestSaleAndHistoryBundlesCarryParentWitness(t *testing.T) {
-	public, key, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-	endpoint, _ := countingWitness(t)
-	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
-	dealID := retailDeal(t)
-	saleID, _ := newSale(t)
-	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
-	deliver(t, p, cadenceSize(t, p), key)
-	directory := writeDirectory(t, rawKeyRow(endpoint, public))
-
-	salePath := filepath.Join(t.TempDir(), "sale.json")
-	dealRun(t, "sale", "bundle", "--sale", saleID, "--out", salePath)
-	requireParentWitness(t, mustRead(t, salePath), directory)
-
-	path, _ := writeHistory(t, []string{dealID}, sentTo, dealID)
-	var history struct {
-		Extensions map[string]struct {
-			Deals map[string]json.RawMessage `json:"deals"`
-		} `json:"extensions"`
-	}
-	require.NoError(t, json.Unmarshal(mustRead(t, path), &history))
-	deals := history.Extensions[HistorySelectionExtension].Deals
-	require.NotEmpty(t, deals)
-	for _, d := range deals {
-		requireParentWitness(t, d, directory)
-	}
-}
-
 // An unwitnessed bundle carries no witness state, so a report made from the
-// file says so ("not_carried") instead of "not configured" or a state it
-// cannot know; the same deal's own report says "scheduled" (evidencebook#737).
+// file says so ("not_carried"): a pending state read now may not hold for
+// the file's checkpoint; the same deal's own report says "scheduled"
+// (evidencebook#737, #958).
 func TestReportFromAnUnwitnessedBundleDoesNotGuessTheWitnessState(t *testing.T) {
 	public, _, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)

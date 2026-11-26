@@ -114,7 +114,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal verify-statement FILE [--key HEX]` | Checks a verifier statement's signature offline and prints what it states as V's statement. It cannot re-check DKIM (the statement carries no email) and says so. The statement names its own key: only `--key` (the holder's public key) checks that it is the holder's, and without it the result says the key is not matched to any holder. Exit 1 when it does not verify. |
 | `deal checkpoint status --deal ID` | Read-only: the deal log's latest checkpoint (`id`, the SHA-256 of its signed statement; `at`; the `mmr_size`, `entries` and `root` of the log head it covers), the log's `log_entries`, and the checkpoint's witness state as stored (`not_configured`, `scheduled`, `pending`, `witnessed` or `unverified`). It never seals, cuts a checkpoint or contacts the witness, and works on a `read_only` profile. A deal with no checkpoint yet has `checkpoint` and `witness` `null`. |
 | `deal disclosures --deal ID [--record DIGEST]` | Read-only, for your own reading only: the sealed disclosure record of each share you made of the deal (audience, recipient, the records withheld, the nonce), in the order sealed, each with its `disclosure_record` digest, its `sequence` on the deal's disclosure log and the `log_id`; `--record` picks one by the digest a share printed. Seals and writes nothing. The output is never a share: do not put it in a file you send. |
-| `bundle --deal ID [--out FILE]` | The deal's Evidence Bundle, your own copy: the same file as `deal report --bundle` (the whole deal from its own log, `deal/<deal_id>`, with its cadence chain and any witness receipt held). Nothing withheld, nothing on record. |
+| `bundle --deal ID [--out FILE]` | The deal's Evidence Bundle, your own copy: the same file as `deal report --bundle` (the whole deal from its own log, `deal/<deal_id>`, with any witness receipt held on the deal's own checkpoint; since u225 no copy carries the cadence chain, which would show your shelf's position and cadence). Nothing withheld, nothing on record. |
 | `deal list [--json] [--since DATE] [--until DATE]` | Read-only: one line per deal in the store (a sale and its buyer threads included). `--json` adds each deal's plain summary, its `result`, its `reconcile` (`null` until the deal has a verified sealed terms Result, which is "not reconciled", never false; then `counterparty_half_held`, `halves_conflict` (null when unknown) and `at`) and its `say` (the deal's line for "show my receipts", from the wording pack, with no id). `--since`/`--until` pick the deals with a step in the range, each as it stood at the range's end; with `--json` they add the range's totals and who was told what ([A period](#a-period-deal-list---since---until)). |
 | `deal history --deal ID [--deal ID ...] --out FILE --to WHO [--audience history\|keep]` | One file, a History, holding the deals you pick (ids from `deal list`) for someone who was in none of them; `--to` names who it is for and is sealed as the selection's `recipient` (keep takes no `--to`). Each deal is its history copy: every record's payload withheld, so each record shows only its time and, for an act, its effect's status. A deal's outcome and its acts' action classes sit in payloads beside the other party's details and are not proven: `verify --bundle` says `"not_proven": ["outcome", "action_class"]` on a VALID History. The pick is sealed, signed by your key, on a log of the History's own (`deal-history/<nonce>`), so it carries nothing of any other History; no deal's log is written, and each deal stops at its latest checkpoint, its selection entry sealing how many steps came after (`steps_after_checkpoint`). `recipient` and `steps_after_checkpoint` are your own word: verify lists them as `holder_stated`. A share's copy of one deal, for someone in it (`deal report --share`), is refused for a History; `--audience keep` is your own copy, never one to send. A History shows that the holder of one key picked these copies; it does not prove that key's holder made the deals. |
 | `disclose --deal ID --share counterparty --to WHO --out FILE` | A bundle file for someone else: a share, exactly as `deal report --share` (see [Sharing a copy](#sharing-a-copy)). The copy withholds what that reader may not see, the final bytes pass the share gate, and the share is on record on `deal/<deal_id>/disclosures` before the file is written. A deal is not shared as a link: `permalink --deal` refuses and names the report file to hand over instead. When the deal closed as received, this copy for the counterparty also carries `field_openings`: the openings of the final close's amount and currency, so the other party can run `deal terms-result`. The command's output says whether the copy carries them and, when it does not, why. Neither a report page, the user's own bundle, nor a `deal respond` answer carries them; a `deal respond` requester is checked by nothing. |
@@ -132,7 +132,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal audit-host --executions FILE [--approvals FILE] [--from T] [--to T]` | Reads the agent host's execution records (tool calls of the agent and its sub-tasks, in the format in [AUDIT-HOST.md](AUDIT-HOST.md)) and lists each consequential action that has no deal record, with what the pass cannot see. Seals nothing; exits 3 when anything is unrecorded. `deal reconcile` is its former name, which still runs it with a warning for one release. |
 | `deal terms-leg --amount ATOMIC --content-digest SHA256 --out FILE [--asset CAIP19 --asset-scale N] [--ephemeral]` | The buyer's side of a sale: writes the buyer's terms leg (what the buyer agrees to pay and expects to receive) as a bare signed Capsule file, the file `deal note --kind payment_received` and `--kind delivered` answer with `--terms`. `--amount` is in the asset's atomic units (170000000 is 170 USDC); the asset defaults to Base USDC. It is signed with the selected profile's key, or with `--ephemeral` by a key made for the run and thrown away (no profile needed). It reads and writes no deal store, seals nothing in a book, and does not overwrite `--out`. The file is checked as a terms leg before the command returns; the output gives its `capsule_id`, which the buyer's later legs name as `terms_ref`. |
 | `deal terms-result --deal ID --response RECORD --openings FILE --out FILE` | Reconciles your final close of a deal with the counterparty's under the Deal Reconcile Contract (`ec:deal-reconcile@1`), and writes an Evidence Result with two claims: both closes commit to the same amount, and to the same currency. The counterparty's close is read from the copy you recorded (`deal request --response`, `--response` names it). Its terms are opened with the `field_openings` of the counterparty's `disclose --share counterparty` file (`--openings`), and nothing else is read from that file. Without the openings, both claims are not evaluable. `--from`/`--to` set the period (default: the two closes' recorded times). The Result names the counterparty's signing key as its peer. The Result is sealed, before the file is written, on the deal's results book, `deal/<deal_id>/results`, which is never the deal's own book, so no copy of the deal carries it. The output names the record and whether it is sealed, pending witness or witnessed. A run equal to the newest sealed Result in all but `generated_at` is a retry and seals nothing new. |
-| `deal terms-result --deal ID --share counterparty --recipient WHO [--record ID] --out FILE` | Writes the bundle of one sealed terms Result (default: the newest) for the counterparty. It discloses that Result only, passes the share gate, carries the witness chain once a witnessed tick covers it, and is on record as a share on `deal/<deal_id>/disclosures` before the file is written. |
+| `deal terms-result --deal ID --share counterparty --recipient WHO [--record ID] --out FILE` | Writes the bundle of one sealed terms Result (default: the newest) for the counterparty. It discloses that Result only, passes the share gate, carries no witness chain (u225), and is on record as a share on `deal/<deal_id>/disclosures` before the file is written. |
 | `deal terms-result --deal ID --response RECORD --check RESULT [--openings FILE] [--sent FILE]` | Checks such a Result against the inputs given, and writes nothing: `equal`, `differs` (exit 5), or `cannot_reproduce` (exit 2) when the inputs it needs are not held. The Result names its two closes by digest, and the closes read must be exactly those. It does not record which openings were carried, or a coverage declaration, so when the counterparty made the Result, `--sent` is the disclose file you handed them, and your openings are read from it only. A `differs` says the Result is not the recompute of these inputs, not that a claim is false. `result build` does not seal these Results, and `result open` lists their claims as not recomputed. A third party both parties name can also check a Result from each party's own disclose file, with no deal store; see `deal terms-result --help`. |
 | `deal report --html FILE --share counterparty --to WHO` | A copy for someone else. It leaves out what that reader must not get, and seals a disclosure record of the share before the file is written. |
 
@@ -342,21 +342,27 @@ the receipt and `deal report` name them: **scheduled** (not yet in a tick),
 pending"), **witnessed** and **unverified** (a witness receipt is held but does not verify under the witness the profile names now, such as a tampered receipt, one signed by another key, or a witness key rotated since the receipt was verified (while the deal is still open it is witnessed again once the new witness signs a later tick; a closed deal stays unverified); the report says the receipt did not verify, and the rung stays self-attested).
 
 A step sealed after the last witnessed tick does not undo what the witness
-holds. The report then reads **witnessed in part**: "steps 1 to k of n" are
-witnessed, and the rest are sealed on this device, witness pending, until a
-later tick carries them. The bundle carries the earlier, witnessed
-checkpoint of the deal and an MMR consistency proof that the current
-checkpoint extends it. Of the ticks that hold a deal checkpoint, the newest
-whose receipt verifies is used, so a later tick still waiting for its receipt
+holds: "steps 1 to k of n" are witnessed through the earlier checkpoint, and
+the rest are sealed on this device, witness pending, until a later tick
+carries them. Of the ticks that hold a deal checkpoint, the newest whose
+receipt verifies is used, so a later tick still waiting for its receipt
 never hides an earlier one that came back. Every `deal report`, plain JSON
 included, names its rung.
-Witnessed means the bundle carries the whole chain: the deal checkpoint's
-leaf, its salt and position, the 16-hash path (the same length for every
-deal, so it says nothing about the others), the cadence entry's inclusion
-proof, the cadence checkpoint (signed by the same key as the deal
-checkpoint) and the witness receipt, plus, witnessed in part, the earlier
-checkpoint and its consistency proof. `capsulectl deal verify --bundle FILE
---witness-directory DIRECTORY.json` checks every link.
+
+A copy written since u225 (evidencebook#958) carries no cadence chain: the
+chain shows your shelf's position and cadence, which no copy discloses. Its
+rung is then self-attested unless it carries a witness receipt on the deal's
+own checkpoint, and the report says in attributed voice what your own
+profile reports ("Your own profile reports this checkpoint witnessed by ...,
+as capsulectl reported from your own book"; for a deal witnessed through an
+earlier checkpoint, the steps it covers). That line is in your own output
+only, never in a copy, its page or its email. A copy written before u225
+carries the whole chain: the deal checkpoint's leaf, its salt and position,
+the 16-hash path, the cadence entry's inclusion proof, the cadence
+checkpoint (signed by the same key as the deal checkpoint) and the witness
+receipt, plus, witnessed in part, the earlier checkpoint and its consistency
+proof; `capsulectl deal verify --bundle FILE --witness-directory
+DIRECTORY.json` still checks every link.
 
 ## A period: `deal list --since --until`
 
@@ -540,13 +546,16 @@ against the step's seal; the words shown come from this device's local
 store. If a byte was changed, the page says "This report did not verify"
 instead. Message text appears only when an anomaly cites that message.
 
-When a witness receipt covers the checkpoint the report carries (through the
-cadence chain above, re-checked against the pinned witness key when the
-report is made), the page and the email say "Witnessed" instead of "Sealed
-by my agent", and otherwise say whether it is scheduled, pending or unverified (a held receipt that fails the check). The page does not
-check the receipt itself and says so; `capsulectl deal verify --bundle FILE
---witness-directory DIRECTORY.json` does, against a witness directory the
-reader chooses. Making a report never contacts the witness.
+The page's witness line reads the cadence chain a copy carries, which only a
+copy written before u225 does: the page's runtime checks that chain's
+receipts under the reader's own witness list, and reads "missing" when the
+copy carries no chain, as every new copy does. The holder's own witnessing is
+in the report's `assurance`, never on the page. A receipt on the deal's own
+checkpoint, when a copy carries one, is not read by the page; the email
+states no witness of its own and points the reader at `capsulectl deal
+verify --bundle FILE --witness-directory DIRECTORY.json`, which checks both
+kinds against a witness directory the reader chooses. Making a report never
+contacts the witness.
 
 The page and the email both say, on their face, "This receipt covers this
 one exchange. It is not a record of everything the agent did." They also say

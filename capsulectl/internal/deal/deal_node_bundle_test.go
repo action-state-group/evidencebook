@@ -201,8 +201,8 @@ func TestDealNodeBundleDiscloseFollowsOneHop(t *testing.T) {
 	assert.NotContains(t, joined, "payload of A", "what that record links to is not")
 }
 
-// With a witnessed cadence tick the chain travels in the bundle; --list says which checkpoints are carried.
-func TestDealNodeBundleCarriesTheCadenceChain(t *testing.T) {
+// With a witnessed cadence tick, --list says which checkpoints a tick carries (the node's own reading); no bundle carries the chain (u230).
+func TestDealNodeBundleCarriesNoCadenceChain(t *testing.T) {
 	public, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	endpoint, _ := countingWitness(t)
@@ -227,26 +227,23 @@ func TestDealNodeBundleCarriesTheCadenceChain(t *testing.T) {
 	assert.Equal(t, "all", rows[len(rows)-1]["cadence_extent"])
 	carried := rows[len(rows)-1]["id"].(string)
 
+	// The bundle carries no chain (u230): a published node book would show
+	// its shelf position and cadence to everyone. --list is the node's own
+	// reading; a bundle at the checkpoint the tick carried still verifies.
 	out := filepath.Join(t.TempDir(), "all.json")
-	got, err := nodeBundle(t, "--record", first.Record.RecordID, "--out", out)
+	got, err := nodeBundle(t, "--record", first.Record.RecordID, "--at", carried, "--out", out)
 	require.NoError(t, err)
-	assert.Equal(t, "all", got["cadence_extent"])
+	assert.NotContains(t, got, "cadence_extent")
 	raw, err := os.ReadFile(out)
 	require.NoError(t, err)
-	requireParentWitness(t, raw, "")
+	assertNoWitnessChain(t, raw, "node bundle")
 	_, err = evidencebook.VerifyBundle(raw)
 	require.NoError(t, err)
-
-	// The book grows: the newest checkpoint is new and carried only as an earlier checkpoint
-	// plus a consistency proof ("part"); --at names the one the tick carried ("all").
 	_, err = nodeAppend(t, "--book", "goose/node", "--type", "t", "--statement", writeJSON(t, `{"n":"2"}`))
 	require.NoError(t, err)
-	part, err := nodeBundle(t, "--record", first.Record.RecordID, "--out", filepath.Join(t.TempDir(), "part.json"))
+	later := filepath.Join(t.TempDir(), "later.json")
+	_, err = nodeBundle(t, "--record", first.Record.RecordID, "--out", later)
 	require.NoError(t, err)
-	assert.Equal(t, "part", part["cadence_extent"])
-	exact, err := nodeBundle(t, "--record", first.Record.RecordID, "--at", carried, "--out", filepath.Join(t.TempDir(), "exact.json"))
-	require.NoError(t, err)
-	assert.Equal(t, "all", exact["cadence_extent"])
-	assert.Equal(t, carried, exact["checkpoint"])
+	assertNoWitnessChain(t, mustRead(t, later), "node bundle after the book grew")
 	assert.Greater(t, len(listed()), len(rows), "the bundles above cut newer checkpoints as the book grew")
 }

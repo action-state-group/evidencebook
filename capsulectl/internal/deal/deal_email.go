@@ -57,6 +57,77 @@ func (s *dealSession) heldWitnessReceipt(ctx context.Context, statement []byte) 
 	return entry, nil
 }
 
+// holderWitnessed is what the holder's own profile reports of a witnessed
+// chain the copy does not carry: the witness, and for a chain over an
+// earlier checkpoint the steps it covers.
+func holderWitnessed(chain map[string]interface{}) map[string]any {
+	out := map[string]any{"witness": chainWitnessHost(chain), "extent": chain["extent"]}
+	if at, _ := chain["checkpoint_at"].(string); at != "" {
+		out["at"] = at
+	}
+	if chain["extent"] == "part" {
+		k, _ := JSONUint(chain["steps_witnessed"])
+		n, _ := JSONUint(chain["steps"])
+		out["steps_witnessed"], out["steps"] = k, n
+	}
+	return out
+}
+
+// holderWitnessedLine says, in attributed voice, that the holder's own
+// profile reports the deal witnessed and that the copy does not carry it.
+// For a chain over an earlier checkpoint it names the covered steps and
+// never says this checkpoint is witnessed.
+func holderWitnessedLine(chain map[string]interface{}) string {
+	host := chainWitnessHost(chain)
+	at, _ := chain["checkpoint_at"].(string)
+	cut := func(what string) string {
+		if at == "" {
+			return what
+		}
+		return what + " cut at " + at
+	}
+	const notCarried = "This copy does not carry this witnessing (it would show your shelf's position and cadence), so whoever you send it to does not see it. "
+	if chain["extent"] == "part" {
+		k, _ := JSONUint(chain["steps_witnessed"])
+		n, _ := JSONUint(chain["steps"])
+		if k >= n {
+			// Every step, through an earlier checkpoint: a sealed report
+			// after it moved the checkpoint without adding a step.
+			return fmt.Sprintf("Your own profile reports all %d steps witnessed by %s, through %s, as capsulectl reported from your own book. ", n, host, cut("an earlier checkpoint")) + notCarried
+		}
+		{
+			rest := "the later steps are not witnessed yet"
+			switch r, _ := chain["rest"].(map[string]interface{}); r["state"] {
+			case "scheduled":
+				rest = "the later steps go to the witness at the next tick of this profile's checkpoint cadence" + cadencePhrase(r)
+			case "unverified":
+				rest = "the later steps did not verify: the witness's signature for the current checkpoint is held, but the check against the witness this profile names now failed"
+			}
+			return fmt.Sprintf("Your own profile reports steps 1 to %d of %d witnessed by %s, through %s, as capsulectl reported from your own book; %s. ", k, n, host, cut("an earlier checkpoint"), rest) + notCarried
+		}
+	}
+	return fmt.Sprintf("Your own profile reports this checkpoint witnessed by %s, on %s, as capsulectl reported from your own book. ", host, cut("a cadence checkpoint")) + notCarried
+}
+
+// chainWitnessHost is the host of the first witness receipt a chain holds.
+func chainWitnessHost(chain map[string]interface{}) string {
+	inner, _ := chain["cadence"].(map[string]interface{})
+	witnesses, _ := inner["witnesses"].([]interface{})
+	entry, _ := firstOf(witnesses).(map[string]interface{})
+	host := fmt.Sprint(entry["ts_url"])
+	if u, err := url.Parse(host); err == nil && u.Host != "" {
+		host = u.Host
+	}
+	return host
+}
+
+func firstOf(list []interface{}) interface{} {
+	if len(list) == 0 {
+		return nil
+	}
+	return list[0]
+}
+
 // dealScopeLine is printed on the face of every receipt, report page and
 // email: a receipt is about one deal, never about the agent's whole activity.
 const dealScopeLine = "This receipt covers this one exchange. It is not a record of everything the agent did."
@@ -132,26 +203,44 @@ func dealProducedByLine(b map[string]interface{}) string {
 	return "Produced by " + strings.Join(names, ", then ") + "."
 }
 
-// A bundle carries a witnessed chain only; a checkpoint that is not witnessed
-// yet carries no state (evidencebook#737). Its words (scheduled, pending, the
-// witness signature did not verify) come from producer, the producer's own state
-// at the time the report was made, nil for a bundle read from a file.
+// The rung and the witness words of a copy come from what the copy carries:
+// a witnessed chain (only copies written before u225 carry one) or a receipt
+// on its own checkpoint (checkpoint.witnesses). A new copy carries no chain
+// (u219, u225: it shows the holder's shelf position and cadence), so a
+// witness that saw only the holder's shelf is never claimed for it. The
+// words for every other state (scheduled, pending, the witness signature did
+// not verify, and witnessed on the holder's own profile only) come from
+// producer, the producer's own state when the report was made, for the
+// holder's own output; nil for a bundle read from a file with no state.
 func dealAssuranceRung(b, producer map[string]interface{}) map[string]any {
 	cadence := CadenceChainOf(b)
-	if len(cadence) == 0 && producer != nil {
+	carried := len(cadence) > 0
+	if !carried && producer != nil {
 		cadence = producer
 	}
 	state, _ := cadence["state"].(string)
 	cp, _ := b["checkpoint"].(map[string]interface{})
 	witnesses, _ := cp["witnesses"].([]interface{})
-	if state == "witnessed" {
+	switch {
+	case state == "witnessed" && carried:
 		inner, _ := cadence["cadence"].(map[string]interface{})
 		witnesses, _ = inner["witnesses"].([]interface{})
+	case len(witnesses) > 0:
+		// A receipt on the copy's own checkpoint: nothing from the holder's
+		// shelf (its tick time, its covered steps) describes it.
+		cadence = map[string]interface{}{}
 	}
 	sealed := "Sealed by my agent: tamper-evident against ourselves and the agent, not non-repudiation. The key that sealed it is on the agent's own device; it does not cover the agent host's own records. "
 	if len(witnesses) == 0 {
 		out := map[string]any{"rung": "self_attested", "witness_state": "not_configured"}
 		switch state {
+		case "witnessed":
+			// Witnessed on the holder's own shelf, which the copy does not
+			// carry: said to the holder in attributed voice, never as the
+			// copy's rung (u219).
+			out["witness_state"] = "not_carried"
+			out["holder_witnessed"] = holderWitnessed(cadence)
+			sealed += holderWitnessedLine(cadence)
 		case "not_carried":
 			out["witness_state"] = "not_carried"
 			sealed += "This copy was written without a witnessed chain, and a file does not say whether the witness is pending or was never set up. "

@@ -30,12 +30,15 @@ import (
 // per tick on the profile's clock: the volume signal is reduced to the tick
 // count, and the timing signal to the cadence.
 //
-// A deal's receipt then carries the chain from its own checkpoint to the
-// witnessed cadence checkpoint: the leaf's salt and position, the tree path
-// (always dealCadenceDepth hashes, so it says nothing about other deals),
-// the cadence entry's inclusion proof, the cadence checkpoint and the
-// witness receipt. `capsulectl deal verify --bundle` checks every link
-// (rc47's core did; the plugin's reader does now).
+// The chain from a deal's own checkpoint to the witnessed cadence checkpoint
+// is the leaf's salt and position, the tree path (always dealCadenceDepth
+// hashes, so it says nothing about other deals), the cadence entry's
+// inclusion proof, the cadence checkpoint and the witness receipt. The
+// holder's own witness check computes it; no bundle written since u225 and
+// u230 carries it (an x-deal-v0 copy or a node bundle), since it shows the
+// holder's shelf position and cadence (evidencebook#958). `capsulectl deal
+// verify --bundle` checks every link of a copy that carries one (rc47's core
+// did; the plugin's reader does now).
 
 const (
 	// dealCadenceDepth fixes every path at 16 hashes: up to 65535 deals.
@@ -64,41 +67,6 @@ const (
 // before, still read: cadence-witness/v0, and x-deal-cadence-v0 (whose
 // chain names its log in deal_log_id).
 var earlierCadenceExtensions = []string{"cadence-witness/v0", "x-deal-cadence-v0"}
-
-// cadenceExtensionEntry is the extension that carries a cadence chain
-// (dealWitnessState's map) in a bundle: a witnessed chain as the
-// parent-log-witness/v1 block, which is the chain with its "cadence" member
-// named "parent" as -03 calls it. Members -03 does not define (state, extent,
-// checkpoint_at, steps_witnessed, steps, rest) stay; a verifier ignores them
-// and computes the extent from the checkpoints. A state that is not a
-// witnessed chain (scheduled, pending, unverified, not_configured) names no
-// leaf and no receipt, so it is no block a verifier could check, and no new
-// bundle carries it under any name (Sherlock2, buzz 8c3ec04f: not under
-// x-cadence-witness/v0, which a reader would take for a chain to check
-// elsewhere). The words for such a state come from the producer's own state
-// when the report is made (dealAssuranceRung's producer), not from the bundle.
-// ok is false for those states.
-func cadenceExtensionEntry(chain map[string]interface{}) (name string, block map[string]interface{}, ok bool) {
-	parent, isObject := chain["cadence"].(map[string]interface{})
-	if chain["state"] != "witnessed" || !isObject {
-		return "", nil, false
-	}
-	block = make(map[string]interface{}, len(chain))
-	for k, v := range chain {
-		if k != "cadence" {
-			block[k] = v
-		}
-	}
-	block["parent"] = parent
-	return DealParentWitnessExtension, block, true
-}
-
-// setCadenceExtension adds a bundle's cadence chain to its extensions.
-func setCadenceExtension(extensions map[string]interface{}, chain map[string]interface{}) {
-	if name, block, ok := cadenceExtensionEntry(chain); ok {
-		extensions[name] = block
-	}
-}
 
 // cadenceChainOf is the cadence chain a bundle carries, under its name
 // (parent-log-witness/v1, with "parent" read back as "cadence", the member

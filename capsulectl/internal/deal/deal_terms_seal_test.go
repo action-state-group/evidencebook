@@ -304,7 +304,8 @@ func TestEnumeratorsSkipResultsBooks(t *testing.T) {
 }
 
 // With a witness configured, a sealed Result is pending until a witnessed
-// tick covers its book's checkpoint, and then its share carries the chain.
+// tick covers its book's checkpoint, and then the holder's output says
+// witnessed; its share carries no chain (u225).
 func TestASealedResultIsWitnessedThroughTheCadence(t *testing.T) {
 	public, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -333,11 +334,12 @@ func TestASealedResultIsWitnessedThroughTheCadence(t *testing.T) {
 	require.NoError(t, err, out)
 	var shared map[string]any
 	require.NoError(t, json.Unmarshal([]byte(out), &shared))
-	assert.Equal(t, termsWitnessed, shared["state"])
+	assert.Equal(t, termsWitnessed, shared["state"], "the holder's own output says witnessed")
+	assertNoWitnessChain(t, mustRead(t, path), "the share carries no chain (u225)")
 	result, err := verifyWithDirectory(t, path, writeDirectory(t, rawKeyRow(endpoint, public)))
 	require.NoError(t, err)
-	status, _ := bundleWitnesses(result)
-	assert.Equal(t, "pass", status, "results book checkpoint -> tree path -> cadence entry -> witnessed cadence checkpoint")
+	assert.Equal(t, "VALID", result["verdict"])
+	assert.NotContains(t, result, "reader_witnesses")
 }
 
 // A witness receipt held for a sealed Result's book that does not verify under
@@ -445,9 +447,8 @@ func TestAResultsBookLeavesAndReturnsWithItsDeal(t *testing.T) {
 	assert.NotContains(t, liveLogs(t, p), results, "settled through its deal, it leaves again")
 }
 
-// A second Result sealed after a witnessed tick is pending: the witnessed
-// tick holds the results book's earlier checkpoint (a "part" chain), and
-// what is not yet witnessed waits for the next tick (scheduled).
+// A second Result sealed after a witnessed tick is pending until the next
+// tick, and its share carries no chain (u225).
 func TestASecondResultIsPartlyWitnessed(t *testing.T) {
 	public, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -483,12 +484,7 @@ func TestASecondResultIsPartlyWitnessed(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "share.json")
 	out, err := invoke(t, "", "--profile", "deal", "deal", "terms-result", "--deal", id, "--share", "counterparty", "--recipient", "the seller", "--out", path)
 	require.NoError(t, err, out)
-	var b map[string]any
-	require.NoError(t, json.Unmarshal(mustRead(t, path), &b))
-	chain := b["extensions"].(map[string]any)[DealParentWitnessExtension].(map[string]any)
-	requireParentWitness(t, mustRead(t, path), "")
-	assert.Equal(t, "part", chain["extent"], "the witnessed tick holds the results book's earlier checkpoint")
-	assert.Equal(t, "scheduled", chain["rest"].(map[string]any)["state"], "the rest waits for the next tick")
+	assertNoWitnessChain(t, mustRead(t, path), "the share carries no chain (u225)")
 }
 
 // A share never provisions a results book for a deal that has none.
