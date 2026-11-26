@@ -1,0 +1,369 @@
+[
+  {
+    "name": "offer",
+    "args": [
+      "offer",
+      "--input",
+      "\u003ctmp\u003e/007/in.json",
+      "--out",
+      "\u003ctmp\u003e/006/offer.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"file\":\"\u003ctmp\u003e/006/offer.json\",\"offer\":\"dc2dbf18e16456ebd9ffbd5ee7654b7840113b44ba7882ad1c3514b81b0d9b67\",\"spec_version\":\"capsule-cli-result/v1\",\"voice\":\"silent\"}\n",
+    "exit": 0,
+    "files": {
+      "\u003ctmp\u003e/006/offer.json": "{\"agent_input\":{\"body\":{\"adjudicator\":null,\"agree_by\":\"2026-11-02T10:00:00Z\",\"forums\":[],\"pack_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"role\":\"buyer\",\"stated_at\":\"2026-11-01T09:01:00Z\",\"terms\":{\"currency\":\"USD\",\"item\":\"lamp\"},\"terms_rows\":{\"named\":{},\"rows\":[{\"due\":{\"at\":\"2026-11-01T23:59:59Z\"},\"id\":\"paid_as_agreed\",\"owed\":{\"amount_minor\":6000,\"currency\":\"USD\"},\"owed_by\":\"buyer\",\"window_end\":{\"at\":\"2026-11-04T23:59:59Z\"}}]},\"to\":\"67f078296b4fd77c48b28c2821a2910d9ac073f07d0d1a88908c35ec611898e8\",\"witnesses\":[]},\"x-deal-v1\":{\"at\":\"2026-11-01T09:01:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"profile\":\"x-deal-v1\",\"record_type\":\"propose\"}},\"record\":{\"action_id\":\"deal-7bc5c57c7aa9dff4/sent\",\"action_type\":\"fyi\",\"assurance\":{\"attestation_mode\":\"self_attested\",\"effect_mode\":\"not_applicable\",\"ledger_mode\":\"standalone\"},\"canonicalization_id\":\"jcs\",\"capsule_id\":\"ab71021c9deea2664fd16aa036e803e31e81dc89877e0d27f6f1e30770b91167\",\"developer\":\"capsulectl-deal\",\"format_version\":\"4\",\"key_id\":\"d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f\",\"model_attestation\":{\"compute_attestation\":{\"agent_input_digest\":\"dc2dbf18e16456ebd9ffbd5ee7654b7840113b44ba7882ad1c3514b81b0d9b67\"}},\"operator\":\"deal\",\"signature\":\"d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f0127a05820ab71021c9deea2664fd16aa036e803e31e81dc89877e0d27f6f1e30770b9116758405a1409482a9eb5b9c43c8dc7eb31fcced51ce8e806dbdebb5193f3ead8d84e3213cd7b0530c9383accda7ed196f852a53377ad09840ff661df7056848f0fb604\",\"spec_version\":\"draft-mih-scitt-agent-action-capsule-05\",\"timestamp\":\"2026-11-01T09:01:00Z\"}}\n"
+    }
+  },
+  {
+    "name": "receive the offer",
+    "args": [
+      "receive",
+      "\u003ctmp\u003e/006/offer.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"record\":\"kept, and counted\",\"record_type\":\"propose\",\"spec_version\":\"capsule-cli-result/v1\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "admit",
+    "args": [
+      "admit",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--input",
+      "\u003ctmp\u003e/008/in.json"
+    ],
+    "out": "{\"admit\":\"90fd4d2e90381368a6df84b2e648ff1d5572f63f0465ec9136954d5fce250eb3\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"spec_version\":\"capsule-cli-result/v1\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "agree",
+    "args": [
+      "agree",
+      "dc2dbf18e16456ebd9ffbd5ee7654b7840113b44ba7882ad1c3514b81b0d9b67",
+      "--out",
+      "\u003ctmp\u003e/009/seller-agreement.json"
+    ],
+    "out": "{\"agreement\":\"8023866c700b52efd81b7c5af8972e91974e2f959d0202396960336e2ea298ba\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"file\":\"\u003ctmp\u003e/009/seller-agreement.json\",\"side\":\"acceptor\",\"spec_version\":\"capsule-cli-result/v1\",\"stamp_proof\":true,\"voice\":\"silent\"}\n",
+    "exit": 0,
+    "files": {
+      "\u003ctmp\u003e/009/seller-agreement.json": "{\"record\":{\"header\":{\"book_id\":\"deal/9e4500adde6466637be2ec76b294c0ec\",\"committed_at\":\"2026-11-01T09:04:00Z\",\"epistemic_type\":\"producer_claim\",\"links\":[],\"payload_commitments\":[\"8023866c700b52efd81b7c5af8972e91974e2f959d0202396960336e2ea298ba\"],\"record_type\":\"deal_step\",\"retention_state\":\"AVAILABLE\",\"seq\":1,\"subject_ref\":\"deal-7bc5c57c7aa9dff4\",\"v\":1},\"payload\":{\"body\":{\"adjudicator\":null,\"admit\":{\"digest\":\"90fd4d2e90381368a6df84b2e648ff1d5572f63f0465ec9136954d5fce250eb3\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"checkpoint_key\":\"474ab1aa5b2e04ddfce38343ab50b6fcbf88ecceb70f72504332efc5daa5f37c\",\"counterparty_key\":\"d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f\",\"counterparty_layer\":true,\"forums\":[],\"kind\":\"agreement\",\"offer\":{\"digest\":\"dc2dbf18e16456ebd9ffbd5ee7654b7840113b44ba7882ad1c3514b81b0d9b67\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"role\":\"seller\",\"rows_digest\":\"27740f0f61a0226d56da6ebc8394f47d1d87aefab938b9efd00a0d1cbd8e7254\",\"shelf_log_id\":\"deal-cadence/a93b267cdae195f6\",\"side\":\"acceptor\",\"witnesses\":[]},\"x-deal-v1\":{\"at\":\"2026-11-01T09:04:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"profile\":\"x-deal-v1\",\"record_type\":\"agree\",\"seen\":null,\"seq\":1}},\"record\":{\"action_id\":\"deal/9e4500adde6466637be2ec76b294c0ec#1\",\"action_type\":\"fyi\",\"assurance\":{\"attestation_mode\":\"self_attested\",\"effect_mode\":\"not_applicable\",\"ledger_mode\":\"standalone\"},\"canonicalization_id\":\"jcs\",\"capsule_id\":\"442e96e5e0f7033be78c38480bdc8a1c7e6582e865ed74b1f7f9073fe898448b\",\"developer\":\"capsulectl-deal\",\"format_version\":\"4\",\"key_id\":\"67f078296b4fd77c48b28c2821a2910d9ac073f07d0d1a88908c35ec611898e8\",\"model_attestation\":{\"compute_attestation\":{\"agent_input_digest\":\"c40cc176503e7bfb1a1eb1e085616ffeba493144e8a78c3431710cc67852b6ec\"}},\"operator\":\"deal\",\"signature\":\"d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582067f078296b4fd77c48b28c2821a2910d9ac073f07d0d1a88908c35ec611898e80127a05820442e96e5e0f7033be78c38480bdc8a1c7e6582e865ed74b1f7f9073fe898448b584058f9f80dfffb63af5c4f15587e1efcf89b82967a284a7618fd23e4c6e02ea7ac2e3aa777eb1a5e3113578e87cd269bd3996fff37a3af1cd89adf50974c797701\",\"spec_version\":\"draft-mih-scitt-agent-action-capsule-05\",\"timestamp\":\"2026-11-01T09:04:00Z\"}},\"stamp_proof\":{\"fact\":\"eyJib29rX2lkIjoiNDQyZTk2ZTVlMGY3MDMzYmU3OGMzODQ4MGJkYzhhMWM3ZTY1ODJlODY1ZWQ3NGIxZjdmOTA3M2ZlODk4NDQ4YiIsImNoZWNrcG9pbnRfc2hhMjU2IjoiZTJjMTljNTZlZjE4ZGU1YmM0NTliNWVhNzM3ZWMzMzZkMjE5NmMyMTg0MjJjN2JkMzI4ZmRmMzgyYWU2ZmFhYyIsImtpbmQiOiJib29rX2ZhY3QiLCJsaW5rX2NvbW1pdG1lbnQiOiJkNmM4YmRmYjU5MGU3MmM3YTA0MTk3NmYwZmFlZjcwMTk0MDc0NWY0NDUwYWQ3MmFlYzgyYmNjZTAxOGMyM2YxIiwibG9nX2lkIjoiZGVhbC85ZTQ1MDBhZGRlNjQ2NjYzN2JlMmVjNzZiMjk0YzBlYyIsInByZXZfZmFjdF9zaXplIjowLCJwcm9maWxlIjoieC1kZWFsLXYxIiwic2l6ZSI6MSwic3RhdHVzX2NvbW1pdG1lbnQiOiJjMDc3MjAzMzhiYzlmNTIxNjEzNGMzMjFiZjdjN2FmYmVhNzM0OWExNmViYTJmNjhlNjMwM2M3MzAxZWRlNDg5IiwidiI6MX0=\",\"status_opening\":{\"salt\":\"3754cc574c7a367bde364cfc36c0d0730e8737615e8004a37c47d6f80fbfb3e3\",\"value\":{\"adjudicator\":null,\"agreed_at\":\"2026-11-01T09:04:00Z\",\"counterparty_kind\":null,\"counterparty_layer\":true,\"counterparty_proof_held\":false,\"disputes\":[],\"role\":\"seller\",\"rows\":[{\"id\":\"paid_as_agreed\",\"input\":{\"parties\":[\"buyer\",\"seller\"],\"row\":{\"due\":{\"at\":\"2026-11-01T23:59:59Z\"},\"id\":\"paid_as_agreed\",\"owed_by\":\"buyer\",\"window_end\":{\"at\":\"2026-11-04T23:59:59Z\"}}},\"remedy_made\":null,\"ruling_against\":null,\"statement_named_by_other\":[]}],\"side\":\"acceptor\",\"start\":{\"acceptor_names_offerer\":false,\"agree_by\":\"2026-11-02T10:00:00Z\",\"cancellation_named_first\":false,\"counterpart_agreement_held\":false,\"counterparty_layer\":true,\"first_act\":null,\"offerer_agreement_time\":null,\"offerer_names_acceptor\":null,\"same_offer_and_rows\":null,\"side\":\"acceptor\"},\"v\":1,\"value_band\":null,\"witnesses\":[]}},\"book_checkpoint\":\"0oRYmqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCBHSrGqWy4E3fzjg0OrULb8v4jszrcPclBDMu/F2qXzfA+iAXglZGVhbC85ZTQ1MDBhZGRlNjQ2NjYzN2JlMmVjNzZiMjk0YzBlYwJ4JWRlYWwvOWU0NTAwYWRkZTY0NjY2MzdiZTJlYzc2YjI5NGMwZWOgWIqmZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUBaWlzc3VlZF9hdHQyMDI2LTExLTAxVDA5OjA0OjAwWmlwcmV2X3NpemUAamNvbW1pdG1lbnRYI4FYICr8ncWvzc1TTnUfpD1giii8CcajBjUH0RSjN4gaQqYcb3ByZXZfY29tbWl0bWVudEBYQD0jsKLHOVL46HUzEPs7GO4fF1kziLLBb6V/QD5n7+ixPsXxN+l2znbauRyQYop6XmuBjCOWPwKZZlt1iymo/Qs=\",\"inclusion\":{\"kind\":\"cll-mmr-inclusion\",\"seq\":3,\"proof\":{\"v\":1,\"kind\":\"inclusion\",\"size\":8,\"leaf_index\":2,\"witness\":[\"5028852dda9ea4ad4db8006680eae1dedeb90fe6a85c9b1e630e97b145264f3a\",\"ae4cbf88105112d9c18a18c7d1488e0bd2dcfab3e43aa69e7ce6b14681cc0a06\"],\"peaks_left\":[],\"peaks_right\":[\"d290fef054db555a5d4f3d26575d72e3765266d6e98fcd7b88f38e2ccc08e69e\"]}},\"shelf_checkpoint\":\"0oRYiqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCBHSrGqWy4E3fzjg0OrULb8v4jszrcPclBDMu/F2qXzfA+iAXgdZGVhbC1jYWRlbmNlL2E5M2IyNjdjZGFlMTk1ZjYCeB1kZWFsLWNhZGVuY2UvYTkzYjI2N2NkYWUxOTVmNqBZAZunZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUIaWlzc3VlZF9hdHQyMDI2LTExLTAxVDA5OjA0OjAwWmlwcmV2X3NpemUDamNvbW1pdG1lbnRYRYJYINIF43zrogo4AzrwnTvTVa7ptwgWNxUArB8Yh7RSkX3PWCDSkP7wVNtVWl1PPSZXXXLjdlJm1umPzXuI844szAjmnm9wcmV2X2NvbW1pdG1lbnRYI4FYIK5Mv4gQURLZwYoYx9FIjgvS3Pqz5DqmnnzmsUaBzAoGcWNvbnNpc3RlbmN5X3Byb29mpWZzaXplX2EDZnNpemVfYghnd2l0bmVzc4GBWCB+UcuFIi20HyvMTPdDg0riCAZ+RzJEJz/RClOu4ULN+GluZXdfcGVha3OCWCDSBeN866IKOAM68J0701Wu6bcIFjcVAKwfGIe0UpF9z1gg0pD+8FTbVVpdTz0mV11y43ZSZtbpj817iPOOLMwI5p5pb2xkX3BlYWtzgVggrky/iBBREtnBihjH0UiOC9Lc+rPkOqaefOaxRoHMCgZYQF9zHls1B+LAYTN0Dv/0Iq7WQWW5K1xEQ4yJNyO0XY2Lrpqtzy58Cl6X0zWLkB8fPRrIB255MH9hTHTiBJ+yRws=\"}}\n"
+    }
+  },
+  {
+    "name": "receive the agreement",
+    "args": [
+      "receive",
+      "\u003ctmp\u003e/009/seller-agreement.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"record\":\"kept, and counted\",\"record_type\":\"agree\",\"spec_version\":\"capsule-cli-result/v1\",\"stamp_proof\":\"kept\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "admit",
+    "args": [
+      "admit",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--input",
+      "\u003ctmp\u003e/010/in.json"
+    ],
+    "out": "{\"admit\":\"f2aa1590983051171cf4e254d499dba989522f22f5e609d68c7a1062c3a39d3e\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"spec_version\":\"capsule-cli-result/v1\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "agree",
+    "args": [
+      "agree",
+      "dc2dbf18e16456ebd9ffbd5ee7654b7840113b44ba7882ad1c3514b81b0d9b67",
+      "--out",
+      "\u003ctmp\u003e/011/buyer-agreement.json"
+    ],
+    "out": "{\"agreement\":\"df7df0f21668ca8560e7a54be8cfb5441d40a3e301221b67bff68c189606999c\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"file\":\"\u003ctmp\u003e/011/buyer-agreement.json\",\"side\":\"offerer\",\"spec_version\":\"capsule-cli-result/v1\",\"stamp_proof\":true,\"voice\":\"silent\"}\n",
+    "exit": 0,
+    "files": {
+      "\u003ctmp\u003e/011/buyer-agreement.json": "{\"record\":{\"header\":{\"book_id\":\"deal/10d9f2646658ec7ffd58b6efbb4884f8\",\"committed_at\":\"2026-11-01T09:07:00Z\",\"epistemic_type\":\"producer_claim\",\"links\":[],\"payload_commitments\":[\"df7df0f21668ca8560e7a54be8cfb5441d40a3e301221b67bff68c189606999c\"],\"record_type\":\"deal_step\",\"retention_state\":\"AVAILABLE\",\"seq\":1,\"subject_ref\":\"deal-7bc5c57c7aa9dff4\",\"v\":1},\"payload\":{\"body\":{\"adjudicator\":null,\"admit\":{\"digest\":\"f2aa1590983051171cf4e254d499dba989522f22f5e609d68c7a1062c3a39d3e\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"checkpoint_key\":\"b5a5b67ce4530cef03f4bb47907e9860d14ffab7aba6383558bfc1571117ad4b\",\"counterparty_key\":\"67f078296b4fd77c48b28c2821a2910d9ac073f07d0d1a88908c35ec611898e8\",\"counterparty_layer\":true,\"forums\":[],\"kind\":\"agreement\",\"offer\":{\"digest\":\"dc2dbf18e16456ebd9ffbd5ee7654b7840113b44ba7882ad1c3514b81b0d9b67\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"role\":\"buyer\",\"rows_digest\":\"27740f0f61a0226d56da6ebc8394f47d1d87aefab938b9efd00a0d1cbd8e7254\",\"shelf_log_id\":\"deal-cadence/48726d9631930a21\",\"side\":\"offerer\",\"witnesses\":[]},\"x-deal-v1\":{\"at\":\"2026-11-01T09:07:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"profile\":\"x-deal-v1\",\"record_type\":\"agree\",\"seen\":\"442e96e5e0f7033be78c38480bdc8a1c7e6582e865ed74b1f7f9073fe898448b\",\"seq\":1}},\"record\":{\"action_id\":\"deal/10d9f2646658ec7ffd58b6efbb4884f8#1\",\"action_type\":\"fyi\",\"assurance\":{\"attestation_mode\":\"self_attested\",\"effect_mode\":\"not_applicable\",\"ledger_mode\":\"standalone\"},\"canonicalization_id\":\"jcs\",\"capsule_id\":\"7387841b7e29b9aa1c7092cfeb6b506b037e1076a09faffee006ed46a96e8fdb\",\"developer\":\"capsulectl-deal\",\"format_version\":\"4\",\"key_id\":\"d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f\",\"model_attestation\":{\"compute_attestation\":{\"agent_input_digest\":\"6723b798b881a902c5597469a5f125f3a3a14f6411fd95b1b8d8227e3aac6f2e\"}},\"operator\":\"deal\",\"signature\":\"d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f0127a058207387841b7e29b9aa1c7092cfeb6b506b037e1076a09faffee006ed46a96e8fdb5840c7fb5a72e1ce14e2aba70a87ae45e00b407e2c2e03b39f973065e470606971e49569710f64c7fd548d13861cefdd6a7645a56db5f66c3be81aa53ef47201dd0b\",\"spec_version\":\"draft-mih-scitt-agent-action-capsule-05\",\"timestamp\":\"2026-11-01T09:07:00Z\"}},\"stamp_proof\":{\"fact\":\"eyJib29rX2lkIjoiNzM4Nzg0MWI3ZTI5YjlhYTFjNzA5MmNmZWI2YjUwNmIwMzdlMTA3NmEwOWZhZmZlZTAwNmVkNDZhOTZlOGZkYiIsImNoZWNrcG9pbnRfc2hhMjU2IjoiNGU0NTBkYjk1MTQ1N2Y2MTk5NGEwZDUwODE4OTZiYTlkNzk0YjQ3NDZkODczYjMyZTk5OGM1NmVmMjc0ZmYwMiIsImtpbmQiOiJib29rX2ZhY3QiLCJsaW5rX2NvbW1pdG1lbnQiOiJiYWQxYWNjNmFlMzZhMzFkNWYwYzhiOTZmMjEwMmIxN2RjZjQ4OTAzZjBmNjI4ZDM4MjAxYzk2MDAxZDFkNDc4IiwibG9nX2lkIjoiZGVhbC8xMGQ5ZjI2NDY2NThlYzdmZmQ1OGI2ZWZiYjQ4ODRmOCIsInByZXZfZmFjdF9zaXplIjowLCJwcm9maWxlIjoieC1kZWFsLXYxIiwic2l6ZSI6MSwic3RhdHVzX2NvbW1pdG1lbnQiOiIzYmViYzNjMzEwZGZhYWQ2MzVmZDI3YjRlMjUyMDJkNTJiYzEzZGEyMzQwZTBjNGZkYmIxOTI3YWY3Y2FhOTkxIiwidiI6MX0=\",\"status_opening\":{\"salt\":\"e3369bf8b49c8e6ffa12554f0f0ed1f06802eefaf5f2fbe754259e0ec5f8fb87\",\"value\":{\"adjudicator\":null,\"agreed_at\":\"2026-11-01T09:07:00Z\",\"counterparty_kind\":null,\"counterparty_layer\":true,\"counterparty_proof_held\":true,\"disputes\":[],\"role\":\"buyer\",\"rows\":[{\"id\":\"paid_as_agreed\",\"input\":{\"parties\":[\"buyer\",\"seller\"],\"row\":{\"due\":{\"at\":\"2026-11-01T23:59:59Z\"},\"id\":\"paid_as_agreed\",\"owed_by\":\"buyer\",\"window_end\":{\"at\":\"2026-11-04T23:59:59Z\"}}},\"remedy_made\":null,\"ruling_against\":null,\"statement_named_by_other\":[]}],\"side\":\"offerer\",\"start\":{\"acceptor_names_offerer\":false,\"agree_by\":\"2026-11-02T10:00:00Z\",\"cancellation_named_first\":false,\"counterpart_agreement_held\":true,\"counterparty_layer\":true,\"first_act\":null,\"offerer_agreement_time\":{\"stamp\":2},\"offerer_names_acceptor\":true,\"same_offer_and_rows\":true,\"side\":\"offerer\"},\"v\":1,\"value_band\":null,\"witnesses\":[]}},\"book_checkpoint\":\"0oRYmqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCC1pbZ85FMM7wP0u0eQfphg0U/6t6umODVYv8FXERetSw+iAXglZGVhbC8xMGQ5ZjI2NDY2NThlYzdmZmQ1OGI2ZWZiYjQ4ODRmOAJ4JWRlYWwvMTBkOWYyNjQ2NjU4ZWM3ZmZkNThiNmVmYmI0ODg0ZjigWIqmZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUBaWlzc3VlZF9hdHQyMDI2LTExLTAxVDA5OjA3OjAwWmlwcmV2X3NpemUAamNvbW1pdG1lbnRYI4FYINySulhLImRdxtu/R2XyFxS9S4Ure1ieZwftiOZpafVob3ByZXZfY29tbWl0bWVudEBYQEsjSt9Z2DnQXR+rpOf11xC7ITPrE28TmuFwVjJ+XM+Ypt1hb+GPj1M3AVBlKH2eXKZTmenbZh+fTN2aEF1v2gU=\",\"inclusion\":{\"kind\":\"cll-mmr-inclusion\",\"seq\":3,\"proof\":{\"v\":1,\"kind\":\"inclusion\",\"size\":8,\"leaf_index\":2,\"witness\":[\"a25a5ab7493838b7c234d0fdad7922a9f13ff5ec43990f2adb3537a25ee7fbf4\",\"ae4cbf88105112d9c18a18c7d1488e0bd2dcfab3e43aa69e7ce6b14681cc0a06\"],\"peaks_left\":[],\"peaks_right\":[\"d290fef054db555a5d4f3d26575d72e3765266d6e98fcd7b88f38e2ccc08e69e\"]}},\"shelf_checkpoint\":\"0oRYiqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCC1pbZ85FMM7wP0u0eQfphg0U/6t6umODVYv8FXERetSw+iAXgdZGVhbC1jYWRlbmNlLzQ4NzI2ZDk2MzE5MzBhMjECeB1kZWFsLWNhZGVuY2UvNDg3MjZkOTYzMTkzMGEyMaBZAZunZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUIaWlzc3VlZF9hdHQyMDI2LTExLTAxVDA5OjA3OjAwWmlwcmV2X3NpemUDamNvbW1pdG1lbnRYRYJYIJQ2vi0UaMfecSDRkwe3Op0yTISzPNpJ3QRPmMOZ/ySWWCDSkP7wVNtVWl1PPSZXXXLjdlJm1umPzXuI844szAjmnm9wcmV2X2NvbW1pdG1lbnRYI4FYIK5Mv4gQURLZwYoYx9FIjgvS3Pqz5DqmnnzmsUaBzAoGcWNvbnNpc3RlbmN5X3Byb29mpWZzaXplX2EDZnNpemVfYghnd2l0bmVzc4GBWCBX6KCzS0e8j29J0BXx3TlglaQn+vgTtduU82/AHpT98WluZXdfcGVha3OCWCCUNr4tFGjH3nEg0ZMHtzqdMkyEszzaSd0ET5jDmf8kllgg0pD+8FTbVVpdTz0mV11y43ZSZtbpj817iPOOLMwI5p5pb2xkX3BlYWtzgVggrky/iBBREtnBihjH0UiOC9Lc+rPkOqaefOaxRoHMCgZYQHToMC3HLwxga6AVqHtYGrMOvytFnuOUeov/qmChLYInZcxH8cJt2YxVunDxtlRUeH0Nlt7Ew5f7oMyQF7SKsgw=\"}}\n"
+    }
+  },
+  {
+    "name": "receive the buyer's agreement",
+    "args": [
+      "receive",
+      "\u003ctmp\u003e/011/buyer-agreement.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"record\":\"kept, and counted\",\"record_type\":\"agree\",\"spec_version\":\"capsule-cli-result/v1\",\"stamp_proof\":\"kept\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "check before the intent",
+    "args": [
+      "check",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--input",
+      "\u003ctmp\u003e/012/in.json"
+    ],
+    "out": "",
+    "error": "invalid input or profile configuration: deal deal-7bc5c57c7aa9dff4 has no intent yet: seal the user's intent first, with `deal note --deal deal-7bc5c57c7aa9dff4 --kind intent --input FILE --opening FILE`",
+    "exit": 2
+  },
+  {
+    "name": "a message before the intent",
+    "args": [
+      "note",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--kind",
+      "message",
+      "--input",
+      "\u003ctmp\u003e/013/in.json"
+    ],
+    "out": "",
+    "error": "invalid input or profile configuration: deal deal-7bc5c57c7aa9dff4 has no intent yet: seal the user's intent first, with `deal note --deal deal-7bc5c57c7aa9dff4 --kind intent --input FILE`",
+    "exit": 2
+  },
+  {
+    "name": "intent",
+    "args": [
+      "note",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--kind",
+      "intent",
+      "--input",
+      "\u003ctmp\u003e/014/in.json",
+      "--opening",
+      "\u003ctmp\u003e/015/in.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"intent\":\"0ad9e6f32416b165373572ef79207a8d8e32173aca017cd3441770500c4eec40\",\"kind\":\"intent\",\"opened\":true,\"spec_version\":\"capsule-cli-result/v1\",\"step\":2,\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "message",
+    "args": [
+      "note",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--kind",
+      "message",
+      "--input",
+      "\u003ctmp\u003e/016/in.json"
+    ],
+    "out": "{\"capsule_id\":\"da82de35f1787dde943d4c3e48f3bbd4556a95511a14e1e1cbd8fd18b41d1452\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"kind\":\"message\",\"sequence\":3,\"spec_version\":\"capsule-cli-result/v1\",\"step\":3,\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "pay check",
+    "args": [
+      "check",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--input",
+      "\u003ctmp\u003e/017/in.json"
+    ],
+    "out": "{\"approval_id\":\"36e104127f1284e64a7624997e812b645cefa3d5b964ace573ea93854aed671c\",\"approval_text\":\"Pay $45 to Kettle Shop (kettle.example) for the lamp?\\n$45 · by card · refundable · within your $50 limit\",\"asked_attributes\":[],\"capsule_id\":\"5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31\",\"card\":\"\",\"check_id\":\"5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31\",\"checked_at\":\"2026-11-01T09:13:00Z\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"demo\":false,\"differences\":[],\"kind\":\"check\",\"materiality\":{\"name\":\"example, not policy: the attributes capsulectl paused on before predicates\",\"version\":\"0.1.0\",\"digest\":\"53af8695f236e1351c36c7996efadcc8665c7185862f95d9ac8acf070ad6b6d1\"},\"open_deadlines\":null,\"options\":[],\"picked_by_agent\":[{\"field\":\"item\",\"label\":\"item\",\"value\":\"lamp\"}],\"proceed\":true,\"recipient\":{\"name\":\"Kettle Shop\",\"first_time\":true,\"new_profile\":true},\"remote\":\"not_configured\",\"rules\":{\"status\":\"not_configured\"},\"sequence\":6,\"snapshot_id\":\"c54c9af367d8864e3332b614c4289a3635a675312d1878e110db272e823483eb\",\"spec_version\":\"capsule-cli-result/v1\",\"stale_after_minutes\":15,\"step\":6,\"unverified\":[],\"verdict\":\"pass\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "status before the send",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31",
+      "--status",
+      "settled",
+      "--out",
+      "\u003ctmp\u003e/019/x1.json"
+    ],
+    "out": "",
+    "error": "invalid input or profile configuration: no payment on check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4 was sent: run deal settle --deal deal-7bc5c57c7aa9dff4 --check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4 --sent before the handoff",
+    "exit": 2
+  },
+  {
+    "name": "send",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31",
+      "--sent",
+      "--payment-ref-type",
+      "ln.payment_hash"
+    ],
+    "out": "{\"amount_minor\":4500,\"check\":\"7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4\",\"currency\":\"USD\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"first_act_gate\":{\"gated\":true,\"allowed\":true},\"next\":\"hand the payment to the rail; when it answers, run deal settle --deal deal-7bc5c57c7aa9dff4 --check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4 --status settled|failed --out FILE\",\"person_signature\":\"missing\",\"person_signs\":[\"0ad9e6f32416b165373572ef79207a8d8e32173aca017cd3441770500c4eec40\"],\"sent\":\"c4743c7a8e8746876c7b1f1cd164660bde2fac8f0cce7e5905e9bbb5c9b4981d\",\"spec_version\":\"capsule-cli-result/v1\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "send again in flight",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31",
+      "--sent",
+      "--payment-ref-type",
+      "ln.payment_hash"
+    ],
+    "out": "",
+    "error": "invalid input or profile configuration: a payment on check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4 is in flight (4500 USD, ln.payment_hash abababababababababababababababababababababababababababababababab): when the rail answers, run deal settle --deal deal-7bc5c57c7aa9dff4 --check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4 --status settled|failed --out FILE",
+    "exit": 2
+  },
+  {
+    "name": "a details change in flight",
+    "args": [
+      "note",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--kind",
+      "change",
+      "--input",
+      "\u003ctmp\u003e/020/in.json"
+    ],
+    "out": "",
+    "error": "invalid input or profile configuration: a payment of deal deal-7bc5c57c7aa9dff4 is in flight (check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4): a detail_change record that changes the deal's details would void its authorization, so it waits until the payment is settled or failed (`deal settle --deal deal-7bc5c57c7aa9dff4 --check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4 --status settled|failed --out FILE`)",
+    "exit": 2
+  },
+  {
+    "name": "settled",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31",
+      "--status",
+      "settled",
+      "--out",
+      "\u003ctmp\u003e/018/leg.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"digest\":\"eda68577498cc01d2fa5c969b07d11f286a24f01a349e74e09e7f2e393a9567c\",\"file\":\"\u003ctmp\u003e/018/leg.json\",\"first_act_gate\":{\"gated\":true,\"allowed\":true},\"leg\":\"payer\",\"person_signature\":\"missing\",\"person_signs\":[\"0ad9e6f32416b165373572ef79207a8d8e32173aca017cd3441770500c4eec40\"],\"record\":\"settle\",\"seq\":2,\"spec_version\":\"capsule-cli-result/v1\",\"status\":\"settled\",\"voice\":\"silent\"}\n",
+    "exit": 0,
+    "files": {
+      "\u003ctmp\u003e/018/leg.json": "{\"record\":{\"header\":{\"book_id\":\"deal/10d9f2646658ec7ffd58b6efbb4884f8\",\"committed_at\":\"2026-11-01T09:18:00Z\",\"epistemic_type\":\"producer_claim\",\"links\":[{\"target\":\"7387841b7e29b9aa1c7092cfeb6b506b037e1076a09faffee006ed46a96e8fdb\",\"type\":\"cites\"}],\"payload_commitments\":[\"eda68577498cc01d2fa5c969b07d11f286a24f01a349e74e09e7f2e393a9567c\"],\"record_type\":\"deal_step\",\"retention_state\":\"AVAILABLE\",\"seq\":2,\"subject_ref\":\"deal-7bc5c57c7aa9dff4\",\"v\":1},\"payload\":{\"body\":{\"check\":{\"digest\":\"7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"leg\":\"payer\",\"statements\":[]},\"x-deal-v1\":{\"agreement_ref\":{\"digest\":\"df7df0f21668ca8560e7a54be8cfb5441d40a3e301221b67bff68c189606999c\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"at\":\"2026-11-01T09:18:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"prev\":{\"digest\":\"df7df0f21668ca8560e7a54be8cfb5441d40a3e301221b67bff68c189606999c\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v1\",\"record_type\":\"settle\",\"seen\":\"442e96e5e0f7033be78c38480bdc8a1c7e6582e865ed74b1f7f9073fe898448b\",\"seq\":2}},\"record\":{\"action_id\":\"deal/10d9f2646658ec7ffd58b6efbb4884f8#2\",\"action_type\":\"fyi\",\"assurance\":{\"attestation_mode\":\"self_attested\",\"effect_mode\":\"not_applicable\",\"ledger_mode\":\"standalone\"},\"canonicalization_id\":\"jcs\",\"capsule_id\":\"a081ca782b6f1c729397722446b2288b5990886d3f643dca62148b81ef1cf2ac\",\"developer\":\"capsulectl-deal\",\"format_version\":\"4\",\"key_id\":\"d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f\",\"model_attestation\":{\"compute_attestation\":{\"agent_input_digest\":\"db2ca16874a9bea06781b8a89fb92bf2c8574f44eecbae384bddc117009b73be\"}},\"operator\":\"deal\",\"references\":[{\"digest\":\"7387841b7e29b9aa1c7092cfeb6b506b037e1076a09faffee006ed46a96e8fdb\",\"digest_alg\":\"SHA-256\",\"type\":\"agent-action-capsule\"}],\"settlement\":{\"amount\":{\"assetCode\":\"USD\",\"assetScale\":2,\"value\":\"4500\"},\"leg\":\"payer_observed\",\"observed_at\":\"2026-11-01T09:18:00Z\",\"payment_ref\":{\"type\":\"ln.payment_hash\",\"value\":\"abababababababababababababababababababababababababababababababab\"},\"sealer_role\":\"payer\",\"status\":\"settled\",\"terms_ref\":\"ab71021c9deea2664fd16aa036e803e31e81dc89877e0d27f6f1e30770b91167\",\"version\":\"0\"},\"signature\":\"d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f0127a05820a081ca782b6f1c729397722446b2288b5990886d3f643dca62148b81ef1cf2ac5840e96f411ae8ee77b6c53a1d4c0072407c780d09a91e0f4459ed5ad19e95fa7cc53a881864b8bb4ae45fb5c2e4d5de50446f632e8be760b4526d8dd1714b3e550f\",\"spec_version\":\"draft-mih-scitt-agent-action-capsule-05\",\"timestamp\":\"2026-11-01T09:18:00Z\"}}}\n"
+    }
+  },
+  {
+    "name": "settled again",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31",
+      "--status",
+      "settled",
+      "--out",
+      "\u003ctmp\u003e/018/leg.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"digest\":\"eda68577498cc01d2fa5c969b07d11f286a24f01a349e74e09e7f2e393a9567c\",\"file\":\"\u003ctmp\u003e/018/leg.json\",\"leg\":\"payer\",\"record\":\"settle\",\"seq\":2,\"spec_version\":\"capsule-cli-result/v1\",\"status\":\"settled\",\"voice\":\"silent\"}\n",
+    "exit": 0,
+    "files": {
+      "\u003ctmp\u003e/018/leg.json": "{\"record\":{\"header\":{\"book_id\":\"deal/10d9f2646658ec7ffd58b6efbb4884f8\",\"committed_at\":\"2026-11-01T09:18:00Z\",\"epistemic_type\":\"producer_claim\",\"links\":[{\"target\":\"7387841b7e29b9aa1c7092cfeb6b506b037e1076a09faffee006ed46a96e8fdb\",\"type\":\"cites\"}],\"payload_commitments\":[\"eda68577498cc01d2fa5c969b07d11f286a24f01a349e74e09e7f2e393a9567c\"],\"record_type\":\"deal_step\",\"retention_state\":\"AVAILABLE\",\"seq\":2,\"subject_ref\":\"deal-7bc5c57c7aa9dff4\",\"v\":1},\"payload\":{\"body\":{\"check\":{\"digest\":\"7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"leg\":\"payer\",\"statements\":[]},\"x-deal-v1\":{\"agreement_ref\":{\"digest\":\"df7df0f21668ca8560e7a54be8cfb5441d40a3e301221b67bff68c189606999c\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"at\":\"2026-11-01T09:18:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"prev\":{\"digest\":\"df7df0f21668ca8560e7a54be8cfb5441d40a3e301221b67bff68c189606999c\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v1\",\"record_type\":\"settle\",\"seen\":\"442e96e5e0f7033be78c38480bdc8a1c7e6582e865ed74b1f7f9073fe898448b\",\"seq\":2}},\"record\":{\"action_id\":\"deal/10d9f2646658ec7ffd58b6efbb4884f8#2\",\"action_type\":\"fyi\",\"assurance\":{\"attestation_mode\":\"self_attested\",\"effect_mode\":\"not_applicable\",\"ledger_mode\":\"standalone\"},\"canonicalization_id\":\"jcs\",\"capsule_id\":\"a081ca782b6f1c729397722446b2288b5990886d3f643dca62148b81ef1cf2ac\",\"developer\":\"capsulectl-deal\",\"format_version\":\"4\",\"key_id\":\"d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f\",\"model_attestation\":{\"compute_attestation\":{\"agent_input_digest\":\"db2ca16874a9bea06781b8a89fb92bf2c8574f44eecbae384bddc117009b73be\"}},\"operator\":\"deal\",\"references\":[{\"digest\":\"7387841b7e29b9aa1c7092cfeb6b506b037e1076a09faffee006ed46a96e8fdb\",\"digest_alg\":\"SHA-256\",\"type\":\"agent-action-capsule\"}],\"settlement\":{\"amount\":{\"assetCode\":\"USD\",\"assetScale\":2,\"value\":\"4500\"},\"leg\":\"payer_observed\",\"observed_at\":\"2026-11-01T09:18:00Z\",\"payment_ref\":{\"type\":\"ln.payment_hash\",\"value\":\"abababababababababababababababababababababababababababababababab\"},\"sealer_role\":\"payer\",\"status\":\"settled\",\"terms_ref\":\"ab71021c9deea2664fd16aa036e803e31e81dc89877e0d27f6f1e30770b91167\",\"version\":\"0\"},\"signature\":\"d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f0127a05820a081ca782b6f1c729397722446b2288b5990886d3f643dca62148b81ef1cf2ac5840e96f411ae8ee77b6c53a1d4c0072407c780d09a91e0f4459ed5ad19e95fa7cc53a881864b8bb4ae45fb5c2e4d5de50446f632e8be760b4526d8dd1714b3e550f\",\"spec_version\":\"draft-mih-scitt-agent-action-capsule-05\",\"timestamp\":\"2026-11-01T09:18:00Z\"}}}\n"
+    }
+  },
+  {
+    "name": "failed after settled",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31",
+      "--status",
+      "failed",
+      "--out",
+      "\u003ctmp\u003e/021/x2.json"
+    ],
+    "out": "",
+    "error": "invalid input or profile configuration: the payment on check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4 is already sealed as leg eda68577498cc01d2fa5c969b07d11f286a24f01a349e74e09e7f2e393a9567c with other inputs; a check authorizes one payment, and a payer leg is never sealed again",
+    "exit": 2
+  },
+  {
+    "name": "send on a used check",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "5cddf576eb376b7b18cc035f13a4ca1292db561a245d566ceca04ed01b092a31",
+      "--sent",
+      "--payment-ref-type",
+      "ln.payment_hash"
+    ],
+    "out": "",
+    "error": "invalid input or profile configuration: check 7e7aed59478b29ee41d0244a99babcd38196df337dd14074deb9c56e3d453dc4 is used: its payment was sealed as leg eda68577498cc01d2fa5c969b07d11f286a24f01a349e74e09e7f2e393a9567c, and a check authorizes one payment",
+    "exit": 2
+  },
+  {
+    "name": "receive the leg",
+    "args": [
+      "receive",
+      "\u003ctmp\u003e/018/leg.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"record\":\"kept, and counted\",\"record_type\":\"settle\",\"spec_version\":\"capsule-cli-result/v1\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "second pay check",
+    "args": [
+      "check",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--input",
+      "\u003ctmp\u003e/022/in.json"
+    ],
+    "out": "{\"approval_id\":\"be88c0080cc80e2463d2f016e908dcfabb58de26fe1e37e09c7e2d7b584deac3\",\"approval_text\":\"Pay $45 to Kettle Shop (kettle.example) for the lamp?\\n$45 · by card · refundable · within your $50 limit\",\"asked_attributes\":[],\"capsule_id\":\"ab3889d23110239ea426daec72dbeade269eacbd16c907e2cdf2a69d0fa530aa\",\"card\":\"\",\"check_id\":\"ab3889d23110239ea426daec72dbeade269eacbd16c907e2cdf2a69d0fa530aa\",\"checked_at\":\"2026-11-01T09:23:00Z\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"demo\":false,\"differences\":[],\"kind\":\"check\",\"materiality\":{\"name\":\"example, not policy: the attributes capsulectl paused on before predicates\",\"version\":\"0.1.0\",\"digest\":\"53af8695f236e1351c36c7996efadcc8665c7185862f95d9ac8acf070ad6b6d1\"},\"open_deadlines\":null,\"options\":[],\"picked_by_agent\":[{\"field\":\"item\",\"label\":\"item\",\"value\":\"lamp\"}],\"proceed\":true,\"recipient\":{\"name\":\"Kettle Shop\",\"first_time\":true,\"new_profile\":true},\"remote\":\"not_configured\",\"rules\":{\"status\":\"not_configured\"},\"sequence\":11,\"snapshot_id\":\"a121d023325039d75852935810b620acfd150e13d2ab379fe1bc9577fd9fc601\",\"spec_version\":\"capsule-cli-result/v1\",\"stale_after_minutes\":15,\"step\":11,\"unverified\":[],\"verdict\":\"pass\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "second send",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "ab3889d23110239ea426daec72dbeade269eacbd16c907e2cdf2a69d0fa530aa",
+      "--sent",
+      "--payment-ref-type",
+      "ln.payment_hash"
+    ],
+    "out": "{\"amount_minor\":4500,\"check\":\"79fcf9350e8c3257cca2e82a50a085e1f65ff4a37c6e915adf634c9b48aaaaf0\",\"currency\":\"USD\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"next\":\"hand the payment to the rail; when it answers, run deal settle --deal deal-7bc5c57c7aa9dff4 --check 79fcf9350e8c3257cca2e82a50a085e1f65ff4a37c6e915adf634c9b48aaaaf0 --status settled|failed --out FILE\",\"person_signature\":\"missing\",\"person_signs\":[\"0ad9e6f32416b165373572ef79207a8d8e32173aca017cd3441770500c4eec40\"],\"sent\":\"edbedc3c7ff75a85e8b66fea2fe76f73752416e41cd0ef57cc062821f31ed8fe\",\"spec_version\":\"capsule-cli-result/v1\",\"voice\":\"silent\"}\n",
+    "exit": 0
+  },
+  {
+    "name": "second failed",
+    "args": [
+      "settle",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--check",
+      "ab3889d23110239ea426daec72dbeade269eacbd16c907e2cdf2a69d0fa530aa",
+      "--status",
+      "failed",
+      "--out",
+      "\u003ctmp\u003e/023/failed.json"
+    ],
+    "out": "{\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"digest\":\"d7ffca12ee63f277752ac1cde2d9f156b4eceb45cf24713098d261b3d6ea5230\",\"file\":\"\u003ctmp\u003e/023/failed.json\",\"leg\":\"payer\",\"person_signature\":\"missing\",\"person_signs\":[\"0ad9e6f32416b165373572ef79207a8d8e32173aca017cd3441770500c4eec40\"],\"record\":\"settle\",\"seq\":3,\"spec_version\":\"capsule-cli-result/v1\",\"status\":\"failed\",\"voice\":\"silent\"}\n",
+    "exit": 0,
+    "files": {
+      "\u003ctmp\u003e/023/failed.json": "{\"record\":{\"header\":{\"book_id\":\"deal/10d9f2646658ec7ffd58b6efbb4884f8\",\"committed_at\":\"2026-11-01T09:25:00Z\",\"epistemic_type\":\"producer_claim\",\"links\":[{\"target\":\"a081ca782b6f1c729397722446b2288b5990886d3f643dca62148b81ef1cf2ac\",\"type\":\"cites\"}],\"payload_commitments\":[\"d7ffca12ee63f277752ac1cde2d9f156b4eceb45cf24713098d261b3d6ea5230\"],\"record_type\":\"deal_step\",\"retention_state\":\"AVAILABLE\",\"seq\":3,\"subject_ref\":\"deal-7bc5c57c7aa9dff4\",\"v\":1},\"payload\":{\"body\":{\"check\":{\"digest\":\"79fcf9350e8c3257cca2e82a50a085e1f65ff4a37c6e915adf634c9b48aaaaf0\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"leg\":\"payer\",\"statements\":[]},\"x-deal-v1\":{\"agreement_ref\":{\"digest\":\"df7df0f21668ca8560e7a54be8cfb5441d40a3e301221b67bff68c189606999c\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"at\":\"2026-11-01T09:25:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"prev\":{\"digest\":\"eda68577498cc01d2fa5c969b07d11f286a24f01a349e74e09e7f2e393a9567c\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v1\",\"record_type\":\"settle\",\"seen\":\"442e96e5e0f7033be78c38480bdc8a1c7e6582e865ed74b1f7f9073fe898448b\",\"seq\":3}},\"record\":{\"action_id\":\"deal/10d9f2646658ec7ffd58b6efbb4884f8#3\",\"action_type\":\"fyi\",\"assurance\":{\"attestation_mode\":\"self_attested\",\"effect_mode\":\"not_applicable\",\"ledger_mode\":\"standalone\"},\"canonicalization_id\":\"jcs\",\"capsule_id\":\"6972bf90771a3fa15d4d4fd8b8dbbc357f5411a294b67dad3f7cdc0264eea631\",\"developer\":\"capsulectl-deal\",\"format_version\":\"4\",\"key_id\":\"d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f\",\"model_attestation\":{\"compute_attestation\":{\"agent_input_digest\":\"7a600d60c55914aebb5ae0e98e2c5a9834b1581a70432f81aba3f4f8899e89c6\"}},\"operator\":\"deal\",\"references\":[{\"digest\":\"a081ca782b6f1c729397722446b2288b5990886d3f643dca62148b81ef1cf2ac\",\"digest_alg\":\"SHA-256\",\"type\":\"agent-action-capsule\"}],\"settlement\":{\"amount\":{\"assetCode\":\"USD\",\"assetScale\":2,\"value\":\"4500\"},\"leg\":\"payer_observed\",\"observed_at\":\"2026-11-01T09:25:00Z\",\"payment_ref\":{\"type\":\"ln.payment_hash\",\"value\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\"},\"sealer_role\":\"payer\",\"status\":\"failed\",\"terms_ref\":\"ab71021c9deea2664fd16aa036e803e31e81dc89877e0d27f6f1e30770b91167\",\"version\":\"0\"},\"signature\":\"d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820d940f71302af0b21e440a7b010d85a13f27865985e68292fdc68a4478077012f0127a058206972bf90771a3fa15d4d4fd8b8dbbc357f5411a294b67dad3f7cdc0264eea631584086cf8c619fa1beeed9b291dcd686f018040fc210bf4b6a6482cfe6d644fbc9f9ca96394acd1ce8cea51c3676a24f0373e1715222e5650a28b9b15be80878c70e\",\"spec_version\":\"draft-mih-scitt-agent-action-capsule-05\",\"timestamp\":\"2026-11-01T09:25:00Z\"}}}\n"
+    }
+  },
+  {
+    "name": "a details change after",
+    "args": [
+      "note",
+      "--deal",
+      "deal-7bc5c57c7aa9dff4",
+      "--kind",
+      "change",
+      "--input",
+      "\u003ctmp\u003e/024/in.json"
+    ],
+    "out": "{\"capsule_id\":\"09d7b1ea47cd4e4a8b2baac1ab113e656a189973cb53aa352ed893d46be60e96\",\"deal_id\":\"deal-7bc5c57c7aa9dff4\",\"kind\":\"change\",\"sequence\":14,\"spec_version\":\"capsule-cli-result/v1\",\"step\":14,\"voice\":\"silent\"}\n",
+    "exit": 0
+  }
+]
