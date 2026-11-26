@@ -17,7 +17,7 @@ unless something differs.
 
 This skill teaches five verbs and nothing else: **check** before you act,
 **record** what was done, **ask** the other side for evidence, or answer when
-it asks, **verify** what you get, and **show** a report or a receipt. Each row
+it asks, **verify** what you get, and **show** a card, a report or a receipt. Each row
 maps a verb, at one step, to the existing command. The `deal` commands run on
 the deal profile (`--profile deal`); the `book` commands run on a jsonl book
 profile, never the deal profile, and only after you have read
@@ -35,7 +35,8 @@ profile, never the deal profile, and only after you have read
 | record | how each row went | `deal statement` |
 | record | a dispute, or a challenge to a ruling | `deal dispute` |
 | record | a file the other side sent | `deal receive` |
-| record | a Result a judging step produced, or an evaluator's Result over a holder's answer | `book result build`, `book report derive` (book profile) |
+| record | a Result a judging step produced | `book result build` (book profile) |
+| record | an evaluator's Result over a holder's answer | `book report derive` (book profile) |
 | ask | evidence from a party: the request, then its answer, or that none came | `book request`, then `book request --for RECORD_ID --response FILE` or `--absent-until TIME` (book profile) |
 | ask | answer a request a party sent | `book respond` (book profile); a referee's request for the deal is the user's to answer (`deal respond`) |
 | verify | a bundle or a copy before you treat it as authentic | `capsulectl verify --bundle`; `capsulectl deal verify --bundle` for a deal copy |
@@ -43,10 +44,11 @@ profile, never the deal profile, and only after you have read
 | show | the user's deals | `deal list --json` |
 | show | one deal, its receipt, or the copy for the other side | `deal report` |
 | show | a sealed Result's report page | `book report build` (book profile) |
+| show | the user's History card | `deal standard-history card` |
 
-`book request` on a remote profile is the deprecated alias of `book remote
-request`, which asks another party's book over the profile's transport: there,
-stop and ask a human. Setting up a profile, the checkpoint cadence, the daily
+To ask another party's book over the profile's transport (`book remote
+request`), stop and ask a human. `book request` on a remote profile is its
+deprecated alias. Setting up a profile, the checkpoint cadence, the daily
 check of host actions, windows and the x-deal-v0 sale are expert commands, not
 taught here: [references/setup.md](references/setup.md) and
 [references/expert.md](references/expert.md) keep them.
