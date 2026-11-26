@@ -23,7 +23,7 @@ from .names import (
     TYPE_INTENT, TYPE_MESSAGE, TYPE_PERFORM, TYPE_SETTLE, TYPE_VERDICT,
 )
 
-__all__ = ["STAGE_AUTHORIZATION", "ActAuthorization", "check_authorizations"]
+__all__ = ["STAGE_AUTHORIZATION", "ActAuthorization", "check_authorizations", "rules_unevaluated"]
 
 STAGE_AUTHORIZATION = "authorization"
 
@@ -38,7 +38,10 @@ class ActAuthorization:
     needs the person's signature; the digests of the confirm_limits
     approvals a standing-intent approval relied on, each also needing it;
     and the digest of the first intent a standing-intent approval rests on
-    (``""`` otherwise)."""
+    (``""`` otherwise). ``rules_not_evaluable`` marks a standing-intent
+    approval whose verdict's rules could not evaluate the person's caps
+    (:func:`rules_unevaluated`): the act then needs the person's signature
+    too, whatever the verdict's result says (u503; evidencebook#982)."""
 
     act: Record
     check: Record
@@ -48,6 +51,22 @@ class ActAuthorization:
     needs_person_signature: bool
     limit_approvals: list[str] = field(default_factory=list)
     intent: str = ""
+    rules_not_evaluable: bool = False
+
+
+def rules_unevaluated(rules: dict | None) -> bool:
+    """Whether a verdict's rules could not evaluate the person's caps (PROFILE
+    §8; Go ``RulesUnevaluated``): their status is not_evaluated; or they were
+    evaluated and the checker's own verdict is not allow; or, whatever their
+    status, a measured finding is not_evaluable. A finding is measured when it
+    names its check; one that names none is a rule its ruleset only declares,
+    which never moves the verdict."""
+    if rules is None:
+        return False
+    if any(f.get("verdict") == "not_evaluable" and f.get("check") for f in rules.get("findings") or []):
+        return True
+    status = rules.get("status")
+    return status == "not_evaluated" or (status == "evaluated" and rules.get("verdict") != "allow")
 
 
 def _err(detail: str) -> StageError:
@@ -150,6 +169,8 @@ def check_authorizations(journal: list[Any], acts: list[Any]) -> list[ActAuthori
         a = ActAuthorization(act, journal[ci], journal[vi], journal[ai], w.digests[ai],
                              _person_approver(ab["approver"]))
         if ab["approver"] == "standing_intent":
+            if rules_unevaluated(w.verdict[vi].get("rules")):
+                a.rules_not_evaluable = a.needs_person_signature = True
             a.limit_approvals = [w.digests[j] for j in w.limits_at[ai]]
             a.intent = w.digests[w.intent_at[ai]]
         out.append(a)

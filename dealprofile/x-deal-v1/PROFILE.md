@@ -423,6 +423,17 @@ amount in a currency with no known minor units is refused. The record digests th
   its record digest (Steven, evidencebook#500, option b). Without it an agent could seal its own
   intent's `allowed` and approve acts inside it with no person's signature anywhere. A
   `standing_intent` approval with no intent before it in the journal is refused.
+- the `standing_intent` approval itself, when its verdict's `rules` could not evaluate the
+  person's caps (`RulesNotEvaluable`, read by `xdealv1.RulesUnevaluated`): the person's signature
+  over the approval's record digest, as for their own approval, whatever the verdict's `result`
+  says (u503; evidencebook#982). The rules could not evaluate the caps when their `status` is
+  `not_evaluated`; when it is `evaluated` and the checker's own `verdict` is not `allow`; or when,
+  whatever their `status`, a measured finding is `not_evaluable`. A finding names its `check`
+  exactly when a check measured it: a finding that names none is a rule the ruleset only declares,
+  which no check measures and which never moves the verdict, and its `not_evaluable` asks for
+  nothing. That reading is the sealer's claim, like every other `rules` member, since a sealed
+  finding carries no reason. A finding that names a check is measured whatever reason the checker
+  gave, so a sealer that drops `check` from a measured finding misstates it.
 
 An act MUST NOT be relied on until the person's signature over each listed digest, from the
 person's own key, is held. The signature travels beside the approval record, never inside it, so

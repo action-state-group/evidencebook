@@ -49,7 +49,8 @@ type ActAuthorization struct {
 	// so a caller that requires the person's signature refuses the act until
 	// one over ApprovalDigest, from the person's own key, is held. It is set
 	// too for a standing-intent approval whose verdict carries no rules
-	// block (RulesNotRecorded).
+	// block (RulesNotRecorded) or rules that could not evaluate a measured
+	// rule (RulesNotEvaluable).
 	NeedsPersonSignature bool
 	// RulesNotRecorded says the act rests on a standing-intent approval
 	// whose verdict carries no rules block: nothing records which rules, if
@@ -59,6 +60,15 @@ type ActAuthorization struct {
 	// person's approval does, and is never allowed on the standing intent
 	// alone (Sherlock2's ruling u234, ops evidence-network/inbox.md:669, 2026-11-25, after u503; evidencebook#899).
 	RulesNotRecorded bool
+	// RulesNotEvaluable says the act rests on a standing-intent approval
+	// whose verdict's rules could not evaluate the person's caps: the rules
+	// were not evaluated, the checker's own verdict is not allow, or a
+	// measured finding is not_evaluable, whatever the rules' status
+	// (RulesUnevaluated). Such an act
+	// escalates to the person as RulesNotRecorded does, whatever the
+	// verdict's result says (u503; Sherlock2's ruling ops fe0e13eb,
+	// evidencebook#982).
+	RulesNotEvaluable bool
 	// LimitApprovals are the record digests of the confirm_limits approvals
 	// whose confirmed proposals put in force the allowed a standing-intent
 	// approval relied on. Each is the person's own approval and needs the
@@ -188,8 +198,11 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 		a := ActAuthorization{Act: act, Check: journal[ci], Verdict: journal[vi], Approval: journal[ai], AmountNotHeld: notHeld,
 			ApprovalDigest: w.digests[ai], NeedsPersonSignature: personApprover(ab.Approver)}
 		if ab.Approver == "standing_intent" {
-			if w.verdict[vi].Rules == nil {
+			switch r := w.verdict[vi].Rules; {
+			case r == nil:
 				a.RulesNotRecorded, a.NeedsPersonSignature = true, true
+			case RulesUnevaluated(r):
+				a.RulesNotEvaluable, a.NeedsPersonSignature = true, true
 			}
 			for _, j := range w.limitsAt[ai] {
 				a.LimitApprovals = append(a.LimitApprovals, w.digests[j])
@@ -199,6 +212,25 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 		out = append(out, a)
 	}
 	return out, nil
+}
+
+// RulesUnevaluated says a verdict's rules could not evaluate the person's
+// caps (PROFILE §8): their status is not_evaluated; or they were evaluated
+// and the checker's own verdict is not allow; or, whatever their status, a
+// measured finding is not_evaluable. A finding is measured when it names its
+// check: a rule its ruleset only declares, which no check measures, names
+// none, and its not_evaluable never moves the verdict. Sealed findings carry
+// no reason, so the check is the one member that tells the two apart.
+func RulesUnevaluated(r *dealprofile.VerdictBodyRules) bool {
+	if r == nil {
+		return false
+	}
+	for _, f := range r.Findings {
+		if f.Verdict == "not_evaluable" && f.Check != nil && *f.Check != "" {
+			return true
+		}
+	}
+	return r.Status == "not_evaluated" || r.Status == "evaluated" && r.Verdict != "allow"
 }
 
 // personApprover says an approver is the person: "user" answers in their

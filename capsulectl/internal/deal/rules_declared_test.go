@@ -79,6 +79,9 @@ func TestAGenuineNotEvaluableStaysLoud(t *testing.T) {
 		"not_evaluable": "Your rules were not fully checked: r09-terms: the record states no terms",
 		// Its own state, whatever the verdict (capsule-cli#341).
 		"escalate": "Your rules were not fully checked: r09-terms: the record states no terms",
+		// Even when the checker allows: a rule it could not evaluate never
+		// allows (u503; evidencebook#982).
+		"allow": "Your rules were not fully checked: r09-terms: the record states no terms",
 	} {
 		t.Run(verdict, func(t *testing.T) {
 			_, check := checkWithRules(t, verdict, missing+","+declaredFindings)
@@ -139,4 +142,34 @@ func TestAFlagFromARuleThatCouldNotBeEvaluatedSaysSo(t *testing.T) {
 	raw, err := json.Marshal(dealRun(t, "report", "--deal", id)["did"])
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "Checked before paying: flagged, under example-rules/1.0.0, pack abababababab (the record states no terms (could not be checked)) (you asked for: item otter sticker); not yet checked: r14, r24, r25")
+}
+
+// An allow with a measured rule the checker could not evaluate pauses for
+// the person: no standing-intent approval is sealed, so the act needs the
+// person's answer (u503; Sherlock2's ruling ops fe0e13eb, evidencebook#982).
+// With only declared rules beside the allow, the standing intent approves it
+// as before.
+func TestAnAllowWithAnUnevaluatedRulePausesForThePerson(t *testing.T) {
+	unevaluated := `{"id":"r05-spending-limits#7d","check":"caps/5.1.0","verdict":"not_evaluable","reason":"the history does not cover the window"}`
+	_, check := checkWithRules(t, "allow", passFinding+","+unevaluated+","+declaredFindings)
+	assert.Equal(t, "pause", check["verdict"])
+	assert.Equal(t, []string{"rules_not_evaluable"}, differenceRules(check))
+	assert.Contains(t, differenceTexts(check), "Your rules were not fully checked: r05-spending-limits#7d: the history does not cover the window")
+	assert.Nil(t, check["approval_id"], "no standing-intent approval")
+	assert.Len(t, declaredRules(checkRules(t, check)), 3, "the declared rules stay quiet")
+
+	_, check = checkWithRules(t, "allow", passFinding+","+declaredFindings)
+	assert.Equal(t, "pass", check["verdict"])
+	assert.NotNil(t, check["approval_id"], "the standing intent approves it")
+}
+
+// A finding that names a check was measured, whatever reason it gives: it
+// is never read as a declared rule, so under an allow it pauses (fail
+// closed; Sherlock2, ops d8fe68f9).
+func TestADeclaredReasonWithACheckIsMeasured(t *testing.T) {
+	named := `{"id":"r05-spending-limits#7d","check":"caps/5.1.0","verdict":"not_evaluable","reason":"declared, not measured"}`
+	_, check := checkWithRules(t, "allow", passFinding+","+named)
+	assert.Equal(t, "pause", check["verdict"])
+	assert.Equal(t, []string{"rules_not_evaluable"}, differenceRules(check))
+	assert.Empty(t, declaredRules(checkRules(t, check)))
 }

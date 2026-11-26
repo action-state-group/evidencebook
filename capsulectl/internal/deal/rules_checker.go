@@ -350,14 +350,19 @@ func sealableRules(r dealRules, localValues []string) dealRules {
 }
 
 // rulesDeclaredNotMeasured is the reason a checker gives for a rule its
-// ruleset declares and it does not measure (verdict not_evaluable). Such a
-// rule never moves the verdict, so it is said quietly beside it, never as a
-// difference or a warning. Any other not_evaluable is a rule the checker
-// could not evaluate on this record, and stays a difference.
+// ruleset declares and it does not measure (verdict not_evaluable, naming no
+// check). Such a rule never moves the verdict, so it is said quietly beside
+// it, never as a difference or a warning. Any other not_evaluable is a rule
+// the checker could not evaluate on this record, and stays a difference.
 const rulesDeclaredNotMeasured = "declared, not measured"
 
+// isDeclaredRule says f is a rule the ruleset declares and no check
+// measures. It names no check: the sealed finding carries no reason, so a
+// verifier tells a declared rule from a measured one by its check alone
+// (xdealv1.RulesUnevaluated), and this reads both, so the check and the
+// verifier never disagree about a finding.
 func isDeclaredRule(f dealRulesFinding) bool {
-	return f.Verdict == "not_evaluable" && f.Reason == rulesDeclaredNotMeasured
+	return f.Verdict == "not_evaluable" && f.Reason == rulesDeclaredNotMeasured && f.Check == ""
 }
 
 // acceptanceRuleVerdict is how the user's rules decided the rule that
@@ -448,7 +453,8 @@ const rePinHint = "; re-pin it with profile update --rules-checker FILE"
 
 // rulesDifferences are the differences the rules add to a check: a deny, an
 // escalation, a rule left unevaluated, or a checker that could not answer.
-// An allow adds none; a profile with no checker adds none.
+// An allow adds none unless a measured rule was left unevaluated; a profile
+// with no checker adds none.
 func rulesDifferences(r *dealRules) []dealDifference {
 	if r == nil {
 		return nil
@@ -462,8 +468,11 @@ func rulesDifferences(r *dealRules) []dealDifference {
 	if r.Status == "not_evaluated" {
 		return []dealDifference{{Question: "safety", Rule: "rules_not_checked", Text: "Your rules were not checked: " + r.Reason}}
 	}
-	if r.Status != "evaluated" || r.Verdict == "allow" {
+	if r.Status != "evaluated" {
 		return nil
+	}
+	if r.Verdict == "allow" {
+		return unevaluatedUnderAllow(r)
 	}
 	failing := 0
 	for _, f := range r.Findings {
@@ -513,6 +522,23 @@ func rulesDifferences(r *dealRules) []dealDifference {
 			rule = "rules_not_evaluable"
 		}
 		out = append(out, dealDifference{Question: "safety", Rule: rule, Text: "Your rules (" + r.RulesetID + "): " + r.Verdict})
+	}
+	return out
+}
+
+// unevaluatedUnderAllow are the differences of an allow: one
+// rules_not_evaluable per measured rule the checker could not evaluate. A cap
+// that cannot be evaluated never allows, whatever the checker's overall
+// verdict says, so the check pauses for the person (u503; Sherlock2's ruling
+// ops fe0e13eb, evidencebook#982), and a standing intent never approves it.
+func unevaluatedUnderAllow(r *dealRules) []dealDifference {
+	var out []dealDifference
+	for _, f := range r.Findings {
+		if f.Verdict != "not_evaluable" || isDeclaredRule(f) {
+			continue
+		}
+		text := fmt.Sprintf("Your rules were not fully checked: %s: %s", f.ID, f.Reason)
+		out = append(out, dealDifference{Question: "safety", Rule: "rules_not_evaluable", Field: findingField(f.ID), Text: text})
 	}
 	return out
 }

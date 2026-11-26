@@ -183,7 +183,10 @@ func TestOnlyTheAcceptanceRuleFailingNamesTheAcceptance(t *testing.T) {
 	assert.Equal(t, "fail", acceptanceRuleVerdict(rules(s13)))
 	assert.Equal(t, "not_evaluable", acceptanceRuleVerdict(rules(dealRulesFinding{ID: "s13", Check: "release_on_acceptance", Verdict: "not_evaluable", Reason: "no history"})))
 	assert.Equal(t, "", acceptanceRuleVerdict(rules(dealRulesFinding{ID: "s13", Check: s13.Check, Verdict: "pass"})), "it passed")
-	assert.Equal(t, "", acceptanceRuleVerdict(rules(dealRulesFinding{ID: "s13", Check: s13.Check, Verdict: "not_evaluable", Reason: rulesDeclaredNotMeasured})), "declared, not measured")
+	// A declared rule names no check, so it is never the acceptance rule; a
+	// finding that names the check is measured whatever its reason says.
+	assert.Equal(t, "", acceptanceRuleVerdict(rules(dealRulesFinding{ID: "s13", Verdict: "not_evaluable", Reason: rulesDeclaredNotMeasured})), "declared, not measured")
+	assert.Equal(t, "not_evaluable", acceptanceRuleVerdict(rules(dealRulesFinding{ID: "s13", Check: s13.Check, Verdict: "not_evaluable", Reason: rulesDeclaredNotMeasured})), "a check named: measured")
 	assert.Equal(t, "", acceptanceRuleVerdict(rules(dealRulesFinding{ID: "r01", Check: "caps/1", Verdict: "fail"})), "another rule")
 	assert.Equal(t, "", acceptanceRuleVerdict(rules(dealRulesFinding{ID: "x", Check: "seller.release_on_acceptance_extra/1", Verdict: "fail"})))
 	assert.Equal(t, "", acceptanceRuleVerdict(&dealRules{Status: "not_evaluated"}))

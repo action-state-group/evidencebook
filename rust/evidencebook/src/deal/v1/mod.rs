@@ -57,7 +57,9 @@ mod status_rows;
 mod status_value;
 mod types;
 
-pub use authorization::{check_authorizations, new_nonce, ActAuthorization, STAGE_AUTHORIZATION};
+pub use authorization::{
+    check_authorizations, new_nonce, rules_unevaluated, ActAuthorization, STAGE_AUTHORIZATION,
+};
 pub use book::{book_pair, verify_book, BookRead, STAGE_BOOK};
 #[cfg(feature = "shelf")]
 pub use case_book::held_ruling;

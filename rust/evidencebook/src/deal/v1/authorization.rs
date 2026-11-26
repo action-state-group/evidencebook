@@ -18,6 +18,7 @@ use super::start::{act_check, ActKind};
 use super::types::*;
 use crate::deal::{
     ApprovalBody as V0ApprovalBody, Error, IntentBody, LimitSet, VerdictBody as V0VerdictBody,
+    VerdictBodyRules,
 };
 
 /// The stage of the authorization of acts.
@@ -41,14 +42,38 @@ pub struct ActAuthorization {
     /// The approval's record digest.
     pub approval_digest: String,
     /// The approval is the person's (approver user or agent_card), so it
-    /// needs the person's signature over `approval_digest`.
+    /// needs the person's signature over `approval_digest`. It is set too for
+    /// a standing-intent approval whose verdict's rules could not evaluate a
+    /// measured rule (`rules_not_evaluable`).
     pub needs_person_signature: bool,
+    /// The act rests on a standing-intent approval whose verdict's rules
+    /// could not evaluate the person's caps ([`rules_unevaluated`]): it
+    /// escalates to the person whatever the verdict's result says (u503;
+    /// evidencebook#982; Go `RulesNotEvaluable`).
+    pub rules_not_evaluable: bool,
     /// The digests of the confirm_limits approvals a standing-intent
     /// approval's allowed rests on.
     pub limit_approvals: Vec<String>,
     /// The digest of the first intent a standing-intent approval rests on,
     /// empty for any other approval.
     pub intent: String,
+}
+
+/// Whether a verdict's rules could not evaluate the person's caps (PROFILE
+/// §8; Go `RulesUnevaluated`): their status is not_evaluated; or they were
+/// evaluated and the checker's own verdict is not allow; or, whatever their
+/// status, a measured finding is not_evaluable. A finding is measured when it
+/// names its check; one that names none is a rule its ruleset only declares,
+/// which never moves the verdict.
+pub fn rules_unevaluated(r: Option<&VerdictBodyRules>) -> bool {
+    let Some(r) = r else { return false };
+    let measured_unevaluable =
+        r.findings.iter().flatten().any(|f| {
+            f.verdict == "not_evaluable" && f.check.as_deref().is_some_and(|c| !c.is_empty())
+        });
+    measured_unevaluable
+        || r.status == "not_evaluated"
+        || (r.status == "evaluated" && r.verdict.as_deref() != Some("allow"))
 }
 
 fn person_approver(approver: &str) -> bool {
@@ -158,10 +183,15 @@ pub fn check_authorizations(
             approval: journal[ai].clone(),
             approval_digest: w.digests[ai].clone(),
             needs_person_signature: person_approver(&ab.approver),
+            rules_not_evaluable: false,
             limit_approvals: Vec::new(),
             intent: String::new(),
         };
         if ab.approver == "standing_intent" {
+            if rules_unevaluated(w.verdict[&vi].rules.as_ref()) {
+                a.rules_not_evaluable = true;
+                a.needs_person_signature = true;
+            }
             a.limit_approvals = w.limits_at[&ai]
                 .iter()
                 .map(|&j| w.digests[j].clone())
