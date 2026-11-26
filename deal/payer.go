@@ -230,10 +230,10 @@ type SendIn struct {
 	// place of PaymentRef: the check's own payment_ref is what a send binds
 	// on most rails. It is called once the check and the deal's earlier legs
 	// have been checked.
-	RefFor func(check *xdealv1.CheckBody) (json.RawMessage, error)
-	Statements           []xdealv1.StatementItem
-	Marks                []string
-	RemedyRow            string
+	RefFor     func(check *xdealv1.CheckBody) (json.RawMessage, error)
+	Statements []xdealv1.StatementItem
+	Marks      []string
+	RemedyRow  string
 	// Producer is the evidence record's producer block member (nil: none).
 	Producer any
 	Before   BeforeSeal

@@ -266,3 +266,85 @@ func TestTheReferenceCallbacks(t *testing.T) {
 	assert.Equal(t, sawCheck.PaymentRef, sawSend.Ref)
 	assert.False(t, leg.Again)
 }
+
+// A send whose evidence was stored but reported failed keeps the send and
+// its step; a send stopped after it was stored, before its evidence was
+// appended, is finished by the next read. Either way the evidence is in the
+// journal once. (Moved from capsulectl-deal's TestASendWhose... and
+// TestASendStoppedBeforeItsAppendIsFinished, evidencebook#899 phase 3.)
+func TestASendStoppedAroundItsAppend(t *testing.T) {
+	ctx := t.Context()
+	evidence := func(p *side, dealID string) int {
+		journal, err := p.store.DealJournal(ctx, dealID)
+		require.NoError(t, err)
+		n := 0
+		for _, r := range journal {
+			if r.Block.RecordType == xdealv1.TypeEvidence {
+				n++
+			}
+		}
+		return n
+	}
+	for _, stop := range []string{"after the append", "before the append"} {
+		t.Run(stop, func(t *testing.T) {
+			buyer, _, dealID := agreedBuyerFirst(t)
+			check := paidCheck(t, buyer, dealID, stop)
+			died := errors.New("the process died")
+			if stop == "after the append" {
+				appendJournalAfterHook = func() error { return died }
+			} else {
+				afterSendStoredHook = func() error { return died }
+			}
+			t.Cleanup(func() { appendJournalAfterHook, afterSendStoredHook = nil, nil })
+			_, err := buyer.store.SendPayment(ctx, dealID, SendIn{Check: check, PaymentRef: lnRef})
+			require.ErrorIs(t, err, died)
+			appendJournalAfterHook, afterSendStoredHook = nil, nil
+			send, err := buyer.store.SendOf(ctx, dealID, check)
+			require.NoError(t, err)
+			require.NotNil(t, send, "the send stays stored")
+			_, err = buyer.store.Steps(ctx, dealID)
+			require.NoError(t, err)
+			assert.Equal(t, 1, evidence(buyer, dealID), "the evidence once")
+			_, err = buyer.store.Steps(ctx, dealID)
+			require.NoError(t, err)
+			assert.Equal(t, 1, evidence(buyer, dealID), "and never again")
+		})
+	}
+}
+
+// A refund on a cancel check that states a fee is refused at its send; one
+// sent before that rule completes, and the call says its amount is not
+// checked (evidencebook#743).
+func TestARefundOnAFeeCancelCheck(t *testing.T) {
+	ctx := t.Context()
+	_, seller, dealID := agreedFull(t)
+	received, err := seller.store.Settle(ctx, dealID, payeeIn(LegSettled))
+	require.NoError(t, err)
+	_, err = seller.store.SealJournal(ctx, dealID, JournalStep{Kind: xdealv1.TypeIntent, Build: func(StepFacts) (StepParts, error) {
+		return StepParts{Record: &JournalRecord{RecordType: xdealv1.TypeIntent, Body: map[string]any{"verbatim_commitment": nonceOf("seller intent"), "allowed": []any{"cancel"}}}}, nil
+	}})
+	require.NoError(t, err)
+	cancelled, fee := int64(6000), int64(500)
+	card := nonceOf("cancel card")
+	seller.tick()
+	checked, err := seller.store.Check(ctx, dealID, CheckIn{Check: xdealv1.CheckBody{CheckBody: dealprofile.CheckBody{Action: "cancel", CancelledAmountMinor: &cancelled, FeeMinor: &fee, Currency: "USD"}},
+		Verdict: passVerdict(card)})
+	require.NoError(t, err)
+	seller.tick()
+	_, err = seller.store.SealJournal(ctx, dealID, approvalStep(checked.Verdict, card, nonceOf("said")))
+	require.NoError(t, err)
+	seller.tick()
+	refund := SendIn{Check: checked.Check, Reverses: received.Digest, PaymentRef: json.RawMessage(`{"type":"ln.payment_hash","value":"` + strings.Repeat("7", 64) + `"}`)}
+	_, err = seller.store.SendPayment(ctx, dealID, refund)
+	assert.Contains(t, inputReason(t, err), "does not say who bears it")
+
+	refundFeeGuard = false
+	t.Cleanup(func() { refundFeeGuard = true })
+	_, err = seller.store.SendPayment(ctx, dealID, refund)
+	require.NoError(t, err)
+	refundFeeGuard = true
+	seller.tick()
+	leg, err := seller.store.Settle(ctx, dealID, SettleIn{Check: checked.Check, Reverses: received.Digest, Status: LegSettled, PaymentRef: refund.PaymentRef})
+	require.NoError(t, err)
+	assert.True(t, leg.AmountNotChecked)
+}

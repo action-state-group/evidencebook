@@ -294,3 +294,23 @@ func TestSealJournalPartialBatchRecovery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, journal, 2, "nothing appended twice")
 }
+
+// A batch whose first record's append fails is withdrawn whole: a deal is
+// never left with a local step but not the record beside it. (Moved from
+// capsulectl-deal's TestAV1OpeningIsStoredWithItsIntentOrNotAtAll.)
+func TestSealJournalWithdrawsAWholeBatch(t *testing.T) {
+	ctx := t.Context()
+	_, seller, dealID := agreedFull(t)
+	stop := errors.New("stopped")
+	appendJournalHook = func() error { return stop }
+	t.Cleanup(func() { appendJournalHook = nil })
+	_, err := seller.store.SealJournal(ctx, dealID,
+		JournalStep{Kind: "open", Build: func(StepFacts) (StepParts, error) { return StepParts{Local: json.RawMessage(`{"open":true}`)}, nil }},
+		JournalStep{Kind: "intent", Build: func(StepFacts) (StepParts, error) {
+			return StepParts{Record: &JournalRecord{RecordType: xdealv1.TypeIntent, Body: map[string]any{"verbatim_commitment": nonceOf("v"), "allowed": []any{"pay"}}}}, nil
+		}})
+	require.ErrorIs(t, err, stop)
+	steps, err := seller.store.Steps(ctx, dealID)
+	require.NoError(t, err)
+	assert.Empty(t, steps, "the opening and the intent both withdrawn")
+}
