@@ -3,7 +3,6 @@
 package deal
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	dealapi "github.com/action-state-group/evidencebook/deal"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
 )
@@ -20,19 +20,21 @@ import (
 // `deal perform` and `deal statement` on an x-deal-v1 deal
 // (xdealv1-write-path §13, evidencebook#626 B2). A perform is an act: it
 // rests on the holder's passing commit check, the first one is gated until
-// the counterparty's stamp proof covers its agreement (u610, u611), and the
-// library checks its authorization (xdealv1.CheckActs) on the finished record,
-// inside the deal-book writer. A statement says how a row went; it is never
-// gated and cites no check. Both seal one record in the holder's deal book and
-// write the file that travels to the other side, as `deal dispute` does.
+// the counterparty's stamp proof covers its agreement (u610, u611), and its
+// authorization (xdealv1.CheckActs) is checked on the finished record. A
+// statement says how a row went; it is never gated and cites no check. Both
+// are package deal's Store.Perform and Store.Statement (evidencebook#899),
+// which seal one record in the holder's deal book; this file reads their
+// flags and writes the file that travels to the other side.
 //
 // The deal book is the source of truth for acts. After the append, an act
 // writes v0's act event to the deal's local list, so the next card's spend so
 // far and its used approvals read it unchanged; a run that stops in between is
 // repaired by reconcileV1Acts on the next command.
 
-// v1ActDeal is what an act or statement on a v1 deal reads first: the deal,
-// the holder's book (its agreement first) and the offer's body.
+// v1ActDeal is what a payer leg reads first: the deal, the holder's book
+// (its agreement first) and the offer's body (#899 phase 3 moves the payer
+// leg to package deal with the rest).
 type v1ActDeal struct {
 	d     *v1Deal
 	book  []xdealv1.Record
@@ -79,12 +81,11 @@ func (s *dealSession) loadV1ActDeal(ctx context.Context, dealID string) (*v1ActD
 	return &v1ActDeal{d: d, book: book, offer: prop}, nil
 }
 
-// parseStatements reads --statement row=value[:remedy] against the offer's
-// rows. The value is met, not_met or cannot_tell (PROFILE §3.3); a remedy
-// must be one the row allows.
-func (a *v1ActDeal) parseStatements(flags []string) ([]xdealv1.StatementItem, error) {
+// parseStatementFlags reads --statement row=value[:remedy]. The value is
+// met, not_met or cannot_tell (PROFILE §3.3); the rows and remedies are held
+// to the offer by package deal.
+func parseStatementFlags(flags []string) ([]xdealv1.StatementItem, error) {
 	out := []xdealv1.StatementItem{}
-	seen := map[string]bool{}
 	for _, f := range flags {
 		row, rest, ok := strings.Cut(f, "=")
 		if !ok || row == "" || rest == "" {
@@ -96,20 +97,75 @@ func (a *v1ActDeal) parseStatements(flags []string) ([]xdealv1.StatementItem, er
 		default:
 			return nil, cli.InputError("--statement " + f + ": the value is met, not_met or cannot_tell")
 		}
-		r, err := a.row(row)
-		if err != nil {
-			return nil, err
-		}
-		if remedy != "" && !slices.ContainsFunc(r.Remedies, func(rr xdealv1.RowRemedy) bool { return rr.ID == remedy }) {
-			return nil, cli.InputError("--statement " + f + ": row " + row + " allows no remedy " + remedy)
-		}
-		if seen[row] {
-			return nil, cli.InputError("--statement names row " + row + " twice: one statement per row in a record")
-		}
-		seen[row] = true
 		out = append(out, xdealv1.StatementItem{Row: row, Value: value, Remedy: remedy})
 	}
 	return out, nil
+}
+
+// parseStatements reads --statement row=value[:remedy] against the offer's
+// rows: a remedy must be one the row allows, and a row is stated once. A
+// payer leg still reads its flags here; every other record's go to package
+// deal, which holds them to the offer.
+func (a *v1ActDeal) parseStatements(flags []string) ([]xdealv1.StatementItem, error) {
+	items, err := parseStatementFlags(flags)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for i, it := range items {
+		r, err := a.row(it.Row)
+		if err != nil {
+			return nil, err
+		}
+		if it.Remedy != "" && !slices.ContainsFunc(r.Remedies, func(rr xdealv1.RowRemedy) bool { return rr.ID == it.Remedy }) {
+			return nil, cli.InputError("--statement " + flags[i] + ": row " + it.Row + " allows no remedy " + it.Remedy)
+		}
+		if seen[it.Row] {
+			return nil, cli.InputError("--statement names row " + it.Row + " twice: one statement per row in a record")
+		}
+		seen[it.Row] = true
+	}
+	return items, nil
+}
+
+// v1Store readies a session for a deal-book verb: the store in the new
+// layout, its tables and the plugin's own.
+func (s *dealSession) v1Store(ctx context.Context) (*dealapi.Store, error) {
+	if _, err := s.requireMigrated(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.ensureV1Tables(ctx); err != nil {
+		return nil, err
+	}
+	return s.dealStore(ctx)
+}
+
+// v1ActSession is v1Store for an act: an act a stopped run appended to the
+// holder's book but did not record locally is recorded first, so the act's
+// authorization and the next card read every act (xdealv1-write-path §13
+// item 8). It returns the deal's local events and the holder's book, both
+// empty for a deal the holder has not agreed, which package deal refuses.
+func (s *dealSession) v1ActSession(ctx context.Context, dealID string) (*dealapi.Store, []sealedEvent, []xdealv1.Record, error) {
+	st, err := s.v1Store(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	d, err := st.Repair(ctx, dealID)
+	if err != nil {
+		return nil, nil, nil, libErr(err)
+	}
+	if d == nil || d.OwnAgreementID == "" {
+		return st, nil, nil, nil
+	}
+	book, err := st.OwnBook(ctx, d)
+	if err != nil {
+		return nil, nil, nil, libErr(err)
+	}
+	events, err := s.reconcileV1Acts(ctx, dealID, book)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return st, events, book, nil
 }
 
 func (a *v1ActDeal) row(id string) (*xdealv1.Row, error) {
@@ -139,67 +195,6 @@ func (a *v1ActDeal) parseMarks(flags []string) ([]string, error) {
 		out = append(out, m)
 	}
 	return out, nil
-}
-
-// sealedLike finds the record of the holder's book a re-run of the same
-// command already sealed: one of the same type whose body and marks are the
-// command's, byte for byte. Its place (seq) is 0 when there is none. With
-// restated, a match is a re-run only when no later record of the book (a
-// statement, a perform or a settle) states any of the same rows: a row reads
-// the side's latest statement (status_rows.go), so repeating an older one
-// after another is a new statement. A perform needs no such rule: its check's
-// approval authorizes one act only.
-func sealedLike(book []xdealv1.Record, recordType string, body xdealv1.Body, marks []string, restated []xdealv1.StatementItem) (int, error) {
-	want, err := json.Marshal(body)
-	if err != nil {
-		return 0, err
-	}
-	rows := map[string]bool{}
-	for _, it := range restated {
-		rows[it.Row] = true
-	}
-	statedLater := func(i int) bool {
-		for _, r := range book[i+1:] {
-			for _, it := range statementsOf(r) {
-				if rows[it.Row] {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	for i, r := range book {
-		if r.Block.RecordType != recordType || !slices.Equal(r.Block.Marks, marks) || statedLater(i) {
-			continue
-		}
-		got, err := json.Marshal(r.Body)
-		if err != nil {
-			return 0, err
-		}
-		if bytes.Equal(got, want) {
-			return i + 1, nil
-		}
-	}
-	return 0, nil
-}
-
-// statementsOf are the statements a record of the holder's book carries.
-func statementsOf(r xdealv1.Record) []xdealv1.StatementItem {
-	switch b := r.Body.(type) {
-	case *xdealv1.StatementBody:
-		return b.Statements
-	case xdealv1.StatementBody:
-		return b.Statements
-	case *xdealv1.PerformBody:
-		return b.Statements
-	case xdealv1.PerformBody:
-		return b.Statements
-	case *xdealv1.SettleBody:
-		return b.Statements
-	case xdealv1.SettleBody:
-		return b.Statements
-	}
-	return nil
 }
 
 // refuseExistingOut refuses an --out that is already there for a new record:
@@ -237,27 +232,20 @@ func (s *dealSession) authorizeV1Act(ctx context.Context, dealID string, earlier
 }
 
 // authorizeV1ActWith is authorizeV1Act for an act whose Capsule carries the
-// settlement member given, which rule 5 holds to the checked amount.
+// settlement member given, which rule 5 holds to the checked amount. It is
+// package deal's Store.Authorize, its refusal told apart as
+// notAuthorizedError.
 func (s *dealSession) authorizeV1ActWith(ctx context.Context, dealID string, earlier []xdealv1.Record, act xdealv1.Record, member json.RawMessage) (*xdealv1.ActAuthorization, error) {
-	journal, err := s.v1DealJournal(ctx, dealID)
+	st, err := s.dealStore(ctx)
 	if err != nil {
 		return nil, err
 	}
-	ins := make([]xdealv1.ActIn, 0, len(earlier)+1)
-	for _, r := range earlier {
-		ins = append(ins, xdealv1.ActIn{Record: r})
+	auth, err := st.Authorize(ctx, dealID, earlier, act, member)
+	var refused *dealapi.NotAuthorizedError
+	if errors.As(err, &refused) {
+		return nil, notAuthorizedError{refused.Err}
 	}
-	ins = append(ins, xdealv1.ActIn{Record: act, Settlement: member})
-	auths, err := xdealv1.CheckActs(journal, ins)
-	if err != nil {
-		return nil, notAuthorizedError{err}
-	}
-	for i := range auths {
-		if auths[i].Act.Block.Seq == act.Block.Seq {
-			return &auths[i], nil
-		}
-	}
-	return nil, nil
+	return auth, err
 }
 
 // refuseStaleApproval refuses an act whose authorizing approval deal note
@@ -468,93 +456,46 @@ func dealPerformCommand() *cobra.Command {
 			}
 			v1ReceiveContext(c)
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
-				a, err := s.loadV1ActDeal(ctx, dealID)
+				st, events, _, err := s.v1ActSession(ctx, dealID)
 				if err != nil {
 					return err
 				}
-				// After the deal is known to be v1: --check may be the
-				// check_id deal check printed.
+				// --check may be the check_id deal check printed.
 				if check, err = s.resolveV1Check(ctx, dealID, check); err != nil {
 					return err
 				}
-				stmts, err := a.parseStatements(statements)
+				stmts, err := parseStatementFlags(statements)
 				if err != nil {
 					return err
 				}
-				mk, err := a.parseMarks(marks)
-				if err != nil {
-					return err
-				}
-				ref := xdealv1.RefTo(check)
-				body := xdealv1.PerformBody{Act: act, Observed: observed, Statements: stmts, Check: &ref}
-				if remedyRow != "" {
-					if _, err := a.row(remedyRow); err != nil {
-						return err
-					}
-					body.RemedyFor = &xdealv1.RemedyFor{Row: remedyRow}
-				}
-				events, err := s.reconcileV1Acts(ctx, dealID, a.book)
-				if err != nil {
-					return err
-				}
-				result := map[string]any{"deal_id": dealID, "record": xdealv1.TypePerform}
-				if seq, err := sealedLike(a.book, xdealv1.TypePerform, body, mk, nil); err != nil {
-					return err
-				} else if seq > 0 {
-					// A re-run says again which signatures the act waits on.
-					rec := a.book[seq-1]
-					var before []xdealv1.Record
-					for _, r := range v1Acts(a.book) {
-						if r.Block.Seq < rec.Block.Seq {
-							before = append(before, r)
+				res, err := st.Perform(ctx, dealID, dealapi.PerformIn{
+					Check: check, Act: act, Observed: observed, Statements: stmts, Marks: marks, RemedyRow: remedyRow,
+					Before: func(_ xdealv1.Record, auth *xdealv1.ActAuthorization) error {
+						// An old command run again must not seal a record
+						// only to fail on its file.
+						if err := refuseExistingOut(out); err != nil {
+							return err
 						}
-					}
-					auth, err := s.authorizeV1Act(ctx, dealID, before, rec)
+						return refuseStaleApproval(events, auth)
+					},
+				})
+				if err != nil {
+					return libErr(err)
+				}
+				if !res.Again {
+					// The act's local event, after the append: the next
+					// card's spend so far and used approvals read it.
+					p, err := s.storeV1Act(dealID, events, res.Record, res.Digest, res.Authorization)
 					if err != nil {
 						return err
 					}
-					actResult(result, nil, auth)
-					return s.writeSealedAt(ctx, c, a.d, seq, rec, out, result)
-				}
-				if err := refuseExistingOut(out); err != nil {
-					return err
-				}
-				earlier := v1Acts(a.book)
-				var gate xdealv1.ActGate
-				var auth *xdealv1.ActAuthorization
-				// Checked on the finished record, again after a rebuild: the
-				// act's own time is the one the gate and the authorization read.
-				validate := func(rec xdealv1.Record) error {
-					// The counterparty's published evidence commitment is not
-					// held by this plugin yet, so its shelf log is "" and the
-					// gate skips that comparison (§13 item 1).
-					g, err := s.gateFirstAct(ctx, dealID, rec, "")
-					if err != nil {
+					if err := s.storeV1(ctx, dealID, p); err != nil {
 						return err
 					}
-					if g.Gated && !g.Allowed {
-						return cli.InputError("your first act on deal " + dealID + " waits on the other side's stamp proof: " + g.Reason)
-					}
-					gate = g
-					if auth, err = s.authorizeV1Act(ctx, dealID, earlier, rec); err != nil {
-						return err
-					}
-					return refuseStaleApproval(events, auth)
 				}
-				sealed, err := s.sealBookV1(ctx, dealID, bookRecordIn{Body: body, Marks: mk, Validate: validate})
-				if err != nil {
-					return err
-				}
-				p, err := s.storeV1Act(dealID, events, sealed.Record, sealed.Digest, auth)
-				if err != nil {
-					return err
-				}
-				if err := s.storeV1(ctx, dealID, p); err != nil {
-					return err
-				}
-				result["digest"], result["seq"] = sealed.Digest, sealed.Seq
-				actResult(result, &gate, auth)
-				return writePush(c, sealed.Pair, out, result)
+				result := map[string]any{"deal_id": dealID, "record": xdealv1.TypePerform, "digest": res.Digest, "seq": res.Seq}
+				actResult(result, res.Gate, res.Authorization)
+				return writePush(c, res.Pair, out, result)
 			})
 		},
 	}
@@ -596,30 +537,20 @@ func dealStatementCommand() *cobra.Command {
 				return cli.InputError("--statement row=value is required at least once")
 			}
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
-				a, err := s.loadV1ActDeal(ctx, dealID)
+				st, err := s.v1Store(ctx)
 				if err != nil {
 					return err
 				}
-				stmts, err := a.parseStatements(statements)
+				stmts, err := parseStatementFlags(statements)
 				if err != nil {
 					return err
 				}
-				body := xdealv1.StatementBody{Statements: stmts}
-				result := map[string]any{"deal_id": dealID, "record": xdealv1.TypeStatement}
-				if seq, err := sealedLike(a.book, xdealv1.TypeStatement, body, nil, stmts); err != nil {
-					return err
-				} else if seq > 0 {
-					return s.writeSealedAt(ctx, c, a.d, seq, a.book[seq-1], out, result)
-				}
-				if err := refuseExistingOut(out); err != nil {
-					return err
-				}
-				sealed, err := s.sealBookV1(ctx, dealID, bookRecordIn{Body: body})
+				res, err := st.Statement(ctx, dealID, dealapi.StatementIn{Statements: stmts,
+					Before: func(xdealv1.Record, *xdealv1.ActAuthorization) error { return refuseExistingOut(out) }})
 				if err != nil {
-					return err
+					return libErr(err)
 				}
-				result["digest"], result["seq"] = sealed.Digest, sealed.Seq
-				return writePush(c, sealed.Pair, out, result)
+				return writePush(c, res.Pair, out, map[string]any{"deal_id": dealID, "record": xdealv1.TypeStatement, "digest": res.Digest, "seq": res.Seq})
 			})
 		},
 	}

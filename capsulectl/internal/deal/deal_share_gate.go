@@ -15,6 +15,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 )
 
 // dealPageGate is the last check before a shared copy is written. It reads
@@ -1032,7 +1033,7 @@ func gateCardRun(page []byte, start, end int) (int, int, bool) {
 // caught only when an end window happens to read as one: reading the middle
 // windows too would bring back the false positives on long numbers.
 func gateCardWindows(digits string) bool {
-	card := func(w string) bool { return cardPrefix(w) && luhn(w) }
+	card := func(w string) bool { return xdealv1.CardPrefix(w) && luhn(w) }
 	for n := 13; n <= 19 && n <= len(digits); n++ {
 		if card(digits[:n]) || card(digits[len(digits)-n:]) {
 			return true
