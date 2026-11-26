@@ -45,9 +45,10 @@ type StepFacts struct {
 // profile, canonicalization, record_type, at (the step's), and deal_id
 // where PROFILE §3 puts it. Body is the record's body; the store adds the
 // nonce PROFILE §5 asks of a check, a verdict and an approval: Nonce when
-// the caller drew one, else a fresh one from Config.Random. LocalValues are
-// the raw values the record must not carry (dealprofile.CheckText): a
-// caller that passes none gets no such scan.
+// the caller drew one, else a fresh one from Config.Random. Every record is
+// scanned for a raw phone number or email address and a prohibited word
+// (dealprofile.CheckText); LocalValues are further raw values it must not
+// carry.
 type JournalRecord struct {
 	RecordType  string
 	Block       map[string]any
@@ -265,7 +266,7 @@ func (s *Store) buildJournalRecord(dealID string, f StepFacts, in *JournalRecord
 	if err := xdealv1.CheckSealed(raw, xdealv1.SealContext{OfferExists: true}); err != nil {
 		return xdealv1.Record{}, nil, "", inputError("the x-deal-v1 " + in.RecordType + " record does not pass the profile's checks: " + err.Error())
 	}
-	if len(in.LocalValues) > 0 {
+	{
 		if err := dealprofile.CheckText(raw, in.LocalValues); err != nil {
 			return xdealv1.Record{}, nil, "", inputError("the x-deal-v1 " + in.RecordType + " record carries what it may not: " + err.Error())
 		}

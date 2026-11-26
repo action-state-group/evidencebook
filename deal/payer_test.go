@@ -168,3 +168,77 @@ func TestSettleWithACheckOnARowYouAreOwed(t *testing.T) {
 	_, err := seller.store.Settle(ctx, dealID, SettleIn{Check: strings.Repeat("1", 64), Status: LegSettled, PaymentRef: lnRef})
 	assertCoded(t, err, CodeSettlePayee, "payment", "paid_as_agreed", dealID)
 }
+
+// A run that stopped after sealing the payer leg, before closing its send,
+// is finished by the same call made again: the leg is found by its check,
+// returned, and its send closed. A CloseStep that fails leaves the leg
+// sealed and the send open, and the same call finishes it too.
+func TestAPayerLegSealedBeforeAStopIsFinished(t *testing.T) {
+	ctx := t.Context()
+	buyer, _, dealID := agreedBuyerFirst(t)
+	check := paidCheck(t, buyer, dealID, "stop")
+	_, err := buyer.store.SendPayment(ctx, dealID, SendIn{Check: check, PaymentRef: lnRef,
+		Step: func(StepFacts, *xdealv1.ActAuthorization, int64, string) (json.RawMessage, string, error) {
+			return json.RawMessage(`{"amount":6000}`), "", nil
+		}})
+	require.NoError(t, err)
+	buyer.tick()
+	stop := errors.New("the process died")
+	afterLegSealedHook = func() error { return stop }
+	t.Cleanup(func() { afterLegSealedHook = nil })
+	in := SettleIn{Check: check, Status: LegFailed, PaymentRef: lnRef,
+		CloseStep: func(json.RawMessage) (json.RawMessage, error) { return nil, stop }}
+	_, err = buyer.store.Settle(ctx, dealID, in)
+	require.ErrorIs(t, err, stop)
+	afterLegSealedHook = nil
+	send, err := buyer.store.SendOf(ctx, dealID, check)
+	require.NoError(t, err)
+	assert.Empty(t, send.Leg, "sealed, not closed")
+
+	// The CloseStep fails: the leg is found again, the send stays open.
+	_, err = buyer.store.Settle(ctx, dealID, in)
+	require.ErrorIs(t, err, stop)
+	send, err = buyer.store.SendOf(ctx, dealID, check)
+	require.NoError(t, err)
+	assert.Empty(t, send.Leg)
+
+	in.CloseStep = func(json.RawMessage) (json.RawMessage, error) { return json.RawMessage(`{"amount":null}`), nil }
+	got, err := buyer.store.Settle(ctx, dealID, in)
+	require.NoError(t, err)
+	assert.True(t, got.Again, "the leg the stopped run sealed")
+	send, err = buyer.store.SendOf(ctx, dealID, check)
+	require.NoError(t, err)
+	assert.Equal(t, got.Digest, send.Leg)
+	steps, err := buyer.store.Steps(ctx, dealID)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"amount":null}`, string(steps[len(steps)-1].Local))
+}
+
+// A details change a stopped run stored and did not append is appended
+// before a payment is authorized, so it voids the check it came after.
+func TestAPendingDetailsChangeIsReadBeforeAPayment(t *testing.T) {
+	ctx := t.Context()
+	buyer, _, dealID := agreedBuyerFirst(t)
+	check := paidCheck(t, buyer, dealID, "pending")
+	raw, err := json.Marshal(map[string]any{
+		xdealv1.Profile: map[string]any{"profile": xdealv1.Profile, "canonicalization": xdealv1.Canonicalization, "record_type": xdealv1.TypeDetailChange,
+			"at": buyer.now.UTC().Format("2006-01-02T15:04:05Z"), "deal_id": dealID},
+		"body": map[string]any{"source": "counterparty", "changed": []any{"when"}},
+	})
+	require.NoError(t, err)
+	payload, digest, err := xdealv1.Encode(raw)
+	require.NoError(t, err)
+	steps, err := buyer.store.Steps(ctx, dealID)
+	require.NoError(t, err)
+	_, err = buyer.db.ExecContext(ctx, `INSERT INTO deal_v1_events (deal_id, n, kind, local, record_digest, payload) VALUES (?, ?, 'change', 'null', ?, ?)`, dealID, len(steps)+1, digest, payload)
+	require.NoError(t, err)
+	buyer.tick()
+
+	_, err = buyer.store.SendPayment(ctx, dealID, SendIn{Check: check, PaymentRef: lnRef})
+	var na *NotAuthorizedError
+	require.ErrorAs(t, err, &na)
+	assert.Contains(t, err.Error(), "changed the details after its check")
+	held, err := buyer.store.journalHolds(ctx, digest)
+	require.NoError(t, err)
+	assert.True(t, held, "the stopped run's record was appended")
+}

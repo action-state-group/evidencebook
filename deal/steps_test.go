@@ -243,3 +243,49 @@ func TestSealJournalRecovery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, journal, 1, "sealed once")
 }
+
+// A batch whose second record's append fails after its first reached the
+// journal keeps every step, and the next read appends only what is missing,
+// once, with N and Prev as built.
+func TestSealJournalPartialBatchRecovery(t *testing.T) {
+	ctx := t.Context()
+	_, seller, dealID := agreedFull(t)
+	change := func(what string) JournalStep {
+		return JournalStep{Kind: "change", Build: func(StepFacts) (StepParts, error) {
+			return StepParts{Record: &JournalRecord{RecordType: xdealv1.TypeDetailChange, Body: map[string]any{"source": "user", "changed": []any{what}}}}, nil
+		}}
+	}
+	var prevs []string
+	local := JournalStep{Kind: "open", Build: func(f StepFacts) (StepParts, error) {
+		prevs = append(prevs, f.Prev)
+		return StepParts{Local: json.RawMessage(`{"open":true}`)}, nil
+	}}
+	appends := 0
+	stop := errors.New("the second append failed")
+	appendJournalHook = func() error {
+		appends++
+		if appends == 2 {
+			return stop
+		}
+		return nil
+	}
+	t.Cleanup(func() { appendJournalHook = nil })
+	_, err := seller.store.SealJournal(ctx, dealID, local, change("when"), change("place"))
+	require.ErrorIs(t, err, stop)
+	appendJournalHook = nil
+
+	steps, err := seller.store.Steps(ctx, dealID)
+	require.NoError(t, err)
+	require.Len(t, steps, 3, "kept: the first record reached the journal")
+	assert.Equal(t, []int64{1, 2, 3}, []int64{steps[0].N, steps[1].N, steps[2].N})
+	assert.Equal(t, []string{""}, prevs)
+	journal, err := seller.store.DealJournal(ctx, dealID)
+	require.NoError(t, err)
+	require.Len(t, journal, 2, "each record once")
+	again, err := seller.store.Steps(ctx, dealID)
+	require.NoError(t, err)
+	assert.Len(t, again, 3)
+	journal, err = seller.store.DealJournal(ctx, dealID)
+	require.NoError(t, err)
+	assert.Len(t, journal, 2, "nothing appended twice")
+}

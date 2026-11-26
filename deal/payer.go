@@ -497,10 +497,23 @@ func (s *Store) settlePayer(ctx context.Context, dealID string, in SettleIn) (Ac
 	if err != nil {
 		return Acted{}, err
 	}
-	if send.Leg != "" {
+	// The payer leg of the check already in the book: the one the send
+	// names, or, when a run stopped between sealing it and closing the send,
+	// the one citing the check (a check authorizes one payment).
+	leg := send.Leg
+	if leg == "" {
+		for _, r := range acts(p.a.book) {
+			if b, ok := settleOf(r); ok && b.Leg == xdealv1.LegPayer && b.Check != nil && b.Check.Digest == in.Check {
+				if leg, err = xdealv1.Digest(r); err != nil {
+					return Acted{}, err
+				}
+			}
+		}
+	}
+	if leg != "" {
 		for i, r := range p.a.book {
 			d, err := xdealv1.Digest(r)
-			if err != nil || d != send.Leg {
+			if err != nil || d != leg {
 				continue
 			}
 			held, err := s.SettlementAt(ctx, p.a.d, i+1)
@@ -512,13 +525,20 @@ func (s *Store) settlePayer(ctx context.Context, dealID string, in SettleIn) (Ac
 				return Acted{}, err
 			}
 			if !same || !sameButObservedAt(held, member) {
-				return Acted{}, inputError("the payment on check " + in.Check + " is already sealed as leg " + send.Leg + " with other inputs; a check authorizes one payment, and a payer leg is never sealed again")
+				return Acted{}, inputError("the payment on check " + in.Check + " is already sealed as leg " + leg + " with other inputs; a check authorizes one payment, and a payer leg is never sealed again")
 			}
 			out, err := s.again(ctx, p.a.d, i+1, r)
+			if err != nil {
+				return Acted{}, err
+			}
 			out.AmountNotChecked = p.amountNotChecked
-			return out, err
+			if send.Leg == "" {
+				// A stopped run sealed the leg and did not close its send.
+				return out, s.CloseSend(ctx, dealID, in.Check, leg, in.Status, in.CloseStep)
+			}
+			return out, nil
 		}
-		return Acted{}, conflictf("the payer leg %s of check %s is not in your deal book", send.Leg, in.Check)
+		return Acted{}, conflictf("the payer leg %s of check %s is not in your deal book", leg, in.Check)
 	}
 	out, err := s.sealAct(ctx, p.a, BookRecord{Body: p.body, Marks: p.marks, Members: map[string]json.RawMessage{"settlement": member}}, member, in.Before)
 	if err != nil {
