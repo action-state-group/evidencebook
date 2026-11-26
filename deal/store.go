@@ -123,8 +123,8 @@ type Config struct {
 	// CSPRNG.
 	Random io.Reader
 	// ReceiveProfile is the x-deal-v1 receive profile the shelf was opened
-	// with (ShelfConfig.Receive), whose first-act gate an act passes. Only the
-	// act calls need it (Perform, Settle).
+	// with (ShelfConfig.Receive), whose first-act gate a gated act passes.
+	// Only Perform needs it.
 	ReceiveProfile *xdealv1.ReceiveProfile
 }
 

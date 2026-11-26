@@ -297,6 +297,62 @@ func sameButObservedAt(a, b json.RawMessage) bool {
 	return bytes.Equal(ja, jb)
 }
 
+// checkPaymentRef holds a payment_ref object to settlement-records-01's
+// flat form: a registered type with its value and exactly the qualifiers the
+// type names, or x-deal-v1's own merchant order (xdealv1.MerchantOrderType)
+// with its order number and the checkout origin in normal form. No value may
+// be a card number (evidencebook#771).
+func checkPaymentRef(raw json.RawMessage) (map[string]any, error) {
+	bad := func(why string) (map[string]any, error) { return nil, fieldError("payment_ref", " "+why) }
+	var ref map[string]any
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&ref); err != nil || ref == nil {
+		return bad("is not a JSON object")
+	}
+	text := func(name string) (string, bool) {
+		v, ok := ref[name].(string)
+		return v, ok
+	}
+	typ, _ := text("type")
+	value, ok := text("value")
+	if !ok || strings.TrimSpace(value) == "" {
+		return bad("has no value: the payment's reference")
+	}
+	if xdealv1.CardLike(value) {
+		return bad("value looks like a card number: no card data goes in a payment reference")
+	}
+	allowed := map[string]bool{"type": true, "value": true}
+	if typ == xdealv1.MerchantOrderType {
+		origin, _ := text("origin")
+		normal, err := xdealv1.NormalOrigin(origin)
+		if err != nil {
+			return bad("origin " + err.Error())
+		}
+		if origin != normal {
+			return bad("origin " + origin + " is not in normal form: " + normal)
+		}
+		allowed["origin"] = true
+	} else {
+		t, ok := settlement.PaymentRefTypes[typ]
+		if !ok {
+			return bad("type " + typ + " is neither a registered payment_ref type nor " + xdealv1.MerchantOrderType)
+		}
+		for _, q := range t.Qualifiers {
+			if v, ok := text(q); !ok || v == "" {
+				return bad("needs " + q + " for " + typ)
+			}
+			allowed[q] = true
+		}
+	}
+	for name := range ref {
+		if !allowed[name] {
+			return bad("member " + name + " does not go with " + typ)
+		}
+	}
+	return ref, nil
+}
+
 // SettleIn is a payee leg's input: what the holder received on a payment
 // row (Row, or the offer's only payment row), net of any receive fee, and
 // the fee taken (both in minor units), the leg's Status (LegPending,
@@ -384,9 +440,9 @@ func (s *Store) Settle(ctx context.Context, dealID string, in SettleIn) (Acted, 
 		r := xdealv1.RefTo(in.Supersedes)
 		body.Supersedes = &r
 	}
-	var ref any
-	if err := json.Unmarshal(in.PaymentRef, &ref); err != nil {
-		return Acted{}, fieldError("payment_ref", " is not a JSON object: "+err.Error())
+	ref, err := checkPaymentRef(in.PaymentRef)
+	if err != nil {
+		return Acted{}, err
 	}
 	received, err := legAmount(in.Received, currency)
 	if err != nil {
@@ -423,7 +479,7 @@ func (s *Store) Settle(ctx context.Context, dealID string, in SettleIn) (Acted, 
 	}
 	// What the holder received rests on no check: no gate and no
 	// authorization hold it.
-	return s.sealRecord(ctx, dealID, BookRecord{Body: body, Marks: marks, Members: map[string]json.RawMessage{"settlement": member}}, in.Before)
+	return s.sealRecord(ctx, dealID, a.book, BookRecord{Body: body, Marks: marks, Members: map[string]json.RawMessage{"settlement": member}}, in.Before)
 }
 
 // sealedPayeeLike is the place of a payee leg an earlier call already

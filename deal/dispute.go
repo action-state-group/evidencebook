@@ -139,7 +139,7 @@ func (s *Store) Dispute(ctx context.Context, dealID string, in DisputeIn) (Acted
 		}
 		return nil
 	}
-	return s.sealRecord(ctx, dealID, BookRecord{Body: body, Validate: validate}, in.Before)
+	return s.sealRecord(ctx, dealID, book, BookRecord{Body: body, Validate: validate}, in.Before)
 }
 
 // rowOfOffer refuses a row the deal's offer does not name.
@@ -187,7 +187,7 @@ func (s *Store) WithdrawDispute(ctx context.Context, dealID string, in WithdrawI
 		}
 		return Acted{}, inputError("you have no open dispute on row " + in.Row + " of deal " + dealID + " to take back")
 	}
-	return s.sealRecord(ctx, dealID, BookRecord{Body: xdealv1.DisputeBody{Kind: xdealv1.KindWithdrawal, Row: in.Row}}, in.Before)
+	return s.sealRecord(ctx, dealID, book, BookRecord{Body: xdealv1.DisputeBody{Kind: xdealv1.KindWithdrawal, Row: in.Row}}, in.Before)
 }
 
 // ChallengeIn is a challenge's input: the digest of a ruling of the deal the
@@ -228,5 +228,5 @@ func (s *Store) Challenge(ctx context.Context, dealID string, in ChallengeIn) (A
 	}
 	ref := xdealv1.RefTo(in.Ruling)
 	body := xdealv1.DisputeBody{Kind: xdealv1.KindChallenge, Ruling: &ref, GroundsCommitment: in.GroundsCommitment}
-	return s.sealRecord(ctx, dealID, BookRecord{Body: body}, in.Before)
+	return s.sealRecord(ctx, dealID, book, BookRecord{Body: body}, in.Before)
 }

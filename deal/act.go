@@ -14,17 +14,20 @@ import (
 )
 
 // BeforeSeal is the caller's own check of a deal-book record, run on the
-// finished record after this package's checks (for an act: the first-act
-// gate and its authorization, which auth then holds; nil for a record that
-// is no act) and before anything is stored. An error refuses the record and
-// is returned as it is. It runs only for a record about to be sealed, never
-// for one an earlier call already sealed.
+// finished record after the call's own checks of it (for an act: the
+// first-act gate and its authorization, which auth then holds; nil for a
+// record that is no act), before the profile's record checks and before
+// anything is stored. An error refuses the record and is returned as it is.
+// It runs only for a record about to be sealed, never for one an earlier
+// call already sealed.
 type BeforeSeal func(rec xdealv1.Record, auth *xdealv1.ActAuthorization) error
 
 // Acted is a deal-book record a call sealed, or found already sealed by an
 // earlier call with the same input (Again; nothing new is sealed then). Gate
-// is the first-act gate's answer when it ran (an act sealed now), and
-// Authorization the act's authorization (any act, sealed now or found).
+// is the first-act gate's answer when it ran (a perform sealed now), and
+// Authorization a perform's authorization (sealed now or found); both are
+// nil for a record that rests on no check (a statement, a dispute, a payee
+// leg).
 type Acted struct {
 	Sealed
 	Again         bool
@@ -288,14 +291,25 @@ func (s *Store) gate(ctx context.Context, d *Deal, book []xdealv1.Record, act xd
 	return s.cfg.ReceiveProfile.GateAct(ctx, xdealv1.ActGateInput{Own: book, Act: act, CounterpartAgreement: d.CounterpartyAgreement})
 }
 
+// errBookMoved refuses a record whose place another write took after the
+// call read the book: everything the call decided from the book (whether the
+// same record is already sealed, whether a leg is already refunded or
+// superseded, an approval already used) is decided again by the same call
+// made again.
+func errBookMoved() error {
+	return codedConflict(CodeRecordRetry, "the deal book kept changing while the record was sealed; make the same call again")
+}
+
 // sealAct seals an act through the deal-book writer: the first-act gate,
 // the authorization over the earlier acts and the caller's check run on the
-// finished record, again on every rebuild, since the act's own time is the
-// one they read.
+// finished record, at the place after the book the call read.
 func (s *Store) sealAct(ctx context.Context, a *actDeal, in BookRecord, settlement json.RawMessage, before BeforeSeal) (Acted, error) {
 	earlier := acts(a.book)
 	var out Acted
 	in.Validate = func(rec xdealv1.Record) error {
+		if rec.Block.Seq != int64(len(a.book))+1 {
+			return errBookMoved()
+		}
 		g, err := s.gate(ctx, a.d, a.book, rec)
 		if err != nil {
 			return err
@@ -323,11 +337,15 @@ func (s *Store) sealAct(ctx context.Context, a *actDeal, in BookRecord, settleme
 	return out, nil
 }
 
-// sealRecord seals a deal-book record that is no act: the caller's check
-// runs on the finished record.
-func (s *Store) sealRecord(ctx context.Context, dealID string, in BookRecord, before BeforeSeal) (Acted, error) {
+// sealRecord seals a deal-book record that rests on no check at the place
+// after the book the call read (book), its size: the caller's check runs on
+// the finished record.
+func (s *Store) sealRecord(ctx context.Context, dealID string, book []xdealv1.Record, in BookRecord, before BeforeSeal) (Acted, error) {
 	validate := in.Validate
 	in.Validate = func(rec xdealv1.Record) error {
+		if rec.Block.Seq != int64(len(book))+1 {
+			return errBookMoved()
+		}
 		if validate != nil {
 			if err := validate(rec); err != nil {
 				return err
@@ -483,5 +501,5 @@ func (s *Store) Statement(ctx context.Context, dealID string, in StatementIn) (A
 	} else if seq > 0 {
 		return s.again(ctx, a.d, seq, a.book[seq-1])
 	}
-	return s.sealRecord(ctx, dealID, BookRecord{Body: body}, in.Before)
+	return s.sealRecord(ctx, dealID, a.book, BookRecord{Body: body}, in.Before)
 }

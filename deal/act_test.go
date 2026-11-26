@@ -60,9 +60,15 @@ func agreedFull(t *testing.T) (buyer, seller *side, dealID string) {
 // agreement and its stamp proof.
 func agreedFullHeld(t *testing.T) (buyer, seller *side, dealID string, ba Agreement) {
 	t.Helper()
+	return agreedOn(t, fullOffer)
+}
+
+// agreedOn is agreedFullHeld on the offer made from the seller's key.
+func agreedOn(t *testing.T, offerOf func(*testing.T, string) xdealv1.ProposeBody) (buyer, seller *side, dealID string, ba Agreement) {
+	t.Helper()
 	ctx := t.Context()
 	buyer, seller = newSide(t, "buyer"), newSide(t, "seller")
-	offer, err := buyer.store.Offer(ctx, fullOffer(t, seller.keyID()), "offer-1")
+	offer, err := buyer.store.Offer(ctx, offerOf(t, seller.keyID()), "offer-1")
 	require.NoError(t, err)
 	require.NoError(t, buyer.store.MarkWritten(ctx, offer))
 	seller.receiveSent(offer.Pair, nil)
@@ -452,14 +458,12 @@ func TestSettleRefusesAPayerLeg(t *testing.T) {
 	assert.Equal(t, "reverses must name a settle record of your own deal book: "+in.Reverses+" is not one", inputReason(t, err))
 }
 
-// A refund received names a leg of the holder's own book; a second refund
-// of the same leg is refused while the first did not fail.
-func TestSettleRefundReceived(t *testing.T) {
+// The holder's refund of a payment it received is a payer leg.
+func TestSettleRefusesAPayerRefund(t *testing.T) {
 	ctx := t.Context()
 	_, seller, dealID := agreedFull(t)
 	paid, err := seller.store.Settle(ctx, dealID, payeeIn(LegSettled))
 	require.NoError(t, err)
-	// The seller's refund of a payment it received is a payer leg.
 	refund := payeeIn(LegSettled)
 	refund.Reverses = paid.Digest
 	_, err = seller.store.Settle(ctx, dealID, refund)
@@ -483,7 +487,7 @@ func TestStatus(t *testing.T) {
 	assert.Equal(t, "deal deal-0000000000000000 is not an x-deal-v1 deal this profile holds", inputReason(t, err))
 }
 
-// Every act call needs the receive profile for its gate.
+// Perform needs the receive profile for its gate.
 func TestActNeedsTheReceiveProfile(t *testing.T) {
 	ctx := t.Context()
 	_, seller, dealID := agreedFull(t)
@@ -494,4 +498,149 @@ func TestActNeedsTheReceiveProfile(t *testing.T) {
 	require.NoError(t, err)
 	_, err = st.Perform(context.Background(), dealID, PerformIn{Check: check, Act: "deliver", Observed: "scan"})
 	assert.ErrorContains(t, err, "Config.ReceiveProfile")
+}
+
+// A call decides from the book it read; a record another write appends
+// before its own is refused, and the same call made again decides again.
+func TestACallWhoseBookMovedIsMadeAgain(t *testing.T) {
+	ctx := t.Context()
+	_, seller, dealID := agreedFull(t)
+	check := seller.approvedCheck(dealID, "commit", "user", "moved")
+	other := xdealv1.StatementBody{Statements: []xdealv1.StatementItem{{Row: "paid_as_agreed", Value: "cannot_tell"}}}
+	interleave := func() {
+		done := false
+		bookAppendHook = func() {
+			if done {
+				return
+			}
+			done = true
+			_, err := seller.store.SealInBook(ctx, dealID, BookRecord{Body: other})
+			require.NoError(t, err)
+		}
+		t.Cleanup(func() { bookAppendHook = func() {} })
+	}
+
+	in := PerformIn{Check: check, Act: "deliver", Observed: "scan"}
+	interleave()
+	_, err := seller.store.Perform(ctx, dealID, in)
+	assertCoded(t, err, CodeRecordRetry)
+	bookAppendHook = func() {}
+	got, err := seller.store.Perform(ctx, dealID, in)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(3), got.Seq, "after the statement that took its place")
+
+	// Two of the same statement at once: the second is refused, and made
+	// again it finds the first.
+	met := StatementIn{Statements: []xdealv1.StatementItem{{Row: "delivered", Value: "met"}}}
+	done := false
+	bookAppendHook = func() {
+		if done {
+			return
+		}
+		done = true
+		bookAppendHook = func() {}
+		_, err := seller.store.Statement(ctx, dealID, met)
+		require.NoError(t, err)
+	}
+	_, err = seller.store.Statement(ctx, dealID, met)
+	assertCoded(t, err, CodeRecordRetry)
+	again, err := seller.store.Statement(ctx, dealID, met)
+	require.NoError(t, err)
+	assert.True(t, again.Again)
+}
+
+func TestSettleChecksThePaymentRef(t *testing.T) {
+	ctx := t.Context()
+	_, seller, dealID := agreedFull(t)
+	with := func(ref string) SettleIn { in := payeeIn(LegSettled); in.PaymentRef = json.RawMessage(ref); return in }
+	for _, tc := range []struct{ ref, want string }{
+		{`[1]`, "payment_ref is not a JSON object"},
+		{`{"type":"ln.payment_hash"}`, "payment_ref has no value: the payment's reference"},
+		{`{"type":"made.up","value":"x"}`, "payment_ref type made.up is neither a registered payment_ref type nor x-deal-v1.merchant_order"},
+		{`{"type":"ln.payment_hash","value":"x","network":"main"}`, "payment_ref member network does not go with ln.payment_hash"},
+		{`{"type":"x402.transaction","value":"0xabc"}`, "payment_ref needs network for x402.transaction"},
+		{`{"type":"x-deal-v1.merchant_order","value":"A-17","origin":"https://Shop.Example/"}`, "payment_ref origin https://Shop.Example/ is not in normal form: https://shop.example"},
+		{`{"type":"x-deal-v1.merchant_order","value":"A-17","origin":"ftp://shop.example"}`, "payment_ref origin ftp://shop.example is not a checkout origin: its scheme is not https or http"},
+		{`{"type":"x-deal-v1.merchant_order","value":"4111 1111 1111 1111","origin":"https://shop.example"}`, "payment_ref value looks like a card number"},
+	} {
+		_, err := seller.store.Settle(ctx, dealID, with(tc.ref))
+		assert.Contains(t, inputReason(t, err), tc.want, tc.ref)
+	}
+	got, err := seller.store.Settle(ctx, dealID, with(`{"type":"x-deal-v1.merchant_order","value":"A-17","origin":"https://shop.example"}`))
+	require.NoError(t, err)
+	assert.False(t, got.Again)
+}
+
+// sealPayerLeg seals a payer leg in p's book directly, as a payment the
+// holder made (phase 3 seals one through the store), with status.
+func (p *side) sealPayerLeg(dealID, status string) string {
+	p.t.Helper()
+	member := json.RawMessage(`{"status":"` + status + `"}`)
+	ref := xdealv1.RefTo(strings.Repeat("e", 64))
+	sealed, err := p.store.SealInBook(p.t.Context(), dealID, BookRecord{Body: xdealv1.SettleBody{Leg: xdealv1.LegPayer, Statements: []xdealv1.StatementItem{}, Check: &ref},
+		Members: map[string]json.RawMessage{"settlement": member}})
+	require.NoError(p.t, err)
+	return sealed.Digest
+}
+
+// A refund received names a payer leg of the holder's own book; a second
+// refund of the same leg is refused while the first did not fail, and a
+// failed payment has nothing to refund.
+func TestSettleRefundReceived(t *testing.T) {
+	ctx := t.Context()
+	buyer, _, dealID := agreedFull(t)
+	paid := buyer.sealPayerLeg(dealID, LegSettled)
+	refund := payeeIn(LegSettled)
+	refund.Reverses = paid
+	got, err := buyer.store.Settle(ctx, dealID, refund)
+	require.NoError(t, err)
+	b, _ := settleOf(got.Record)
+	assert.Equal(t, xdealv1.LegPayee, b.Leg)
+	require.NotNil(t, b.Reverses)
+	assert.Equal(t, paid, b.Reverses.Digest)
+
+	second := refund
+	second.Received = 1000
+	_, err = buyer.store.Settle(ctx, dealID, second)
+	assertCoded(t, err, CodeSettleRefunded, paid)
+
+	failed := buyer.sealPayerLeg(dealID, LegFailed)
+	refund.Reverses = failed
+	_, err = buyer.store.Settle(ctx, dealID, refund)
+	assert.Equal(t, "leg "+failed+" failed: no money moved, so there is nothing to refund", inputReason(t, err))
+}
+
+func TestSettleOnAnOfferOfTwoPaymentRows(t *testing.T) {
+	ctx := t.Context()
+	twoRows := func(t *testing.T, key string) xdealv1.ProposeBody {
+		o := fullOffer(t, key)
+		o.TermsRows.Rows[1].Owed = json.RawMessage(`{"amount_minor": 500, "currency": "USD"}`)
+		return o
+	}
+	_, seller, dealID, ba := agreedOn(t, twoRows)
+	seller.receiveAgreement(ba)
+	_, err := seller.store.Settle(ctx, dealID, payeeIn(LegSettled))
+	assertCoded(t, err, CodeSettleWhichRow)
+	in := payeeIn(LegSettled)
+	in.Row = "paid_as_agreed"
+	_, err = seller.store.Settle(ctx, dealID, in)
+	require.NoError(t, err)
+}
+
+func TestStatusProviderStatus(t *testing.T) {
+	ctx := t.Context()
+	buyer, _, dealID := agreedFull(t)
+	d, err := buyer.store.Deal(ctx, dealID)
+	require.NoError(t, err)
+	p := &xdealv1.StatusProvider{Shelf: buyer.shelf, OfferPair: buyer.store.OfferPair}
+	v, err := p.Status(ctx, d.OwnLogID)
+	require.NoError(t, err)
+	got, err := buyer.store.Status(ctx, dealID)
+	require.NoError(t, err)
+	assert.Equal(t, v, got)
+
+	_, err = (&xdealv1.StatusProvider{}).Status(ctx, d.OwnLogID)
+	assert.ErrorContains(t, err, "has no shelf")
+	_, err = p.Status(ctx, "deal/00000000000000000000000000000000")
+	assert.ErrorContains(t, err, "is not an x-deal-v1 deal book")
 }
