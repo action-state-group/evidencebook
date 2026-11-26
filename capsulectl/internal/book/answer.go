@@ -101,7 +101,7 @@ func answerPeerClose(c *cobra.Command, recordType string, reason json.RawMessage
 	peerClose := cited.record.RecordID
 	book := opened.book
 	result := answerResult{RecordType: recordType, Period: a.period.key, Counterparty: a.counterparty, PeerClose: peerClose}
-	prior, err := priorAnswer(c.Context(), opened, a.counterparty, peerClose, recordType)
+	prior, err := priorAnswer(c.Context(), p, opened, a.counterparty, peerClose, recordType)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func answerPeerClose(c *cobra.Command, recordType string, reason json.RawMessage
 	case prior != nil:
 		record, result.AlreadyRecorded = *prior, true
 	case recordType == evidencebook.RecordTypeAcknowledgement:
-		rebutted, err := priorAnswer(c.Context(), opened, a.counterparty, peerClose, evidencebook.RecordTypeRebuttal)
+		rebutted, err := priorAnswer(c.Context(), p, opened, a.counterparty, peerClose, evidencebook.RecordTypeRebuttal)
 		if err != nil {
 			return err
 		}
@@ -166,15 +166,29 @@ func periodBookID(o openedBook, p period) (string, error) {
 
 // priorAnswer returns this book's record of type recordType that links to
 // peerClose for counterparty, or nil; on a windowed store, from any
-// window's book, so a repeat after a roll adds nothing.
-func priorAnswer(ctx context.Context, opened openedBook, counterparty, peerClose, recordType string) (*evidencebook.Record, error) {
+// window's book or the JSONL book it was converted from, so a repeat after
+// a roll or the conversion adds nothing.
+func priorAnswer(ctx context.Context, p cli.Profile, opened openedBook, counterparty, peerClose, recordType string) (*evidencebook.Record, error) {
 	link := evidencebook.Acknowledges
 	if recordType == evidencebook.RecordTypeRebuttal {
 		link = evidencebook.Rebuts
 	}
-	records, err := everyWindowQuery(ctx, opened, evidencebook.Filter{RecordType: recordType, CounterpartyRef: counterparty})
+	filter := evidencebook.Filter{RecordType: recordType, CounterpartyRef: counterparty}
+	records, err := everyWindowQuery(ctx, opened, filter)
 	if err != nil {
 		return nil, err
+	}
+	if opened.shelf != nil && opened.shelf.WindowPolicy().Predecessor != nil {
+		// The closed JSONL book, read with throwaway keys (nothing is written).
+		predecessor, err := openBookKeyedAt(ctx, p, false, nil, true, true)
+		if err != nil {
+			return nil, err
+		}
+		before, err := predecessor.book.Query(ctx, filter)
+		if err = errors.Join(err, predecessor.release()); err != nil {
+			return nil, err
+		}
+		records = append(before, records...)
 	}
 	for _, r := range records {
 		if slices.Contains(r.Header.LinksTo(link), peerClose) {

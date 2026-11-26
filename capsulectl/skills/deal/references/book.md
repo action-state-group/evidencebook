@@ -106,7 +106,10 @@ names the Close by its record id and holds no copy of the bundle (no reconcile
 relies on it). The record goes in the current book (on a windowed store, the
 current window, which takes one at any time), and a checkpoint covers it, so
 a bundle can carry it to the counterparty: `capsulectl disclose --root
-RECORD_ID` builds one. The counterparty reads the Close as AGREED or
+RECORD_ID` builds one while the record is in the current book. On a windowed
+store `disclose` reads only the current window, so disclose an answer before
+its window ends; a repeat that finds it in an earlier window (`window` in the
+output) cannot be disclosed from there yet (evidencebook#1014). The counterparty reads the Close as AGREED or
 CONTESTED (a rebuttal outranks an acknowledgement) from records of the book
 the output names as `book`, signed under this book's checkpoint key.
 

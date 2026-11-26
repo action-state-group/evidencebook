@@ -346,3 +346,26 @@ func TestACitingCloseSealsInAWindowsGrace(t *testing.T) {
 	assert.NotEmpty(t, closed.PeerClose)
 	assert.NotEmpty(t, closed.HeldBundle)
 }
+
+// After a JSONL book is converted to a windowed store, an answer the old
+// book recorded still counts: a repeat finds it, and acknowledging a Close
+// it rebutted is refused.
+func TestAnswersBeforeAConversionStillCount(t *testing.T) {
+	p := newAnswerPair(t)
+	rebutted, err := runAnswer(t, p.args("rebut", "--reason", "x1 is not ours")...)
+	require.NoError(t, err)
+	out, err := invoke(t, "", "book", "window", "convert", "--profile", "a", "--yes")
+	require.NoError(t, err, out)
+	p.set(day1.Add(time.Hour))
+
+	again, err := runAnswer(t, p.args("rebut", "--reason", "x1 is not ours")...)
+	require.NoError(t, err)
+	assert.True(t, again.AlreadyRecorded)
+	assert.Equal(t, rebutted.RecordID, again.RecordID)
+	assert.Equal(t, "a", again.Book, "the predecessor JSONL book holds it")
+	_, err = runAnswer(t, p.args("rebut", "--reason", "another")...)
+	require.ErrorIs(t, err, cli.ErrInput)
+	_, err = runAnswer(t, p.args("acknowledge")...)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, err.Error(), "already rebutted Close "+p.bClose)
+}
