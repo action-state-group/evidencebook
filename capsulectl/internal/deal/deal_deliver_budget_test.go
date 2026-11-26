@@ -378,7 +378,8 @@ func TestDealTickGoesPastACheckpointFailedForGood(t *testing.T) {
 		failed := state
 		failed.Attempts++
 		failed.Permanent = true
-		failed.LastError = "witness returned HTTP 400: " + cli.WitnessFailureBody(409)
+		// A 422: a first continuity 409 is re-armed (capsule-cli#648), not failed for good.
+		failed.LastError = "witness returned HTTP 400: " + cli.WitnessFailureBody(422)
 		require.NoError(t, store.CommitWitness(ctx, state.Attempts, failed))
 		return failed, nil
 	}

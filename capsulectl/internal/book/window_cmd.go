@@ -422,7 +422,10 @@ func receiptsOf(p cli.Profile) func(context.Context, evidencebook.Checkpoint) ([
 // verified) in the checkpoint.witnesses form a bundle and a chain carry.
 func witnessEntry(p cli.Profile, state cll.WitnessState) map[string]any {
 	status := "pending"
-	if state.Permanent {
+	// A row stored as failed that the next run re-arms (a first continuity
+	// 409, capsule-cli#648) is still pending; the core's own status says
+	// which, as deal_email.go reads it.
+	if _, text := cli.WitnessPendingReason(state, p.Checkpoint.Endpoint); state.Permanent && strings.HasPrefix(text, cli.WitnessNotDelivered) {
 		status = "failed"
 	}
 	out := map[string]any{"state": status, "attempts": state.Attempts}
