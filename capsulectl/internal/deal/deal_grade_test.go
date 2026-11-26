@@ -77,9 +77,9 @@ func TestDealReportGradeSelfAttested(t *testing.T) {
 	assert.NotContains(t, shared, "grade")
 }
 
-// TestDealReportGradeCarriesTheWitnessTime: a witnessed deal's grade names
+// TestDealReportGradeCarriesTheWitnessTime: a witnessed deal's report names
 // the witnessed checkpoint's time, and witnessed in part how many steps its
-// receipt covers.
+// receipt covers, in the holder's attributed line; the grade is the copy's.
 func TestDealReportGradeCarriesTheWitnessTime(t *testing.T) {
 	public, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -96,21 +96,28 @@ func TestDealReportGradeCarriesTheWitnessTime(t *testing.T) {
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), key)
 	storeDir := filepath.Dir(p.Connection.Database)
+	// The grade is the copy's, which carries no chain (u225); the holder's own
+	// witnessing, with the witnessed checkpoint's time, is in the attributed
+	// assurance.holder_witnessed.
 	for _, out := range []map[string]any{dealRun(t, "report", "--deal", dealID), readOnly(t, storeDir, dealID)} {
 		g = asGrade(t, out["grade"])
-		assert.Equal(t, "witnessed", g.Rung)
-		assert.Equal(t, "witnessed", g.Witness.State)
-		assert.Equal(t, "2026-10-04T09:00:00Z", g.Witness.At)
-		assert.NotEmpty(t, g.Witness.Witness)
-		assert.Zero(t, g.Witness.StepsWitnessed)
+		assert.Equal(t, "self_attested", g.Rung)
+		assert.Equal(t, "not_carried", g.Witness.State)
+		assert.Empty(t, g.Witness.At)
+		held := out["assurance"].(map[string]any)["holder_witnessed"].(map[string]any)
+		assert.Equal(t, "2026-10-04T09:00:00Z", held["at"])
+		assert.NotEmpty(t, held["witness"])
+		assert.Equal(t, "all", held["extent"])
 	}
 
 	*now = now.Add(10 * time.Minute)
 	dealRun(t, "note", "--deal", dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"counterparty","text":"Your order has shipped."}`))
-	g = asGrade(t, readOnly(t, storeDir, dealID)["grade"])
-	assert.Equal(t, "witnessed_in_part", g.Rung)
-	assert.Equal(t, "2026-10-04T09:00:00Z", g.Witness.At)
-	assert.Equal(t, g.Witness.StepsWitnessed+1, g.Witness.Steps)
+	out := readOnly(t, storeDir, dealID)
+	assert.Equal(t, "not_carried", asGrade(t, out["grade"]).Witness.State)
+	held := out["assurance"].(map[string]any)["holder_witnessed"].(map[string]any)
+	assert.Equal(t, "part", held["extent"])
+	assert.Equal(t, "2026-10-04T09:00:00Z", held["at"])
+	assert.Equal(t, held["steps_witnessed"].(float64)+1, held["steps"].(float64))
 }
 
 // TestDealCountersignatureIsStoredWithItsBundle: a countersignature `deal

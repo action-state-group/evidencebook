@@ -305,12 +305,11 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 				withhold[hex.EncodeToString(e.Value)] = true
 			}
 		}
-		b, cadence, err := s.dealAssembleAtCheckpoint(ctx, covered, withhold)
+		b, _, err := s.dealAssembleAtCheckpoint(ctx, covered, withhold)
 		if err != nil {
 			return nil, 0, 0, err
 		}
 		extensions := map[string]interface{}{dealprofile.Profile: map[string]interface{}{"audience": DealAudienceHistory, "deal_id": dealID}}
-		setCadenceExtension(extensions, cadence)
 		if dealRole(covered) == dealRoleSeller {
 			extensions[dealSellerExtension] = map[string]interface{}{}
 		}
@@ -345,9 +344,12 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 		}
 		delete(withhold, pointer)
 	}
-	b, cadence, err := s.dealAssembleAtCheckpoint(ctx, covered, withhold)
+	b, _, err := s.dealAssembleAtCheckpoint(ctx, covered, withhold)
 	if err != nil {
 		return nil, 0, 0, err
+	}
+	if pointer != "" && sealedReportCarriesWitnessCoverage(b, pointer) {
+		return nil, 0, 0, heldReportCoverageError(dealID)
 	}
 	ext := map[string]interface{}{dealprofile.ReportPointer: pointer}
 	var standalone map[string]interface{}
@@ -369,7 +371,7 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 		if err != nil {
 			return nil, 0, 0, err
 		}
-		if ext, err = s.dealReportExtension(covered, report, cli.DealAudienceKeep, verify, dealPrivate{}, withhold, witnessCoverage(covered, cadence)); err != nil {
+		if ext, err = s.dealReportExtension(covered, report, cli.DealAudienceKeep, verify, dealPrivate{}, withhold); err != nil {
 			return nil, 0, 0, err
 		}
 		if offLog {
@@ -381,7 +383,6 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 		}
 	}
 	extensions := map[string]interface{}{dealprofile.Profile: ext}
-	setCadenceExtension(extensions, cadence)
 	if standalone != nil {
 		extensions[dealprofile.ReportExtension] = standalone
 	}

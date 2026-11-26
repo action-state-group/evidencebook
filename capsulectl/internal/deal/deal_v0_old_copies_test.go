@@ -5,12 +5,14 @@ package deal
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -78,4 +80,38 @@ func TestV0OldCopiesStillVerify(t *testing.T) {
 			assert.NotEqual(t, "VALID", result["verdict"], what)
 		})
 	}
+}
+
+// withHolderChain writes a copy of the bundle at path with the holder's own
+// witnessed chain for its checkpoint added as parent-log-witness/v1, as a
+// copy carried it before u225: the chain's proof machinery is still the
+// holder's own witness check and still verifies old copies, so tests of the
+// chain itself run on it. It fails the test when the holder holds no
+// witnessed chain for the checkpoint.
+func withHolderChain(t *testing.T, p cli.Profile, dealID, path string) string {
+	t.Helper()
+	b := readBundle(t, path)
+	statement, err := base64.RawURLEncoding.DecodeString(b["checkpoint"].(map[string]any)["cose"].(string))
+	require.NoError(t, err)
+	var chain map[string]interface{}
+	withProfileSession(t, p, func(s *dealSession) {
+		chain, err = s.dealWitnessState(t.Context(), dealID, statement)
+		require.NoError(t, err)
+	})
+	name, block, ok := cadenceExtensionEntry(chain)
+	require.True(t, ok, "the holder holds a witnessed chain: %v", chain["state"])
+	raw, err := json.Marshal(block)
+	require.NoError(t, err)
+	var decoded any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	b["extensions"].(map[string]any)[name] = decoded
+	return writeBundle(t, b)
+}
+
+func withProfileSession(t *testing.T, p cli.Profile, fn func(s *dealSession)) {
+	t.Helper()
+	s, err := openDealSession(t.Context(), p)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, s.close()) }()
+	fn(s)
 }

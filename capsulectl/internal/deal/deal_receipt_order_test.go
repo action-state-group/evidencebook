@@ -131,9 +131,9 @@ func TestReceiptPutsFactsFirst(t *testing.T) {
 	assert.Less(t, did, sealed, "what the agent did comes before the assurance")
 }
 
-// A deal witnessed in part says, in the user's terms, what the witnessed
-// steps hold and what is still witness-pending: the payment is witnessed,
-// the cancellation sealed after the tick is not yet.
+// A deal witnessed in part: the holder's own line says which steps the
+// witness covers through the earlier checkpoint, and the copy and its page
+// state no coverage (u225).
 func TestPartlyWitnessedCancelNamesWhatIsCovered(t *testing.T) {
 	public, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -154,13 +154,16 @@ func TestPartlyWitnessedCancelNamesWhatIsCovered(t *testing.T) {
 
 	html := filepath.Join(t.TempDir(), "part.html")
 	assurance := dealRun(t, "report", "--deal", id, "--html", html)["assurance"].(map[string]any)
-	require.Equal(t, "witnessed_in_part", assurance["rung"])
-	k := int(assurance["steps_witnessed"].(float64))
-	assert.Contains(t, assurance["text"], "Witnessed, steps 1 to "+strconv.Itoa(k)+": pay $6.27 by card.")
-	assert.Contains(t, assurance["text"], "Witness pending, steps "+strconv.Itoa(k+1)+" to ")
-	assert.Contains(t, assurance["text"], ": cancel: $6.27 back to you on the card, reversing the payment.")
+	// The copy carries no chain (u225); the holder's own line names the
+	// steps the witness covers, through the earlier checkpoint.
+	require.Equal(t, "self_attested", assurance["rung"])
+	held := assurance["holder_witnessed"].(map[string]any)
+	require.Equal(t, "part", held["extent"])
+	k := int(held["steps_witnessed"].(float64))
+	assert.Contains(t, assurance["text"], "Your own profile reports steps 1 to "+strconv.Itoa(k)+" of ")
+	assert.NotContains(t, assurance["text"], "this checkpoint witnessed")
 	page, err := os.ReadFile(html)
 	require.NoError(t, err)
-	assert.Contains(t, string(page), `"witness_coverage"`)
-	assert.Contains(t, string(page), `"pending_acts":"cancel: $6.27 back to you on the card, reversing the payment"`)
+	assert.NotContains(t, string(page), `"witness_coverage"`, "the copy states no coverage it does not carry (u225)")
+	assert.NotContains(t, string(page), "Your own profile reports", "the holder's line stays off the page")
 }

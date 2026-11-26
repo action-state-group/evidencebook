@@ -30,12 +30,15 @@ import (
 // per tick on the profile's clock: the volume signal is reduced to the tick
 // count, and the timing signal to the cadence.
 //
-// A deal's receipt then carries the chain from its own checkpoint to the
-// witnessed cadence checkpoint: the leaf's salt and position, the tree path
-// (always dealCadenceDepth hashes, so it says nothing about other deals),
-// the cadence entry's inclusion proof, the cadence checkpoint and the
-// witness receipt. `capsulectl deal verify --bundle` checks every link
-// (rc47's core did; the plugin's reader does now).
+// The chain from a deal's own checkpoint to the witnessed cadence checkpoint
+// is the leaf's salt and position, the tree path (always dealCadenceDepth
+// hashes, so it says nothing about other deals), the cadence entry's
+// inclusion proof, the cadence checkpoint and the witness receipt. The
+// holder's own witness check computes it; no x-deal-v0 copy written since
+// u225 carries it, since it shows the holder's shelf position and cadence
+// (evidencebook#958), while `deal node bundle` still does. `capsulectl deal
+// verify --bundle` checks every link of a copy that carries one (rc47's core
+// did; the plugin's reader does now).
 
 const (
 	// dealCadenceDepth fixes every path at 16 hashes: up to 65535 deals.
@@ -91,13 +94,6 @@ func cadenceExtensionEntry(chain map[string]interface{}) (name string, block map
 	}
 	block["parent"] = parent
 	return DealParentWitnessExtension, block, true
-}
-
-// setCadenceExtension adds a bundle's cadence chain to its extensions.
-func setCadenceExtension(extensions map[string]interface{}, chain map[string]interface{}) {
-	if name, block, ok := cadenceExtensionEntry(chain); ok {
-		extensions[name] = block
-	}
 }
 
 // cadenceChainOf is the cadence chain a bundle carries, under its name

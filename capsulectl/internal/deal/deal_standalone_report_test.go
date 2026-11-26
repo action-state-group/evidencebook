@@ -532,11 +532,20 @@ func TestTheAsOfLineOnWitnessedCopies(t *testing.T) {
 		dealRun(t, "report", "--deal", id, "--bundle", path)
 		return path
 	}
+	// A new copy never claims a witnessed time (u225): it carries no chain.
+	// The same copy with the holder's chain added, as copies carried it
+	// before u225, reads as such an older copy does.
+	chained := func(name string) string {
+		t.Helper()
+		path := copyNamed(name)
+		assert.Contains(t, asOf(path), "; not witnessed", name+": the new copy itself")
+		return withHolderChain(t, p, id, path)
+	}
 	const first, later = "as of the deal's last step at 2026-10-04T09:00:00Z (the producer's time); ", "as of the deal's last step at 2026-10-04T09:10:00Z (the producer's time); "
 	assert.Equal(t, first+"not witnessed", asOf(copyNamed("none")))
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), key)
-	all := copyNamed("all")
+	all := chained("all")
 	assert.Equal(t, first+"witnessed", asOf(all))
 
 	b, err := cli.DecodeBundleJSON(mustRead(t, all))
@@ -553,5 +562,6 @@ func TestTheAsOfLineOnWitnessedCopies(t *testing.T) {
 	*now = now.Add(2 * time.Hour)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), key)
-	assert.Equal(t, later+"witnessed", asOf(copyNamed("later-tick")))
+	assert.Equal(t, later+"not witnessed", asOf(copyNamed("later-tick")), "a new copy claims no witnessed time")
+	assert.Equal(t, later+"witnessed", asOf(chained("later-tick-chained")))
 }

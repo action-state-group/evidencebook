@@ -136,9 +136,12 @@ not checked when the page was written). The page shows the `text` and
 
 The user's own report also carries `grade`: `rung`, the highest rung the
 deal reached (`countersigned` or `countersigned_in_part` when a stored
-countersignature resolves, else the witness's); `witness`, where its witnessing stands (`state`, and once
+countersignature resolves, else the witness's); `witness`, where the copy's witnessing stands (`state`, and once
 witnessed the `witness`, `at`, the time of the checkpoint the witness signed,
-and in part `steps_witnessed` of `steps`); and `countersign`, above. A shared
+and in part `steps_witnessed` of `steps`); and `countersign`, above. The grade
+reflects only what the copy carries: since u225 a copy carries no cadence
+chain, so a deal witnessed only through the cadence reads `not_carried`, and
+the report's `assurance.holder_witnessed` says what your own profile reports. A shared
 copy carries no grade.
 
 The page shows what capsulectl found when it wrote the page: a page cannot

@@ -72,5 +72,6 @@ func TestAnUppercasePinnedKeyStillWitnessesTheCadence(t *testing.T) {
 	dealRun(t, "tick")
 	deliver(t, p, cadenceSize(t, p), key)
 	report := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
-	assert.Equal(t, "witnessed", report["assurance"].(map[string]any)["rung"])
+	// The copy carries no chain (u225); the holder's own state is witnessed.
+	assert.Equal(t, "all", report["assurance"].(map[string]any)["holder_witnessed"].(map[string]any)["extent"])
 }

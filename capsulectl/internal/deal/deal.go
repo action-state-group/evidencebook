@@ -3050,9 +3050,12 @@ func dealReportCommand() *cobra.Command {
 			var err error
 			if fromBundle != "" {
 				b, err = s.dealBundleOf(fromBundle, dealID, events)
-				// A file carries a witnessed chain only: for any other bundle it
-				// cannot say whether a witness is pending or not configured.
-				s.hostCadence = map[string]interface{}{"state": "not_carried"}
+				// A copy written since u225 carries no witnessed chain: the
+				// holder's own words come from this profile's state for the
+				// file's checkpoint (an older copy's carried chain still wins).
+				if err == nil {
+					s.hostCadence, err = s.fileWitnessState(ctx, dealID, b)
+				}
 			} else {
 				b, err = s.dealReportBundle(ctx, events, report, audience, dealVerifyCommand(htmlPath), true, dealRefereeOf(audience, recipient))
 			}

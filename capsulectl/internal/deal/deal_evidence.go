@@ -760,7 +760,9 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 		return e
 	}
 	b, e := s.dealReportBundleAt(ctx, events, report, dealCopyAudience, dealVerifyCommand("bundle.json"), held == "", held, "")
-	if errors.Is(e, errDealKeyChanged) {
+	if errors.Is(e, errDealKeyChanged) || errors.Is(e, errHeldReportWitnessCoverage) {
+		// A report sealed at the pinned head that states witness coverage
+		// cannot travel (u225), and sealing a new one would move the head.
 		return refuse(evidencebook.ReasonCoverageUnsatisfiable)
 	}
 	if e != nil {

@@ -652,3 +652,18 @@ func (s *dealSession) withStaleness(ctx context.Context, assurance map[string]an
 	assurance["checkpoints_stopped"] = line
 	return assurance
 }
+
+// fileWitnessState is this profile's own witness state for the checkpoint a
+// deal bundle file was bound to, for `deal report --from-bundle`: the file
+// carries no witnessed chain when it was written after u225, so the holder's
+// words come from the holder's own book, never from the file. A file whose
+// checkpoint cannot be read says not_carried, as before.
+func (s *dealSession) fileWitnessState(ctx context.Context, dealID string, b map[string]interface{}) (map[string]interface{}, error) {
+	cp, _ := b["checkpoint"].(map[string]interface{})
+	encoded, _ := cp["cose"].(string)
+	statement, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || encoded == "" {
+		return map[string]interface{}{"state": "not_carried"}, nil
+	}
+	return s.dealWitnessState(ctx, dealID, statement)
+}
