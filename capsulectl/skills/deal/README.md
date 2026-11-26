@@ -310,7 +310,8 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   next without it). A run without
   `--wait-up-to` also stops once it has spent `--deliver-for` (5s by
   default) on witness requests: a request still running then is ended and
-  reported as a slow witness, and none starts with under 2s left; each row
+  recorded as `witness_timeout` (no answer within this run's budget, which
+  a healthy witness can also miss), and none starts with under 2s left; each row
   it did not send is listed in `pending` with `not_tried_this_run: true`
   and its stored reason, for a later tick.
 - A delivery whose request never reached the witness (refused, unresolved,
