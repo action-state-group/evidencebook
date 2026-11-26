@@ -178,6 +178,8 @@ package	kind	symbol	feature	rust	python
 .	type	HandoverTie	shelf	ported	ported
 .	type	HandoverTimes	shelf	ported	ported
 .	type	Header	originals-and-stores	ported	ported
+.	type	HeldBundleStatement	counterparty-half	frozen #1007	frozen #1008
+.	type	HeldCopy	shelf	frozen #1007	frozen #1008
 .	type	HeldLock	shelf	ported	ported
 .	type	HeldProof	shelf	ported	ported
 .	type	HeldRecord	shelf	ported	ported
@@ -319,6 +321,7 @@ package	kind	symbol	feature	rust	python
 .	var	ErrClockBehind	sentinel-errors	not needed	not needed
 .	var	ErrCorrupt	sentinel-errors	not needed	not needed
 .	var	ErrDeleted	sentinel-errors	not needed	not needed
+.	var	ErrHeldCited	sentinel-errors	not needed	not needed
 .	var	ErrInGrace	sentinel-errors	not needed	not needed
 .	var	ErrInvalid	sentinel-errors	not needed	not needed
 .	var	ErrLegalHold	sentinel-errors	not needed	not needed

@@ -106,6 +106,14 @@ type CloseInput struct {
 // counts by record type and its head, and, when a peer Close is named, the
 // tallies and a cites link to that Close. Its status is read later from the
 // links other records make to it.
+//
+// A Close naming a peer Close relies on the peer bundle for its tallies, so
+// it holds the bundle in full (evidencebook#116): the peer bundle must carry
+// its Bytes, the reconcile is computed from those bytes re-read, and a
+// held_bundle record holding them is appended after the window and before
+// the Close, which cites it in its header. If the Close then fails, a later
+// Close of the same bundle for the same counterparty reuses that held_bundle
+// rather than appending another, and an open window ends before it.
 func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	if in.Counterparty == "" {
 		return Record{}, fmt.Errorf("%w: a Close names its counterparty", ErrInvalid)
@@ -115,6 +123,13 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	}
 	if in.PeerClose != "" && !hex64.MatchString(in.PeerClose) {
 		return Record{}, fmt.Errorf("%w: peer Close %q is not a record id", ErrInvalid, in.PeerClose)
+	}
+	if in.PeerClose != "" {
+		peer, err := heldPeerBundle(in.Reconcile.Peer)
+		if err != nil {
+			return Record{}, err
+		}
+		in.Reconcile.Peer = peer
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -134,8 +149,21 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	// reconciliation takes its input as given, so Close and Reconcile keep
 	// one completeness rule for an open window.
 	from, to := max(in.Reconcile.FromSeq, 1), in.Reconcile.ToSeq
+	// A held bundle an earlier attempt of this Close left uncited is
+	// reused; when it is the log's last record, an open window ends before
+	// it, so the held bundle stays outside the window it is evidence for.
+	var reuse *Record
+	if in.PeerClose != "" {
+		reuse = b.uncitedHeldLocked(in.Reconcile.Peer, in.Counterparty, HeldBundleReliedByClose)
+	}
 	if to == 0 {
 		to = size
+		if reuse != nil && reuse.Seq == size {
+			to = size - 1
+		}
+	}
+	if to == 0 {
+		return Record{}, fmt.Errorf("%w: a Close needs a record before it to name as its head", ErrInvalid)
 	}
 	if to > size || from > to+1 {
 		return Record{}, fmt.Errorf("%w: window %d to %d is not within this book's %d records", ErrInvalid, in.Reconcile.FromSeq, in.Reconcile.ToSeq, size)
@@ -169,6 +197,15 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	if in.PeerClose != "" {
 		statement.Reconcile = &CloseReconcile{Tallies: recon.Tallies.result(), Status: Unilateral}
 		statement.EvidenceLinks = []Link{{Type: Cites, Target: in.PeerClose}}
+		// The tallies rely on the peer bundle, so it is held in full, after
+		// the window it does not belong to, and cited.
+		var held string
+		if reuse != nil && reuse.Seq > to {
+			held = reuse.RecordID
+		} else if held, err = b.appendHeldLocked(ctx, in.Reconcile.Peer, in.Counterparty, HeldBundleReliedByClose); err != nil {
+			return Record{}, err
+		}
+		links = append(links, Link{Type: Cites, Target: held})
 	}
 	entry := Entry{RecordType: RecordTypeClose, EpistemicType: ProducerClaim, Links: links, CounterpartyRef: in.Counterparty}
 	return b.commitEntryLocked(ctx, entry, nil, nil, func(seq uint64, committedAt string) (json.RawMessage, error) {

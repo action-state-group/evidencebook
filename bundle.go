@@ -59,6 +59,14 @@ type BundleRequest struct {
 	// WithholdPayloads carries headers only: every payload of the selected
 	// set is withheld with its digest.
 	WithholdPayloads bool
+	// DiscloseHeld carries the payload of a selected held_bundle record (a
+	// peer bundle a Close relied on: the counterparty's own account).
+	// Without it, under payloads=selected, that payload is withheld with its
+	// digest, and payloads=all is refused, since it cannot withhold: a
+	// bundle discloses no more of the counterparty than it did before
+	// held_bundle existed. With it, Withhold and WithholdPayloads still
+	// withhold it under payloads=selected.
+	DiscloseHeld bool
 	// Suppress names disclosure members left out of the overlay; suppressing
 	// HeaderMember leaves every disclosed header as withheld-with-digest. A
 	// header carried inside its capsule (RecordHeaderMember) is part of the
@@ -375,6 +383,13 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 				statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, PayloadCommitment: digest, Digest: digest})
 				continue
 			}
+			if b.records[id].Header.RecordType == RecordTypeHeldBundle && !req.DiscloseHeld {
+				if req.Payloads == PayloadsAll {
+					return Bundle{}, fmt.Errorf("%w: payloads=all would disclose held peer bundle %s; set DiscloseHeld to disclose it", ErrInvalid, id)
+				}
+				statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, PayloadCommitment: digest, Digest: digest})
+				continue
+			}
 			data, err := b.resolveLocked(ctx, id, digest)
 			var unavailable *UnavailableError
 			if errors.As(err, &unavailable) {
@@ -660,7 +675,11 @@ type PeerRecord struct {
 // whether that key and log belong to the party the relying party expects is
 // the relying party's check, against a key it obtained independently.
 type VerifiedBundle struct {
-	Digest              string
+	Digest string
+	// Bytes are the bundle's octets as VerifyBundle was given them, so a
+	// caller that relies on the bundle can hold it in full (a Close citing
+	// a peer Close seals them as its held_bundle record).
+	Bytes               []byte
 	LogID               string
 	Anchor              BundleCheckpoint
 	AnchorAuthenticated bool
@@ -799,6 +818,7 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 	}
 	result := aacbundle.VerifyBundle(decoded)
 	out := VerifiedBundle{
+		Bytes:      bytes.Clone(data),
 		Payloads:   make(map[string][]byte),
 		Extensions: make(map[string]json.RawMessage),
 		Claims: BundleClaims{

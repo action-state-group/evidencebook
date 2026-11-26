@@ -11,6 +11,7 @@ import (
 	"errors"
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -118,7 +119,8 @@ func TestCloseSealsTheCloseV1Body(t *testing.T) {
 			if v1.Reconcile == nil || v1.Reconcile.Status != Unilateral || v1.Reconcile.Tallies != recon.Tallies.result() {
 				t.Fatalf("reconcile %+v, want %+v", v1.Reconcile, recon.Tallies)
 			}
-			if len(v1.EvidenceLinks) != 1 || v1.EvidenceLinks[0] != (Link{Type: Cites, Target: peerClose}) || len(sealed.Header.LinksTo(Cites)) != 0 {
+			// The header cites only the held bundle (held_bundle_test.go).
+			if len(v1.EvidenceLinks) != 1 || v1.EvidenceLinks[0] != (Link{Type: Cites, Target: peerClose}) || slices.Contains(sealed.Header.LinksTo(Cites), peerClose) {
 				t.Fatalf("the peer Close is cited once, in the body only: body %+v header %+v", v1.EvidenceLinks, sealed.Header.Links)
 			}
 		})
