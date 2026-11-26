@@ -1,0 +1,1 @@
+- `deal report --bundle FILE --withheld` writes the withheld bundle of an x-deal-v1 deal that has payments: each payment record's Capsule keeps its `settlement` member (the payer or payee leg, inside the Capsule's signed identity), which the countersigner now sees; before, every deal with a payment was refused (evidencebook#998).

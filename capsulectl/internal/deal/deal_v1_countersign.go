@@ -40,11 +40,18 @@ var withheldBundleMembers = []string{"bundle_version", "bundle_kind", "root", "r
 // Capsule: what a countersigner sees of each record. withheldForm refuses a
 // bundle whose Capsules carry any other (an inline record header, or an
 // entry's members as extensions), so the docs' list stays the exact set.
+// settlement is a settle record's payment leg (deal/payer.go, deal/settle.go):
+// it is inside the Capsule's identity and signature, so the form cannot seal
+// it, and the countersigner sees it (evidencebook#998).
 var withheldCapsuleMembers = []string{
 	"action_id", "action_type", "assurance", "canonicalization_id", "capsule_id", "developer",
-	"format_version", "key_id", "model_attestation", "operator", "references", "signature",
-	"spec_version", "timestamp",
+	"format_version", "key_id", "model_attestation", "operator", "references", "settlement",
+	"signature", "spec_version", "timestamp",
 }
+
+// withheldLegs are the settlement legs a deal book's settle record carries:
+// the holder's own observation of a payment, as payer or payee.
+var withheldLegs = []string{"payer_observed", "payee_observed"}
 
 // producerKeyExtension is agent-action-capsule's extension that declares a
 // bundle's producer key. The withheld form keeps it: capsule-cli counts a
@@ -97,6 +104,15 @@ func withheldForm(raw []byte) ([]byte, error) {
 		for member := range capsule {
 			if !slices.Contains(withheldCapsuleMembers, member) {
 				return nil, fmt.Errorf("a record Capsule of the deal book carries %q, which the withheld form does not show a countersigner: refusing to write it", member)
+			}
+		}
+		// settlement, where present, is a payment leg the holder observed,
+		// not some other value under that name.
+		if raw, ok := capsule["settlement"]; ok {
+			leg, _ := raw.(map[string]interface{})
+			name, _ := leg["leg"].(string)
+			if !slices.Contains(withheldLegs, name) {
+				return nil, errors.New("a record Capsule of the deal book carries a settlement member that is not a payer or payee leg, which the withheld form does not show a countersigner: refusing to write it")
 			}
 		}
 		// model_attestation holds only the header's digest.

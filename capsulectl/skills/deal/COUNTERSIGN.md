@@ -73,11 +73,13 @@ Each record Capsule carries exactly these members, and `deal report
 | `capsule_id` | the record's digest |
 | `model_attestation` | only `compute_attestation.agent_input_digest`, the digest of the record's header |
 | `references` | the digest of the record before it in the book (absent on the first) |
+| `settlement` | on a payment record only, the payment as you recorded it: whether you paid or received it, the amount (or the amount received and the receive fee), any routing fee, the payment reference (for Lightning, the payment hash; never the preimage), its status, when you observed it, and the digest of the terms it pays |
 | `assurance`, `canonicalization_id`, `format_version`, `spec_version` | fixed values |
 
-It carries none of the records' contents, no report and none of the other
+It carries none of the records' contents except each payment's `settlement`
+member, which is part of the signed Capsule, no report and none of the other
 side's records, so a countersignature over it covers your deal book up to and
-including the record it is rooted at, and not the report: the report's
+including the record it is rooted at, your payments with it, and not the report: the report's
 `countersign.covers` says so.
 
 ## Kept with the bundle it covers
