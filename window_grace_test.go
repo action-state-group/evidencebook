@@ -475,3 +475,33 @@ func TestAChainNamesAnUncitedHeldBundleInAGrace(t *testing.T) {
 	require.NotEmpty(t, findings)
 	assert.Contains(t, findings[0].Text, "window 2026-10 holds a late held_bundle record at 5 that no late Close cites")
 }
+
+// A citing Close a window in its grace would refuse (its period is outside
+// the window) holds nothing first: no uncited held_bundle is left to fail
+// the window's chain.
+func TestARefusedCitingCloseInAGraceHoldsNothing(t *testing.T) {
+	ctx := context.Background()
+	f := newGraceFixture(t)
+	shelf := f.open(t)
+	oct, _, err := shelf.Current(ctx)
+	require.NoError(t, err)
+	mustAppend(t, oct, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Correlation: Correlation{ExchangeID: "x1", RequestDigest: "r1"}, Payloads: [][]byte{[]byte("p1")}})
+	setClock(f.clock, utc(2026, 11, 3))
+	_, _, err = shelf.Current(ctx)
+	require.NoError(t, err)
+	size := oct.Size()
+
+	_, peer := twoBooks(t)
+	input := ReconcileInput{Peer: peerBundle(t, peer), RecordType: "exchange", Compare: SamePayloadCommitments}
+	_, err = oct.Close(ctx, CloseInput{Reconcile: input, Counterparty: "party-b", Period: ClosePeriod{Start: utc(2026, 11, 1), End: utc(2026, 11, 2)}, PeerClose: dg("peer-close")})
+	require.ErrorIs(t, err, ErrWindowClosed, "a period outside October")
+	assert.Equal(t, size, oct.Size(), "nothing was appended")
+
+	setClock(f.clock, utc(2026, 11, 9))
+	_, err = shelf.Roll(ctx)
+	require.NoError(t, err)
+	chain, err := shelf.WindowChain(ctx, "2026-10", "2026-10", WindowChainOptions{})
+	require.NoError(t, err)
+	_, findings := VerifyWindowChain(chain, VerifyChainOptions{CheckpointKey: shelfCheckpointKey(f)})
+	assert.Empty(t, findings)
+}

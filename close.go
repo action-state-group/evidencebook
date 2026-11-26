@@ -202,8 +202,17 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 		var held string
 		if reuse != nil && reuse.Seq > to {
 			held = reuse.RecordID
-		} else if held, err = b.appendHeldLocked(ctx, in.Reconcile.Peer, in.Counterparty, HeldBundleReliedByClose); err != nil {
-			return Record{}, err
+		} else {
+			// A window in its grace takes the held_bundle only for a Close
+			// it would take, so the Close is checked against the window
+			// first: a held_bundle no Close cites would be a finding in the
+			// window's chain for good.
+			if err := b.closeAdmittedLocked(statement); err != nil {
+				return Record{}, err
+			}
+			if held, err = b.appendHeldLocked(ctx, in.Reconcile.Peer, in.Counterparty, HeldBundleReliedByClose); err != nil {
+				return Record{}, err
+			}
 		}
 		links = append(links, Link{Type: Cites, Target: held})
 	}
@@ -307,4 +316,22 @@ func (s CloseStatement) Window(headSeq, closeSeq uint64) (from, to uint64, err e
 // use.
 func (t Tallies) result() ResultTallies {
 	return ResultTallies{Matched: t.Matched, AOnly: t.AOnly, BOnly: t.BOnly, Conflicting: t.Conflicting, Insufficient: t.Insufficient, Unresolved: t.Unresolved}
+}
+
+// closeAdmittedLocked checks that this book's window would take a Close
+// with statement after one more record, before anything is appended for
+// it: the held_bundle a citing Close appends first is only admitted in a
+// window's grace for a Close the window takes.
+func (b *Book) closeAdmittedLocked(statement CloseStatement) error {
+	if b.window == nil {
+		return nil
+	}
+	seq := uint64(len(b.log)) + 2
+	at := b.now().UTC().Truncate(time.Microsecond)
+	statement.RecordID, statement.ClosedAt = recordLocator(b.id, seq), at.Format(time.RFC3339Nano)
+	raw, err := json.Marshal(statement)
+	if err != nil {
+		return err
+	}
+	return b.window.admits(Header{Version: HeaderVersion, BookID: b.id, Seq: seq, RecordType: RecordTypeClose, EpistemicType: ProducerClaim, CommittedAt: statement.ClosedAt, Statement: raw}, at, false)
 }
