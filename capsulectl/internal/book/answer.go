@@ -101,6 +101,18 @@ func answerPeerClose(c *cobra.Command, recordType string, reason json.RawMessage
 	peerClose := cited.record.RecordID
 	book := opened.book
 	result := answerResult{RecordType: recordType, Period: a.period.key, Counterparty: a.counterparty, PeerClose: peerClose}
+	// A rebuttal outranks an acknowledgement, so acknowledging a Close this
+	// book rebutted is refused even when an earlier acknowledgement exists:
+	// reading it back as recorded would suggest the Close is AGREED.
+	if recordType == evidencebook.RecordTypeAcknowledgement {
+		rebutted, err := priorAnswer(c.Context(), p, opened, a.counterparty, peerClose, evidencebook.RecordTypeRebuttal)
+		if err != nil {
+			return err
+		}
+		if rebutted != nil {
+			return cli.InputError(fmt.Sprintf("this book already rebutted Close %s at position %d with: %s. That rebuttal is sealed and outranks an acknowledgement, so the Close stays CONTESTED; if the counterparty seals a new Close that supersedes this one, acknowledge that one instead", peerClose, rebutted.Seq, reasonOf(rebutted.Header.Statement)))
+		}
+	}
 	prior, err := priorAnswer(c.Context(), p, opened, a.counterparty, peerClose, recordType)
 	if err != nil {
 		return err
@@ -112,13 +124,6 @@ func answerPeerClose(c *cobra.Command, recordType string, reason json.RawMessage
 	case prior != nil:
 		record, result.AlreadyRecorded = *prior, true
 	case recordType == evidencebook.RecordTypeAcknowledgement:
-		rebutted, err := priorAnswer(c.Context(), p, opened, a.counterparty, peerClose, evidencebook.RecordTypeRebuttal)
-		if err != nil {
-			return err
-		}
-		if rebutted != nil {
-			return cli.InputError(fmt.Sprintf("this book already rebutted Close %s at position %d with: %s. That rebuttal is sealed and outranks an acknowledgement, so the Close stays CONTESTED; if the counterparty seals a new Close that supersedes this one, acknowledge that one instead", peerClose, rebutted.Seq, reasonOf(rebutted.Header.Statement)))
-		}
 		if record, err = book.Acknowledge(c.Context(), peerClose, a.counterparty); err != nil {
 			return bookError(err)
 		}

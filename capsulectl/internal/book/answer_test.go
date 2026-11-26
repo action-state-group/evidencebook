@@ -98,6 +98,9 @@ func TestAcknowledgeMakesThePeerCloseAgreed(t *testing.T) {
 	rebutted, err := runAnswer(t, p.args("rebut", "--reason", "x1 differs on our side")...)
 	require.NoError(t, err)
 	assert.Equal(t, evidencebook.Contested, p.statusOf(t))
+	_, err = runAnswer(t, p.args("acknowledge")...)
+	require.ErrorIs(t, err, cli.ErrInput, "ack, rebut, ack: the second acknowledge is refused")
+	assert.Contains(t, err.Error(), "already rebutted Close "+p.bClose)
 	withBook(t, p.a, func(book *evidencebook.Book) {
 		record, err := book.Get(t.Context(), rebutted.RecordID)
 		require.NoError(t, err)
@@ -263,7 +266,8 @@ func TestAnswersOnAWindowedStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "a/2026-12", rebutted.Book)
 	_, err = runAnswer(t, args...)
-	require.NoError(t, err, "the acknowledgement is already recorded")
+	require.ErrorIs(t, err, cli.ErrInput, "acknowledged, then rebutted: acknowledging again is refused, not read back")
+	assert.Contains(t, err.Error(), "the Close stays CONTESTED")
 
 	// A Close naming the current window's book is not this period's.
 	wrong := filepath.Join(t.TempDir(), "wrong.json")
