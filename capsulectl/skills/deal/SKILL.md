@@ -1,6 +1,6 @@
 ---
 name: deal
-description: The record and final review of every errand that ends in a checkout, payment, order, booking, signature, cancellation, or sharing of the user's contact details or credentials that an agent does for the user, including a retail checkout from a known merchant at a fixed price. Seals the offer, the agreement (both sides' when the other side keeps signed records), what was asked, shown, chosen, approved and done with `capsulectl deal`, and shows the user any difference.
+description: The record and final review of every errand that ends in a checkout, payment, order, booking, signature, cancellation, or sharing of the user's contact details or credentials that an agent does for the user, including a retail checkout from a known merchant at a fixed price. Seals the offer, the agreement (both sides' when the other side keeps signed records), what was asked, shown, chosen, approved and done with `capsulectl deal`, and shows the user any difference. Also asks for and answers evidence in an evidence book, compares a period with a counterparty's, and seals and shows a Result's report with `capsulectl book`.
 ---
 
 # deal
@@ -13,6 +13,50 @@ both sides' agreement, seals each step, checks the step against what was
 asked and agreed, and seals the answer, using `capsulectl deal`. It is silent
 unless something differs.
 
+## The five verbs
+
+This skill teaches five verbs and nothing else: **check** before you act,
+**record** what was done, **ask** the other side for evidence, or answer when
+it asks, **verify** what you get, and **show** a card, a report or a receipt. Each row
+maps a verb, at one step, to the existing command. The `deal` commands run on
+the deal profile (`--profile deal`); the `book` commands run on a jsonl book
+profile, never the deal profile, and only after you have read
+[references/book.md](references/book.md), whose guardrails bind them.
+
+| Verb | Step | Command |
+|---|---|---|
+| check | before agreeing: the other side's admission | `deal admit` with capsule-engine's `admission evaluate --admit` output |
+| check | before any act: the final review | `deal check` |
+| record | the offer, a counter-offer, a withdrawal or a decline | `deal offer`, `deal offer cancel`, `deal offer decline` |
+| record | what the user asked, the journey, the pick, the user's answer, a disclosure, evidence | `deal note` |
+| record | the agreement | `deal agree` |
+| record | a payment, sent and settled, or received | `deal settle` |
+| record | an act other than a payment | `deal perform` |
+| record | how each row went | `deal statement` |
+| record | a dispute, or a challenge to a ruling | `deal dispute` |
+| record | a file the other side sent | `deal receive` |
+| record | a Result a judging step produced | `book result build` (book profile) |
+| record | an evaluator's Result over a holder's answer | `book report derive` (book profile) |
+| ask | evidence from a party: the request, then its answer, or that none came | `book request`, then `book request --for RECORD_ID --response FILE` or `--absent-until TIME` (book profile) |
+| ask | answer a request a party sent | `book respond` (book profile); a referee's request for the deal is the user's to answer (`deal respond`) |
+| verify | a bundle or a copy before you treat it as authentic | `capsulectl verify --bundle`; `capsulectl deal verify --bundle` for a deal copy |
+| verify | a period against a counterparty's held bundle | `book reconcile` (book profile) |
+| show | the user's deals | `deal list --json` |
+| show | one deal, its receipt, or the copy for the other side | `deal report` |
+| show | a sealed Result's report page | `book report build` (book profile) |
+| show | the user's History card, as a file the History page draws | `deal standard-history card` |
+
+To ask another party's book over the profile's transport (`book remote
+request`), stop and ask a human. `book request` on a remote profile is its
+deprecated alias. Setting up a profile, the checkpoint cadence, the daily
+check of host actions, windows and the x-deal-v0 sale are expert commands, not
+taught here: [references/setup.md](references/setup.md) and
+[references/expert.md](references/expert.md) keep them.
+
+The one commerce card is the History card, `standard_history`. A Mesh
+inference node's service card and its checks are Mesh's own exception, not a
+second commerce card: this skill never asks for one.
+
 **Version.** capsulectl-deal writes x-deal-v1 deals by default, and this file
 teaches that flow. An x-deal-v0 deal already open keeps its version: finish
 it with [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md), which also covers a
@@ -23,8 +67,9 @@ counterparty that runs only x-deal-v0.
 Nothing makes your agent host run this skill. On a host with no hook before
 a tool call, the final review runs because you follow the procedure, not
 because anything enforces it. On such a host a skipped review is found
-afterwards, not prevented: `deal audit-host` lists it from the host's own
-execution records (see "Daily check of host actions" below).
+afterwards, not prevented: the daily check of host actions lists it from the
+host's own execution records
+([references/expert.md](references/expert.md#daily-check-of-host-actions)).
 
 ## When this applies: the action decides, never the counterparty
 
@@ -46,6 +91,11 @@ stranger on a marketplace. "There is no one to verify" is not a reason to
 skip it: when nothing differs, the check passes quietly and the record is
 still made.
 
+The book commands apply when the user asks you to request evidence from a
+party, answer a request one sent, compare a period with a counterparty's, or
+seal and show a Result a judging step produced. They are not a final review:
+the list above is the whole test for that.
+
 ## Procedures
 
 A deal is between two parties, and each keeps its own book on its own
@@ -59,8 +109,8 @@ this skill is in use; they do not make the host invoke it (see "Invocation
 is advisory").
 
 `ID` below is the deal id `deal offer` prints, the same on both sides;
-`OFFER` is the offer's digest it prints. Every command takes `--profile deal`
-(or the user's profile name).
+`OFFER` is the offer's digest it prints. Every `deal` command takes
+`--profile deal` (or the user's deal profile name).
 
 ### Purchase
 
@@ -150,7 +200,7 @@ A retail checkout is almost always the second shape.
    first act then goes ahead without the other side's checkpoint proof, and
    its output marks it (`first_act_gate`: `counterparty_no_layer`). The
    payment check cannot match legs the other side never writes, so `deal
-   settlement` and `deal report` say the record is one-sided.
+   report` says the record is one-sided.
 7. **Final review:** Before you type any of the user's own details into the
    checkout (name, email, delivery address, phone), follow "Disclosure"
    below for them, on this deal. Then fill the checkout up to the last screen
@@ -243,13 +293,11 @@ A retail checkout is almost always the second shape.
 
     `met`, `not_met` or `cannot_tell`. The user sends the file (with no
     layer on the other side, there is no one to send it to).
-11. **Reading the deal.** `deal settlement --deal ID` and `deal report
-    --deal ID` read your book only up to its last checkpoint, and refuse a
-    book with records after it. Run `deal tick`: if it prints `state:
-    not_due`, wait until the `due` time it prints and run it again (the
-    scheduled cadence does this by itself every 5 minutes). Then:
-    - `deal settlement --deal ID`: each payment row's check on both sides'
-      legs you hold;
+11. **Reading the deal.** `deal report --deal ID` reads your book only up
+    to its last checkpoint, and refuses a book with records after it: then
+    wait for that checkpoint as
+    [references/expert.md](references/expert.md#reading-at-the-last-checkpoint)
+    says, and run it again. Then:
     - `deal report --deal ID`: each row's status; `--bundle FILE` writes your
       own copy as an Evidence Bundle;
     - when the user wants to send it to the other side, make a shared copy,
@@ -338,8 +386,8 @@ The user sells one item. On x-deal-v1 each buyer sends an offer: keep each
 with `deal receive`, run admission on the buyer you agree with, and agree to
 that offer (Purchase, steps 4 to 6, with the user as the seller). Decline
 every other buyer's offer with `deal offer decline OFFER --out FILE` and
-send each its file. A sale's listing and its buyer threads (`deal sale ...`) are x-deal-v0
-only (see the legacy file).
+send each its file. A sale's listing and its buyer threads are x-deal-v0
+only (see [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md)).
 
 ### Where the user sells: payment received, and what was delivered
 
@@ -629,7 +677,10 @@ The final review asks four questions:
 
 ## What you say: `voice` and `say`
 
-Every command's result says whether to speak and exactly what. Its words
+A book command's output has no `voice` or `say`: show it as
+[references/book.md](references/book.md) says, and never modify, summarize,
+reinterpret or restate the output of `verify`. Every deal command's result
+says whether to speak and exactly what. Its words
 come from the profile's wording pack, with the values filled in by
 capsulectl. Follow them; never make up your own narration of a step.
 
@@ -665,7 +716,7 @@ capsulectl. Follow them; never make up your own narration of a step.
   the other side. Never send it yourself unless the user asked you to. When
   the other side keeps no signed records, there is no one to send it to:
   say nothing about sending.
-- **A report goes out only when asked.** The cadence, `deal tick`,
+- **A report goes out only when asked.** The checkpoint cadence,
   checkpoints and other bookkeeping stay silent. On an x-deal-v1 deal the
   report is `deal report --deal ID`, read at your last checkpoint (Purchase,
   step 11); `deal report --deal ID --html FILE` writes your own copy's
@@ -771,95 +822,29 @@ check` refuses any other action name.
 
 ## Setup (once)
 
-`capsulectl deal` runs in the `capsulectl-deal` plugin. If a `capsulectl deal`
-command says the plugin is not installed, stop and show the user what it
-prints: it says to download the plugin file built for their capsulectl from
-the plugin's release and install it with `capsulectl plugin install <file>`.
-Installing it is the user's step: never run `plugin install` yourself.
+Before the first deal on a profile, read
+[references/setup.md](references/setup.md) and follow it: it creates the
+profile and its checkpoint cadence, and holds what you tell the user, in one
+message, about the witness and the cadence, and the network grant the
+cadence needs.
 
-```sh
-capsulectl --profile deal deal init --dir ~/.local/share/capsule-deal
-```
-
-This creates a local SQLite store and two signing seeds (mode 0600), and
-turns on the public witness by default (`--no-witness` turns it off; `ASSURANCE.md` compares it with a countersignature). It
-prints `public_key`: the other side names it in an offer's `to`, so give it
-to them when they make the offer. Raw names, numbers, addresses and message
-text stay in this local store: each sealed step is an x-deal-v1 record (see
-EvidenceBook's
-[`dealprofile/x-deal-v1/PROFILE.md`](https://github.com/action-state-group/evidencebook/tree/main/dealprofile/x-deal-v1/PROFILE.md)).
-Your journal stays on this device, and only what the deal needs (the offer,
-your agreement, your acts and statements) goes to the other side, as files
-the user sends.
-
-A profile made before x-deal-v1 was the default refuses x-deal-v1 commands
-until its store is moved, once: `capsulectl --profile deal deal set-version
-x-deal-v1 --migrate` (a backup is kept beside the store). That is the user's
-step: show them the message and never run it yourself.
-
-**Admission.** Before agreeing, each side seals capsule-engine's admission
-decision on the other (Purchase, step 4). capsule-engine is its own program:
-if `capsule-engine` is not installed, stop at that step and tell the user.
-
-Which of your own picks (a size, a delivery option the user never named)
-pause a check is set by a materiality predicate the profile pins:
-`deal init --materiality builtin:neutral` (the predicate built into
-capsulectl: a quantity of 1 does not pause, a size, variant, delivery or other
-quantity does) or a FILE of the user's own, or later `profile update
---materiality` (see EvidenceBook's
-[`dealprofile/x-deal-v0/materiality-predicate/`](https://github.com/action-state-group/evidencebook/tree/v0.10.0/dealprofile/x-deal-v0/materiality-predicate)). With none configured, every attribute you
-picked pauses the check and the user is asked about it. **Setting or changing
-the predicate is the user's policy: never do it yourself.** If a check refuses
-because the predicate changed since it was pinned, tell the user; re-pinning is
-theirs to run.
-
-Then set up the **checkpoint cadence**: schedule
-`capsulectl --profile deal cll checkpoint cadence --wait-up-to 5m` **every 5
-minutes** on this machine (a cron line `*/5 * * * *`, or the host's scheduler
-at a five-minute interval). Each run is a poll: it waits for a tick due within
-its 5 minutes and publishes it on time, on the profile's own clock (every 5m,
-give or take 1m, by default), and a run with no tick due publishes nothing. A
-run stays alive up to 5 minutes; if the host caps how long a scheduled job may
-run, schedule more often with a matching smaller `--wait-up-to`. Never drop
-`--wait-up-to`: without it a scheduled run publishes on the scheduler's grid,
-which hides the cadence's jitter. Deal steps never publish anything
-themselves. If your agent host asks before a program reaches a website, the
-first tick raises that question for the witness's site: tell the user to
-choose **"Always allow this site"**, not "allow once", because later ticks
-run on the schedule, when nobody is there to answer, and an allow-once grant
-leaves every later tick pending. Say plainly that the grant covers the
-witness's whole site: for the default witness, witness.agentactioncapsule.org,
-that is agentactioncapsule.org and all its subdomains.
-A tick that could not reach the witness says so: "pending: network consent
-needed, or no network". A tick that reached the witness but got no answer in
-time says "pending: the witness was reached but its answer did not come in
-time" (reason `witness_timeout`): the witness or the network to it is slow,
-and it is tried again on a later run; never ask the user for a network grant
-for it. A
-tick refused with HTTP 403 says "pending: the
-request was refused (HTTP 403), by the witness or by a network gate on this
-host": on an agent host that asks before network access, that too is most
-likely a missing standing grant, and the tick names the site. It is tried
-again on a later capsulectl run, after a wait that grows up to an hour.
-
-Tell the user, in one message, exactly what this does: their deal steps are
-sealed on this device; about every 5 minutes, whether or not anything happened, one
-checkpoint of hashes goes to the witness; the witness never sees content, how
-many deals there are, or when they happen. A remote checker (minimal deal
-fields, never message text) stays off unless they turn it on. Ask once, up
-front, before turning the remote checker on, or if they would rather have no
-witness.
+Three setup steps are the user's, never yours: installing a plugin, moving a
+store to a new version, and setting or changing the materiality predicate
+(which of your own picks pause a check). When a command says a plugin is not
+installed, that the store must be moved, or that the predicate changed since
+it was pinned, stop and show the user its message as it is; never run the
+command it names yourself. capsule-engine is its own program: if
+`capsule-engine` is not installed, stop at the admission step and tell the
+user.
 
 ## Command reference
 
-All commands take `--profile deal` and print one JSON object (`deal list`
+
+All deal commands take `--profile deal` and print one JSON object (`deal list`
 without `--json` prints lines). `--help` on each gives every flag.
 
 | Command | What it does |
 |---|---|
-| `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral] [--window day\|week\|month\|quarter\|year\|none]` | Creates the profile: its store, signing and checkpoint seeds (mode 0600) and its cadence log. Prints `public_key`, the key the other side names in an offer's `to`, and the store's `window` (its period, or `none`) with a `notice`. `--window` (default `none`) splits the store's journal into calendar windows in UTC; each deal's book stays whole, placed in the window its agreement is sealed in. The window, or its absence, is fixed when the store is created. |
-| `deal window list` / `deal window roll` / `deal window chain --from LABEL --to LABEL --out FILE` | On a store created with `--window`: lists the windows and the deals placed in each; closes ended windows; writes the chain a requester's report over windows is checked against, with each placed deal's proof. |
-| `deal window respond --request FILE --requester ID --output FILE [--pack FILE]...` | On a store created with `--window`: answers a Terms Pack request from the window or placed deal book its pin names, and records the answer in the current window. Each `--pack` is a pack file (capsulectl-book's format) this answer may serve; without `--requester`, the requester you authenticated, a Terms Pack is not answered. |
 | `deal offer --input FILE --out FILE [--counter-to OFFER]` | Seals your offer and writes the file to send. Prints `deal_id` and `offer` (its digest). An offer with `"to": null` is to a party that keeps no signed records: nothing to send. |
 | `deal offer cancel OFFER --out FILE` / `deal offer decline OFFER --out FILE` | Withdraws your offer, or declines one sent to you, before the deal starts; writes the file to send. |
 | `deal receive FILE` | Keeps a file the other side sent (an offer, a decline or cancellation, an agreement, a statement, a payment leg, a dispute, a stamp proof, a ruling, or the other side's copy) and says whether it counts yet. A ruling is entered in the user's book: `--out FILE` writes the statement to send, and the output gives `stamped_at` and, when it applies, `"independence": "not independent (shared operator)"` (`--binding`, `--revocation` add the user's own). Otherwise it seals nothing. |
@@ -873,30 +858,8 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal perform --deal ID --act ACT --check CHECK_ID --observed HOW --out FILE` | An act other than a payment (a delivery), on a passing commit check. |
 | `deal statement --deal ID --statement ROW=VALUE --out FILE` | How a row went: `met`, `not_met` or `cannot_tell`. |
 | `deal dispute --deal ID --row ROW --out FILE [--forum F] [--withdraw]` | Disputes a row before the agreement's referee, or takes it back. `--challenge RULING --grounds FILE` challenges a ruling the user holds; only the grounds' SHA-256 is sealed. |
-| `deal tick` | The checkpoint cadence's poll. Prints `state` (`ticked` or `not_due`) and `due`. Schedule `cll checkpoint cadence --wait-up-to 5m` every 5 minutes (Setup). |
-| `deal settlement --deal ID` | Each payment row's check over both sides' legs you hold, as your records read it now. |
 | `deal report --deal ID [--bundle FILE] [--out FILE] [--share counterparty --to NAME]` | Each row's status, read at your last checkpoint. `--bundle` writes an Evidence Bundle; `--share counterparty` makes it the copy for the other side, put on record first; `--out` seals the report. |
 | `deal list [--json] [--since D] [--until D]` | Every deal in the store with its state; read-only. |
-| `deal audit-host --executions FILE` | The daily check of host actions (below). |
-| `deal set-version x-deal-v1 --migrate` | Moves a store made before x-deal-v1 was the default to the new layout, once, keeping a backup. The user's step: never run it yourself. |
-
-## Daily check of host actions
-
-Once a day (a scheduled task on the host is enough), run:
-
-```sh
-capsulectl --profile deal deal audit-host --executions executions.jsonl
-```
-
-`executions.jsonl` is the host's own record of the tool calls that ran in
-the period, those of the agent and of every sub-task it started, written in
-the format in `AUDIT-HOST.md`. Read the execution records, not the
-conversation: the payment is usually a sub-task's action, not one you can see
-in the chat. The pass lists each consequential action with no deal record
-(`unrecorded`), and prints on its face what it cannot see. It exits 3 when
-anything is unrecorded. Show the user the `summary` and the `unrecorded` list
-as they are. It can list what is missing from the records it read; it cannot
-prove that nothing else happened.
 
 ## Try it: the demo (2 minutes, no real money)
 
@@ -924,7 +887,7 @@ a real deal seals the engine's output for its own counterparty and amount.
   advice to the host. It holds an action only where the host runs `deal check`
   from a pre-action hook. Without one, the backstop is detection: a skipped
   check shows in the trail, and an action with no deal at all shows in
-  `deal audit-host`.
+  the daily check of host actions.
 - It checks the agreement and the payment legs both sides recorded, not the
   rail: it cannot see the payment rail unless you record it.
 - No act carries the person's own signature yet (agent-action-capsule#627):

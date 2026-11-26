@@ -227,10 +227,11 @@ jobs:
           for r in $RESULTS; do [[ "$r" == success || "$r" == skipped ]]; done
 
   skill:
-    # The capsulectl-book skill (capsulectl/skills/capsulectl-book): its text
-    # matches the plugin's verbs, and its demo runs them against capsulectl
-    # (at the version go.mod pins) plus capsulectl-book built from this checkout.
-    name: capsulectl-book skill
+    # The deal skill's book commands (capsulectl/skills/deal): the book
+    # commands its tables name are the plugin's verbs, and its book demo runs
+    # them against capsulectl (at the version go.mod pins) plus capsulectl-book
+    # built from this checkout.
+    name: deal skill book verbs
     needs: [plan]
     if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
@@ -242,9 +243,9 @@ jobs:
           go-version-file: capsulectl/go.mod
           cache-dependency-path: capsulectl/go.sum
       - name: The skill text matches the plugin
-        run: skills/capsulectl-book/scripts/check-skill.sh
-      - name: The skill's scripted demo
-        run: skills/capsulectl-book/scripts/run-scripted-demo.sh
+        run: skills/deal/scripts/check-book-verbs.sh
+      - name: The skill's book demo
+        run: skills/deal/scripts/run-book-demo.sh
 
   interop-at-resolved-versions:
     # The Go <-> Python round trip at the versions this module resolves,

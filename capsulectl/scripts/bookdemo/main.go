@@ -1,4 +1,4 @@
-// Command bookdemo is a fixture helper for run-scripted-demo.sh, never part
+// Command bookdemo is a fixture helper for skills/deal/scripts/run-book-demo.sh, never part
 // of capsulectl. `close` refuses a period that has not ended, so a demo that
 // runs in one sitting has nothing to close unless the book already holds
 // records from an earlier day. `seed` writes such records, at a commit time

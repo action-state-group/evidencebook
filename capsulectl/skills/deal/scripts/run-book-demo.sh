@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Exercises every verb in SKILL.md against two throwaway jsonl book profiles
+# Exercises every book verb in references/book.md against two throwaway jsonl book profiles
 # in a temp directory, running `capsulectl` (the core) with `capsulectl-book`
 # (the plugin) built from this checkout:
 #

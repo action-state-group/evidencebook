@@ -44,8 +44,8 @@ Each release has, for linux/amd64, linux/arm64 and darwin/arm64:
 - `standard-history-$V.tar.gz`, the History card's files, which `book card`
   pages read;
 - `deal-view-$V.tar.gz`, the deal view's files;
-- `deal-skill-$V.tar.gz`, the `skills/deal` tree, which is the deal skill an
-  agent's host reads. The commands below do not need it, and
+- `deal-skill-$V.tar.gz`, the `skills/deal` tree, which is the one agent
+  skill for both plugins' commands that an agent's host reads. The commands below do not need it, and
   [actionstate.ai/install](https://actionstate.ai/install) places it for an agent;
 - one `SHA256SUMS` over every file;
 - the plugins' attestation bundle, published under two names,
@@ -117,15 +117,18 @@ its `subject_ref` or a `contract_ref` in its statement, whatever the record's ty
 
 ## Agent skill
 
-[skills/capsulectl-book](skills/capsulectl-book/SKILL.md) is the agent skill for
-the verbs that ask for, answer, close, reconcile and report on evidence
-(`request`, `respond`, `close`, `reconcile`, `result build`, `report build`).
+[skills/deal](skills/deal/SKILL.md) is the one agent skill for both plugins.
+It teaches five verbs, check, record, ask, verify and show, in one table that
+maps each to the existing `deal` or `book` command; the book commands (`request`,
+`respond`, `reconcile`, `result build`, `report derive`, `report build`) are in
+[references/book.md](skills/deal/references/book.md) in full, with `close`,
+`result derived-inputs` and the window commands as expert commands there.
 `holder-page` writes the holder's own sharing pages, and `card register` and `card check` register a History card on a service the holder names and check `card_registered`; neither is in the skill yet.
-It extends capsule-cli's `capsulectl` skill, which keeps the core verbs. Its
-`AGENTS.md` is the same text for Codex. It is written by hand: capsule-cli's
-`skillgen` has `capsulectl`'s own sections built in, so `scripts/check-skill.sh`
-keeps this skill's verbs to the plugin's, and `scripts/run-scripted-demo.sh`
-runs them against `capsulectl` and a `capsulectl-book` built here; CI runs both.
+It extends capsule-cli's `capsulectl` skill, which keeps the core verbs. It is
+written by hand: capsule-cli's `skillgen` has `capsulectl`'s own sections built
+in, so `skills/deal/scripts/check-book-verbs.sh` keeps the book commands it
+names to the plugin's, and `skills/deal/scripts/run-book-demo.sh` runs them
+against `capsulectl` and a `capsulectl-book` built here; CI runs both.
 
 ## Build and test
 
