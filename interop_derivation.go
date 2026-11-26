@@ -62,6 +62,11 @@ type derivationEntry struct {
 	// grants is Recipient and Recipients as one cloned, sorted set; empty
 	// when the holder named no one.
 	grants []string
+	// subjectForm is the form of a subject bundle definition
+	// (SubjectBundleDefinition), "" for any other. Book.SubjectBundle
+	// builds it; Respond does not serve it (derivation_unsupported), since
+	// an evidence request answer carries an anchor a projection must not.
+	subjectForm string
 }
 
 // grantSet returns the definition's recipients as one sorted set, or
@@ -133,8 +138,15 @@ func (b *Book) RegisterDerivation(def DerivationDefinition) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%w: derivation definition: %v", ErrInvalid, err)
 	}
-	if _, ok := decoded.(map[string]any); !ok {
+	document, ok := decoded.(map[string]any)
+	if !ok {
 		return "", fmt.Errorf("%w: a derivation definition is a JSON object", ErrInvalid)
+	}
+	subjectForm := subjectFormOf(document)
+	if subjectForm != "" {
+		if err := checkSubjectDefinition(subjectForm, def); err != nil {
+			return "", err
+		}
 	}
 	canonicalDoc, err := evidencerequest.EncodeJCS(decoded)
 	if err != nil {
@@ -168,7 +180,7 @@ func (b *Book) RegisterDerivation(def DerivationDefinition) (string, error) {
 		return "", fmt.Errorf("%w: derivation %s is registered with a different recipient, forms, fields or proofs setting", ErrInvalid, id)
 	}
 	def.Forms, def.Fields, def.Recipients = slices.Clone(def.Forms), slices.Clone(def.Fields), slices.Clone(def.Recipients)
-	b.derivations[id] = derivationEntry{id: id, def: def, grants: grants}
+	b.derivations[id] = derivationEntry{id: id, def: def, grants: grants, subjectForm: subjectForm}
 	return id, nil
 }
 

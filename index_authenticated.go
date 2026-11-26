@@ -97,7 +97,21 @@ type SortedMerkleIndex struct {
 	name   string
 	keyOf  func(Record) (string, bool)
 	leaves []indexLeaf
+	// reset, when set, clears state keyOf keeps (NewSubjectIDIndex).
+	reset func()
+	// lazy keeps the index's root out of a checkpoint until it holds a
+	// leaf (lazyIndex).
+	lazy bool
 }
+
+// lazyIndex is an index whose root a checkpoint commits only once the
+// index holds a leaf, so adding it to the defaults changes nothing a book
+// without such records writes.
+type lazyIndex interface {
+	commitsWhenEmpty() bool
+}
+
+func (m *SortedMerkleIndex) commitsWhenEmpty() bool { return !m.lazy }
 
 // NewRecordIDIndex indexes every record under its own record id, so the book
 // can prove that a record id is, or is not, committed.
@@ -137,6 +151,9 @@ func (m *SortedMerkleIndex) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.leaves = nil
+	if m.reset != nil {
+		m.reset()
+	}
 }
 
 func (m *SortedMerkleIndex) hashes() [][]byte {
@@ -352,6 +369,13 @@ type KeyRangeAnswer struct {
 func (b *Book) ProveKeyRange(ctx context.Context, index, lo, hi string) (KeyRangeAnswer, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.proveKeyRangeLocked(ctx, index, lo, hi)
+}
+
+// proveKeyRangeLocked is ProveKeyRange under the book's lock. An index
+// whose empty root a checkpoint leaves out (lazyIndex) has it committed
+// here, since the proof is against a committed root.
+func (b *Book) proveKeyRangeLocked(ctx context.Context, index, lo, hi string) (KeyRangeAnswer, error) {
 	var target AuthenticatedIndex
 	for _, candidate := range b.index {
 		if candidate.Name() == index {
@@ -361,7 +385,9 @@ func (b *Book) ProveKeyRange(ctx context.Context, index, lo, hi string) (KeyRang
 	if target == nil {
 		return KeyRangeAnswer{}, fmt.Errorf("%w: no authenticated index %q", ErrNotFound, index)
 	}
+	b.commitEmptyRoot = index
 	anchor, err := b.checkpointLocked(ctx)
+	b.commitEmptyRoot = ""
 	if err != nil {
 		return KeyRangeAnswer{}, err
 	}

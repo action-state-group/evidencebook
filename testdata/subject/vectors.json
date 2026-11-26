@@ -1,0 +1,63 @@
+{
+  "description": "Subject bundles (subject_bundle/0, the subject convention v0, evidencebook#116 design note section 4) and what a verifier makes of each, written by subject_vectors_test.go (EB_WRITE_SUBJECT_VECTORS=1) with VerifySubjectBundle. A valid full form names its level: holder_commitment (the subject_id index's key range proof) or log_prefix (every record from seq 1 to the anchor disclosed). A projection is the holder's assertion. An invalid vector must be refused.",
+  "vectors": [
+    {
+      "file": "full-field.json",
+      "case": "(i) root, two members, close: holder_commitment",
+      "valid": true,
+      "form": "full",
+      "level": "holder_commitment",
+      "subject_id": "exchange-1",
+      "member_count": 2,
+      "closed": true
+    },
+    {
+      "file": "full-field-omits-member.json",
+      "case": "(i) the same with M2 left out of the members: refused, the close counts 2",
+      "valid": false
+    },
+    {
+      "file": "full-field-log-prefix.json",
+      "case": "(i) with the log prefix disclosed: log_prefix",
+      "valid": true,
+      "form": "full",
+      "level": "log_prefix",
+      "subject_id": "exchange-1",
+      "member_count": 2,
+      "closed": true
+    },
+    {
+      "file": "dishonest-first-level.json",
+      "case": "(ii) M2 left out of the index: passes the first level, as the index's limit allows",
+      "valid": true,
+      "form": "full",
+      "level": "holder_commitment",
+      "subject_id": "exchange-1",
+      "member_count": 1
+    },
+    {
+      "file": "dishonest-log-prefix.json",
+      "case": "(ii) the same with the log prefix disclosed: refused, the prefix shows M2",
+      "valid": false
+    },
+    {
+      "file": "projection.json",
+      "case": "(vi) a projection: two visible members, the protected one absent, holder_assertion",
+      "valid": true,
+      "form": "projection",
+      "level": "holder_assertion",
+      "subject_id": "exchange-1",
+      "member_count": 2
+    },
+    {
+      "file": "full-log.json",
+      "case": "a per-subject book: log_prefix",
+      "valid": true,
+      "form": "full",
+      "level": "log_prefix",
+      "subject_id": "deal-1",
+      "member_count": 2,
+      "closed": true
+    }
+  ]
+}

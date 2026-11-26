@@ -453,7 +453,7 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 				return []SubjectKind{SubjectFullHistory}, g.standardHistory
 			}
 			entry, ok := g.derivations[name]
-			return entry.def.Forms, ok
+			return entry.def.Forms, ok && entry.subjectForm == ""
 		},
 		// Authorization decides whether, never what (ER §3.7, §5). It is
 		// decided before the subject is resolved, from the records the
@@ -712,6 +712,9 @@ type bookView struct {
 	views       []evidencerequest.AnchorView
 	leaves      map[string]uint64
 	commitments []retentionCommitment
+	// subjectRoots are the subject ids of the snapshot's subject_root
+	// records, by record id (correlationOf).
+	subjectRoots map[string]string
 }
 
 func (b *Book) view(ctx context.Context, log []Record, conduct []string) (*bookView, error) {
@@ -733,6 +736,14 @@ func (b *Book) view(ctx context.Context, log []Record, conduct []string) (*bookV
 			// A statement that cannot be read fails closed: not served.
 			if pack, err := conductPackCited(record.RecordID, record.Header, conduct); pack != "" || err != nil {
 				v.private[uint64(i)] = true
+			}
+		}
+		if record.Header.RecordType == RecordTypeSubjectRoot {
+			if statement, err := readSubjectRoot(record.Header.Statement); err == nil {
+				if v.subjectRoots == nil {
+					v.subjectRoots = map[string]string{}
+				}
+				v.subjectRoots[record.RecordID] = statement.SubjectID
 			}
 		}
 		if record.Header.RecordType == RecordTypeRetentionCommitment {
@@ -801,10 +812,24 @@ func (v *bookView) matching(match func(Header) bool) []uint64 {
 // its own use, for example one value per step of a deal, and still answer
 // for the deal as a whole (Personal-Agent History Profile v0 §1).
 func (v *bookView) Correlated(id string) []uint64 {
-	return v.matching(func(h Header) bool { return correlationOf(h) == id })
+	return v.matching(func(h Header) bool { return v.correlationOf(h) == id })
 }
 
-// correlationOf is the correlation identifier a record is held under.
+// correlationOf is the correlation identifier a record is held under: the
+// subject_id of a subject_root it cites (the subject convention v0,
+// evidencebook#116), else as the package's correlationOf reads it, so a
+// book with no subject_root reads as before.
+func (v *bookView) correlationOf(h Header) string {
+	for _, target := range h.LinksTo(Cites) {
+		if id, ok := v.subjectRoots[target]; ok {
+			return id
+		}
+	}
+	return correlationOf(h)
+}
+
+// correlationOf is the correlation identifier a record that cites no
+// subject_root is held under.
 func correlationOf(h Header) string {
 	if h.Correlation != nil && h.Correlation.ExchangeID != "" {
 		return h.Correlation.ExchangeID
