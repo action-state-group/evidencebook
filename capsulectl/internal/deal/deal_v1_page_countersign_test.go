@@ -144,7 +144,7 @@ func TestPresentationV1ReceiptCountersigned(t *testing.T) {
 	}
 	state, text := stamp("receipt.html")
 	assert.Equal(t, "filled", state)
-	assert.Regexp(t, `^Countersigned by Example Countersigner at .+, through record 1 of 1\.$`, text)
+	assert.Regexp(t, `^Countersigned by Example Countersigner at .+, through record 1 of 1\. Its directory entry does not list it as independent of the parties\.$`, text)
 	assert.NotContains(t, text, "as capsulectl reports")
 
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
@@ -152,5 +152,5 @@ func TestPresentationV1ReceiptCountersigned(t *testing.T) {
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	state, text = stamp("later.html")
 	assert.Equal(t, "filled", state)
-	assert.Regexp(t, `^Countersigned by Example Countersigner at .+, through record 1 of 2\.$`, text)
+	assert.Regexp(t, `^Countersigned by Example Countersigner at .+, through record 1 of 2\. Its directory entry does not list it as independent of the parties\.$`, text)
 }
