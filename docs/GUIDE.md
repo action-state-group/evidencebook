@@ -60,8 +60,8 @@ After deal.open, the rest of the Integrated Design's Deal API is package
 
 | Design call | Go | What it does |
 |---|---|---|
-| deal.check | `Store.Check` | seals the caller's check and verdict; it evaluates nothing, and the verdict's rules members are the caller's claim (the library runs and attests no rules). The person's approval is sealed with `Store.SealJournal` |
-| deal.perform | `Store.Perform` | seals an act resting on a passing check whose verdict the person approved; the first act waits on the other side's stamp proof |
+| deal.check | `Store.Check` | seals the caller's check and verdict; it evaluates nothing, and the verdict's rules members are the caller's claim (the library runs and attests no rules). The approval is sealed with `Store.SealJournal` |
+| deal.perform | `Store.Perform` | seals an act resting on a passing check whose verdict has its approval (the person's own, or under their standing intent); the first act waits on the other side's stamp proof |
 | deal.settle | `Store.SendPayment`, then `Store.Settle` | a payment the holder makes: opened before the rail, sealed as the payer leg when the rail answers; `Store.Settle` alone seals what the holder received |
 | deal.statement | `Store.Statement` | says how rows went |
 | deal.dispute | `Store.Dispute`, `Store.WithdrawDispute`, `Store.Challenge` | disputes a row before the agreement's adjudicator, takes the dispute back, or challenges a ruling |

@@ -9,4 +9,4 @@
 
 ### Changed
 
-- `xdealv1.CheckActs`: an act under a standing intent whose verdict carries no rules block now needs the person's signature over its approval digest (`ActAuthorization.RulesNotRecorded`; Sherlock2's ruling ops bb59237c). capsulectl's verdicts always carry a rules block, so none of them is affected.
+- `xdealv1.CheckActs`: an act under a standing intent whose verdict carries no rules block now needs the person's signature over its approval digest (`ActAuthorization.RulesNotRecorded`; Sherlock2's ruling u234, ops evidence-network/inbox.md:669, 2026-11-25). capsulectl's verdicts always carry a rules block, so none of them is affected.

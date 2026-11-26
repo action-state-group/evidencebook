@@ -13,7 +13,7 @@ import (
 // CheckIn is a check and its verdict as the caller evaluated them: the
 // check's body (its Nonce is the store's) and the verdict's (its Nonce is
 // the store's, its checks ref the store's too). The verdict must carry its
-// Rules: which rules evaluated the act, or that none were configured. The
+// Rules block, which says which rules evaluated the act. The
 // caller's Producer, when set, goes in both records' blocks. LocalValues are
 // as for JournalRecord.
 type CheckIn struct {
@@ -35,13 +35,13 @@ type Checked struct {
 // participant's own rules and the deal's terms, and the verdict is the
 // caller's own word. Its rules members (which checker, which definition)
 // are the caller's claim; this package runs and attests no rules (Sherlock2,
-// ops 44310b51). A verdict with no rules block is refused: under a standing
+// u233, ops evidence-network/inbox.md:666, 2026-11-25). A verdict with no rules block is refused: under a standing
 // intent nothing would record whether the person's caps were evaluated
-// (ops bb59237c; xdealv1.CheckActs escalates such an act). The person's
+// (u234, ops evidence-network/inbox.md:669; xdealv1.CheckActs escalates such an act). The person's
 // answer to the verdict is an approval record, sealed with SealJournal.
 func (s *Store) Check(ctx context.Context, dealID string, in CheckIn) (Checked, error) {
 	if in.Verdict.Rules == nil {
-		return Checked{}, fieldError("verdict", " carries no rules: say which rules evaluated the act, or that none were configured (status not_configured)")
+		return Checked{}, fieldError("verdict", " carries no rules block: say which rules evaluated the act")
 	}
 	check, err := bodyMap(in.Check)
 	if err != nil {

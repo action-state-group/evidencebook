@@ -68,7 +68,7 @@ func (f *authFlow) check(action string) Ref {
 func (f *authFlow) verdict(check Ref, result string) Ref {
 	// Every verdict records its rules, as capsulectl's deal check always
 	// does (not_configured when no checker is pinned): a standing-intent
-	// act on a verdict with none escalates (ops bb59237c), which
+	// act on a verdict with none escalates (u234, ops evidence-network/inbox.md:669), which
 	// TestStandingIntentVerdictWithNoRulesEscalates covers.
 	vb := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: result, Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(check),
 		Rules: &dealprofile.VerdictBodyRules{Status: "not_configured"}}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 0"))}
@@ -516,7 +516,7 @@ func TestCheckAuthorizationsRefusesASharedNonce(t *testing.T) {
 }
 
 // A standing-intent act whose verdict carries no rules block escalates to
-// the person (Sherlock2's ruling ops bb59237c, after u503): it needs the
+// the person (Sherlock2's ruling u234, ops evidence-network/inbox.md:669, 2026-11-25, after u503): it needs the
 // person's signature over its approval digest. With the rules block it
 // needs none, as before.
 func TestStandingIntentVerdictWithNoRulesEscalates(t *testing.T) {

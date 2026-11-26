@@ -57,7 +57,7 @@ type ActAuthorization struct {
 	// caps act only through the verdict, so such an act escalates to the
 	// person: it needs the person's signature over ApprovalDigest, as a
 	// person's approval does, and is never allowed on the standing intent
-	// alone (Sherlock2's ruling ops bb59237c, after u503; evidencebook#899).
+	// alone (Sherlock2's ruling u234, ops evidence-network/inbox.md:669, 2026-11-25, after u503; evidencebook#899).
 	RulesNotRecorded bool
 	// LimitApprovals are the record digests of the confirm_limits approvals
 	// whose confirmed proposals put in force the allowed a standing-intent
