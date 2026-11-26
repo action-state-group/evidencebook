@@ -1,8 +1,9 @@
 # evidencebook#117: the disclosure pack profile v0
 
-Status: draft for review. Revised after the plan review's round 0 (Codex; Kimi was unavailable,
-every call ending "Prompt turn ended with reason: failed"). PR review and Sherlock2's PM review are
-pending. Builds nothing. Written 2026-11-26 CST against evidencebook main `df54098c`, Mesh-LLM/capsules-plugin
+Status: converged with Codex (plan review and three PR rounds; Kimi was unavailable, every call
+ending "Prompt turn ended with reason: failed"). Sherlock2's PM review (2026-11-26, evidencebook#1005)
+is folded in, with its answers in §10, as is the Sherlock2 twin's point on u631 and u632. Builds
+nothing. Written 2026-11-26 CST against evidencebook main `df54098c`, Mesh-LLM/capsules-plugin
 main `251f6eb`, capsule-cli main `052a8a6a`, evidence-network/loop main `b96e67c2` and
 agent-action-capsule main at the same date.
 
@@ -127,11 +128,11 @@ document and does not change the envelope.
               "other_customers", "payload_content", "reasoning"],
   "tiers": {
     "stranger":       {"answers": ["checkpoints", "checkpoint_range", "history_card/1", "history_card/2"],
-                       "budget": {"asks": 2, "per": "P1D", "shared": true, "placeholder": true}},
-    "identified":     {"answers": ["standard_history/1"],
-                       "budget": {"asks": 10, "per": "P1D", "placeholder": true}},
+                       "budget": {"asks": 3, "per": "P7D", "shared": true, "placeholder": true}},
+    "identified":     {"answers": ["standard_history/5"],
+                       "budget": {"asks": null, "per": "P7D", "placeholder": true}},
     "counterparty":   {"answers": ["record", "exchange", "correlation", "deal_half", "adjudication"],
-                       "budget": {"asks": null, "per": "P1D", "placeholder": true}},
+                       "budget": {"asks": null, "per": "P7D", "placeholder": true}},
     "under_contract": {"answers": []}
   },
   "judged": [],
@@ -139,7 +140,7 @@ document and does not change the envelope.
 }
 ```
 
-The values above are illustrative; §4 gives each tier's ceiling and §5 the budget rules.
+The values above are a person's defaults (§5); §4 gives each tier's ceiling and §5 the budget rules.
 
 **Holder settings that are not disclosure.** Muse's `name`, `holder`, `round`, `window`, `staple`,
 `more_than_standard`, `receipt` and `asked_log_retention_days` (`disclosure_policy.go:86-112`) go in
@@ -191,7 +192,7 @@ holder's document, and no tier, setting or request adds a row:
 |---|---|---|
 | `amounts`, `exact_timestamps`, `payload_content`, `free_text` of one deal | the counterparty of that deal, for that deal only | Reference v3 §3A.6 (L-content); u590 counterparty level |
 | `counterparty_identities`: the counterparty's own identity, never another counterparty's | that counterparty | `NeverList` `counterparties_except_to_themselves`; u590 (the counterparty copy as is) |
-| `amounts`, `exact_timestamps`, `payload_content` and `free_text` of that deal's records, plus the referee material | the adjudicator that deal names | u590 adjudicator level |
+| `amounts`, `exact_timestamps`, `payload_content` and `free_text` of that deal's records, `counterparty_identities` of that deal's two parties only, plus the referee material | the adjudicator that deal names | u590 adjudicator level |
 | `amounts` and `exact_timestamps` of the holder's own payment legs: side, amount sent or received with the receive fee, routing fee, payment reference, status, observed time, the terms leg paid; never a preimage, never the counterparty's legs | a countersigner the holder engages, after the countersign sign-up step has said so plainly before the holder agreed, and while the countersigner's directory row says the same | u640 (conditions: evidencebook#1001 acceptance 2) |
 | `payload_content` of a `declared_count` record | a countersigner, only when the holder opts in for that countersign and that record kind; never by default and never as a standing setting; the countersigner refuses a payload whose digest does not match the sealed record | u593 |
 | any class, for the holder's own copy | the holder | `NeverList` `forum_exception_holders_own_copy_only` |
@@ -213,9 +214,23 @@ authentication (`interop_respond.go:179-181`, `:680-690`), never from what a req
 | Tier | Ceiling: the most a pack member may list | Default (node and person) |
 |---|---|---|
 | `stranger` | `checkpoints`, `checkpoint_range`, `history_card/1`, `history_card/2` | all four (plugin `STRANGER_SAFE`, `commitment.rs:126-131`); the Goose example lists `history_card/2` only (`commitment.py:53`) |
-| `identified` | the stranger ceiling; `personal_history_basic/1`; `personal_history_outcome/1` with a declared purpose; `standard_history/1`; Mesh's Service History derivations and `exchange_corroboration/1` (half digests, never record bodies) | node: stranger's plus `exchange_corroboration/1` (plugin defaults: `share_standard_history` off, `share_exchange_corroboration` on, `share_policy.rs:44-52`, `:150-175`); person: stranger's plus `standard_history/1` |
+| `identified` | the stranger ceiling; `standard_history/5`, the one commerce card (u632 Q2); Mesh's Service History derivations and `exchange_corroboration/1` (half digests, never record bodies) | node: stranger's plus `exchange_corroboration/1` (plugin defaults: `share_standard_history` off, `share_exchange_corroboration` on, `share_policy.rs:44-52`, `:150-175`); person: stranger's plus `standard_history/5` |
 | `counterparty` | the identified ceiling; Mesh's Service History derivations and `exchange_corroboration/1` whatever the identified tier lists, as the plugin answers a counterparty today (`commitment.rs:83-93`), while every other derivation, `standard_history/1` included, follows the holder's list (with `standard_history: off` it is refused to everyone, `interop_respond.go:146-149`); `record`, `exchange`, `correlation` when every record the subject names names the requester (`mayHave`, `interop_respond.go:196-209`); `deal_half`; `adjudication` to its subjects | all of it |
 | `under_contract` | `range`, `full_history`, only when a signed contract's `evidence_obligations` names them | empty: `range` and `full_history` are refused under every setting today (evidencebook#114), and `evidence_obligations` is not specified yet (roadmap 3.5) |
+
+Retired and frozen forms are not in the ceilings. `standard_history/1` retires once no demo asks
+for it (u632 Q2): a responder that serves it today keeps answering it under its `standard_history`
+switch and its cards keep verifying, but a new policy does not list it. The personal-history forms
+(`personal_history_basic/1`, `personal_history_outcome/1`) are frozen (u631), so no tier lists them,
+and the declared-purpose input of §7 has no derivation to apply to until one needs it.
+`history_card/1` stays in the stranger ceiling: u632 Q3 retires it as an asked form, and a responder
+may still answer it.
+
+**Tiers are who may ask; u590's levels are what a holder ships.** A tier is decided per request
+from who asks and, for `under_contract`, the contract the request presents: a request-time choice,
+as u590 says "under contract" is. u590's levels map here as follows: anyone to the stranger tier's
+answers, counterparty to the counterparty tier and its entitlement row, adjudicator to its
+entitlement row (§3), and owner to the holder's own-copy row.
 
 `answers` lists each derivation by its name on the wire, as the commitment's `answers.derivations`
 does: a registered token, or the digest of the derivation's definition document for those named
@@ -250,10 +265,11 @@ and one past the size limit.
 - Past a budget, the responder sends a signed `policy_declined`, under `evidence-interop/0` and
   `/1` alike. `capacity_exceeded` stays the responder's own load, which no policy promises past
   (plugin `peer_commitments.rs:130-135`).
-- The defaults migrate from today: the person's `unsigned_asks_per_week: 3` becomes
-  `stranger: {asks: 3, per: "P7D", shared: true}`, with the exemption above; the node's `0` (no
-  limit) becomes `asks: null`. Reference v3's "strangers two a day, identified ten" are examples,
-  not defaults.
+- The defaults carry today's limits over (Sherlock2, §10 answer 4): the person's
+  `unsigned_asks_per_week: 3` becomes `stranger: {asks: 3, per: "P7D", shared: true}`, with the
+  exemption above; the node's `0` (no limit) becomes `asks: null`; `identified` and `counterparty`
+  are `asks: null`, since nothing limits them today. Reference v3's "strangers two a day,
+  identified ten" stay examples until the stage-1 health report.
 
 ## 6. Judged rows
 
@@ -278,7 +294,7 @@ holds itself, and otherwise the answer stays `NOT_CHECKED`. Its inputs:
 | the policy in force when it asked | what its sealed `evidence_request` retains: the commitment digest, the file digest and the `policy` body, verified at fetch time (plugin `peer_commitments.rs:8-15`, `:97-112`). The body is enough to decide; the signed file bytes need not be kept, and a later fetch that replaces the cached frame changes nothing | `NOT_CHECKED` |
 | that the request was authenticated | the asker's own signature on the request it sealed (ER -03 signed requests) | the stranger tier only |
 | that it is the counterparty of every record the subject names, and that those records exist | a record signed by the responder that names the asker as its counterparty, for each record the subject names: the responder's half the asker holds (`counterparty_half`, roadmap 3.7). The responder's gate reads its own records (`mayHave`, `interop_respond.go:196-209`), so a record the asker sealed alone proves neither | `identified` for that subject, and `NOT_CHECKED` for `no_such_subject` |
-| a declared purpose, where the tier's entry requires one (`personal_history_outcome/1`) | the purpose member of its own request | `MATCH` for a refusal of that derivation |
+| a declared purpose, where the tier's entry requires one (no entry does in v0, §4) | the purpose member of its own request | `MATCH` for a refusal of that derivation |
 | that a contract names the subject | the signed contract's `evidence_obligations` (not specified yet) | `NOT_CHECKED` for `under_contract` |
 | that no judged row applies | the policy's `judged` is empty, or the rows cannot cap this request | `NOT_CHECKED` |
 
@@ -323,8 +339,9 @@ No new field. The commitment already carries `lcap.policy_digest`, `lcap.policy_
 `commitment_publish.go:323-324`). The evidence-request manifest carries no digest
 (`interop_manifest.go:32-37`, IP §11.4.3) and a commitment must not sit in it (ECC §1), so "the
 manifest" in item 20 is read as the commitment, which is the holder's own published document and no
-discovery object. Nothing goes to ARD #110 or ai-catalog (item 20). Open question 3 asks Sherlock2
-to confirm this reading.
+discovery object. Nothing goes to ARD #110 or ai-catalog (item 20). Sherlock2 confirmed this
+reading (§10 answer 3). Roadmap 4.8's other two members, `human_gated` and `answers_within` (D-35,
+still Proposed), are not added by this profile; "no new field" does not close 4.8.
 
 ## 9. Migration from `SharePolicy` and today's members
 
@@ -332,10 +349,10 @@ to confirm this reading.
 |---|---|
 | `history_segments: counterparties` (and `prospective`) | `counterparty` lists `record`, `exchange`, `correlation` |
 | `history_segments: off` | `counterparty` lists none of them |
-| `history_segments: peers` | not expressible: record bodies are above the `identified` ceiling. Open question 2. Loop step 07 checks it today (`steps/07-ask:279-288`) |
+| `history_segments: peers` | narrowed to `counterparties`: record bodies are above the `identified` ceiling (§10 answer 2), and `book doctor` says plainly that the setting was narrowed. Loop step 07 checks `peers` today (`steps/07-ask:279-288`) and moves in build item 5 |
 | `record_at_completion: counterparty` / `off`; Muse `receipt` | the counterparty push is the holder's act, not an answer; it stays a holder setting, and `counterparty` lists `deal_half` when on |
 | `adjudications: deliver_to_subjects` / `off` | `counterparty` lists `adjudication` or not |
-| evidencebook `standard_history: on` / `off` | `identified` lists `standard_history/1` or not |
+| evidencebook `standard_history: on` / `off` | `identified` lists the commerce card (`standard_history/5`) or not; `standard_history/1` is answered under the switch until it retires (§4) |
 | plugin `share_standard_history` | `identified` lists the Service History derivations (by definition digest) or not; a different switch from evidencebook's, of the same name |
 | plugin `share_exchange_corroboration` | `identified` lists `exchange_corroboration/1` or not; `counterparty` gets it either way, and it never releases `record` or `exchange` bodies |
 | plugin `advertise_evidence_requests` | not disclosure: stays a plugin setting |
@@ -349,27 +366,23 @@ to confirm this reading.
 `SharePolicy` stays as an input for one release: `DisclosurePolicy` is built from it by this table,
 so a caller that passes one gets the same answers.
 
-## 10. Open what-questions
+## 10. What-questions, answered
 
-For Sherlock2 (the twin first, then Sherlock2), and Steven where a door is named:
+Asked of the Sherlock2 twin first, then of Sherlock2 (evidencebook#1005, PM review at `f5b57223`,
+https://github.com/action-state-group/evidencebook/pull/1005#issuecomment-7202292872; Buzz
+buzz://message?channel=ef9c2983-4bef-4df0-96a9-a34748edfe2b&id=9a81d719709cbacca6cb1be15febb97d3d154db97d19168c5b0da1e9ec826bd8&thread=095a449da655820998644c35b891ccb31ff5e7bbbbdd4428d72637ba45f84f0e).
+Sherlock2's answers decide; none leaves a decision for Steven.
 
-1. **The entitlement table (§3).** Is a countersigner the holder engages, under u640 and u593, an
-   entitled party of `amounts` and `exact_timestamps` for the holder's own legs only, rather than a
-   widening of a private class? Door: what is disclosed (Steven's, carried out from u640 if
-   Sherlock2 confirms it adds nothing).
-2. **`history_segments: peers` (§9).** Today it answers any authenticated peer the record bodies a
-   subject names. Under Reference v3's tiers that is above the identified ceiling. Drop it (a node
-   set to `peers` answers counterparties only), or keep it as a fifth tier? Door: changes what is
-   disclosed (Steven's). No shipped default uses it: every default is `counterparties`
+1. **The entitlement table (§3).** An entitlement, not a widening: both countersigner rows add
+   nothing beyond u640 and u593 as ruled.
+2. **`history_segments: peers` (§9).** Drop it: a node set to `peers` answers counterparties only,
+   and `book doctor` says the setting was narrowed. Item 19 covers it as a narrowing; a fifth tier
+   would be a widening, for Steven, and is not recommended. No shipped default uses `peers`
    (`interop_respond.go:153-155`; plugin `share_policy.rs:121`).
-3. **Item 20's "manifest" (§8).** Read as the commitment, since the ER manifest carries no digest
-   (IP §11.4.3). Confirm.
-4. **Budget defaults (§5).** Carry today's limits over (strangers 3 a week for a person, none for a
-   node) or use Reference v3's examples (strangers 2 a day, identified 10)? All placeholders either
-   way.
-5. **u590's "under contract is a request-time choice, not a level".** That ruling is about scoped
-   bundle levels; this profile keeps `under_contract` as a requester tier with an empty default.
-   Confirm the two do not conflict.
+3. **Item 20's "manifest" (§8).** The commitment; the ER manifest stays digest-free.
+4. **Budget defaults (§5).** Today's limits, carried over.
+5. **u590 and `under_contract` (§4).** No conflict: u590's levels are what a holder ships, tiers are
+   who may ask, decided per request.
 
 ## 11. Build PRs, in order
 
