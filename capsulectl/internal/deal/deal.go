@@ -2918,7 +2918,7 @@ func dealReportCommand() *cobra.Command {
 			return cli.InputError("--out writes an x-deal-v1 deal's sealed report; an x-deal-v0 deal's report goes to --html or --bundle")
 		}
 		if c.Flags().Changed("witness-directory") {
-			return cli.InputError("--witness-directory checks an x-deal-v1 page's witness time; an x-deal-v0 page reads its witness from the bundle")
+			return cli.InputError("--witness-directory checks an x-deal-v1 page's witness time; an x-deal-v0 page shows no witness time yet")
 		}
 		if c.Flags().Changed("withheld") {
 			return cli.InputError("--withheld writes the bundle a countersigner is shown for an x-deal-v1 deal; an x-deal-v0 deal has no countersign path (countersign is served for x-deal-v1 deals only)")

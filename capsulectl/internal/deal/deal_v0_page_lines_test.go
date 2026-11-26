@@ -3,13 +3,17 @@
 package deal
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
+	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -162,4 +166,121 @@ func TestV0PageOfAChainedCopyDrawsNoWitnessTimeOfItsOwn(t *testing.T) {
 	got := readV0Page(t, chrome, page)
 	require.Empty(t, got.Errors)
 	assert.Equal(t, []string{"No witness result was reported to this page."}, got.Rungs["witness"])
+}
+
+// editBootstrapReport rewrites the verify report a page's bootstrap carries
+// and the bootstrap's pin in the page's CSP, as a page edited by hand would
+// be: the bundle is untouched.
+func editBootstrapReport(t *testing.T, page []byte, edit func(report map[string]any)) []byte {
+	t.Helper()
+	const prefix = "globalThis.capsulectlDealPage = Object.freeze("
+	start := bytes.Index(page, []byte(prefix))
+	require.GreaterOrEqual(t, start, 0)
+	end := start + bytes.Index(page[start:], []byte("</script>"))
+	old := string(page[start:end])
+	var boot map[string]any
+	dec := json.NewDecoder(strings.NewReader(old[len(prefix):]))
+	require.NoError(t, dec.Decode(&boot))
+	rest := old[len(prefix)+int(dec.InputOffset()):]
+	edit(boot["verifier_report"].(map[string]any))
+	data, err := json.Marshal(boot)
+	require.NoError(t, err)
+	updated := prefix + string(data) + rest
+	out := bytes.Replace(page, []byte(old), []byte(updated), 1)
+	return bytes.Replace(out, []byte(cspSource(old)), []byte(cspSource(updated)), 1)
+}
+
+// editBundle rewrites the bundle a page carries in its JSON element (data,
+// which the CSP does not pin).
+func editBundle(t *testing.T, page []byte, edit func(b map[string]any)) []byte {
+	t.Helper()
+	html := string(page)
+	b := embeddedBundle(t, html)
+	m := regexp.MustCompile(`(?s)(<script type="application/json"[^>]*>)(.*?)(</script>)`).FindStringSubmatchIndex(html)
+	require.NotNil(t, m)
+	edit(b)
+	data, err := json.Marshal(b)
+	require.NoError(t, err)
+	return []byte(html[:m[4]] + string(data) + html[m[5]:])
+}
+
+// Line 9 (capsule-viewer#383, CV3b): the countersignatures capsulectl
+// resolved reach the page only through the verify report it carries, bound to
+// the copy's countersignatures. The page draws each in capsulectl's voice;
+// a report bound to other countersignatures, or with its entries reordered,
+// is ignored and the page keeps its own line; a bound entry capsulectl found
+// invalid refuses the copy.
+func TestV0PageDrawsCapsulectlsCountersignatures(t *testing.T) {
+	chrome := chromeOrSkip(t)
+	dealFixture(t)
+	dealID := openJetSki(t)
+	_, bundlePath, _, _ := dealReportFiles(t, dealID)
+	digest, err := aacbundle.BundleDigest(readBundleFile(t, bundlePath))
+	require.NoError(t, err)
+	first, signerKey := countersignerEntry(t, digest, []cli.CountersignCheck{{Name: "range membership", Result: "established"}})
+	directory := countersignerDirectoryFile(t, "Example Countersigner", signerKey)
+	dealRun(t, "countersign", "--deal", dealID, "--bundle", bundlePath, "--entry", writeEntry(t, first), "--directory", directory)
+	// A second countersignature by a key the directory does not list.
+	second, _ := countersignerEntry(t, digest, nil)
+	stored := readBundleFile(t, bundlePath)
+	raw, err := json.Marshal(second)
+	require.NoError(t, err)
+	var secondValue any
+	require.NoError(t, json.Unmarshal(raw, &secondValue))
+	stored["countersignatures"] = append(stored["countersignatures"].([]any), secondValue)
+	data, err := json.Marshal(stored)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(bundlePath, data, 0o600))
+
+	_, _, html, _ := dealReportFiles(t, dealID, "--from-bundle", bundlePath, "--directory", directory)
+	page := mustRead(t, html)
+	got := readV0Page(t, chrome, html)
+	require.Empty(t, got.Errors)
+	assert.Equal(t, []string{"resolved", "unresolved_signer"}, got.Countersign, "each countersignature as capsulectl resolved it, in order")
+	assert.Contains(t, strings.Join(got.Rungs["countersign"], " "), "Example Countersigner")
+
+	write := func(p []byte) string {
+		path := filepath.Join(t.TempDir(), "page.html")
+		require.NoError(t, os.WriteFile(path, p, 0o600))
+		return path
+	}
+	// A countersignature dropped from the bundle: the report no longer binds.
+	dropped := readV0Page(t, chrome, write(editBundle(t, page, func(b map[string]any) {
+		b["countersignatures"] = b["countersignatures"].([]any)[:1]
+	})))
+	assert.Equal(t, "capsuleviewer.receipt.unilateral/v0", dropped.Module)
+	assert.Empty(t, dropped.Countersign, "a report bound to other countersignatures is ignored")
+	assert.NotEmpty(t, dropped.Rungs["countersign"], "the page keeps its own line")
+
+	entries := func(r map[string]any) []any {
+		for _, e := range r["extensions"].([]any) {
+			if m := e.(map[string]any); m["kind"] == DealProfile {
+				return m["countersign"].(map[string]any)["entries"].([]any)
+			}
+		}
+		t.Fatal("no x-deal-v0 entry")
+		return nil
+	}
+	reordered := readV0Page(t, chrome, write(editBootstrapReport(t, page, func(r map[string]any) {
+		e := entries(r)
+		e[0], e[1] = e[1], e[0]
+	})))
+	assert.Equal(t, "capsuleviewer.receipt.unilateral/v0", reordered.Module)
+	assert.Empty(t, reordered.Countersign, "entries out of the bundle's order are ignored")
+
+	invalid := readV0Page(t, chrome, write(editBootstrapReport(t, page, func(r map[string]any) {
+		entries(r)[1].(map[string]any)["state"] = "invalid"
+	})))
+	assert.Empty(t, invalid.Module, "a bound invalid entry refuses the copy: no receipt is drawn")
+}
+
+// --witness-directory is an x-deal-v1 page's: on an x-deal-v0 deal it is
+// refused, saying the page shows no witness time yet (u219 reaches x-deal-v0
+// pages in a later change of #869).
+func TestV0ReportRefusesAWitnessDirectory(t *testing.T) {
+	dealFixture(t)
+	id := retailDeal(t)
+	_, err := invoke(t, "", "--profile", "deal", "deal", "report", "--deal", id, "--html", filepath.Join(t.TempDir(), "p.html"), "--witness-directory", "w.json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "an x-deal-v0 page shows no witness time yet")
 }

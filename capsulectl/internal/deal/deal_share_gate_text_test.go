@@ -9,6 +9,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/capsule-viewer/go/receipt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,9 +30,17 @@ func TestTheShareGateReadsTextNotCode(t *testing.T) {
 	require.NoError(t, dealShareGate(page, events, cli.DealAudienceCounterparty), "the page as shared passes again")
 
 	refreshed := bytes.Replace(page, pageruntime.IIFE, append(append([]byte(nil), pageruntime.IIFE...), []byte(`;const sample="Pay $8.00 now";`)...), 1)
-	refreshed = bytes.Replace(refreshed, []byte(DealViewJS), []byte(DealViewJS+`;const fee="$8.00";`), 1)
+	require.NotEqual(t, page, refreshed)
+	// capsule-viewer's receipt modules, which the page carries (#869).
+	for _, kind := range []string{receipt.Unilateral, receipt.Seller} {
+		module, err := receipt.Module(kind)
+		require.NoError(t, err)
+		require.True(t, bytes.Contains(refreshed, module.Code), "the page inlines the %s module", kind)
+		edited := bytes.Replace(refreshed, module.Code, append(append([]byte(nil), module.Code...), []byte(`;const fee="$8.00";`)...), 1)
+		require.NotEqual(t, refreshed, edited, "the %s module's bytes changed", kind)
+		refreshed = edited
+	}
 	refreshed = bytes.Replace(refreshed, []byte("</style>"), []byte(`.price::after{content:"$8.00"}</style>`), 1)
-	require.False(t, bytes.Contains(refreshed, pageruntime.IIFE) && bytes.Contains(refreshed, []byte(DealViewJS+"</script>")), "the vendored bytes no longer match byte for byte")
 	assert.NoError(t, dealShareGate(refreshed, events, cli.DealAudienceCounterparty), "code and style are not read")
 
 	// The bundle is the JSON element's text (capsule-viewer#109).
@@ -67,4 +76,24 @@ func TestTheShareGateReadsAnUnplacedPageWhole(t *testing.T) {
 	json := []byte(`{"line":"<script>window.__BUNDLE__ = null;</script><script>my limit is $8.00</script>"}`)
 	assert.Error(t, dealShareGate(json, events, cli.DealAudienceCounterparty), "JSON is read whole")
 	assert.Error(t, dealShareGate(append([]byte(" \n"), json...), events, cli.DealAudienceCounterparty), "after whitespace too")
+}
+
+// A copy read whole (no bundle script found) leaves out only the vendored
+// code it finds byte for byte: the runtime and capsule-viewer's receipt
+// modules (#869); data beside them is still read.
+func TestTheShareGateLeavesOutTheVendoredModulesOnly(t *testing.T) {
+	limit := int64(800)
+	events := []sealedEvent{{Event: dealEvent{Kind: "open", DealID: "deal-0123456789abcdef", Open: &dealOpen{
+		Intent: dealIntent{MaxTotalMinor: &limit}, Terms: dealTerms{Currency: "USD"}}}}}
+	for _, kind := range []string{receipt.Unilateral, receipt.Seller} {
+		module, err := receipt.Module(kind)
+		require.NoError(t, err)
+		page := append([]byte("<!doctype html><script>"), module.Code...)
+		page = append(page, []byte("</script>")...)
+		stripped := dealWithoutVendored(page)
+		assert.False(t, bytes.Contains(stripped, module.Code), "the %s module is left out", kind)
+		assert.NoError(t, dealShareGate(page, events, cli.DealAudienceCounterparty), "the %s module's code is not read", kind)
+		withData := append(append([]byte(nil), page...), []byte(`<script>window.data = {"note":"my limit is $8.00"};</script>`)...)
+		assert.ErrorContains(t, dealShareGate(withData, events, cli.DealAudienceCounterparty), "your spending limit", "data beside the %s module is read", kind)
+	}
 }
