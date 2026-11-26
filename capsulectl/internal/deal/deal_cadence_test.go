@@ -521,7 +521,9 @@ func TestDealPermanentDeliveryIsNotSaidToBeRetried(t *testing.T) {
 	require.NoError(t, err)
 	conflict := state
 	conflict.Permanent = true
-	conflict.LastError = "witness returned HTTP 400: " + cli.WitnessFailureBody(409)
+	// A 422, not a 409: a continuity 409 is sent once more (capsule-cli#648),
+	// so it is no longer an answer failed for good on its first refusal.
+	conflict.LastError = "witness returned HTTP 400: " + cli.WitnessFailureBody(422)
 	require.NoError(t, target.Log.CommitWitness(t.Context(), state.Attempts, conflict))
 	require.NoError(t, target.Close())
 
@@ -529,7 +531,7 @@ func TestDealPermanentDeliveryIsNotSaidToBeRetried(t *testing.T) {
 	assurance := withBundle["assurance"].(map[string]any)
 	assert.Equal(t, "pending", assurance["witness_state"])
 	assert.NotContains(t, assurance, "witness_reason")
-	assert.Contains(t, assurance["text"], "This checkpoint was sent at a cadence tick. Witness not delivered: the witness answered with an error (HTTP 409); this delivery is not retried.")
+	assert.Contains(t, assurance["text"], "This checkpoint was sent at a cadence tick. Witness not delivered: the witness answered with an error (HTTP 422); this delivery is not retried.")
 	assert.NotContains(t, assurance["text"], "retried at every tick")
 
 	// A refused delivery is said with its reason and the standing grant.
@@ -574,10 +576,12 @@ func TestWitnessPendingReasons(t *testing.T) {
 	reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: "witness returned HTTP 503: " + cli.WitnessFailureBody(429)}, DealDefaultWitness)
 	assert.Equal(t, "witness_error", reason)
 	assert.Equal(t, "pending: the witness answered with an error (HTTP 429); it is tried again on a later capsulectl run, after a wait that grows up to an hour.", text)
-	// A conflict is failed for good, and not said to be retried.
+	// A continuity refusal on its first answer is sent once more, not failed
+	// for good (capsule-cli#648): the witness may refuse a valid checkpoint
+	// once (evidencebook-skills#358).
 	reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, Permanent: true, LastError: "witness returned HTTP 400: " + cli.WitnessFailureBody(409)}, DealDefaultWitness)
 	assert.Equal(t, "witness_error", reason)
-	assert.Equal(t, "not delivered: the witness answered with an error (HTTP 409); this delivery is not retried.", text)
+	assert.Equal(t, "pending: the witness refused it as not continuing the checkpoint it last accepted (HTTP 409); it is sent once more at a later capsulectl run, a minute or more after the refusal.", text)
 	// A 403 may be a network gate on this host (capsule-cli#335): it is not
 	// said as the witness's answer, and it names the standing grant, whether
 	// stored now or by an earlier build.
