@@ -314,3 +314,50 @@ func TestSealJournalWithdrawsAWholeBatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, steps, "the opening and the intent both withdrawn")
 }
+
+// A verdict the caller seals through Store.Check whose rules could not
+// evaluate a measured cap: an act on it under a standing intent needs the
+// person's signature, though the verdict passes (u503; evidencebook#982).
+// One whose not_evaluable findings are all rules the ruleset only declares
+// (no check) does not.
+func TestStandingIntentOnUnevaluatedRulesEscalates(t *testing.T) {
+	measured, declared := "caps/5.1.0", dealprofile.VerdictBodyRulesFindingsItem{ID: "r14", Verdict: "not_evaluable"}
+	for _, tc := range []struct {
+		name     string
+		findings []dealprofile.VerdictBodyRulesFindingsItem
+		escalate bool
+	}{
+		{"a measured cap not evaluable", []dealprofile.VerdictBodyRulesFindingsItem{{ID: "r05#7d", Check: &measured, Verdict: "not_evaluable"}, declared}, true},
+		{"declared rules only", []dealprofile.VerdictBodyRulesFindingsItem{{ID: "r05#7d", Check: &measured, Verdict: "pass"}, declared}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			_, seller, dealID := agreedFull(t)
+			_, err := seller.store.SealJournal(ctx, dealID, JournalStep{Kind: "intent", Build: func(StepFacts) (StepParts, error) {
+				return StepParts{Record: &JournalRecord{RecordType: xdealv1.TypeIntent, Body: map[string]any{"verbatim_commitment": nonceOf("intent"), "allowed": []any{"commit"}}}}, nil
+			}})
+			require.NoError(t, err)
+			seller.tick()
+			v := passVerdict(nonceOf("card"))
+			v.Rules = &dealprofile.VerdictBodyRules{Status: "evaluated", RulesetID: "asg/everyday/0.3.8", DefinitionDigest: nonceOf("definition"), CheckerSHA256: nonceOf("checker"),
+				Verdict: "allow", Tier: "recomputed", History: &dealprofile.VerdictBodyRulesHistory{Days: 30, Acts: 1, Complete: true}, Findings: tc.findings}
+			checked, err := seller.store.Check(ctx, dealID, CheckIn{Check: xdealv1.CheckBody{CheckBody: dealprofile.CheckBody{Action: "commit"}}, Verdict: v})
+			require.NoError(t, err)
+			seller.tick()
+			_, err = seller.store.SealJournal(ctx, dealID, JournalStep{Kind: xdealv1.TypeApproval, Build: func(StepFacts) (StepParts, error) {
+				ref := xdealv1.RefTo(checked.Verdict)
+				return StepParts{Record: &JournalRecord{RecordType: xdealv1.TypeApproval,
+					Block: map[string]any{"refs": []any{map[string]any{"rel": "approves", "type": ref.Type, "digest_alg": ref.DigestAlg, "digest": ref.Digest}}},
+					Body:  map[string]any{"choice": "proceed", "proceed": true, "approver": "standing_intent"}}}, nil
+			}})
+			require.NoError(t, err)
+			seller.tick()
+			got, err := seller.store.Perform(ctx, dealID, PerformIn{Check: checked.Check, Act: "deliver", Observed: "carrier_scan"})
+			require.NoError(t, err)
+			require.NotNil(t, got.Authorization)
+			assert.Equal(t, tc.escalate, got.Authorization.RulesNotEvaluable)
+			assert.Equal(t, tc.escalate, got.Authorization.NeedsPersonSignature)
+			assert.NotEmpty(t, got.Authorization.Intent)
+		})
+	}
+}

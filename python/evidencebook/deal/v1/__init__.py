@@ -37,7 +37,7 @@ from .status import (
     OUTCOME_AGAINST_CLAIMANT, OUTCOME_FOR_CLAIMANT, OUTCOME_NO_FINDING, OUTCOME_OPEN, OUTCOME_WITHDRAWN, StatusError,
     TimedRecord, build_status, owed_amount, resolve_row, row_inputs, status_time, value_band,
 )
-from .authorization import STAGE_AUTHORIZATION, ActAuthorization, check_authorizations
+from .authorization import STAGE_AUTHORIZATION, ActAuthorization, check_authorizations, rules_unevaluated
 from .payment import (
     PAYMENT_FAIL, PAYMENT_PASS, REASON_AMOUNT, REASON_MISMATCH, REASON_NOT_AGREED, REASON_PENDING,
     REASON_SEVERAL_PAYMENTS, REASON_STATUS, REASON_UNJOINED, STAGE_PAYMENT, PaymentInput,

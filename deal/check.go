@@ -37,8 +37,14 @@ type Checked struct {
 // are the caller's claim; this package runs and attests no rules (Sherlock2,
 // u233, ops evidence-network/inbox.md:666, 2026-11-25). A verdict with no rules block is refused: under a standing
 // intent nothing would record whether the person's caps were evaluated
-// (u234, ops evidence-network/inbox.md:669; xdealv1.CheckActs escalates such an act). The person's
-// answer to the verdict is an approval record, sealed with SealJournal.
+// (u234, ops evidence-network/inbox.md:669; xdealv1.CheckActs escalates such an act). Under a standing
+// intent an act also escalates to the person when the rules did not allow
+// the act on their own (xdealv1.RulesUnevaluated, evidencebook#982),
+// whatever the verdict's Result says. A finding names its Check exactly when
+// a check measured it: one that names none reads as a rule the ruleset only
+// declares and never escalates, so a measured finding must keep its Check.
+// The person's answer to the verdict is an approval record, sealed with
+// SealJournal.
 func (s *Store) Check(ctx context.Context, dealID string, in CheckIn) (Checked, error) {
 	if in.Verdict.Rules == nil {
 		return Checked{}, fieldError("verdict", " carries no rules block: say which rules evaluated the act")

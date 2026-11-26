@@ -70,8 +70,13 @@ func (f *authFlow) verdict(check Ref, result string) Ref {
 	// does (not_configured when no checker is pinned): a standing-intent
 	// act on a verdict with none escalates (u234, ops evidence-network/inbox.md:669), which
 	// TestStandingIntentVerdictWithNoRulesEscalates covers.
+	return f.verdictRules(check, result, &dealprofile.VerdictBodyRules{Status: "not_configured"})
+}
+
+// verdictRules is verdict with the given rules block.
+func (f *authFlow) verdictRules(check Ref, result string, rules *dealprofile.VerdictBodyRules) Ref {
 	vb := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: result, Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(check),
-		Rules: &dealprofile.VerdictBodyRules{Status: "not_configured"}}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 0"))}
+		Rules: rules}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 0"))}
 	if result != "pass" {
 		vb.Differences = []dealprofile.Difference{{Question: "terms", Rule: "limit"}}
 		vb.Options = []string{"hold", "proceed"}
@@ -411,6 +416,20 @@ func TestApprovalMigration(t *testing.T) {
 	f.pay(RefTo(hx('9')))
 	run("check-not-held", "an act citing a check the journal does not hold is refused", f, false)
 
+	// A standing intent never stands in for the person on caps the rules
+	// could not evaluate (u503; Sherlock2's ruling u249, ops evidence-network/inbox.md:703, 2026-11-26,
+	// evidencebook#982). Each case states the person-signature answer it
+	// expects, so a regenerated vector never records a wrong one.
+	for _, rc := range unevaluatedRulesCases {
+		f = newFlow()
+		f.intent("pay")
+		c = f.check("pay")
+		f.approve(f.verdictRules(c, "pass", rc.rules()), rc.approver, true)
+		f.pay(c)
+		run(rc.name, rc.why, f, true)
+		assert.Equal(t, []bool{rc.person}, cases[len(cases)-1].PersonSignature, rc.name)
+	}
+
 	got, err := json.MarshalIndent(map[string]any{
 		"description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization with the error text given. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
@@ -559,4 +578,77 @@ func TestCheckJournal(t *testing.T) {
 	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f')}, Nonce: label("unbound approval")}
 	f.seal(TypeApproval, true, a, rel("approves", v))
 	assert.ErrorContains(t, CheckJournal(f.journal), "commits to the card it answered")
+}
+
+// rulesEvaluated is an evaluated rules block with the checker's verdict and
+// findings, as capsulectl seals one.
+func rulesEvaluated(verdict string, findings ...dealprofile.VerdictBodyRulesFindingsItem) *dealprofile.VerdictBodyRules {
+	return &dealprofile.VerdictBodyRules{Status: "evaluated", RulesetID: "asg/everyday/0.3.8", DefinitionDigest: hx('d'), CheckerSHA256: hx('e'),
+		Verdict: verdict, Tier: "recomputed", History: &dealprofile.VerdictBodyRulesHistory{Days: 30, Acts: 2, Complete: true}, Findings: findings}
+}
+
+// The findings the cases combine: a measured cap that passed, one the
+// checker could not evaluate, and a rule the ruleset only declares (no
+// check; capsule-engine go/guard/report.go reports it so).
+var (
+	capPass       = dealprofile.VerdictBodyRulesFindingsItem{ID: "r05-spending-limits#per_purchase", Check: ptr("caps/5.1.0"), Verdict: "pass"}
+	capUnevaluate = dealprofile.VerdictBodyRulesFindingsItem{ID: "r05-spending-limits#7d", Check: ptr("caps/5.1.0"), Verdict: "not_evaluable"}
+	declared      = dealprofile.VerdictBodyRulesFindingsItem{ID: "r14-message-that-commits-the-user", Verdict: "not_evaluable"}
+)
+
+var unevaluatedRulesCases = []struct {
+	name, why, approver string
+	rules               func() *dealprofile.VerdictBodyRules
+	person              bool
+}{
+	{"standing-intent-allow-with-unevaluated-cap", "the checker allows, but a measured cap is not_evaluable: under a standing intent the act escalates and needs the person's signature over its approval digest",
+		"standing_intent", func() *dealprofile.VerdictBodyRules { return rulesEvaluated("allow", capPass, capUnevaluate, declared) }, true},
+	{"standing-intent-allow-with-declared-rules-only", "a rule the ruleset only declares names no check and never moves the verdict: a standing intent still approves the act alone",
+		"standing_intent", func() *dealprofile.VerdictBodyRules { return rulesEvaluated("allow", capPass, declared) }, false},
+	{"standing-intent-rules-not-evaluated", "rules that were not evaluated under a passing verdict: the act escalates to the person",
+		"standing_intent", func() *dealprofile.VerdictBodyRules {
+			return &dealprofile.VerdictBodyRules{Status: "not_evaluated", Cause: "timeout", CheckerSHA256: hx('e')}
+		}, true},
+	{"standing-intent-rules-escalate-under-pass", "a passing verdict whose checker's own verdict is escalate: the act escalates to the person",
+		"standing_intent", func() *dealprofile.VerdictBodyRules { return rulesEvaluated("escalate", capPass, declared) }, true},
+	{"standing-intent-not-configured-with-unevaluated-cap", "a measured not_evaluable finding escalates whatever the rules' status says",
+		"standing_intent", func() *dealprofile.VerdictBodyRules {
+			return &dealprofile.VerdictBodyRules{Status: "not_configured", Findings: []dealprofile.VerdictBodyRulesFindingsItem{capUnevaluate}}
+		}, true},
+}
+
+// RulesNotEvaluable marks exactly the standing-intent acts the rules could
+// not evaluate; a person's own approval is unchanged (it needs their
+// signature anyway) and is never marked.
+func TestRulesNotEvaluableMarksStandingIntentOnly(t *testing.T) {
+	for _, rc := range unevaluatedRulesCases {
+		for _, approver := range []string{"standing_intent", "user"} {
+			f := &authFlow{t: t}
+			f.intent("pay")
+			c := f.check("pay")
+			f.approve(f.verdictRules(c, "pass", rc.rules()), approver, true)
+			f.pay(c)
+			auths, err := CheckAuthorizations(f.journal, f.acts)
+			require.NoError(t, err, rc.name)
+			require.Len(t, auths, 1)
+			standing := approver == "standing_intent"
+			assert.Equal(t, standing && rc.person, auths[0].RulesNotEvaluable, "%s, %s", rc.name, approver)
+			assert.Equal(t, !standing || rc.person, auths[0].NeedsPersonSignature, "%s, %s", rc.name, approver)
+			assert.False(t, auths[0].RulesNotRecorded, rc.name)
+		}
+	}
+}
+
+func TestRulesUnevaluated(t *testing.T) {
+	assert.False(t, RulesUnevaluated(nil))
+	assert.False(t, RulesUnevaluated(&dealprofile.VerdictBodyRules{Status: "not_configured"}))
+	assert.False(t, RulesUnevaluated(&dealprofile.VerdictBodyRules{Status: "not_applicable"}))
+	assert.False(t, RulesUnevaluated(rulesEvaluated("allow", capPass, declared)))
+	// A check named but empty is no check: the rule is declared.
+	assert.False(t, RulesUnevaluated(rulesEvaluated("allow", dealprofile.VerdictBodyRulesFindingsItem{ID: "r1", Check: ptr(""), Verdict: "not_evaluable"})))
+	assert.True(t, RulesUnevaluated(rulesEvaluated("allow", capUnevaluate)))
+	assert.True(t, RulesUnevaluated(rulesEvaluated("not_evaluable", capPass)))
+	assert.True(t, RulesUnevaluated(rulesEvaluated("deny", capPass)))
+	assert.True(t, RulesUnevaluated(&dealprofile.VerdictBodyRules{Status: "not_evaluated", Cause: "refused"}))
+	assert.True(t, RulesUnevaluated(&dealprofile.VerdictBodyRules{Status: "not_applicable", Findings: []dealprofile.VerdictBodyRulesFindingsItem{capUnevaluate}}))
 }

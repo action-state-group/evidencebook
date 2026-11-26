@@ -1,0 +1,3 @@
+### Changed
+
+- `xdealv1.CheckActs`: an act under a standing intent whose verdict's rules did not allow the act on their own now needs the person's signature over its approval digest, whatever the verdict's result says (`ActAuthorization.RulesNotEvaluable`, read by the new `xdealv1.RulesUnevaluated`; u503, Sherlock2's ruling u249, ops evidence-network/inbox.md:703, 2026-11-26, #982). The rules did not allow the act on their own when they were not evaluated, when the checker's own verdict is not `allow`, or when a measured finding (one that names its `check`) is `not_evaluable`. A finding that names no check is a rule the ruleset only declares, and stays out. This holds for verdicts sealed through `deal.Store.Check` too. x-deal-v1 PROFILE §8 states it.
