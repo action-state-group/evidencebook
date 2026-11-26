@@ -190,6 +190,7 @@ holder's document, and no tier, setting or request adds a row:
 | Class | Entitled party | Under |
 |---|---|---|
 | `amounts`, `exact_timestamps`, `payload_content`, `free_text` of one deal | the counterparty of that deal, for that deal only | Reference v3 §3A.6 (L-content); u590 counterparty level |
+| `counterparty_identities`: the counterparty's own identity, never another counterparty's | that counterparty | `NeverList` `counterparties_except_to_themselves`; u590 (the counterparty copy as is) |
 | the same, plus the referee material | the adjudicator that deal names | u590 adjudicator level |
 | `amounts` and `exact_timestamps` of the holder's own payment legs: side, amount sent or received with the receive fee, routing fee, payment reference, status, observed time, the terms leg paid; never a preimage, never the counterparty's legs | a countersigner the holder engages, after the countersign sign-up step has said so plainly before the holder agreed, and while the countersigner's directory row says the same | u640 (conditions: evidencebook#1001 acceptance 2) |
 | `payload_content` of a `declared_count` record | a countersigner, only when the holder opts in for that countersign and that record kind; never by default and never as a standing setting; the countersigner refuses a payload whose digest does not match the sealed record | u593 |
@@ -212,11 +213,14 @@ authentication (`interop_respond.go:179-181`, `:680-690`), never from what a req
 | Tier | Ceiling: the most a pack member may list | Default (node and person) |
 |---|---|---|
 | `stranger` | `checkpoints`, `checkpoint_range`, `history_card/1`, `history_card/2` | all four (plugin `STRANGER_SAFE`, `commitment.rs:126-131`); the Goose example lists `history_card/2` only (`commitment.py:53`) |
-| `identified` | the stranger ceiling; `personal_history_basic/1`; `personal_history_outcome/1` with a declared purpose; `standard_history/1` | node: stranger's only (`share_standard_history` off); person: plus `standard_history/1` |
-| `counterparty` | the identified ceiling; `record`, `exchange`, `correlation` when every record the subject names names the requester (`mayHave`, `interop_respond.go:196-209`); `deal_half`; `adjudication` to its subjects | all of it |
+| `identified` | the stranger ceiling; `personal_history_basic/1`; `personal_history_outcome/1` with a declared purpose; `standard_history/1`; Mesh's Service History derivations and `exchange_corroboration/1` (half digests, never record bodies) | node: stranger's plus `exchange_corroboration/1` (plugin defaults: `share_standard_history` off, `share_exchange_corroboration` on, `share_policy.rs:44-52`, `:150-175`); person: stranger's plus `standard_history/1` |
+| `counterparty` | the identified ceiling, every derivation in it answered under every setting (as the plugin answers a counterparty, `commitment.rs:83-93`); `record`, `exchange`, `correlation` when every record the subject names names the requester (`mayHave`, `interop_respond.go:196-209`); `deal_half`; `adjudication` to its subjects | all of it |
 | `under_contract` | `range`, `full_history`, only when a signed contract's `evidence_obligations` names them | empty: `range` and `full_history` are refused under every setting today (evidencebook#114), and `evidence_obligations` is not specified yet (roadmap 3.5) |
 
-A policy lists a subset of each ceiling; a token outside its tier's ceiling is refused. Each tier
+`answers` lists each derivation by its name on the wire, as the commitment's `answers.derivations`
+does: a registered token, or the digest of the derivation's definition document for those named
+that way (`exchange_corroboration/1`, `service_history/1`; `commitment.rs:83-106`). A policy lists a
+subset of each ceiling; a token outside its tier's ceiling is refused. Each tier
 also answers everything a lower tier lists, so narrowing a lower tier never widens a higher one.
 Reference v3's stranger example names only `checkpoints` and `history_card/1`; the ceiling adds the
 bounded forms the shipped producers answer, `checkpoint_range` and `history_card/2` (ER -03).
@@ -237,13 +241,19 @@ and one past the size limit.
 - Every budget value carries `"placeholder": true`, and the profile's text says each default is a
   placeholder to be calibrated from the stage-1 health report (item 19; Sherlock2's acceptance
   line). A pack member without the marker on every budget is refused while the profile is v0.
-- Past a budget, the responder sends a signed refusal: `policy_declined` under
-  `evidence-interop/0`, and under `evidence-interop/1` also `policy_declined`, because the budget is
-  advertised policy. `capacity_exceeded` stays the responder's own load, which no policy promises
-  past (plugin `peer_commitments.rs:130-135`).
+- The stranger tier's own answers are never counted: a budget counts a requester's asks for
+  anything its tier does not list, so it bounds probing, not discovery. That keeps today's rule,
+  under which `unsigned_asks_per_week` exempts `checkpoints`, `checkpoint_range`, `history_card/1`
+  and `history_card/2` (`interop_respond.go:558`). For the tiers above, a budget counts every ask.
+- The responder counts asks as it admits them, on its own clock, and an ask it refuses at the limit
+  is not counted, as `WindowLimiter.allow` does (`interop_respond.go:100-117`).
+- Past a budget, the responder sends a signed `policy_declined`, under `evidence-interop/0` and
+  `/1` alike. `capacity_exceeded` stays the responder's own load, which no policy promises past
+  (plugin `peer_commitments.rs:130-135`).
 - The defaults migrate from today: the person's `unsigned_asks_per_week: 3` becomes
-  `stranger: {asks: 3, per: "P7D", shared: true}`; the node's `0` (no limit) becomes `asks: null`.
-  Reference v3's "strangers two a day, identified ten" are examples, not defaults.
+  `stranger: {asks: 3, per: "P7D", shared: true}`, with the exemption above; the node's `0` (no
+  limit) becomes `asks: null`. Reference v3's "strangers two a day, identified ten" are examples,
+  not defaults.
 
 ## 6. Judged rows
 
@@ -251,8 +261,11 @@ and one past the size limit.
 reads typed fields only, never free text from the requester, and its only effect is to refuse one
 request or to cap a tier for it; it never widens a tier and never produces NO alone (Reference v3
 §3A.9). v0 defines the member and these limits; running a row needs a pinned judge in a published
-pack, which waits on pack format v1 and its verbs (roadmap 3.1, 3.2; evidencebook-skills#56). Until
-then `judged` is empty in every shipped default.
+pack, which waits on pack format v1 and its verbs (roadmap 3.1, 3.2; evidencebook-skills#56).
+Until a responder can run a row, it fails closed: its `Validate` refuses a member whose `judged` is
+not empty, so no holder signs or adopts a policy whose restrictions nothing enforces. A reader
+still reads such a member and checks against it, with every answer a row could change
+`NOT_CHECKED`.
 
 ## 7. `policy_mismatch`
 
@@ -262,25 +275,32 @@ holds itself, and otherwise the answer stays `NOT_CHECKED`. Its inputs:
 
 | Input | Where the asker gets it | Without it |
 |---|---|---|
-| the policy file in force when it asked | the pinned file in its sealed `evidence_request` (plugin `peer_commitments.rs:12-15`) | `NOT_CHECKED` |
+| the policy in force when it asked | what its sealed `evidence_request` retains: the commitment digest, the file digest and the `policy` body, verified at fetch time (plugin `peer_commitments.rs:8-15`, `:97-112`). The body is enough to decide; the signed file bytes need not be kept, and a later fetch that replaces the cached frame changes nothing | `NOT_CHECKED` |
 | that the request was authenticated | the asker's own signature on the request it sealed (ER -03 signed requests) | the stranger tier only |
-| that it is the counterparty of every record the subject names | its own book: a deal or exchange record of its own naming the responder for each of those records, as the responder's `mayHave` requires of all of them (`interop_respond.go:196-209`) | `identified` for that subject |
-| that it is within the tier's budget | its own sealed `evidence_request` records to that responder in the budget's period; a shared stranger bucket cannot be counted by one asker | `NOT_CHECKED` for a refusal that a budget could explain |
+| that it is the counterparty of every record the subject names, and that those records exist | a record signed by the responder that names the asker as its counterparty, for each record the subject names: the responder's half the asker holds (`counterparty_half`, roadmap 3.7). The responder's gate reads its own records (`mayHave`, `interop_respond.go:196-209`), so a record the asker sealed alone proves neither | `identified` for that subject, and `NOT_CHECKED` for `no_such_subject` |
+| a declared purpose, where the tier's entry requires one (`personal_history_outcome/1`) | the purpose member of its own request | `MATCH` for a refusal of that derivation |
 | that a contract names the subject | the signed contract's `evidence_obligations` (not specified yet) | `NOT_CHECKED` for `under_contract` |
 | that no judged row applies | the policy's `judged` is empty, or the rows cannot cap this request | `NOT_CHECKED` |
 
 With those inputs:
 
+An asker cannot know the responder's count: an ask may be lost or arrive in another window, and
+one refused at the limit is not counted (§5). So a budget never decides the check. A refusal that a
+budget could explain, `policy_declined` for a tier that has a budget, is `NOT_CHECKED`.
+
 - `MISMATCH` when the policy lists the subject or derivation for a tier the asker has shown it
-  holds, the asker is within budget, and the refusal withholds it: `derivation_unsupported`,
-  `no_such_subject`, or under `evidence-interop/1` `policy_declined` and `not_authorized`.
-- `MATCH` when the policy does not list it for that tier and no lower tier lists it, or when the
-  asker's count is past the budget, besides the plugin's `MATCH` rules.
+  holds, every prerequisite above is met, and the refusal withholds it: `derivation_unsupported`;
+  `no_such_subject` for a subject the responder's own signed record proves; or, under
+  `evidence-interop/1`, `not_authorized`, and `policy_declined` for a tier without a budget.
+- `MATCH` when the policy does not list it for that tier and no lower tier lists it, when a
+  required purpose is missing, or by the plugin's `MATCH` rules.
 - `NOT_CHECKED` in every other case, including each plugin `NOT_CHECKED` rule.
 
 The vectors carry the plugin's existing cases unchanged and add: a counterparty of one deal asking
-about another deal; a subject naming records of two counterparties; an exhausted budget; a policy
-changed between two asks (the pinned file decides); and a member in one of today's shapes, which keeps the plugin's
+about another deal; a subject naming records of two counterparties; a record only the asker sealed;
+a subject the responder does not hold; a missing and a present purpose; a `policy_declined` under a
+budget (lost, delayed and refused-at-limit asks); a policy changed between two asks (the retained
+body decides); a nonempty `judged`; and a member in one of today's shapes, which keeps the plugin's
 rules and reads `NOT_CHECKED` above the stranger tier.
 
 **The finding.** A `MISMATCH` is the finding `policy_mismatch`, naming the policy file digest, the
@@ -312,8 +332,9 @@ to confirm this reading.
 | `history_segments: peers` | not expressible: record bodies are above the `identified` ceiling. Open question 2. Loop step 07 checks it today (`steps/07-ask:279-288`) |
 | `record_at_completion: counterparty` / `off`; Muse `receipt` | the counterparty push is the holder's act, not an answer; it stays a holder setting, and `counterparty` lists `deal_half` when on |
 | `adjudications: deliver_to_subjects` / `off` | `counterparty` lists `adjudication` or not |
-| `standard_history: on` / `off`; plugin `share_standard_history` | `identified` lists `standard_history/1` or not |
-| plugin `share_exchange_corroboration` | `counterparty` lists `exchange` or not |
+| evidencebook `standard_history: on` / `off` | `identified` lists `standard_history/1` or not |
+| plugin `share_standard_history` | `identified` lists the Service History derivations (by definition digest) or not; a different switch from evidencebook's, of the same name |
+| plugin `share_exchange_corroboration` | `identified` lists `exchange_corroboration/1` or not; `counterparty` gets it either way, and it never releases `record` or `exchange` bodies |
 | plugin `advertise_evidence_requests` | not disclosure: stays a plugin setting |
 | `witness` | not disclosure: stays a setting |
 | `stranger_safe` (plugin, capsule-cli, Goose) | `stranger.answers` |
@@ -359,9 +380,9 @@ reader that does not know it loses the stranger `MISMATCH` it has today.
 | 1 | evidencebook | The profile text (`docs/disclosure-pack-profile-v0.md`), the member's JSON Schema, and shared vectors under `testdata/disclosure-pack/`: valid and refused members, both digests, each of today's five shapes read under §9, and the check cases of §7 | questions 1 to 5 |
 | 2 | evidencebook | Go: `DisclosurePolicy` reads and writes the member; the gate reads tiers and budgets from it; `SharePolicy` mapped by §9; `PolicyCheck` and the `policy_mismatch` finding | 1 |
 | 3 | evidencebook | The Rust crate and Python on the same vectors (`rust.yml`, the python job) | 1, 2 |
-| 4 | Mesh-LLM/capsules-plugin | `policy_check` calls the crate and reads both member shapes; then the share policy signs the member (item 19, stage 1) | 3 (upstream review) |
+| 4 | Mesh-LLM/capsules-plugin | reader: `policy_check` calls the crate and reads both member shapes | 3 (upstream review) |
 | 5 | evidence-network/loop | `site/watch.py` and step 07 read both shapes and the finding for every tier | 3 |
 | 6 | capsule-viewer | the History view's `sharing` reads both shapes | 1 |
-| 7 | capsule-cli; evidencebook Goose example; loop `join.sh` | `commitment publish`, `python/examples/goose/commitment.py` and `join.sh` sign the member | 4, 5, 6 |
+| 7 | Mesh-LLM/capsules-plugin; capsule-cli; evidencebook Goose example; loop `join.sh` | writers: the plugin's share policy (item 19, stage 1), `commitment publish`, `python/examples/goose/commitment.py` and `join.sh` sign the member; vectors check an old reader against a new member | 4, 5, 6 |
 
 The judged rows' runtime is not on this list: it waits on pack format v1 (evidencebook-skills#56).
