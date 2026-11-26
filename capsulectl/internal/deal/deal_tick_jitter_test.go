@@ -100,8 +100,12 @@ func assertJittered(t *testing.T, ticks []time.Time, period time.Duration) {
 	assert.Greater(t, len(gaps), 2, "the gaps vary: %v", ticks)
 }
 
-// The documented schedule: run `deal tick` every minute.
+// The documented schedule: run `deal tick` every minute. Its 600 ticks run one
+// at a time, and the tick path they take is raced by the other tests in this
+// file, so under the race detector it is skipped: alone it took 75 of its
+// shard's 526 seconds, the slowest of the nine (evidencebook#973).
 func TestDealTickEveryMinuteFollowsTheJitter(t *testing.T) {
+	raceSkip(t)
 	now, start := cadenceAt(t)
 	runScheduler(t, now, start, time.Minute, 10*time.Hour)
 	assertJittered(t, publishedTicks(t), time.Hour)
