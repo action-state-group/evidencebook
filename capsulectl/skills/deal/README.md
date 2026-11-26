@@ -309,9 +309,10 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   good (one failed for good is passed over, and the witness decides on the
   next without it). A run without
   `--wait-up-to` also stops once it has spent `--deliver-for` (5s by
-  default) on deliveries, checked between them; each row it left is listed
-  in `pending` with `not_tried_this_run: true` and its stored reason, for a
-  later tick.
+  default) on witness requests: a request still running then is ended and
+  reported as a slow witness, and none starts with under 2s left; each row
+  it did not send is listed in `pending` with `not_tried_this_run: true`
+  and its stored reason, for a later tick.
 - A delivery whose request never reached the witness (refused, unresolved,
   timed out before connecting, or stopped by a proxy) is reported as "pending: network consent
   needed, or no network", in the poll's output and on the receipt: on an

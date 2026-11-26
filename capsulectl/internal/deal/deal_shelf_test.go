@@ -218,7 +218,7 @@ func TestADeliveryThatFailsAfterStoringItsReceiptIsReportedOnTheNextOpen(t *test
 	var stored uint64
 	old := dealDeliverWitness
 	t.Cleanup(func() { dealDeliverWitness = old })
-	dealDeliverWitness = func(_ context.Context, p cli.Profile, store cll.WitnessStateStore, service string, size uint64) (cll.WitnessState, error) {
+	dealDeliverWitness = func(_ context.Context, p cli.Profile, store cll.WitnessStateStore, service string, size uint64, _ time.Time) (cll.WitnessState, error) {
 		state, err := store.GetWitness(t.Context(), service, size)
 		require.NoError(t, err)
 		record, err := checkpoint.ParseRecord(state.Checkpoint)

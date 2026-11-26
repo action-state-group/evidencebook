@@ -123,13 +123,16 @@ func TestAV0HistoryActWithABrokenCheckLinkIsIncomplete(t *testing.T) {
 
 			// The caps over the week cannot be summed, so the check says so
 			// and puts the payment to the person (u503); before, they passed.
-			// Everyday Rules' r02 and r06 (capsule-engine) read the merchant
-			// as new either way: they do not read the history's completeness.
+			// Everyday Rules 0.3.10's r02 and r06 say the same rather than
+			// reading the merchant as new (capsule-engine#327).
 			out := againV0(t)
 			assert.Equal(t, false, out["rules"].(map[string]any)["history"].(map[string]any)["complete"])
 			assert.Equal(t, "pause", out["verdict"])
-			assert.Equal(t, "not_evaluable", rulesFinding(t, out, "r05-spending-limits#7d")["verdict"])
-			assert.Contains(t, differenceTexts(out), "Your rules were not fully checked: r05-spending-limits#7d: the history of earlier purchases supplied is incomplete")
+			for _, id := range []string{"r05-spending-limits#7d", "r02-ordinary-purchase", "r06-new-merchant"} {
+				assert.Equal(t, "not_evaluable", rulesFinding(t, out, id)["verdict"], id)
+				assert.Contains(t, differenceTexts(out), "Your rules were not fully checked: "+id+": the history of earlier purchases supplied is incomplete")
+			}
+			assert.NotContains(t, differenceTexts(out), "no earlier payment", "the merchant is not read as new")
 		})
 	}
 }

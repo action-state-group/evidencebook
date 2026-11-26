@@ -5,6 +5,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -37,20 +39,36 @@ func hookDelivery(t *testing.T) *deliveryHook {
 // stall is a witness that never answers in time: nothing is stored, so
 // every checkpoint stays pending.
 func (h *deliveryHook) stall() {
-	dealDeliverWitness = func(ctx context.Context, _ cli.Profile, store cll.WitnessStateStore, service string, size uint64) (cll.WitnessState, error) {
+	dealDeliverWitness = func(ctx context.Context, _ cli.Profile, store cll.WitnessStateStore, service string, size uint64, _ time.Time) (cll.WitnessState, error) {
 		h.calls = append(h.calls, size)
 		return store.GetWitness(ctx, service, size)
 	}
 }
 
 // slow is a witness that takes latency per delivery and then answers with a
-// receipt signed by key.
+// receipt signed by key. A delivery that would outlast the deadline ends at
+// it with a timed-out attempt recorded, as cli.DeliverWitnessBy does.
 func (h *deliveryHook) slow(latency time.Duration, key ed25519.PrivateKey) {
-	dealDeliverWitness = func(ctx context.Context, _ cli.Profile, store cll.WitnessStateStore, service string, size uint64) (cll.WitnessState, error) {
+	dealDeliverWitness = func(ctx context.Context, _ cli.Profile, store cll.WitnessStateStore, service string, size uint64, deadline time.Time) (cll.WitnessState, error) {
 		h.calls = append(h.calls, size)
+		if !deadline.IsZero() && h.now.Add(latency).After(deadline) {
+			h.now = deadline
+			return h.timedOut(ctx, store, service, size), nil
+		}
 		h.now = h.now.Add(latency)
 		return h.receipt(ctx, store, service, size, key), nil
 	}
+}
+
+// timedOut records a delivery that reached the witness and ran out of time.
+func (h *deliveryHook) timedOut(ctx context.Context, store cll.WitnessStateStore, service string, size uint64) cll.WitnessState {
+	state, err := store.GetWitness(ctx, service, size)
+	require.NoError(h.t, err)
+	next := state
+	next.Attempts++
+	next.LastError = "witness returned HTTP 503: " + cli.WitnessTimedOut
+	require.NoError(h.t, store.CommitWitness(ctx, state.Attempts, next))
+	return next
 }
 
 func (h *deliveryHook) receipt(ctx context.Context, store cll.WitnessStateStore, service string, size uint64, key ed25519.PrivateKey) cll.WitnessState {
@@ -127,24 +145,30 @@ func TestDealTickStopsDeliveringAtTheBudget(t *testing.T) {
 	assert.Less(t, sizes[0], sizes[1])
 	assert.Less(t, sizes[1], sizes[2])
 
-	// 3s a delivery against a 5s budget: two go, the third waits.
+	// 3s a delivery against a 5s budget: the first is delivered, the
+	// second starts with 2s left and is ended at the deadline (capsule-cli
+	// #645), and the third is not sent.
 	h.calls = nil
 	h.slow(3*time.Second, key)
 	start := h.now
 	tick = dealRun(t, "tick")
 	assert.Equal(t, sizes[:2], h.calls)
-	assert.Equal(t, []any{float64(sizes[0]), float64(sizes[1])}, tick["delivered"])
+	assert.Equal(t, []any{float64(sizes[0])}, tick["delivered"])
 	rows = pendingRows(t, tick)
-	require.Len(t, rows, 1)
-	assert.Equal(t, float64(sizes[2]), rows[0]["checkpoint"])
-	assert.Equal(t, true, rows[0]["not_tried_this_run"])
-	assert.Equal(t, 6*time.Second, h.now.Sub(start), "the budget plus at most one delivery")
+	require.Len(t, rows, 2)
+	assert.Equal(t, float64(sizes[1]), rows[0]["checkpoint"])
+	assert.Equal(t, "witness_timeout", rows[0]["reason"], "%v", rows[0])
+	assert.NotContains(t, rows[0], "not_tried_this_run")
+	assert.Equal(t, float64(sizes[2]), rows[1]["checkpoint"])
+	assert.Equal(t, true, rows[1]["not_tried_this_run"])
+	assert.Equal(t, 5*time.Second, h.now.Sub(start), "never past the budget")
 
 	// The next tick resumes with what was left.
 	h.calls = nil
+	h.slow(time.Second, key)
 	tick = dealRun(t, "tick")
-	assert.Equal(t, sizes[2:], h.calls)
-	assert.Equal(t, []any{float64(sizes[2])}, tick["delivered"])
+	assert.Equal(t, sizes[1:], h.calls)
+	assert.Equal(t, []any{float64(sizes[1]), float64(sizes[2])}, tick["delivered"])
 	assert.Empty(t, tick["pending"])
 }
 
@@ -199,9 +223,10 @@ func TestDealTickWaitUpToIsNotLimitedByDefault(t *testing.T) {
 	*clock = clock.Add(time.Hour - time.Minute)
 	h.calls = nil
 	h.slow(3*time.Second, key)
-	tick = dealRun(t, "tick", "--wait-up-to", "2m", "--deliver-for", "1s")
-	// Each poll has its own budget: one delivery in the first, the next
-	// oldest in the second, and the new tick is left pending.
+	tick = dealRun(t, "tick", "--wait-up-to", "2m", "--deliver-for", "4s")
+	// Each poll has its own budget: one 3s delivery in each leaves under
+	// the 2s floor, so the first delivers the oldest, the second the next
+	// oldest, and the new tick is left pending.
 	assert.Len(t, h.calls, 2, "%v", tick)
 	rows := pendingRows(t, tick)
 	require.Len(t, rows, 1)
@@ -245,11 +270,86 @@ func TestDealTickWithNoBacklogDeliversItsCheckpoint(t *testing.T) {
 	retailDeal(t)
 	h := hookDelivery(t)
 	clockAt(t, time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC))
-	h.slow(30*time.Second, key)
+	h.slow(4*time.Second, key)
 	tick := dealRun(t, "tick")
 	require.Equal(t, "ticked", tick["state"])
-	assert.Equal(t, []any{tick["checkpoint"]}, tick["delivered"], "a delivery longer than the budget still finishes")
+	assert.Equal(t, []any{tick["checkpoint"]}, tick["delivered"])
 	assert.Empty(t, tick["pending"])
+}
+
+// A delivery longer than the budget is ended at the budget and tried again
+// at a later tick; before capsule-cli#645 it ran to the client's 30s.
+func TestDealTickEndsADeliveryAtTheBudget(t *testing.T) {
+	public, key := witnessPair(t)
+	cadenceFixture(t, "https://127.0.0.1:1", public, "1h", "0s", 0)
+	retailDeal(t)
+	h := hookDelivery(t)
+	clockAt(t, time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC))
+	h.slow(30*time.Second, key)
+	start := h.now
+	tick := dealRun(t, "tick")
+	require.Equal(t, "ticked", tick["state"])
+	assert.Empty(t, tick["delivered"])
+	rows := pendingRows(t, tick)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "witness_timeout", rows[0]["reason"])
+	assert.Equal(t, dealDeliverBudget, h.now.Sub(start))
+}
+
+// A budget under capsule-cli's 2s floor sends nothing: every row is left
+// as it was, with its stored reason, and says it was not tried.
+func TestDealTickBudgetUnderTheFloorSendsNothing(t *testing.T) {
+	public, key := witnessPair(t)
+	cadenceFixture(t, "https://127.0.0.1:1", public, "1m", "0s", 0)
+	retailDeal(t)
+	h := hookDelivery(t)
+	clock := backlog(t, h, 2)
+	*clock = clock.Add(-30 * time.Second) // no tick due
+	h.calls = nil
+	h.slow(time.Second, key)
+	tick := dealRun(t, "tick", "--deliver-for", "1s")
+	assert.Empty(t, h.calls)
+	assert.Empty(t, tick["delivered"])
+	rows := pendingRows(t, tick)
+	require.Len(t, rows, 2)
+	for _, row := range rows {
+		assert.Equal(t, true, row["not_tried_this_run"], "%v", row)
+		assert.Equal(t, "not_attempted", row["reason"], "a row not tried keeps its stored reason")
+	}
+}
+
+// Through the real cli.DeliverWitnessBy on the wall clock, a witness that
+// accepts the request and hangs costs the tick its budget, not the witness
+// client's 30s, and the attempt is recorded as a slow witness
+// (evidencebook#960, capsule-cli#645).
+func TestDealTickEndsAHangingWitnessAtTheBudget(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+	// Cleanups run last-in first-out: release the handlers, then close.
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+	// capsule-cli's witness client sends over http.DefaultTransport and
+	// accepts only HTTPS; this package's tests do not run in parallel.
+	oldTransport := http.DefaultTransport
+	http.DefaultTransport = server.Client().Transport
+	t.Cleanup(func() { http.DefaultTransport = oldTransport })
+	public, _ := witnessPair(t)
+	cadenceFixture(t, server.URL, public, "1h", "0s", 0)
+	retailDeal(t)
+	clockAt(t, time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC))
+	budget := 3 * time.Second
+	start := time.Now()
+	tick := dealRun(t, "tick", "--deliver-for", budget.String())
+	elapsed := time.Since(start)
+	require.Equal(t, "ticked", tick["state"], "%v", tick)
+	assert.GreaterOrEqual(t, elapsed, budget-deliverFloor, "the request ran until the deadline")
+	assert.Less(t, elapsed, budget+5*time.Second, "ended at the budget, not at 30s")
+	assert.Empty(t, tick["delivered"])
+	rows := pendingRows(t, tick)
+	require.Len(t, rows, 1)
+	assert.Equal(t, tick["checkpoint"], rows[0]["checkpoint"])
+	assert.Equal(t, "witness_timeout", rows[0]["reason"], "%v", rows[0])
+	assert.NotContains(t, rows[0], "not_tried_this_run")
 }
 
 // A checkpoint the witness failed for good does not hold the ones after
@@ -263,7 +363,7 @@ func TestDealTickGoesPastACheckpointFailedForGood(t *testing.T) {
 	*clock = clock.Add(-30 * time.Second) // no tick due
 	h.calls = nil
 	first := true
-	dealDeliverWitness = func(ctx context.Context, _ cli.Profile, store cll.WitnessStateStore, service string, size uint64) (cll.WitnessState, error) {
+	dealDeliverWitness = func(ctx context.Context, _ cli.Profile, store cll.WitnessStateStore, service string, size uint64, _ time.Time) (cll.WitnessState, error) {
 		h.calls = append(h.calls, size)
 		if !first {
 			return h.receipt(ctx, store, service, size, key), nil
@@ -296,9 +396,10 @@ func TestDealTickStopsAtAnUnreachableWitness(t *testing.T) {
 	clock := backlog(t, h, 3)
 	*clock = clock.Add(time.Hour) // every retry is due again
 	h.calls = nil
-	dealDeliverWitness = func(ctx context.Context, p cli.Profile, store cll.WitnessStateStore, service string, size uint64) (cll.WitnessState, error) {
+	dealDeliverNow = time.Now // the real delivery reads the wall clock
+	dealDeliverWitness = func(ctx context.Context, p cli.Profile, store cll.WitnessStateStore, service string, size uint64, deadline time.Time) (cll.WitnessState, error) {
 		h.calls = append(h.calls, size)
-		return cli.DeliverWitness(ctx, p, store, service, size)
+		return cli.DeliverWitnessBy(ctx, p, store, service, size, deadline)
 	}
 	tick := dealRun(t, "tick")
 	require.Len(t, h.calls, 1, "%v", tick)
