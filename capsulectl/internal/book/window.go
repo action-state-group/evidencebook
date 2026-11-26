@@ -467,7 +467,12 @@ func (f failingWitnessStore) CommitWitness(context.Context, uint32, cll.WitnessS
 // answeredRecords are the evidence_request_answered records of a book, or of
 // every window's book of a windowed store, oldest window first.
 func answeredRecords(ctx context.Context, opened openedBook) ([]evidencebook.Record, error) {
-	filter := evidencebook.Filter{RecordType: evidencebook.RecordTypeRequestAnswered}
+	return everyWindowQuery(ctx, opened, evidencebook.Filter{RecordType: evidencebook.RecordTypeRequestAnswered})
+}
+
+// everyWindowQuery runs filter over a book, or over every window's book of a
+// windowed store, oldest window first.
+func everyWindowQuery(ctx context.Context, opened openedBook, filter evidencebook.Filter) ([]evidencebook.Record, error) {
 	if opened.shelf == nil {
 		return opened.book.Query(ctx, filter)
 	}

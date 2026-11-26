@@ -634,17 +634,23 @@ func closeFixture(t *testing.T, b resultBook) string {
 // citingCloseFixture seals, at day1, a Close over one exchange of day0 that
 // cites a peer Close, so it carries tallies: with no peer account the
 // exchange is INSUFFICIENT. The cited id names no record this book holds;
-// result build reads only the tallies.
+// result build reads only the tallies. A Close citing a peer Close holds the
+// peer bundle it relied on (#116), so it is given a real one: peer-b's
+// book, whose window this Close reads past its end, so the peer's account
+// is incomplete.
 func citingCloseFixture(t *testing.T, b resultBook) string {
 	t.Helper()
 	appendHalves(t, b.profile, half{"x1", "r1", "p1"})
+	peer, _ := bookProfile(t, "peer-b")
+	appendHalves(t, peer, half{"y1", "q1", "z1"})
+	peerBundle := fullBundle(t, peer)
 	b.set(day1)
 	var id string
 	withBook(t, b.profile, func(book *evidencebook.Book) {
 		_, err := book.Checkpoint(t.Context())
 		require.NoError(t, err)
 		sealed, err := book.Close(t.Context(), evidencebook.CloseInput{
-			Reconcile:    evidencebook.ReconcileInput{Compare: evidencebook.SamePayloadCommitments},
+			Reconcile:    evidencebook.ReconcileInput{Compare: evidencebook.SamePayloadCommitments, Peer: peerBundle, PeerFromSeq: peerBundle.IntervalLast + 1, PeerToSeq: peerBundle.IntervalLast + 2},
 			Counterparty: "peer-b",
 			Period:       evidencebook.ClosePeriod{Start: time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), End: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)},
 			PeerClose:    strings.Repeat("ab", 32),

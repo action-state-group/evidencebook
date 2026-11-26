@@ -21,6 +21,7 @@ business meaning, and never invent a workflow beyond the verb surface below.
 - call only the book verbs listed in this file
 - request evidence from a counterparty, and answer a request received from one
 - close a period and reconcile it against a counterparty's held bundle
+- acknowledge or rebut the counterparty's Close for a period, only when the person says so
 - seal a Result a judging step produced, and render its report
 - verify a bundle with `capsulectl verify` before treating it as authentic
 
@@ -35,6 +36,7 @@ business meaning, and never invent a workflow beyond the verb surface below.
 
 **Approval points:**
 
+- `book acknowledge` and `book rebut` are the person's own statement about the counterparty's Close, not a result of reading it: run either only after the person tells you to, never on your own reading of a reconcile, and pass the rebuttal reason in the person's own words. Tell them once that the counterparty reads the reason.
 - Stop and ask a human whenever a command fails because of a licence, plugin, or authorization requirement. When a command says the `capsulectl-book` plugin is not installed, show the user the exact command it prints; never run `plugin install` or `plugin remove` yourself.
 
 **Evidence policy:**
@@ -50,6 +52,8 @@ Each verb is run as `capsulectl book VERB ...`, which the core hands to the `cap
 | `book request` | `--profile NAME --request FILE [--sent] --responder NAME --output FILE`<br>`--profile NAME --for RECORD_ID --response FILE --responder-key HEX --responder-checkpoint-key HEX [--witness-directory FILE]`<br>`--profile NAME --for RECORD_ID --absent-until TIME` | Ask a party for evidence (the request is recorded before it is sent; with `--sent`, after another tool sent it), then record exactly one outcome for it: the answer that came back, or that nothing came back in the window. The output file is what to transmit; this verb transmits nothing itself. The request is the evidence-interop/0 request map, or with `--sent` a request another tool already sent (such as the capsules plugin's), recorded member for member, in JCS, so its answer verifies (no nonce or request profile is added); the answer is a signed envelope or refusal. A recorded artifact prints `witness`: `witnessed` only when a receipt from a witness in `--witness-directory` covers its anchor checkpoint; `unwitnessed` means it checks only against the holder's own signatures, so never report it as witnessed or fully checked. Run it on a jsonl book profile only: on a remote profile it is the deprecated alias of `book remote request`, which asks another party's book over the profile's transport, so there stop and ask a human. | (each invocation's own book record is the evidence; no wrapper capsule) | primary action (running it *is* the record) |
 | `book respond` | `--profile NAME --request FILE --requester ID --output FILE`<br>`--profile NAME --request FILE --requester ID --policy FILE --output FILE` | Answer a received evidence request with a signed artifact or a signed refusal, under the share policy, and record that it was answered. --requester is the identity you authenticated the sender as; without it only public subjects are answered. A malformed request is refused, and an unauthenticated one answered or refused, without a book record. The output file is what to send back; this verb transmits nothing itself. | (the book's record of the answered request is the evidence; no wrapper capsule; an empty `record_id` in the result means the answer is not on record, so show it to the user before it is sent) | primary action (running it *is* the record) |
 | `book close` | `--profile NAME --period day\|week\|month --counterparty ID`<br>`--profile NAME --period day\|week\|month --date YYYY-MM-DD --counterparty ID`<br>`--profile NAME --period day\|week\|month --date YYYY-MM-DD --counterparty ID --since-last`<br>`--profile NAME --period day\|week\|month --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX`<br>`--profile NAME --period day\|week\|month --counterparty ID --capsule-out FILE --bundle-out FILE` | Seal the book's Close for a period that has ended (by default the most recent one; --date names any date inside the period), for one counterparty. The Close seals agent-action-capsule's close/v1 body: the period, and the counts by record type and head of the window it binds, which under --since-last can start before the period. It seals tallies only when the --peer bundle discloses the counterparty's Close for this period, which it then cites; otherwise it states counts only, and the reconciliation it prints (every exchange INSUFFICIENT without a peer bundle) is not sealed, so no reconcile claim can cite it. Repeating it for the same period and counterparty returns the first Close and seals no second one; the peer bundle and --since-last of a repeat are not applied. | (the Close record itself; --capsule-out writes it for `capsulectl verify`) | primary action (running it *is* the record) |
+| `book acknowledge` | `--profile NAME --period day\|week\|month --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX`<br>`--profile NAME --period day\|week\|month --date YYYY-MM-DD --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX` | Only when the person says so: record that this book has seen the counterparty's Close for a period and agrees, which makes that Close AGREED when the counterparty reads it. The Close is the one the --peer bundle discloses for the period, naming this book, under the pinned key (the one `book close` would cite); the bundle need not disclose anything else. It checks nothing about the exchanges: run `book reconcile` first and show the person what it prints. Refused after this book rebutted the same Close. A repeat returns the first record. | (the acknowledgement record itself) | primary action (running it *is* the record) |
+| `book rebut` | `--profile NAME --period day\|week\|month --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX --reason TEXT`<br>`--profile NAME --period day\|week\|month --date YYYY-MM-DD --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX --reason TEXT` | Only when the person says so: record that this book disputes the counterparty's Close for a period, with the person's reason, which makes that Close CONTESTED when the counterparty reads it (a rebuttal outranks an acknowledgement, so it can follow one). The reason is sealed and the counterparty reads it. A repeat with the same reason returns the first record; another reason is refused. | (the rebuttal record itself) | primary action (running it *is* the record) |
 | `book reconcile` | `--profile NAME --period day\|week\|month --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX`<br>`--profile NAME --period day\|week\|month --date YYYY-MM-DD --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX` | Compare this book's period (by default the most recent one that has ended; --date names any date inside it) with a counterparty's held bundle, showing each exchange in one of six states, as of this book's latest checkpoint: an own exchange not yet checkpointed reads INSUFFICIENT until `book close` checkpoints it. It never queries the counterparty and adds no record. | (no capsule — comparing held records is local comparison, not a consequential action) | not consequential — no capsule |
 | `book result build` | `--profile NAME --result FILE --out FILE`<br>`--profile NAME --result FILE --contract REF --out FILE --capsule-out FILE` | Seal a caller-supplied, schema-valid Evidence Result v0 into the book as the record a report is rooted on, citing every record its claims name. Refuses a document whose headline values do not recompute from its claims, or that cites a record the book does not hold, or a close_state or tallies that differ from what the cited Close's links and statement read. A repeat of the same document seals nothing new. Only UNILATERAL close claims are reachable today (see the reference). | (the Result's evidence_result record; --capsule-out writes it for `capsulectl verify`) | primary action (running it *is* the record) |
 | `book report build` | `--bundle FILE --card attribution\|human_role\|obligation\|outcome\|process\|quality\|settlement --out FILE`<br>`--bundle FILE --card CARD --presentation FILE --out FILE --permalink`<br>`--bundle FILE --card CARD --out FILE --dry-run`<br>`--bundle FILE --card CARD --out FILE --diagnostic`<br>`--bundle FILE --card CARD --out FILE --receipts FILE` | Render a held, disclosed Evidence Bundle whose root is a sealed Result v0 into an offline report.html (and, with --permalink, a viewer permalink) after verifying it; a root that is not a Result gets none. A bundle that fails verification or is incomplete gets no report page; --diagnostic writes a marked diagnostic page instead and still exits with the failure. --dry-run writes the page marked draft and mints no permalink. A permalink carries the whole disclosed bundle in its URL fragment, so sharing the link transmits the bundle. `--receipts FILE` (a JSON list of `{"exchange_capsule_id", "receipt": <bundle>}` or `{"exchange_capsule_id", "held": true}` or `{"exchange_capsule_id", "not_closed": true}`) carries each deal's receipt on a settlement report whose claims are `<deal>::<requirement>`: an entry goes to the one deal whose claims cite its exchange capsule, `held` marks a receipt the holder's share policy keeps off the page, `not_closed` marks a deal that had not closed when the page was built (no receipt yet), one of `receipt`, `held` and `not_closed` per entry, a deal with no entry reads "Receipt not carried with this page", an id no deal cites is ignored and listed as `ignored_receipts` in the output, and one two deals cite is refused. The pairing of a bundle to its deal is the caller's word. Nothing is carried without the flag; it cannot be used with `--permalink` or `--diagnostic`. | (no capsule — rendering a held bundle is local; the disclose act that produced the bundle is already on record) | not consequential — no capsule |
@@ -62,19 +66,66 @@ A book store split by time window (`book window init`, or `book window convert` 
 
 **Records are for consequential actions only** (see Evidence policy under Guardrails, above). The `How` column says which of the two cases applies:
 
-- **primary action** — the verb's entire job already is persisting a signed book record (`book request`, `book respond`, `book close`, `book result build`, `book report derive`). Running it satisfies the invariant by itself; nothing wraps it, and the record id it returns is what to cite. The exceptions are `book respond` to a malformed request or one with no authenticated requester: its signed answer or refusal may leave no record (`record_id` empty), which is reported, never hidden.
+- **primary action** — the verb's entire job already is persisting a signed book record (`book request`, `book respond`, `book close`, `book acknowledge`, `book rebut`, `book result build`, `book report derive`). Running it satisfies the invariant by itself; nothing wraps it, and the record id it returns is what to cite. The exceptions are `book respond` to a malformed request or one with no authenticated requester: its signed answer or refusal may leave no record (`record_id` empty), which is reported, never hidden.
 - **not consequential** — `book reconcile`, `book result derived-inputs` and `book report build` only read, compare or render held records. They run and add no record: **no wrapper seal, no synthetic evidence record.**
 
-The sections below give the request, Close and Result details and what `book result build` refuses.
+The sections below give the request, Close, acknowledgement and Result details and what `book result build` refuses.
 
 ## Exercise the book verbs
 
-[scripts/run-book-demo.sh](../scripts/run-book-demo.sh) runs every book verb above against two throwaway jsonl book profiles in a temp directory, with `capsulectl` and `capsulectl-book` built from a source checkout: the consequential verbs (`book request`, `book respond`, `book close`, `book result build`, `book report derive`) each return the signed book record that is their evidence, and the script counts them; `book reconcile`, `book result derived-inputs` and `book report build` run and add no record — the script asserts both halves. It never touches a real profile or a real log. It is a contributor check, run after any change to the verb surface: it needs Go, `jq` and this repository. Using the skill needs neither: install the release binaries of `capsulectl` and `capsulectl-book`.
+[scripts/run-book-demo.sh](../scripts/run-book-demo.sh) runs every book verb above against two throwaway jsonl book profiles in a temp directory, with `capsulectl` and `capsulectl-book` built from a source checkout: the consequential verbs (`book request`, `book respond`, `book close`, `book acknowledge`, `book rebut`, `book result build`, `book report derive`) each return the signed book record that is their evidence, and the script counts them; `book reconcile`, `book result derived-inputs` and `book report build` run and add no record — the script asserts both halves. It never touches a real profile or a real log. It is a contributor check, run after any change to the verb surface: it needs Go, `jq` and this repository. Using the skill needs neither: install the release binaries of `capsulectl` and `capsulectl-book`.
 
 ## Each verb in detail
 
 Each runs as `capsulectl book VERB ...` on a book profile. `capsulectl verify`,
 `capsulectl disclose` and the other core verbs are in the `capsulectl` skill.
+
+## Answer the counterparty's Close
+
+```sh
+capsulectl book acknowledge --profile NAME --period day|week|month [--date YYYY-MM-DD] --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX
+capsulectl book rebut --profile NAME --period day|week|month [--date YYYY-MM-DD] --counterparty BOOK_ID --peer FILE --peer-checkpoint-key HEX --reason TEXT
+```
+
+Both are the person's statement about the counterparty's Close, so run them
+only when the person says so, and pass a rebuttal's reason in their words.
+The Close answered is the one `book close` would cite: the counterparty's
+Close for the period that the --peer bundle discloses, verified under the
+pinned key, naming this book as its counterparty, and superseded by no other
+it discloses (two such Closes are refused). On a store split by time window
+the Close names the window book holding the period's start (for example
+`NAME/2026-09`), or the predecessor JSONL book for a period before the
+conversion. Unlike `book close`, the bundle need not disclose the Close's
+head: an acknowledgement checks that the Close exists, not its tallies. Run
+`book reconcile` first when the person wants to see how the exchanges compare.
+
+`acknowledge` appends an `acknowledgement` record with an `acknowledges`
+link to that Close; `rebut` appends a `rebuttal` record with a `rebuts` link
+and the statement `{"reason": TEXT}`, which the counterparty reads. Either
+names the Close by its record id and holds no copy of the bundle (no reconcile
+relies on it). The record goes in the current book (on a windowed store, the
+current window, which takes one at any time), and a checkpoint covers it, so
+a bundle can carry it to the counterparty: `capsulectl disclose --root
+RECORD_ID` builds one. The counterparty reads the Close as AGREED or
+CONTESTED (a rebuttal outranks an acknowledgement) from records of the book
+the output names as `book`, signed under this book's checkpoint key.
+
+Refused: `acknowledge` after this book rebutted the same Close (the Close
+stays CONTESTED; acknowledge a new Close that supersedes it instead), and a
+second `rebut` of the same Close with another reason (the first is sealed).
+A repeat returns the first record, from any window, with `already_recorded`
+true; a repeat whose record no checkpoint covered yet checkpoints it.
+
+Output: `record_id`, `seq`, `record_type`, `period`, `counterparty`,
+`peer_close` (the Close answered), `book` (the book holding the record),
+`window` (on a windowed store) and `already_recorded`.
+
+`book close --peer` against a counterparty's Close holds the --peer bundle
+in full: before the Close it appends a `held_bundle` record whose payload is
+the bundle's bytes as received, and the Close cites it. Its output names it
+as `held_bundle`, on a repeat too. The Close's `--bundle-out` bundle withholds
+that payload by digest. A Close is kept for good, so the bundle it relies on
+is too.
 
 ## Seal a Result into the book
 

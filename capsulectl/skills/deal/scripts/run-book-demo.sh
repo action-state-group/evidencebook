@@ -5,7 +5,7 @@ set -euo pipefail
 # in a temp directory, running `capsulectl` (the core) with `capsulectl-book`
 # (the plugin) built from this checkout:
 #
-#   - request, respond, close and result build are the CONSEQUENTIAL book
+#   - request, respond, close, acknowledge, rebut and result build are the CONSEQUENTIAL book
 #     verbs: each returns the id of the signed book record that is its
 #     evidence, and the script asserts the count;
 #   - reconcile and report build are NOT consequential: they run and add no
@@ -145,7 +145,36 @@ record_of "$work/close-peer-result.json"
 jq -e '.reconciliation.peer_complete==true and .reconciliation.states.MATCHED==1 and .reconciliation.states.CONFLICTING==1' \
   "$work/close-peer-result.json" >/dev/null || {
   echo "FAIL: one matching and one differing exchange should reconcile MATCHED + CONFLICTING against a complete peer account" >&2; exit 1; }
-echo "  one exchange MATCHED, one CONFLICTING, from the held bundle alone" >&2
+jq -e '(.peer_close|length)==64 and (.held_bundle|length)==64' "$work/close-peer-result.json" >/dev/null || {
+  echo "FAIL: a Close citing the counterparty's Close must hold the bundle it relies on (held_bundle)" >&2; exit 1; }
+echo "  one exchange MATCHED, one CONFLICTING, from the held bundle alone, which the Close holds and cites" >&2
+# Acknowledging the counterparty's Close is the person's statement: run only
+# on their word (it makes that Close AGREED when the counterparty reads it).
+"$bin" book acknowledge --profile "$profile" --period day --date "$yesterday" --counterparty skill-demo-peer \
+  --peer "$work/peer-close-bundle.json" --peer-checkpoint-key "$peer_checkpoint_key" >"$work/acknowledge-result.json"
+record_of "$work/acknowledge-result.json"
+jq -e --arg id "$(jq -r .record_id "$work/peer-close-result.json")" '.peer_close==$id and .record_type=="acknowledgement" and .already_recorded==false' \
+  "$work/acknowledge-result.json" >/dev/null || {
+  echo "FAIL: acknowledge must answer the counterparty's Close for the period" >&2; exit 1; }
+"$bin" book acknowledge --profile "$profile" --period day --date "$yesterday" --counterparty skill-demo-peer \
+  --peer "$work/peer-close-bundle.json" --peer-checkpoint-key "$peer_checkpoint_key" >"$work/acknowledge-again.json"
+jq -e --arg id "$(jq -r .record_id "$work/acknowledge-result.json")" '.already_recorded==true and .record_id==$id' \
+  "$work/acknowledge-again.json" >/dev/null || {
+  echo "FAIL: a second acknowledge of the same Close must return the first" >&2; exit 1; }
+echo "  acknowledged the counterparty's Close; a repeat adds nothing" >&2
+# A later dispute, in the person's words: a rebuttal outranks the
+# acknowledgement, and acknowledging again is then refused.
+"$bin" book rebut --profile "$profile" --period day --date "$yesterday" --counterparty skill-demo-peer \
+  --peer "$work/peer-close-bundle.json" --peer-checkpoint-key "$peer_checkpoint_key" \
+  --reason "the second exchange differs from ours" >"$work/rebut-result.json"
+record_of "$work/rebut-result.json"
+jq -e '.record_type=="rebuttal"' "$work/rebut-result.json" >/dev/null || {
+  echo "FAIL: rebut must record a rebuttal" >&2; exit 1; }
+if "$bin" book acknowledge --profile "$profile" --period day --date "$yesterday" --counterparty skill-demo-peer \
+  --peer "$work/peer-close-bundle.json" --peer-checkpoint-key "$peer_checkpoint_key" >/dev/null 2>"$work/ack-after-rebut.err"; then
+  echo "FAIL: acknowledging a Close this book rebutted must be refused" >&2; exit 1
+fi
+echo "  rebutted it with a reason; acknowledging again is refused" >&2
 
 echo "== 4/7 reconcile (not-consequential; adds no record) ==" >&2
 sizes=("$(book_size "$store")" "$(book_size "$peer_store")")
@@ -276,12 +305,12 @@ book_records=$(wc -l <"$book_records_file" | tr -d ' ')
 
 echo >&2
 echo "== summary ==" >&2
-echo "book records from consequential book verbs (request x3, respond x2, response x1, close x2, result build, report derive): $book_records (target: 10)" >&2
+echo "book records from consequential book verbs (request x3, respond x2, response x1, close x2, acknowledge, rebut, result build, report derive): $book_records (target: 12)" >&2
 echo "not-consequential book verbs (reconcile, report build): ran, added no record" >&2
 echo "elapsed: ${elapsed}s from a fresh build through the last verb (target: under 3600s)" >&2
 
-if [[ "$book_records" -ne 10 ]]; then
-  echo "FAIL: expected exactly 10 book records from consequential book verbs, got $book_records" >&2
+if [[ "$book_records" -ne 12 ]]; then
+  echo "FAIL: expected exactly 12 book records from consequential book verbs, got $book_records" >&2
   exit 1
 fi
 if [[ "$elapsed" -ge 3600 ]]; then

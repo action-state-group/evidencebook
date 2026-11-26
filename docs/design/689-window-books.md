@@ -382,9 +382,9 @@ list`, a chain refused over a window in grace, the boundary checkpoint queued fo
 current window, since a window in grace takes only Closes and the `held_bundle` a Close relies
 on); an old store opening with grace 0
 is the root package's test.
-capsulectl-book has no verb that writes an acknowledgement or rebuttal; the root package's tests
-show a window in grace refusing every record but a Close inside it, so such records go to the
-current window.
+`book acknowledge` and `book rebut` (evidencebook#116) write an acknowledgement or rebuttal in
+the current window; the root package's tests show a window in grace refusing every record but a
+Close inside it and the `held_bundle` that Close relies on.
 
 ## 11. Converting a JSONL book: the predecessor (#808)
 
