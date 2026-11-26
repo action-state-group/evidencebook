@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -24,14 +25,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// historyHolderKey is the trusted holder key of the received-history fixtures
-// (testdata/received-history/README.md).
-const historyHolderKey = "27cb07b534232cb4f4b7b269a8436fafb17c19be41fbab20ac948d1c81b0a034"
-
 const historyCommit = `{"action":"commit","terms":{"item":"lamp","price_minor":6000,"currency":"USD"}}`
 
-func historyFixture(name string) string {
-	return filepath.Join("testdata", "received-history", name)
+// historyStapleFile is a passing stapled history_card/2, written to a file,
+// with the keys it verifies under.
+type historyStapleFile struct {
+	path, holder, checkpointKey string
+}
+
+// args are the --history flags that read the staple under its keys.
+func (f historyStapleFile) args() []string {
+	return []string{"--history", f.path, "--counterparty-key", f.holder, "--checkpoint-key", f.checkpointKey}
+}
+
+// historyStaple is the passing history_card/2 staple vector as a file.
+func historyStaple(t *testing.T) historyStapleFile {
+	t.Helper()
+	v := card2Vectors(t)["history_card/2"]
+	require.True(t, v.Pass)
+	return historyStapleFile{path: card2Staple(t, v), holder: v.Holder, checkpointKey: card2CheckpointKey(t, v.Reply)}
+}
+
+// historyStapleRespaced is the same staple as historyStaple, indented: other
+// bytes, the same verified card.
+func historyStapleRespaced(t *testing.T) historyStapleFile {
+	t.Helper()
+	f := historyStaple(t)
+	var v any
+	require.NoError(t, json.Unmarshal(mustRead(t, f.path), &v))
+	raw, err := json.MarshalIndent(v, "", "  ")
+	require.NoError(t, err)
+	f.path = writeJSON(t, string(raw))
+	require.NotEqual(t, fileSHA256(t, f.path), fileSHA256(t, historyStaple(t).path))
+	return f
 }
 
 // recordingChecker pins a checker that appends every input it is given to
@@ -82,29 +108,30 @@ func fileSHA256(t *testing.T, path string) string {
 // may not be read, refuses the whole check with its reason. No checker runs
 // and nothing is sealed.
 func TestReceivedHistoryRefusesWhatDoesNotVerify(t *testing.T) {
-	otherKey := strings.Repeat("ab", 32)
+	staple := historyStaple(t)
+	key := staple.holder
 	notAHistory := writeJSON(t, `{"history":"selection/1","deals":[]}`)
 	card1 := writeJSON(t, `{"history":"history_card/1","request":{},"reply":{}}`)
 	card2 := writeJSON(t, `{"history":"history_card/2","request":{},"reply":{}}`)
 	commitment := writeJSON(t, `{"profile":"evidence-commitment/1"}`)
-	malformed := writeJSON(t, `{"history":"personal_history_basic/1","definition":{}}`)
+	// The personal-history forms are frozen (evidencebook#962): a one-file
+	// personal_history_basic/1 History is not read.
+	personal := writeJSON(t, `{"history":"personal_history_basic/1","definition":{},"exchanges":[]}`)
 	for name, tc := range map[string]struct {
 		args []string
 		want string
 	}{
-		"a History that fails a property":         {[]string{"--history", historyFixture("not-accepted.json"), "--counterparty-key", historyHolderKey}, "is not verified"},
-		"a History answered under another key":    {[]string{"--history", historyFixture("accepted.json"), "--counterparty-key", otherKey}, "is not verified"},
-		"a second document of one kind":           {[]string{"--history", historyFixture("accepted.json"), "--history", historyFixture("accepted-2.json"), "--counterparty-key", historyHolderKey}, "is a second personal_history_basic/1"},
-		"the same document twice":                 {[]string{"--history", historyFixture("accepted.json"), "--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey}, "the same document as an earlier --history"},
-		"a document that is no History":           {[]string{"--history", notAHistory, "--counterparty-key", historyHolderKey}, "is not a History this check reads"},
-		"a malformed History":                     {[]string{"--history", malformed, "--counterparty-key", historyHolderKey}, "is not a one-file History"},
-		"a history_card/1 file that is no staple": {[]string{"--history", card1, "--counterparty-key", historyHolderKey}, "is not a History this check reads"},
-		"a history_card/2 file that is no staple": {[]string{"--history", card2, "--counterparty-key", historyHolderKey}, "is not a History this check reads"},
-		"a commitment that staples nothing":       {[]string{"--history", commitment, "--counterparty-key", historyHolderKey}, "is not a History this check reads"},
-		"a checkpoint key with no staple":         {[]string{"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey, "--checkpoint-key", historyHolderKey}, "--checkpoint-key goes with a stapled history_card/2"},
-		"no key":                                  {[]string{"--history", historyFixture("accepted.json")}, "needs --counterparty-key"},
-		"a key and no History":                    {[]string{"--counterparty-key", historyHolderKey}, "goes with --history"},
-		"a key that is not a key":                 {[]string{"--history", historyFixture("accepted.json"), "--counterparty-key", "ABCD"}, "64 lowercase hex"},
+		"a second document":                       {append(staple.args(), "--history", historyStapleRespaced(t).path), "is given 2 times: a check reads one stapled history_card/2"},
+		"the same document twice":                 {append(staple.args(), "--history", staple.path), "is given 2 times"},
+		"two counterparty keys":                   {[]string{"--history", staple.path, "--counterparty-key", key + "," + strings.Repeat("ab", 32)}, "exactly one --counterparty-key"},
+		"a document that is no History":           {[]string{"--history", notAHistory, "--counterparty-key", key}, "is not a History this check reads: want a stapled history_card/2"},
+		"a personal_history_basic/1 History":      {[]string{"--history", personal, "--counterparty-key", key}, "is not a History this check reads: want a stapled history_card/2"},
+		"a history_card/1 file that is no staple": {[]string{"--history", card1, "--counterparty-key", key}, "is not a History this check reads"},
+		"a history_card/2 file that is no staple": {[]string{"--history", card2, "--counterparty-key", key}, "is not a History this check reads"},
+		"a commitment that staples nothing":       {[]string{"--history", commitment, "--counterparty-key", key}, "is not a History this check reads"},
+		"no key":                                  {[]string{"--history", staple.path}, "needs --counterparty-key"},
+		"a key and no History":                    {[]string{"--counterparty-key", key}, "goes with --history"},
+		"a key that is not a key":                 {[]string{"--history", staple.path, "--counterparty-key", "ABCD"}, "64 lowercase hex"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := openedV1(t)
@@ -122,7 +149,7 @@ func TestReceivedHistoryRefusesWhatDoesNotVerify(t *testing.T) {
 // --history goes with an x-deal-v1 deal's check and a pinned rules checker,
 // refused before anything is sealed otherwise.
 func TestReceivedHistoryNeedsAV1DealAndAChecker(t *testing.T) {
-	args := []string{"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey}
+	args := historyStaple(t).args()
 
 	h := openedV1(t)
 	assert.Contains(t, v1Err(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, args...)...), "needs a pinned rules checker")
@@ -138,10 +165,10 @@ func TestReceivedHistoryNeedsAV1DealAndAChecker(t *testing.T) {
 // verdict is sealed as received_history: about the counterparty, under the
 // keys given, the document exactly as received with its SHA-256.
 func TestReceivedHistoryReachesTheChecker(t *testing.T) {
+	staple := historyStaple(t)
 	h := openedV1(t)
 	checker := recordingChecker(t, checkerPrints("allow", ""))
-	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	out := dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, staple.args()...)...)
 	assert.Equal(t, "evaluated", out["rules"].(map[string]any)["status"])
 
 	inputs := checkerInputs(t, checker)
@@ -149,24 +176,26 @@ func TestReceivedHistoryReachesTheChecker(t *testing.T) {
 	member, ok := inputs[0]["received_history"].(map[string]any)
 	require.True(t, ok, "%v", inputs[0])
 	assert.Equal(t, "counterparty", member["about"])
-	assert.Equal(t, []any{historyHolderKey}, member["counterparty_keys"])
+	assert.Equal(t, []any{staple.holder}, member["counterparty_keys"])
+	assert.Equal(t, []any{staple.checkpointKey}, member["checkpoint_keys"])
 	histories := member["histories"].([]any)
 	require.Len(t, histories, 1)
 	doc := histories[0].(map[string]any)
-	assert.Equal(t, "personal_history_basic/1", doc["kind"])
+	assert.Equal(t, "history_card/2", doc["kind"])
 	assert.Equal(t, "BOUND", doc["request_binding"])
-	assert.Equal(t, fileSHA256(t, historyFixture("accepted.json")), doc["sha256"])
+	assert.Equal(t, fileSHA256(t, staple.path), doc["sha256"])
 	var want any
-	require.NoError(t, json.Unmarshal(mustRead(t, historyFixture("accepted.json")), &want))
+	require.NoError(t, json.Unmarshal(mustRead(t, staple.path), &want))
 	assert.Equal(t, want, doc["document"], "the document as received")
 }
 
 // The member's input_sha256 binds the keys, statuses and documents: it changes
 // with any of them, and is the SHA-256 of the member's JCS.
 func TestReceivedHistoryInputDigestBindsTheMember(t *testing.T) {
-	raw := mustRead(t, historyFixture("accepted.json"))
-	base := &receivedHistory{About: "counterparty", CounterpartyKeys: []string{historyHolderKey},
-		Histories: []receivedHistoryDoc{{Kind: "personal_history_basic/1", SHA256: fileSHA256(t, historyFixture("accepted.json")), RequestBinding: "BOUND", Document: raw}}}
+	staple := historyStaple(t)
+	raw := mustRead(t, staple.path)
+	base := &receivedHistory{About: "counterparty", CounterpartyKeys: []string{staple.holder}, CheckpointKeys: []string{staple.checkpointKey},
+		Histories: []receivedHistoryDoc{{Kind: "history_card/2", SHA256: fileSHA256(t, staple.path), RequestBinding: "BOUND", Document: raw}}}
 	input := []byte(`{"schema":"external-check-input/v0","record":{}}`)
 	extended, digest, err := withReceivedHistory(input, base)
 	require.NoError(t, err)
@@ -177,11 +206,13 @@ func TestReceivedHistoryInputDigestBindsTheMember(t *testing.T) {
 	assert.Contains(t, string(extended), `"received_history":`)
 
 	key := *base
-	key.CounterpartyKeys = []string{historyHolderKey, strings.Repeat("cd", 32)}
+	key.CounterpartyKeys = []string{strings.Repeat("cd", 32)}
+	checkpoint := *base
+	checkpoint.CheckpointKeys = []string{strings.Repeat("cd", 32)}
 	status := *base
 	status.Histories = []receivedHistoryDoc{base.Histories[0]}
 	status.Histories[0].RequestBinding = "NOT_PRESENT"
-	for name, h := range map[string]*receivedHistory{"a key": &key, "a status": &status} {
+	for name, h := range map[string]*receivedHistory{"a key": &key, "a checkpoint key": &checkpoint, "a status": &status} {
 		_, other, err := withReceivedHistory(input, h)
 		require.NoError(t, err)
 		assert.NotEqual(t, digest, other, "changing %s changes input_sha256", name)
@@ -192,11 +223,11 @@ func TestReceivedHistoryInputDigestBindsTheMember(t *testing.T) {
 // History on stderr is reported by its cause alone; none of the document
 // reaches the output, the card or the sealed records.
 func TestReceivedHistoryRefusalKeepsTheCauseAlone(t *testing.T) {
-	marker := "\"definition\""
+	marker := "\"octets_text\""
 	h := openedV1(t)
-	recordingChecker(t, `grep -o '"definition"' "$INPUT" >&2; exit 3`)
-	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	checker := recordingChecker(t, `grep -o '"octets_text"' "$INPUT" >&2; exit 3`)
+	out := dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, historyStaple(t).args()...)...)
+	assert.Contains(t, string(mustRead(t, checker+".input")), marker, "the checker was handed the marker it echoes")
 	rules := out["rules"].(map[string]any)
 	assert.Equal(t, "not_evaluated", rules["status"])
 	assert.Equal(t, "refused", rules["cause"])
@@ -236,8 +267,7 @@ else ` + checkerPrints("allow", "") + `; fi`
 	require.Len(t, plain, 2)
 	require.NoError(t, os.Remove(checker+".all"))
 
-	with := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit), "--received", cardsFile(t),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	with := dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit), "--received", cardsFile(t)}, historyStaple(t).args()...)...)
 	assert.Equal(t, without["rules_notice"], with["rules_notice"])
 	assert.Equal(t, "read 2 cards", with["rules_notice"])
 	runs := checkerInputs(t, checker)
@@ -270,16 +300,16 @@ func sealedVerdictHistory(t *testing.T, dealID string) *xdealv1.ReceivedHistoryD
 // the member exactly as the checker received it, and nothing of the
 // document or the keys. A check without --history seals none.
 func TestReceivedHistorySealsItsDigestsOnly(t *testing.T) {
+	staple := historyStaple(t)
 	h := openedV1(t)
 	checker := recordingChecker(t, checkerPrints("allow", ""))
 	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit))
 	assert.Nil(t, sealedVerdictHistory(t, h.dealID), "no History, no member")
 
-	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, staple.args()...)...)
 	got := sealedVerdictHistory(t, h.dealID)
 	require.NotNil(t, got)
-	assert.Equal(t, []string{fileSHA256(t, historyFixture("accepted.json"))}, got.HistorySHA256)
+	assert.Equal(t, []string{fileSHA256(t, staple.path)}, got.HistorySHA256)
 
 	raw, err := os.ReadFile(checker + ".input")
 	require.NoError(t, err)
@@ -292,8 +322,11 @@ func TestReceivedHistorySealsItsDigestsOnly(t *testing.T) {
 	sum := sha256.Sum256(jcs)
 	assert.Equal(t, hex.EncodeToString(sum[:]), got.InputSHA256, "input_sha256 is over the member the checker read")
 
+	for _, present := range []string{"\"octets_text\"", staple.holder, staple.checkpointKey} {
+		assert.Contains(t, string(raw), present, "the checker read it, so its absence below is meaningful")
+	}
 	stored := v1Stored(t, h.dealID)
-	for _, leaked := range []string{"\"definition\"", "\"exchanges\"", historyHolderKey} {
+	for _, leaked := range []string{"\"octets_text\"", staple.holder, staple.checkpointKey} {
 		assert.NotContains(t, stored, leaked, "the journal and local events hold no History content or key")
 	}
 }
@@ -304,8 +337,7 @@ func TestReceivedHistoryUnreadByAnyRunIsNotBound(t *testing.T) {
 	h := openedV1(t)
 	checker := recordingChecker(t, checkerPrints("allow", ""))
 	require.NoError(t, os.WriteFile(checker, []byte("#!/bin/sh\nexit 0\n"), 0o700))
-	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	out := dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, historyStaple(t).args()...)...)
 	assert.Equal(t, "checker_changed", out["rules"].(map[string]any)["cause"])
 	assert.Nil(t, sealedVerdictHistory(t, h.dealID))
 }
@@ -314,8 +346,7 @@ func TestReceivedHistoryUnreadByAnyRunIsNotBound(t *testing.T) {
 func TestReceivedHistoryRefusedRunIsBound(t *testing.T) {
 	h := openedV1(t)
 	recordingChecker(t, "exit 3")
-	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, historyStaple(t).args()...)...)
 	require.NotNil(t, sealedVerdictHistory(t, h.dealID))
 }
 
@@ -327,8 +358,7 @@ func TestReceivedHistoryRefusedRunIsBound(t *testing.T) {
 func TestReceivedHistoryIsInNoSharedCopy(t *testing.T) {
 	dealID := noLayerAgreed(t)
 	recordingChecker(t, checkerPrints("allow", ""))
-	dealRun(t, "check", "--deal", dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("ab", 32)+`"`)),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	dealRun(t, append([]string{"check", "--deal", dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("ab", 32)+`"`))}, historyStaple(t).args()...)...)
 	bound := sealedVerdictHistory(t, dealID)
 	require.NotNil(t, bound)
 	for _, audience := range []string{"keep", "counterparty"} {
@@ -374,8 +404,7 @@ func TestReceivedHistoryOtherCausesKeepTheCauseAlone(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := openedV1(t)
 			recordingChecker(t, tc.body)
-			out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
-				"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+			out := dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, historyStaple(t).args()...)...)
 			rules := out["rules"].(map[string]any)
 			assert.Equal(t, tc.cause, rules["cause"])
 			if tc.cause == "ruleset_changed" {
@@ -395,8 +424,7 @@ func TestReceivedHistoryOtherCausesKeepTheCauseAlone(t *testing.T) {
 func TestReceivedHistoryStaysBoundThroughADowngrade(t *testing.T) {
 	h := openedV1(t)
 	recordingChecker(t, checkerPrints("allow", `{"id":"x","check":"mail ann@example.com","verdict":"pass"}`))
-	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	out := dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, historyStaple(t).args()...)...)
 	assert.Equal(t, "unreadable", out["rules"].(map[string]any)["cause"])
 	require.NotNil(t, sealedVerdictHistory(t, h.dealID))
 }
@@ -412,8 +440,7 @@ var historyDeniesBody = `if grep -q received_history "$INPUT"; then ` + checkerP
 func TestReceivedHistoryAloneNeverDenies(t *testing.T) {
 	h := openedV1(t)
 	checker := recordingChecker(t, historyDeniesBody)
-	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	out := dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit)}, historyStaple(t).args()...)...)
 	assert.Equal(t, "pause", out["verdict"], "History alone asks, never denies")
 	assert.Equal(t, "deny", out["rules"].(map[string]any)["verdict"], "the checker's own answer is kept")
 	assert.Contains(t, differenceTexts(out), historyAloneText)
@@ -437,8 +464,7 @@ func TestReceivedHistoryAloneNeverDenies(t *testing.T) {
 
 	h2 := openedV1(t)
 	recordingChecker(t, checkerPrints("deny", denyFinding))
-	out = dealRun(t, "check", "--deal", h2.dealID, "--input", writeJSON(t, historyCommit),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	out = dealRun(t, append([]string{"check", "--deal", h2.dealID, "--input", writeJSON(t, historyCommit)}, historyStaple(t).args()...)...)
 	assert.Equal(t, "deny", out["verdict"], "a deny without the History too is a deny")
 	assert.NotContains(t, differenceTexts(out), historyAloneText)
 }
@@ -452,8 +478,7 @@ func historyPayCheck(t *testing.T, body string) (*handshakeV1, string) {
 	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, `{"verbatim":"buy the lamp, at most 70 dollars","max_total_minor":7000}`), "--opening", writeJSON(t, v1Opening))
 	recordingChecker(t, body)
 	in := fmt.Sprintf(`{"action":"pay","amount_minor":6000,"authorized_max_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"},"payment_ref":%q}`, v1LnHash)
-	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, in),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)
+	out := dealRun(t, append([]string{"check", "--deal", h.dealID, "--input", writeJSON(t, in)}, historyStaple(t).args()...)...)
 	require.Equal(t, "pass", out["verdict"], "%v", out)
 	var check string
 	withSession(t, func(s *dealSession) {
@@ -464,26 +489,33 @@ func historyPayCheck(t *testing.T, body string) (*handshakeV1, string) {
 	return h, check
 }
 
-// The send re-runs a check that read the History on the same History
-// (Sherlock2 on #897): without it, or with another History or key, the
-// payment is refused and nothing is sent; with it, the re-run reads it.
+// The send re-runs a check that read the History on the same staple under
+// the same keys (Sherlock2 on #897): without it, with the same card in other
+// bytes, or under another checkpoint key list, the payment is refused and
+// nothing is sent; with it, the re-run reads it.
 func TestReceivedHistoryIsReadAgainAtTheSend(t *testing.T) {
 	h, check := historyPayCheck(t, `if grep -q received_history "$INPUT"; then `+checkerPrints("allow", "")+`; else `+checkerPrints("deny", denyFinding)+`; fi`)
+	staple := historyStaple(t)
 	sent := []string{"settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"}
+	withStaple := append(slices.Clone(sent), "--history", staple.path, "--counterparty-key", staple.holder)
 	assert.Contains(t, v1Err(t, sent...), "read the counterparty's History: give the same --history")
-	assert.Contains(t, v1Err(t, append(sent, "--history", historyFixture("accepted-2.json"), "--counterparty-key", historyHolderKey)...), "is not the History check")
-	assert.Contains(t, v1Err(t, append(sent, "--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey+","+strings.Repeat("cd", 32))...), "is not the History check")
-	dealRun(t, append(sent, "--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey)...)
+	// The same card in other bytes verifies, but it is not the document the
+	// check's verdict bound: refused by its digest.
+	assert.Contains(t, v1Err(t, append(slices.Clone(sent), historyStapleRespaced(t).args()...)...), "is not the History check")
+	assert.Contains(t, v1Err(t, append(slices.Clone(withStaple), "--checkpoint-key", strings.Repeat("ab", 32))...), "is not verified")
+	assert.Contains(t, v1Err(t, withStaple...), "checkpoint_key was not checked")
+	// The card verifies under this list too, but it is not the one the
+	// check's verdict bound: refused by input_sha256.
+	assert.Contains(t, v1Err(t, append(slices.Clone(withStaple), "--checkpoint-key", staple.checkpointKey+","+strings.Repeat("ab", 32))...), "is not the History check")
+	dealRun(t, append(slices.Clone(sent), staple.args()...)...)
 }
 
 // A check that read no History takes none at the send, and --history goes
 // with --sent only.
 func TestReceivedHistoryAtTheSendNeedsACheckThatReadOne(t *testing.T) {
 	h, check := buyerCheckedFor(t, paymentOffer, 6000, v1LnHash)
-	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash",
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey), "read none")
-	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "p.json"),
-		"--history", historyFixture("accepted.json"), "--counterparty-key", historyHolderKey), "--history goes with --sent")
+	assert.Contains(t, v1Err(t, append([]string{"settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"}, historyStaple(t).args()...)...), "read none")
+	assert.Contains(t, v1Err(t, append([]string{"settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "p.json")}, historyStaple(t).args()...)...), "--history goes with --sent")
 }
 
 // At the send, a deny History alone causes still asks: the pay that passed
@@ -718,44 +750,17 @@ func TestReceivedHistoryBrokenCardSaysWhy(t *testing.T) {
 	assert.Empty(t, checkerInputs(t, checker))
 }
 
-// A send that rests on a check that read a stapled card re-reads the same
-// staple under the same keys; another checkpoint key is refused, and
-// nothing is sent.
-func TestReceivedHistoryStapleIsReadAgainAtTheSend(t *testing.T) {
-	staple, _, _, holder, ck := publishedCard2(t)
-	h := agreedBoth(t, paymentOffer)
-	h.buyer.act(t)
-	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, `{"verbatim":"buy the lamp, at most 70 dollars","max_total_minor":7000}`), "--opening", writeJSON(t, v1Opening))
-	recordingChecker(t, checkerPrints("allow", ""))
-	in := fmt.Sprintf(`{"action":"pay","amount_minor":6000,"authorized_max_minor":6000,"terms":{"item":"lamp","price_minor":6000,"currency":"USD"},"payment_ref":%q}`, v1LnHash)
-	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, in), "--history", staple, "--counterparty-key", holder, "--checkpoint-key", ck)
-	require.Equal(t, "pass", out["verdict"], "%v", out)
-	var check string
-	withSession(t, func(s *dealSession) {
-		journal, err := s.v1DealJournal(t.Context(), h.dealID)
-		require.NoError(t, err)
-		check = checkDigest(t, journal)
-	})
-	sent := []string{"settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash", "--history", staple, "--counterparty-key", holder}
-	assert.Contains(t, v1Err(t, append(sent, "--checkpoint-key", strings.Repeat("ab", 32))...), "is not verified")
-	assert.Contains(t, v1Err(t, sent...), "checkpoint_key was not checked")
-	// The card verifies under this list too, but it is not the one the
-	// check's verdict bound: refused by input_sha256.
-	assert.Contains(t, v1Err(t, append(sent, "--checkpoint-key", ck+","+strings.Repeat("ab", 32))...), "is not the History check")
-	dealRun(t, append(sent, "--checkpoint-key", ck)...)
-}
-
 // A --checkpoint-key with no --history is refused, on a check and on a
 // send, never silently dropped.
 func TestReceivedHistoryOrphanCheckpointKeyIsRefused(t *testing.T) {
 	h := openedV1(t)
 	checker := recordingChecker(t, checkerPrints("allow", ""))
-	assert.Contains(t, v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit), "--checkpoint-key", historyHolderKey),
+	assert.Contains(t, v1Err(t, "check", "--deal", h.dealID, "--input", writeJSON(t, historyCommit), "--checkpoint-key", strings.Repeat("ab", 32)),
 		"--checkpoint-key goes with --history")
 	assert.Empty(t, checkerInputs(t, checker))
 
 	hb, check := buyerCheckedFor(t, paymentOffer, 6000, v1LnHash)
-	assert.Contains(t, v1Err(t, "settle", "--deal", hb.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash", "--checkpoint-key", historyHolderKey),
+	assert.Contains(t, v1Err(t, "settle", "--deal", hb.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash", "--checkpoint-key", strings.Repeat("ab", 32)),
 		"--checkpoint-key goes with --history")
 }
 

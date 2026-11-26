@@ -673,7 +673,7 @@ func dealSettleCommand() *cobra.Command {
 	f.String("deal", "", "The x-deal-v1 deal (required)")
 	f.String("check", "", "Your passing pay check (or cancel check, for a refund) that a payment rests on: the check_id deal check printed (or the check record's digest)")
 	f.Bool("sent", false, "Before the handoff: check the payment and count it as in flight; seals no leg")
-	f.StringArray("history", nil, "With --sent, when the pay check read the counterparty's History (deal check --history): the same History files, verified again, so the payment is checked against what the check read")
+	f.StringArray("history", nil, "With --sent, when the pay check read the counterparty's History (deal check --history): the same stapled history_card/2 file, verified again, so the payment is checked against what the check read")
 	f.StringSlice("counterparty-key", nil, "With --history: the same counterparty key the check used, from your deployment policy")
 	f.StringSlice("checkpoint-key", nil, "With a stapled history_card/2 in --history: the same checkpoint key the check used (its verdict binds it: any other is refused)")
 	f.String("status", "", "settled or failed for a payment when the rail answers; pending, settled or failed for what you received")
