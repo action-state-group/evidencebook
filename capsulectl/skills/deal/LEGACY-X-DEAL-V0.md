@@ -16,7 +16,7 @@ The setting is frozen and will be removed once its consumers have moved
 
 Everything in SKILL.md outside its Procedures and Command reference (when
 the final review applies, the four questions, `voice` and `say`, the Rules,
-points of no return, Setup is the user's) applies here too, and so do
+points of no return, Setup) applies here too, and so do
 [references/setup.md](references/setup.md) and the daily check of host
 actions in [references/expert.md](references/expert.md#daily-check-of-host-actions). Two things differ on x-deal-v0: each sealed step is an x-deal-v0 record
 (EvidenceBook's [`dealprofile/x-deal-v0/PROFILE.md`](https://github.com/action-state-group/evidencebook/tree/v0.10.0/dealprofile/x-deal-v0/PROFILE.md)),

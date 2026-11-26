@@ -675,7 +675,10 @@ The final review asks four questions:
 
 ## What you say: `voice` and `say`
 
-Every command's result says whether to speak and exactly what. Its words
+A book command's output has no `voice` or `say`: show it as
+[references/book.md](references/book.md) says, and never modify, summarize,
+reinterpret or restate the output of `verify`. Every deal command's result
+says whether to speak and exactly what. Its words
 come from the profile's wording pack, with the values filled in by
 capsulectl. Follow them; never make up your own narration of a step.
 
@@ -815,21 +818,22 @@ check, so a signature uses `commit`.
 offer, agreeing to buy). `cancel` means cancelling with the merchant. `deal
 check` refuses any other action name.
 
-## Setup is the user's
-
-Setting up is the user's step, never yours: installing a plugin, creating a
-profile or its store, moving a store to a new version, and setting or
-changing the materiality predicate (which of your own picks pause a check).
-When a command says a plugin is not installed, that the profile must be
-created or moved, or that the predicate changed since it was pinned, stop
-and show the user its message as it is; never run the command it names
-yourself. capsule-engine is its own program: if `capsule-engine` is not
-installed, stop at the admission step and tell the user.
+## Setup (once)
 
 Before the first deal on a profile, read
-[references/setup.md](references/setup.md): it holds what you tell the user,
-in one message, about the witness and the checkpoint cadence, and the
-network grant the cadence needs.
+[references/setup.md](references/setup.md) and follow it: it creates the
+profile and its checkpoint cadence, and holds what you tell the user, in one
+message, about the witness and the cadence, and the network grant the
+cadence needs.
+
+Three setup steps are the user's, never yours: installing a plugin, moving a
+store to a new version, and setting or changing the materiality predicate
+(which of your own picks pause a check). When a command says a plugin is not
+installed, that the store must be moved, or that the predicate changed since
+it was pinned, stop and show the user its message as it is; never run the
+command it names yourself. capsule-engine is its own program: if
+`capsule-engine` is not installed, stop at the admission step and tell the
+user.
 
 ## Command reference
 

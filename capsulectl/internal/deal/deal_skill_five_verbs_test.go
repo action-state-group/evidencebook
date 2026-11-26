@@ -21,21 +21,29 @@ const dealSkillDir = "../../skills/deal"
 
 var fiveVerbs = []string{"check", "record", "ask", "verify", "show"}
 
-// The expert commands, re-derived from the two skills' text before the merge:
-// each pattern names one, and SKILL.md names none of them.
-var expertCommands = map[string]*regexp.Regexp{
-	"deal init":                  regexp.MustCompile("deal init"),
-	"deal set-version":           regexp.MustCompile("deal set-version"),
-	"deal tick":                  regexp.MustCompile("deal tick"),
-	"deal audit-host":            regexp.MustCompile("deal audit-host"),
-	"deal settlement":            regexp.MustCompile(`deal settlement\b`),
-	"deal window":                regexp.MustCompile("deal window"),
-	"deal sale":                  regexp.MustCompile("deal sale"),
-	"plugin install":             regexp.MustCompile("plugin install"),
-	"cll checkpoint cadence":     regexp.MustCompile("cll checkpoint cadence"),
-	"book close":                 regexp.MustCompile("book close"),
-	"book result derived-inputs": regexp.MustCompile("book result derived-inputs"),
-	"book window":                regexp.MustCompile("book window"),
+// The expert commands, re-derived from the two skills' text before the merge
+// (and the x-deal-v0 deal verbs): SKILL.md names none of them. Words may be
+// split across a line break, so any run of white space separates them.
+var expertCommands = map[string]*regexp.Regexp{}
+
+func init() {
+	for _, name := range []string{
+		"deal init", "deal set-version", "deal tick", "deal audit-host", "deal settlement",
+		"deal window", "deal sale", "deal open", "deal close", "plugin install",
+		"cll checkpoint cadence", "book close", "book result derived-inputs", "book window",
+	} {
+		expertCommands[name] = regexp.MustCompile(`\b` + strings.Join(strings.Fields(name), `\s+`) + `\b`)
+	}
+}
+
+func namesExpertCommand(text string) []string {
+	var found []string
+	for name, re := range expertCommands {
+		if re.MatchString(text) {
+			found = append(found, name)
+		}
+	}
+	return found
 }
 
 func readSkillText(t *testing.T, rel string) string {
@@ -81,15 +89,38 @@ func TestDealSkillTeachesOnlyTheFiveVerbs(t *testing.T) {
 	// The one commerce card, and Mesh's service card as its exception (Q4).
 	assert.Contains(t, flat, "not a second commerce card")
 	// The description covers the book work too.
-	front, _, _ := strings.Cut(skill, "\n---\n# ")
-	assert.Contains(t, front, "`capsulectl book`")
+	assert.Contains(t, skillDescription(t, skill), "`capsulectl book`")
+}
+
+// skillDescription is the frontmatter's description line.
+func skillDescription(t *testing.T, skill string) string {
+	t.Helper()
+	body, ok := strings.CutPrefix(skill, "---\n")
+	require.True(t, ok, "SKILL.md starts with frontmatter")
+	front, _, ok := strings.Cut(body, "\n---\n")
+	require.True(t, ok, "the frontmatter ends")
+	for _, line := range strings.Split(front, "\n") {
+		if d, ok := strings.CutPrefix(line, "description: "); ok {
+			return d
+		}
+	}
+	require.Fail(t, "the frontmatter has no description")
+	return ""
+}
+
+func TestSkillDescriptionReadsOnlyTheFrontmatter(t *testing.T) {
+	skill := "---\nname: deal\ndescription: deals only\n---\n\n# deal\n\nrun `capsulectl book` here\n"
+	assert.Equal(t, "deals only", skillDescription(t, skill))
 }
 
 func TestDealSkillNamesNoExpertCommand(t *testing.T) {
-	skill := readSkillText(t, "SKILL.md")
-	for name, re := range expertCommands {
-		assert.False(t, re.MatchString(skill), "SKILL.md names the expert command %q", name)
-	}
+	assert.Empty(t, namesExpertCommand(readSkillText(t, "SKILL.md")), "SKILL.md names an expert command")
+}
+
+func TestExpertCommandPatternsCatchWrappedAndLegacyCommands(t *testing.T) {
+	assert.Equal(t, []string{"deal tick"}, namesExpertCommand("run `deal\n  tick` first"))
+	assert.Equal(t, []string{"deal open"}, namesExpertCommand("`deal open --input x`"))
+	assert.Empty(t, namesExpertCommand("`deal offer`, `deal settle`, `deal opener`"))
 }
 
 // Each expert command is kept in a reference file, with its instructions.
@@ -124,14 +155,15 @@ func TestDealSkillKeepsEachExpertCommandInAReference(t *testing.T) {
 	}
 }
 
-// The setup rules stay in SKILL.md without the commands: the user's steps are
-// never the agent's, and the setup reference is read before the first deal.
+// The setup rules stay in SKILL.md without the commands: the setup reference
+// is read before the first deal, and the three steps the user's alone stay
+// never the agent's.
 func TestDealSkillKeepsTheSetupRules(t *testing.T) {
-	body := strings.Join(strings.Fields(section(t, readSkillText(t, "SKILL.md"), "Setup is the user's")), " ")
+	body := strings.Join(strings.Fields(section(t, readSkillText(t, "SKILL.md"), "Setup (once)")), " ")
 	for _, rule := range []string{
-		"Setting up is the user's step, never yours: installing a plugin, creating a profile or its store, moving a store to a new version, and setting or changing the materiality predicate",
+		"Before the first deal on a profile, read [references/setup.md](references/setup.md) and follow it",
+		"Three setup steps are the user's, never yours: installing a plugin, moving a store to a new version, and setting or changing the materiality predicate",
 		"stop and show the user its message as it is; never run the command it names yourself.",
-		"Before the first deal on a profile, read [references/setup.md](references/setup.md)",
 	} {
 		assert.Contains(t, body, rule)
 	}

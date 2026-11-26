@@ -1,12 +1,9 @@
 # Setup (once)
 
-Read this before the first deal on a profile: it is the user's setup, and it
-holds what you tell the user about the witness and the checkpoint cadence,
-and the network grant the cadence needs. The [deal skill](../SKILL.md)
-teaches five verbs; the commands here are the user's, kept as they were
-taught before. Running them is the user's step unless this file says
-otherwise.
-
+Read this before the first deal on a profile, as the
+[deal skill](../SKILL.md) says. Its commands sit outside the skill's five
+verbs and are kept here as they were taught before; each step that is the
+user's, not yours, says so.
 
 `capsulectl deal` runs in the `capsulectl-deal` plugin. If a `capsulectl deal`
 command says the plugin is not installed, stop and show the user what it
