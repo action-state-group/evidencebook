@@ -85,8 +85,11 @@ in a fixed shape, so the workflow refuses any other version:
    `internal/book/assets/standard-history`), unpacked beside the launcher so the
    core can read the files the handshake names. The workflow checks the archive
    against the handshake before it publishes. It also carries
-   `deal-view-vX.Y.Z.tar.gz`, the deal view's files, unpacked into the plugin
-   directory beside `capsulectl-deal` (checked against that handshake too), and
+   `deal-view-vX.Y.Z.tar.gz`, the files of the presentation modules
+   `capsulectl-deal` offers (capsule-viewer's x-deal-v0 receipt modules and the
+   deal view's composed module, written by `scripts/dealviewfiles`), unpacked
+   into the plugin directory beside `capsulectl-deal` (checked against that
+   handshake too), and
    `deal-skill-vX.Y.Z.tar.gz`, the `skills/deal` tree. And it carries the
    core, `capsulectl-vX.Y.Z-{os-arch}` with `capsulectl-vX.Y.Z.sigstore.json`,
    added by `scripts/release-core-assets.sh` (above).

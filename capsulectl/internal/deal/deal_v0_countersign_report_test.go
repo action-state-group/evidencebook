@@ -113,3 +113,21 @@ func TestV0VerifyCountersignFlagRefusals(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--producer-key")
 }
+
+// A page whose verify report says capsulectl could not check the
+// countersignatures, or found one invalid, is refused; a report of other
+// states, of another kind's entry or with no member is not.
+func TestPageCountersignRefusal(t *testing.T) {
+	report := func(member string) []byte {
+		return []byte(`{"extensions":[{"kind":"x-deal-v0","countersign":` + member + `}]}`)
+	}
+	err := pageCountersignRefusal(report(`{"directory":"d.json","error":"cannot read d.json"}`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "could not be checked: cannot read d.json")
+	err = pageCountersignRefusal(report(`{"entries":[{"state":"resolved"},{"state":"invalid","detail":"signs a different bundle digest"}]}`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "countersignatures[1] is invalid: signs a different bundle digest")
+	assert.NoError(t, pageCountersignRefusal(report(`{"entries":[{"state":"resolved"},{"state":"not_independent"}]}`)))
+	assert.NoError(t, pageCountersignRefusal([]byte(`{"extensions":[{"kind":"x-deal-v1","countersign":{"error":"x"}}]}`)))
+	assert.NoError(t, pageCountersignRefusal([]byte(`{"extensions":[{"kind":"x-deal-v0"}]}`)))
+}

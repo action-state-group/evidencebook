@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/capsule-viewer/go/receipt"
 	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -37,8 +39,9 @@ var (
 )
 
 // A deal page is built through the emitter's slots: its CSP pins every
-// inline script and style the page holds and allows no network, the deal
-// view runs as the one digest-pinned module, and nothing is spliced in.
+// inline script and style the page holds and allows no network,
+// capsule-viewer's two x-deal-v0 receipt modules run as digest-pinned
+// modules (#869), and nothing is spliced in.
 func TestTheDealPageIsBuiltThroughTheEmittersSlots(t *testing.T) {
 	dealFixture(t)
 	id := retailDeal(t)
@@ -65,21 +68,30 @@ func TestTheDealPageIsBuiltThroughTheEmittersSlots(t *testing.T) {
 		assert.Contains(t, directives["style-src"], cspSource(s[1]), "every inline style is pinned")
 	}
 
+	var codes []string
+	for _, kind := range []string{receipt.Unilateral, receipt.Seller} {
+		m, err := receipt.Module(kind)
+		require.NoError(t, err)
+		codes = append(codes, string(m.Code))
+	}
 	module := 0
 	readers := 0
 	for _, s := range scripts {
-		if s[1] == DealViewJS {
+		if slices.Contains(codes, s[1]) {
 			module++
 		}
+		assert.NotEqual(t, DealViewJS, s[1], "the deal view draws no single copy")
 		if strings.Contains(s[1], "__BUNDLE__") {
 			readers++
 			assert.True(t, strings.HasPrefix(s[1], "window.__BUNDLE__ = ") || strings.Contains(s[1], "renderEvidenceGraph(window.__BUNDLE__,"),
 				"only the bundle slot and the bootstrap name the bundle: %.80s", s[1])
 		}
 	}
-	assert.Equal(t, 1, module, "the deal view is one module")
+	assert.Equal(t, 2, module, "each receipt module once")
 	assert.Equal(t, 2, readers, "the bundle slot sets it, the bootstrap reads it")
-	assert.Contains(t, directives["script-src"], cspSource(DealViewJS))
+	for _, code := range codes {
+		assert.Contains(t, directives["script-src"], cspSource(code))
+	}
 	assert.NotContains(t, page, `id="deal-countersign"`, "nothing beside the emitter's slots")
 	assert.Regexp(t, `<title>Receipt report: “[^<]+”</title>`, page, "the user's own copy is titled with the words they asked")
 }
@@ -119,25 +131,6 @@ func sellerWithRepresentations(t *testing.T) string {
 		dealRun(t, "note", "--deal", id, "--kind", "claim", "--input", writeJSON(t, body))
 	}
 	return id
-}
-
-// capsulectl checks the words a page shows against their sealed commitments
-// when it writes the page, and the page says what it found: the user's words
-// on their own copy, and each statement the agent made on every copy.
-func TestTheDealPageChecksItsWordsWhenItIsBuilt(t *testing.T) {
-	id := sellerWithRepresentations(t)
-	dir := t.TempDir()
-	own := filepath.Join(dir, "own.html")
-	dealRun(t, "report", "--deal", id, "--html", own)
-	got := pageOpeningsOf(t, own)
-	assert.True(t, got.Asked, "the user's words, checked")
-	assert.Equal(t, []bool{true, true}, got.Representations, "each statement the agent made, checked")
-
-	shared := filepath.Join(dir, "buyer.html")
-	dealRun(t, "report", "--deal", id, "--share", cli.DealAudienceCounterparty, "--to", "the buyer", "--html", shared)
-	got = pageOpeningsOf(t, shared)
-	assert.False(t, got.Asked, "the user's words are withheld from the buyer")
-	assert.Equal(t, []bool{true, true}, got.Representations)
 }
 
 // A page whose words do not recompute to their sealed commitment is never
@@ -181,13 +174,13 @@ func TestADealPageWhoseWordsDoNotMatchIsNotWritten(t *testing.T) {
 func TestTheDealViewIsAPresentationModule(t *testing.T) {
 	schema, err := cli.PresentationSchema("manifest")
 	require.NoError(t, err)
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(DealViewManifestJSON))
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(DealViewComposedManifestJSON))
 	require.NoError(t, err)
 	require.NoError(t, schema.Validate(doc))
 
 	var manifest map[string]interface{}
-	require.NoError(t, json.Unmarshal(DealViewManifestJSON, &manifest))
-	assert.Equal(t, "capsulectl.deal-view/v0", manifest["id"])
+	require.NoError(t, json.Unmarshal(DealViewComposedManifestJSON, &manifest))
+	assert.Equal(t, "capsulectl.deal-view-composed/v0", manifest["id"])
 	css := mustRead(t, "assets/deal-view.css")
 	executable := manifest["executable"].(map[string]interface{})
 	assert.Equal(t, "module-slot", executable["carrier"])
@@ -198,30 +191,18 @@ func TestTheDealViewIsAPresentationModule(t *testing.T) {
 	require.NotNil(t, m, "the script carries its stylesheet")
 	assert.Equal(t, string(css), m[1], "assets/deal-view.css and the script's stylesheet are the same bytes")
 
-	// Each manifest is registered by the script with the same manifest but
-	// for the script's own digest: the single-book module, then the composed
-	// one, which forbid each other's bundles (composed/v1).
+	// The script registers its one module, the composed one, with the same
+	// manifest but for the script's own digest; a single copy's receipt is
+	// capsule-viewer's (#869), so no module of its matches a single copy.
 	codes := regexp.MustCompile(`EvidenceGraph\.registerPresentation\(\{\n  manifest: (\{.*\}),\n`).FindAllStringSubmatch(DealViewJS, -1)
-	require.Len(t, codes, 2, "the script registers its two modules at load")
-	assert.Equal(t, 2, strings.Count(DealViewJS, "registerPresentation("), "two modules")
-	for i, raw := range [][]byte{DealViewManifestJSON, DealViewComposedManifestJSON} {
-		doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-		require.NoError(t, err)
-		require.NoError(t, schema.Validate(doc))
-		var want map[string]interface{}
-		require.NoError(t, json.Unmarshal(raw, &want))
-		assert.Equal(t, strings.TrimSpace(DealViewJSSHA256), cli.ManifestMap(want, "executable")["script_sha256"])
-		assert.Equal(t, strings.Repeat("0", 64), regexp.MustCompile(`"script_sha256": "([0-9a-f]{64})"`).FindStringSubmatch(codes[i][1])[1])
-		var inCode map[string]interface{}
-		require.NoError(t, json.Unmarshal([]byte(codes[i][1]), &inCode))
-		inCode["executable"].(map[string]interface{})["script_sha256"] = strings.TrimSpace(DealViewJSSHA256)
-		assert.Equal(t, want, inCode)
-	}
-	var composed map[string]interface{}
-	require.NoError(t, json.Unmarshal(DealViewComposedManifestJSON, &composed))
-	assert.Equal(t, "capsulectl.deal-view-composed/v0", composed["id"])
-	assert.Contains(t, cli.AsList(cli.ManifestMap(manifest, "forbids")["extensions"]), "composed/v1", "the single-book module never reads a composition")
-	assert.Equal(t, []interface{}{"composed/v1"}, cli.AsList(cli.ManifestMap(cli.ManifestMap(composed, "requires"), "extensions")["required"]))
+	require.Len(t, codes, 1, "the script registers its one module at load")
+	assert.Equal(t, 1, strings.Count(DealViewJS, "registerPresentation("))
+	assert.Equal(t, strings.Repeat("0", 64), regexp.MustCompile(`"script_sha256": "([0-9a-f]{64})"`).FindStringSubmatch(codes[0][1])[1])
+	var inCode map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(codes[0][1]), &inCode))
+	inCode["executable"].(map[string]interface{})["script_sha256"] = strings.TrimSpace(DealViewJSSHA256)
+	assert.Equal(t, manifest, inCode)
+	assert.Equal(t, []interface{}{"composed/v1"}, cli.AsList(cli.ManifestMap(cli.ManifestMap(manifest, "requires"), "extensions")["required"]))
 	assert.NotContains(t, DealViewJS, "capsulectlDealView =", "no entry point beside the module")
 
 	module, err := dealViewModule()
@@ -229,8 +210,8 @@ func TestTheDealViewIsAPresentationModule(t *testing.T) {
 	assert.Equal(t, []string{hexSHA256(css)}, module.StyleSHA256)
 }
 
-// The page's theme is tokens only; the deal view's layout is its own,
-// pinned, stylesheet, and the page's style-src lists it.
+// The page's theme is tokens only; the receipt's layout is the receipt
+// modules' own pinned stylesheets, and the page's style-src lists them.
 func TestTheDealPageThemeIsTokensOnly(t *testing.T) {
 	for _, line := range strings.Split(strings.TrimSpace(dealThemeCSS), "\n") {
 		assert.Regexp(t, `^(@media \(prefers-color-scheme: dark\) \{ )?:root \{( --aac-[a-z-]+: [^;{}]+;)+ \}( \})?$`, line)
@@ -243,11 +224,17 @@ func TestTheDealPageThemeIsTokensOnly(t *testing.T) {
 	for _, s := range pageStyles.FindAllStringSubmatch(page, -1) {
 		assert.NotContains(t, s[1], "#deal", "the deal view's rules are not in the page's own styles")
 	}
-	assert.Contains(t, pageCSP.FindStringSubmatch(page)[1], cspSource(string(mustRead(t, "assets/deal-view.css"))))
+	styles, err := receipt.Styles(receipt.Unilateral)
+	require.NoError(t, err)
+	for _, style := range styles {
+		assert.Contains(t, pageCSP.FindStringSubmatch(page)[1], cspSource(string(style)))
+	}
 }
 
 // A deal view the page's runtime would refuse, one ambiguous with a
-// built-in, or one whose manifest does not pin its script writes no page.
+// built-in, or one whose manifest does not pin its script is refused: the
+// composed page, which still draws with it until EB2b (#869), is not
+// written.
 func TestADealViewThePageWouldRefuseWritesNoPage(t *testing.T) {
 	for name, edit := range map[string]func(m map[string]interface{}){
 		"runtime":   func(m map[string]interface{}) { m["runtime_min"] = "0.2.0" },
@@ -259,20 +246,16 @@ func TestADealViewThePageWouldRefuseWritesNoPage(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var copied map[string]interface{}
-			require.NoError(t, json.Unmarshal(DealViewManifestJSON, &copied))
+			require.NoError(t, json.Unmarshal(DealViewComposedManifestJSON, &copied))
 			edit(copied)
 			raw, err := json.Marshal(copied)
 			require.NoError(t, err)
 			// The module is built from the assets package's manifest.
-			old := assets.ManifestJSON
-			assets.ManifestJSON = raw
-			t.Cleanup(func() { assets.ManifestJSON = old })
-			dealFixture(t)
-			id := retailDeal(t)
-			path := filepath.Join(t.TempDir(), "page.html")
-			_, err = invoke(t, "", "--profile", "deal", "deal", "report", "--deal", id, "--html", path)
+			old := assets.ComposedManifestJSON
+			assets.ComposedManifestJSON = raw
+			t.Cleanup(func() { assets.ComposedManifestJSON = old })
+			_, err = dealViewModule()
 			require.Error(t, err)
-			assert.NoFileExists(t, path)
 		})
 	}
 }

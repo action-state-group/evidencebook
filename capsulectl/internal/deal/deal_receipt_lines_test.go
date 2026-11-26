@@ -1,8 +1,6 @@
 package deal
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -41,107 +39,6 @@ func noStampLine(t *testing.T, got map[string]any, prefix string) {
 	for _, s := range got["stampText"].([]any) {
 		assert.False(t, strings.HasPrefix(strings.TrimLeft(s.(string), "✓—"), prefix), "no %q line: %v", prefix, got["stampText"])
 	}
-}
-
-func TestTheReceiptSaysWhatTheApprovalIsAndRecomputesItsOrder(t *testing.T) {
-	dealFixture(t)
-	id, _, _ := fawnDeal(t)
-
-	own := renderJourney(t, id, false)
-	require.Empty(t, own["refusal"])
-	assert.Equal(t, "Your own key's signature on your yes · missing · your yes is in your words, recorded by your agent",
-		stampLine(t, own, "Your own key's signature"), "the approval record is there; the signature with the person's key is what is missing")
-	assert.Equal(t, "Each act came after your yes · passed · recomputed from the order of this log", stampLine(t, own, "Each act came after"))
-	assert.Equal(t, "The payment is settled on its rail · missing · a card payment; the card processor's report is not in this file",
-		stampLine(t, own, "The payment is settled"), "a card payment carries no settlement record, so nothing is checked")
-	assert.Equal(t, "Their agreement with how it closed · not checked · the exchange is not closed in this copy", stampLine(t, own, "Their agreement"))
-	for _, s := range own["stampText"].([]any) {
-		assert.NotContains(t, s, "signed with your key ·", "never says the approval is signed")
-	}
-
-	// An approval withheld from the copy is missing, naming the act it was for.
-	withheld := renderJourney(t, id, false, "withhold-approval")
-	require.Empty(t, withheld["refusal"])
-	assert.Regexp(t, `^Each act came after your yes · missing · the approval for .+ is not in this copy$`, stampLine(t, withheld, "Each act came after"))
-
-	// The other side's copy names the holder, never "your", and withheld steps are not checked.
-	shared := renderJourney(t, id, true)
-	require.Empty(t, shared["refusal"])
-	assert.Equal(t, "Each act came after the holder's yes · not checked · steps are withheld from this copy", stampLine(t, shared, "Each act came after"))
-	assert.Equal(t, "Their agreement with how it closed · not checked · steps are withheld from this copy", stampLine(t, shared, "Their agreement"),
-		"with steps withheld, no close in the copy does not mean the deal is open")
-}
-
-// A deal with no act needing approval draws no approval or order line.
-func TestAReceiptWithNoActDrawsNoApprovalLine(t *testing.T) {
-	pair := closedPair(t, received, received)
-	party(t, pair.buyer.config)
-	got := renderJourney(t, pair.id, false)
-	require.Empty(t, got["refusal"])
-	noStampLine(t, got, "Your own key's signature")
-	noStampLine(t, got, "Each act came after")
-	assert.Equal(t, "Their agreement with how it closed · missing · no record from their side", stampLine(t, got, "Their agreement"),
-		"a closed deal with only your copy: their side is missing, never agreed")
-	assert.Equal(t, "none", got["close"])
-
-	// The shared copy of a closed deal never reads as "not closed".
-	shared := renderJourney(t, pair.id, true)
-	require.Empty(t, shared["refusal"])
-	assert.NotContains(t, stampLine(t, shared, "Their agreement"), "not closed")
-}
-
-// A Lightning payment the seller received: its rail and band, and a passed
-// stamp only when the runtime's own preimage check (capsule-viewer#214, the
-// page cannot compute a digest) answers PASS; any other answer, or a runtime
-// without the check, leaves the line as it was. Synthetic preimage
-// (deal_settlement_lightning_test.go).
-func TestTheReceiptStatesALightningSettlementAndItsBand(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not installed")
-	}
-	page := func(id string) map[string]any {
-		path := filepath.Join(t.TempDir(), "page.html")
-		dealRun(t, "report", "--deal", id, "--html", path)
-		return renderPageUnderNode(t, node, path)
-	}
-	id, _ := sellerDealWithDueDelivery(t)
-	terms, _ := newBuyerSide(t).lnTerms()
-	require.NoError(t, noteLightningReceived(t, id, terms, lnInvoice, lnTransaction("succeeded")))
-	got := page(id)
-	require.Empty(t, got["refusal"])
-	assert.Equal(t, "The payment is settled on its rail · passed · Lightning; the payment's proof matches its invoice · size 0.000001 to under 0.00001 BTC",
-		stampLine(t, got, "The payment is settled"), "495,000 msat credited plus the 5,000 msat fee is one 500 sat band, in BTC; the runtime's check passes the sealed preimage")
-
-	// The preimage that does not match, a check the page cannot run, and a
-	// runtime that predates the check: none passes.
-	path := filepath.Join(t.TempDir(), "page.html")
-	dealRun(t, "report", "--deal", id, "--html", path)
-	for edit, want := range map[string]string{
-		"preimage:NOT_CHECKED": "not checked",
-		"preimage:NOT_PRESENT": "not checked",
-		"no-checks":            "not checked",
-	} {
-		line := stampLine(t, renderPageUnderNode(t, node, path, edit), "The payment is settled")
-		assert.Equal(t, "The payment is settled on its rail · "+want+" · Lightning; its proof is sealed here, and this page can't check it yet · size 0.000001 to under 0.00001 BTC", line, edit)
-	}
-
-	// A FAIL is a check that ran: it reads failed, never "can't check it yet".
-	failedLine := stampLine(t, renderPageUnderNode(t, node, path, "preimage:FAIL"), "The payment is settled")
-	assert.Equal(t, "The payment is settled on its rail · failed · Lightning; its proof did not verify · size 0.000001 to under 0.00001 BTC", failedLine)
-
-	other, _ := sellerDealWithDueDelivery(t)
-	terms2, _ := newBuyerSide(t).lnTerms()
-	without := strings.Replace(lnTransaction("succeeded"), `,"preimage":"`+lnPreimage+`"`, "", 1)
-	require.NoError(t, noteLightningReceived(t, other, terms2, lnInvoice, without))
-	assert.Equal(t, "The payment is settled on its rail · not checked · Lightning; your wallet reported it final · size 0.000001 to under 0.00001 BTC",
-		stampLine(t, page(other), "The payment is settled"))
-
-	// A failed payment is not settled: no leg to state.
-	failed, _ := sellerDealWithDueDelivery(t)
-	terms3, _ := newBuyerSide(t).lnTerms()
-	require.NoError(t, noteLightningReceived(t, failed, terms3, lnInvoice, lnTransaction("failed")))
-	assert.Equal(t, "The payment is settled on its rail · missing · no settlement record is in this file", stampLine(t, page(failed), "The payment is settled"))
 }
 
 // The three cases on the receipt with the other party's half: stamped by
@@ -188,56 +85,6 @@ func TestTheComposedReceiptReadsTheCloseFromTheirRecord(t *testing.T) {
 	assert.Equal(t, "Each act came after your yes · missing · your record is not in this file", stampLine(t, none, "Each act came after"))
 	assert.Equal(t, "Their agreement with how it closed · not checked · your record is not in this file", stampLine(t, none, "Their agreement"))
 	assert.Equal(t, "The payment is settled on its rail · missing · no settlement record is in this file", stampLine(t, none, "The payment is settled"))
-}
-
-// The witness line is passed only from the runtime's check of the cadence
-// chain (capsule-viewer#214): PASS names the witness and the time; no receipt
-// is missing; a receipt the page could not check, a failed chain and a runtime
-// without the check leave the line as it was. The check itself is the
-// viewer's; the stub answers for it.
-func TestTheWitnessLineIsPassedOnlyFromTheRuntimesCheck(t *testing.T) {
-	dealFixture(t)
-	id, _, _ := fawnDeal(t)
-	const own, shared = "An outside witness saw your book", "An outside witness saw the holder's book"
-	stub := func(share bool, edit string) string {
-		line := shared
-		if !share {
-			line = own
-		}
-		return stampLine(t, renderJourney(t, id, share, edit), line)
-	}
-
-	assert.Regexp(t, `^An outside witness saw your book · passed · recorded by Acme Witness at .+$`, stub(false, "witness:PASS"))
-	assert.Regexp(t, `^An outside witness saw the holder's book · passed · recorded by Acme Witness at .+$`, stub(true, "witness:PASS"))
-	assert.Equal(t, own+" · missing", stub(false, "witness:NOT_PRESENT"), "no receipt is missing")
-	// This deal has no witness, so its bundle carries no chain: a runtime that
-	// cannot check leaves "missing" (a witnessed bundle reads "not checked",
-	// which needs a runtime that reads parent-log-witness/v1, capsule-viewer#362).
-	for _, edit := range []string{"witness:NOT_CHECKED", "no-checks"} {
-		assert.Equal(t, own+" · missing", stub(false, edit), edit)
-	}
-	// A FAIL is a check that ran and did not verify.
-	assert.Equal(t, own+" · failed · the witness's signature did not verify", stub(false, "witness:FAIL"))
-	assert.Equal(t, shared+" · failed · the witness's signature did not verify", stub(true, "witness:FAIL"))
-}
-
-// A bundle that carries its witnessed chain as parent-log-witness/v1
-// (evidencebook#737) is witnessed as far as the page can tell: with a runtime
-// that does not pass it, or has no check, the line reads "not checked", never
-// "missing"; a runtime that passes it names the witness; one that finds no
-// receipt says missing.
-func TestTheWitnessLineOfAParentLogWitnessBundle(t *testing.T) {
-	dealFixture(t)
-	id, _, _ := fawnDeal(t)
-	const own = "An outside witness saw your book"
-	line := func(edit string) string { return stampLine(t, renderJourney(t, id, false, edit), own) }
-
-	assert.Regexp(t, `^`+own+` · passed · recorded by Acme Witness at .+$`, line("v1:witness:PASS"))
-	for _, edit := range []string{"v1:witness:NOT_CHECKED", "v1:no-checks"} {
-		assert.Equal(t, own+" · not checked · this page can't check the witness's signature", line(edit), edit)
-	}
-	assert.Equal(t, own+" · failed · the witness's signature did not verify", line("v1:witness:FAIL"))
-	assert.Equal(t, own+" · missing", line("v1:witness:NOT_PRESENT"))
 }
 
 // The same line on the receipt with the other party's half, in its three
@@ -579,35 +426,4 @@ func TestTheSettlementIsReadFromItsLegs(t *testing.T) {
 		map[string]any{"rail": "x402", "legs": true, "failed": false, "preimage": false, "proof": false, "band": band},
 		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": false, "proof": false, "band": band},
 	}, got["settlement"])
-}
-
-// The page's own runtime (capsule-viewer/go v0.23.1 and later) reads a
-// witnessed deal's parent-log-witness/v1 block: with no witness list of the
-// reader's own it cannot pass the line, so it reads "not checked", where
-// v0.23.0's runtime found no chain and the line read "missing"
-// (capsule-viewer#362, evidencebook#737). No stub: the real runtime.
-func TestTheRealRuntimeReadsAWitnessedParentLogWitnessBundle(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not installed")
-	}
-	public, key, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-	endpoint, _ := countingWitness(t)
-	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
-	dealID := retailDeal(t)
-	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
-	deliver(t, p, cadenceSize(t, p), key)
-	// A new copy carries no chain (u225); a page made from a copy that
-	// carries one, as copies did before, is what this reads.
-	copyPath := filepath.Join(t.TempDir(), "copy.json")
-	dealRun(t, "report", "--deal", dealID, "--bundle", copyPath)
-	chained := withHolderChain(t, p, dealID, copyPath)
-	page := filepath.Join(t.TempDir(), "page.html")
-	dealRun(t, "report", "--deal", dealID, "--from-bundle", chained, "--html", page)
-	require.Contains(t, string(mustRead(t, page)), "parent-log-witness/v1", "the page's bundle carries the chain as v1")
-
-	got := renderPageUnderNode(t, node, page)
-	require.Empty(t, got["refusal"])
-	assert.Equal(t, "An outside witness saw your book · not checked · this page can't check the witness's signature", stampLine(t, got, "An outside witness saw your book"))
 }

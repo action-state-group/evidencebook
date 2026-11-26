@@ -450,8 +450,7 @@ func (s *dealSession) writeReceiptPage(ctx context.Context, events []sealedEvent
 	if err != nil {
 		return err
 	}
-	words, _ := cli.ActiveWording(s.p)
-	page, err := dealReportHTML(b, dealNotCountersigned(), dealVerifyCommand(htmlPath), words)
+	page, err := dealReportHTML(ctx, b, nil, dealVerifyCommand(htmlPath))
 	if err != nil {
 		return err
 	}

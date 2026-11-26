@@ -44,7 +44,7 @@ const v1PageVerifyTimeout = 2 * time.Minute
 // rows that named its signers; the page fills its COUNTERSIGNED stamp only
 // from its own check of that copy (capsule-viewer#456, evidencebook#1015).
 func v1ReportPage(ctx context.Context, bundle []byte, verifyCommand string, proof *entryProof, dirPath string, countersigned *v1PageCountersignedCopy) ([]byte, error) {
-	report, err := selfVerifyReport(ctx, bundle, proof, dirPath)
+	report, err := selfVerifyReport(ctx, bundle, proof, dirPath, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +127,9 @@ func v1CountersignedCopy(stamp dealGradeCountersign) *v1PageCountersignedCopy {
 // selfVerifyReport runs this binary's `verify --bundle` on bundle and returns
 // its JSON report (capsule-cli-result/v1). verify exits non-zero for a
 // verdict other than VALID; that report is still the one to carry, so only
-// output that is not such a report is an error.
-func selfVerifyReport(ctx context.Context, bundle []byte, proof *entryProof, dirPath string) ([]byte, error) {
+// output that is not such a report is an error. extra are further verify
+// flags (an x-deal-v0 page's --countersign-directory and --producer-key).
+func selfVerifyReport(ctx context.Context, bundle []byte, proof *entryProof, dirPath string, extra []string) ([]byte, error) {
 	exe, err := selfVerifyBinary()
 	if err != nil {
 		return nil, err
@@ -156,6 +157,7 @@ func selfVerifyReport(ctx context.Context, bundle []byte, proof *entryProof, dir
 		}
 		args = append(args, "--"+stampProofFlag, proofPath, "--witness-directory", dirPath)
 	}
+	args = append(args, extra...)
 	cmd := exec.CommandContext(ctx, exe, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -73,7 +73,7 @@ func TestDealReportTextIsSealed(t *testing.T) {
 	assert.Equal(t, reportID, entry[dealprofile.ReportPointer])
 	raw, err := os.ReadFile(page)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), `dataset.sealed = "x-deal-v0"`)
+	assert.Contains(t, string(raw), `"data-sealed": "x-deal-v0"`, "capsule-viewer's x-deal-v0 module reads the sealed report (#869)")
 	report := dealReportOf(b)
 	require.NotNil(t, report)
 	assert.Equal(t, cli.DealAudienceKeep, report["audience"])

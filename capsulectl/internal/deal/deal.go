@@ -3069,8 +3069,13 @@ func dealReportCommand() *cobra.Command {
 				}
 			}
 			out["countersign"] = countersign
-			words, _ := cli.ActiveWording(s.p)
-			page, err := dealReportHTML(b, countersign, dealVerifyCommand(htmlPath), words)
+			// The page's verify run resolves them again, against the same
+			// directory and the profile's keys, and carries that report.
+			var pageCS *v0PageCountersign
+			if countersign.Directory != "" {
+				pageCS = &v0PageCountersign{directory: countersign.Directory, producerKeys: s.p.TrustedKeys}
+			}
+			page, err := dealReportHTML(ctx, b, pageCS, dealVerifyCommand(htmlPath))
 			if err != nil {
 				return err
 			}

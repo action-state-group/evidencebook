@@ -214,9 +214,8 @@ func TestDealShareCounterpartyCarriesNoPrivateValues(t *testing.T) {
 	assert.Contains(t, html, "sealed on the agent's device, where they happened", "the conversation is rightly self-attested")
 	assert.Equal(t, "capsulectl deal verify --bundle receipt.html", ext["verify_command"])
 	assert.NotContains(t, ext, "asked_opening")
-	assert.Contains(t, html, "What this does not claim")
+	assert.Contains(t, html, "capsuleviewer.receipt.unilateral/v0", "capsule-viewer's x-deal-v0 module draws the shared copy (#869)")
 	assert.NotContains(t, html, "Sealed by my agent", "no witness line of the deal view's own (capsule-cli#341)")
-	assert.Contains(t, html, "tamper-evident, not non-repudiation")
 	assert.Contains(t, html, "does not prove the merchant shipped")
 	assert.Contains(t, html, "Did: pay $6.27 by card", "amounts and rails stay")
 

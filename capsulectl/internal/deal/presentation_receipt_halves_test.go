@@ -319,17 +319,10 @@ func TestPresentationReceiptReadsTheLatestRound(t *testing.T) {
 
 	page := filepath.Join(dir, "page.html")
 	dealRun(t, "report", "--deal", id, "--html", page)
-	p := chrome.open(t, "file://"+page, presentationViews[0])
-	var got struct {
-		Refusal string `json:"refusal"`
-		Text    string `json:"text"`
-	}
-	p.eval(t, `(() => ({
-  refusal: (document.querySelector("#deal p.deal-bad") || {}).textContent || "",
-  text: (document.getElementById("deal") || {}).textContent || "",
-}))()`, &got)
-	assert.Empty(t, got.Refusal, "the earlier report is not a refusal")
-	assert.NotContains(t, got.Text, "step not verified")
-	assert.NotContains(t, got.Text, "Open: ", "the latest round is closed, not the first round's open state")
-	assert.Contains(t, got.Text, "Your copy only · checked")
+	got := readV0Page(t, chrome, page)
+	require.Empty(t, got.Errors)
+	assert.Equal(t, "capsuleviewer.receipt.unilateral/v0", got.Module)
+	assert.NotContains(t, got.Text, " refused ", "the earlier report is not a refusal")
+	assert.Contains(t, got.Text, "Where it standsClosed", "the latest round is closed")
+	assert.NotContains(t, got.Text, "Open", "not the first round's open state")
 }

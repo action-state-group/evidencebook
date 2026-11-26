@@ -18,6 +18,7 @@ import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/capsule-viewer/go/receipt"
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/evidencebook/capsulectl/internal/deal/assets"
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -396,34 +397,22 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 	return ext, nil
 }
 
-// dealReportHTML renders one local, self-contained page: the bundle, the
-// vendored verifier and the deal view. It needs no network to open or verify,
-// and nothing is hosted: the agent attaches or hands over the file.
-//
-// The page is built through the emitter's slots: the title, theme tokens
-// (dealThemeCSS), the deal view as a digest-pinned presentation module whose
-// stylesheet is pinned by its manifest, and a bootstrap that builds the
-// verified context once and renders it. The page's runtime resolves the deal
-// view for the bundle; the module registers itself when its script loads. The
-// emitter writes a Content-Security-Policy that lists the digest of every
-// inline script and stylesheet and allows no network.
-//
-// What capsulectl checked when it wrote the page rides in the bootstrap,
-// beside the bundle and never inside it, so the bundle's digest is
-// unchanged: the countersign rung (the page cannot check a signature against
-// a directory), and the words it recomputed against their sealed commitments
-// (dealPageOpenings): a page whose words do not match is never written.
-//
-// A viewer with no SHA-256 (no WebCrypto outside a secure context, and the
-// runtime's plain SHA-256 switched off) cannot verify anything: the
-// bootstrap then shows the runtime's "unable to verify in this viewer"
-// state with verifyCommand, never a failed verification.
+// A deal page is one local, self-contained file: the bundle, the vendored
+// page runtime and its presentation modules, built through the emitter's
+// slots, whose Content-Security-Policy lists the digest of every inline
+// script and stylesheet and allows no network. It needs no network to open or
+// verify, and nothing is hosted: the agent attaches or hands over the file.
+// A single copy's page is dealReportHTML; the composed page (composedPage)
+// still draws with the deal view until `deal compose --html` goes
+// (evidencebook#869, EB2b), with what capsulectl checked riding in its
+// bootstrap.
 // pageWords are the core's wording-pack entries the deal page reads, so the
 // page and the chat speak from one pack (capsule-cli#345): the title, and the
 // History card's size strings the receipt names a settlement's band with
 // (capsule-viewer's consumer pack, evidencebook-deal#94). The page's own
 // words are this plugin's page.* entries (assets/wording/capsulectl-deal-en.json,
-// evidencebook-deal#97), which deal-view.js holds built in.
+// evidencebook-deal#97), which deal-view.js holds built in. Only the
+// composed page reads them.
 var pageWords = []string{"report.title", "size.between", "size.range", "size.under", "size.zero"}
 
 // dealPageWords are the entries of w the page speaks with: pageWords, and the
@@ -470,33 +459,108 @@ func journeyPageWords(w cli.Wording) map[string]string {
 	return out
 }
 
-func dealReportHTML(b map[string]interface{}, countersign dealCountersignView, verifyCommand string, w cli.Wording) (string, error) {
+// dealReportHTML is an x-deal-v0 copy's receipt page: the bundle, drawn by
+// capsule-viewer's x-deal-v0 receipt modules (go/receipt's unilateral and
+// seller, the one receipt renderer, capsule-viewer#383), with this binary's
+// own `verify --bundle` report of it carried beside it as the page's
+// verifierReport, as the x-deal-v1 page does (v1ReportPage). The modules
+// recompute what the bundle shows themselves; capsulectl's checks the page
+// cannot make reach it only through that report, in capsulectl's voice: the
+// countersignatures, resolved against countersign's directory (nil: not
+// checked, and the page says only that a countersignature is carried).
+//
+// Before anything is written, the page gate and the openings check run as
+// before (dealPageOpenings refuses an asked-words, card or statement opening
+// that does not recompute), and a countersignature capsulectl found invalid,
+// or could not check against the directory asked for, refuses the page.
+func dealReportHTML(ctx context.Context, b map[string]interface{}, countersign *v0PageCountersign, verifyCommand string) (string, error) {
 	if err := dealCopyPageGate(b); err != nil {
 		return "", err
 	}
-	module, err := dealViewModule()
+	openings, err := dealPageOpenings(b)
 	if err != nil {
 		return "", err
 	}
-	boot, openings, err := dealPageBoot(b, countersign, w)
+	bundle, err := json.Marshal(b)
 	if err != nil {
 		return "", err
 	}
-	boot["verify_command"] = verifyCommand
+	var extra []string
+	if countersign != nil {
+		extra = append(extra, "--"+countersignDirectoryFlag, countersign.directory)
+		for _, k := range countersign.producerKeys {
+			extra = append(extra, "--"+producerKeyFlag, k)
+		}
+	}
+	report, err := selfVerifyReport(ctx, bundle, nil, "", extra)
+	if err != nil {
+		return "", err
+	}
+	if err := pageCountersignRefusal(report); err != nil {
+		return "", err
+	}
+	var modules []emitter.Module
+	for _, kind := range []string{receipt.Unilateral, receipt.Seller} {
+		module, err := receipt.Module(kind)
+		if err != nil {
+			return "", err
+		}
+		modules = append(modules, module)
+	}
+	boot := map[string]any{"verifier_report": json.RawMessage(report), "verify_command": verifyCommand}
 	// json.Marshal escapes <, > and &, so the data cannot close its element.
 	data, err := json.Marshal(boot)
 	if err != nil {
 		return "", err
 	}
 	bootstrap := `globalThis.capsulectlDealPage = Object.freeze(` + string(data) + `);
-renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifyCommand: capsulectlDealPage.verify_command });`
+renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifierReport: capsulectlDealPage.verifier_report, verifyCommand: capsulectlDealPage.verify_command });`
 	return emitter.EmitEvidenceGraphHTMLWithOptions(b, pageruntime.IIFE, emitter.Options{
 		Title:             dealPageTitle(b, openings),
 		ThemeCSS:          dealThemeCSS,
 		CoreRuntimeSHA256: pageruntime.SHA256,
-		Modules:           []emitter.Module{module},
+		Modules:           modules,
 		Bootstrap:         bootstrap,
 	})
+}
+
+// v0PageCountersign is what an x-deal-v0 page's verify run resolves the copy's
+// countersignatures with: the countersigner directory and the producer's own
+// keys (the profile's trusted_keys, as 64 hex characters each).
+type v0PageCountersign struct {
+	directory    string
+	producerKeys []string
+}
+
+// pageCountersignRefusal refuses a page whose verify report says capsulectl
+// could not check the countersignatures it was asked to, or found one
+// invalid: the page never shows a countersignature that does not verify, as
+// `deal report` never did (dealCountersignVerify).
+func pageCountersignRefusal(report []byte) error {
+	var r struct {
+		Extensions []struct {
+			Kind        string `json:"kind"`
+			Countersign *struct {
+				Error   string                       `json:"error"`
+				Entries []cli.CountersignatureReport `json:"entries"`
+			} `json:"countersign"`
+		} `json:"extensions"`
+	}
+	if err := json.Unmarshal(report, &r); err != nil {
+		return err
+	}
+	for _, e := range r.Extensions {
+		if e.Kind != DealProfile || e.Countersign == nil {
+			continue
+		}
+		if e.Countersign.Error != "" {
+			return cli.InputError("the countersignatures could not be checked: " + e.Countersign.Error)
+		}
+		if err := cli.HasInvalidCountersignature(e.Countersign.Entries); err != nil {
+			return cli.InputError("refusing to show a countersignature that does not verify: " + err.Error())
+		}
+	}
+	return nil
 }
 
 // dealPageBoot is what the deal view reads from the bootstrap for one deal
@@ -570,8 +634,7 @@ func dealPageReport(b map[string]interface{}) map[string]interface{} {
 func dealViewModule() (emitter.Module, error) { return assets.Module() }
 
 // dealThemeCSS is the deal page's theme: tokens only (the shell's --aac-*
-// custom properties). The deal view's own layout is its module stylesheet,
-// assets/deal-view.css.
+// custom properties). A receipt's layout is its module's own stylesheets.
 const dealThemeCSS = `
 :root { --aac-page-width: 760px; --aac-gutter: 16px; --aac-fg: #1b1b1f; --aac-muted: #5d5d66; --aac-bg: #ffffff; --aac-line: #d9d9e0; }
 @media (prefers-color-scheme: dark) { :root { --aac-fg: #ececf1; --aac-muted: #a3a3ad; --aac-bg: #16161a; --aac-line: #34343c; } }

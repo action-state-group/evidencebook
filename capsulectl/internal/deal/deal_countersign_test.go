@@ -59,15 +59,25 @@ func countersignerDirectoryFile(t *testing.T, name, keyHex string) string {
 	return path
 }
 
-func pageCountersign(t *testing.T, htmlPath string) dealCountersignView {
+// pageCountersign is the countersign member of the verify report an
+// x-deal-v0 page carries (nil when capsulectl checked none).
+func pageCountersign(t *testing.T, htmlPath string) map[string]any {
 	t.Helper()
 	page, err := os.ReadFile(htmlPath)
 	require.NoError(t, err)
-	var data struct {
-		Countersign dealCountersignView `json:"countersign"`
-	}
-	require.NoError(t, json.Unmarshal(pageData(t, page), &data))
-	return data.Countersign
+	entry := v0Entry(t, pageVerifyReport(t, page))
+	member, _ := entry["countersign"].(map[string]any)
+	return member
+}
+
+// pageCountersignEntry is entry i of the page's countersign member.
+func pageCountersignEntry(t *testing.T, htmlPath string, i int) map[string]any {
+	t.Helper()
+	member := pageCountersign(t, htmlPath)
+	require.NotNil(t, member, "the page's verify report checked the countersignatures")
+	entries, _ := member["entries"].([]any)
+	require.Greater(t, len(entries), i)
+	return entries[i].(map[string]any)
 }
 
 // pageData is the data the page's bootstrap hands the deal view: what
@@ -99,7 +109,7 @@ func TestDealReceiptIsNotCountersignedByDefault(t *testing.T) {
 
 	out, _, html, eml := dealReportFiles(t, dealID)
 	assert.Equal(t, "not_countersigned", asView(t, out["countersign"]).Finding)
-	assert.Equal(t, dealNotCountersigned(), pageCountersign(t, html))
+	assert.Nil(t, pageCountersign(t, html), "the page's verify report checked no countersignature")
 	email, err := os.ReadFile(eml)
 	require.NoError(t, err)
 	assert.Contains(t, string(email), "Not countersigned: no other party has signed this record.")
@@ -134,8 +144,9 @@ func TestDealCountersignAttachesAndRendersTheSigner(t *testing.T) {
 
 	out, _, html, eml := dealReportFiles(t, dealID, "--from-bundle", bundlePath, "--directory", directory)
 	assert.Equal(t, "countersigned", asView(t, out["countersign"]).Rung)
-	assert.Equal(t, "countersigned", pageCountersign(t, html).Rung)
-	assert.Contains(t, pageCountersign(t, html).Text, "Example Countersigner")
+	first := pageCountersignEntry(t, html, 0)
+	assert.Equal(t, "resolved", first["state"])
+	assert.Contains(t, first["signer_name"], "Example Countersigner")
 	email, err := os.ReadFile(eml)
 	require.NoError(t, err)
 	assert.Contains(t, string(email), "Countersigned by Example Countersigner")
@@ -175,7 +186,9 @@ func TestDealSelfCountersignatureIsNotIndependent(t *testing.T) {
 
 	out, _, html, eml := dealReportFiles(t, dealID, "--from-bundle", bundlePath, "--directory", directory)
 	assert.Equal(t, "self_countersigned", asView(t, out["countersign"]).Finding)
-	assert.Equal(t, "self_countersigned", pageCountersign(t, html).Finding)
+	// The page's verify run took the profile's trusted keys as the
+	// producer's: the producer's own countersignature is not independent.
+	assert.Equal(t, "not_independent", pageCountersignEntry(t, html, 0)["state"])
 	email, err := os.ReadFile(eml)
 	require.NoError(t, err)
 	assert.Contains(t, string(email), "NOT INDEPENDENT")
@@ -283,5 +296,5 @@ func TestDealSharedCopyIsNotCountersigned(t *testing.T) {
 	html := filepath.Join(t.TempDir(), "shared.html")
 	out := dealRun(t, "report", "--deal", dealID, "--html", html, "--share", "counterparty", "--to", "the shop")
 	assert.Equal(t, "not_countersigned", asView(t, out["countersign"]).Finding)
-	assert.Equal(t, dealNotCountersigned(), pageCountersign(t, html))
+	assert.Nil(t, pageCountersign(t, html), "the page's verify report checked no countersignature")
 }

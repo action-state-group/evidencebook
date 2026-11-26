@@ -28,6 +28,7 @@ func TestMain(m *testing.M) {
 	os.Setenv(dohEnv, "off")
 	systemProbe = func(string) ([]net.IP, error) { return nil, nil }
 	InstallDealHooks()
+	selfVerifyBinary = builtPluginVerify
 	nameProcessAsDealPlugin()
 	code := m.Run()
 	removeInstalled()

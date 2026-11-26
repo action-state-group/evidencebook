@@ -63,8 +63,7 @@ cd "$work"
 # inline text, is refused and shows none of it, and deal verify --bundle calls
 # it INVALID. The deal is the synthetic retail-checkout demo. The page's refusal
 # of a downgraded receipt sealed on the deal's log, as capsulectl wrote before
-# capsule-cli#294, is checked under node in
-# internal/deal/deal_page_standalone_test.go.
+# capsule-cli#294, is capsule-viewer's to check (ts/test/deal-standalone-report.test.ts).
 demo="$root/skills/deal/demo/retail-checkout"
 mkdir deal-receipt
 (
@@ -81,14 +80,14 @@ mkdir deal-receipt
 cp deal-receipt/receipt.html receipt.html
 render receipt.html
 check "deal-receipt: no console.error, uncaught error or unhandled rejection" no_render_errors receipt.html.dom
-check "deal-receipt: the page renders the deal" contains receipt.html.dom '<h1>Receipt</h1>'
-check "deal-receipt: the deal view inserted its own stylesheet" contains receipt.html.dom '<style id="capsulectl-deal-view-style">'
-check "deal-receipt: the page says its text is sealed and checked" contains receipt.html.dom 'data-sealed="x-deal-v0"'
+# capsule-viewer's x-deal-v0 receipt module draws the page (evidencebook#869).
+check "deal-receipt: the page draws the receipt with capsule-viewer's module" contains receipt.html.dom 'class="cv-kit" data-receipt-module="capsuleviewer.receipt.unilateral/v0">'
+check "deal-receipt: the page says it checked the sealed report itself" contains receipt.html.dom 'data-sealed="x-deal-report"'
 capsulectl verify --bundle receipt.html >receipt-verify.json && verdict=0 || verdict=$?
 check "deal-receipt: verify --bundle: VALID, exit 0" test "$verdict" -eq 0
 page_bundle receipt.html >receipt.json
 did_line=$(jq -r '.extensions["x-deal-report/v0"].agent_input.report.did_line' receipt.json)
-check "deal-receipt: the page renders its sealed summary line" contains receipt.html.dom "<p class=\"deal-note\">$did_line</p>"
+check "deal-receipt: the page renders its sealed summary line" contains receipt.html.dom "<p class=\"cv-muted\" data-sealed-text=\"did-line\">$did_line</p>"
 
 # deal-receipt-rebuilt: the receipt's bundle built into a page by the host
 # capsulectl's own presentation build, so the page and its runtime are the
@@ -124,11 +123,10 @@ check "deal-receipt-edited: the page carries the edited line" contains receipt-e
 render receipt-edited.html
 check "deal-receipt-edited: the page refuses the copy" contains receipt-edited.html.dom 'data-verify="failed" data-verdict="invalid"'
 check "deal-receipt-edited: the page names the report that does not match" contains receipt-edited.html.dom "data-check=\"deal-report-capsule\">Didn't verify: the deal report carried outside the log does not match its Capsule."
-# The deal view (internal/deal/assets/deal-view.js) draws into <div id="deal">:
-# the valid receipt has it, the refused one must not.
-check "deal-receipt: the page draws the deal view" contains receipt.html.dom 'id="deal"'
-check "deal-receipt-edited: no receipt is drawn" lacks receipt-edited.html.dom 'id="deal"'
-check "deal-receipt-edited: the page shows no edited line" lacks receipt-edited.html.dom '<p class="deal-note">A line nobody sealed.</p>'
+# The receipt module draws into <div class="cv-kit" data-receipt-module=...>: the valid
+# receipt has it, the refused one must not.
+check "deal-receipt-edited: no receipt is drawn" lacks receipt-edited.html.dom 'class="cv-kit" data-receipt-module='
+check "deal-receipt-edited: the page shows no edited line" lacks receipt-edited.html.dom '>A line nobody sealed.</p>'
 check "deal-receipt-edited: no \"not checked\" label" lacks receipt-edited.html.dom 'data-unchecked="x-deal-v0"'
 # The deal-format verdicts come from the plugin (`capsulectl deal verify
 # --bundle`), whose own reader holds the deal checks (evidencebook#735): the
@@ -139,15 +137,16 @@ check "deal-receipt-edited: deal verify --bundle names the report that does not 
 
 # deal-receipt-downgraded: the standalone report dropped and edited text put
 # inline in x-deal-v0, as a receipt from before reports were sealed carries
-# it. The page refuses rather than show it under the "not checked" label;
-# deal verify --bundle calls it INVALID: the copy names no sealed report.
+# it. No receipt module draws it, so the page shows the records only, never the
+# inline text, and never under a "not checked" label; deal verify --bundle
+# calls it INVALID: the copy names no sealed report.
 jq -c '.extensions["x-deal-report/v0"].agent_input.report as $text
   | .extensions["x-deal-v0"] = ($text | .did_line = "A line nobody sealed.") | del(.extensions["x-deal-report/v0"])' receipt.json >receipt-downgraded.json
 replace_bundle receipt.html receipt-downgraded.json >receipt-downgraded.html
 check "deal-receipt-downgraded: the page carries the inline line" contains receipt-downgraded.html 'A line nobody sealed.'
 render receipt-downgraded.html
-check "deal-receipt-downgraded: the page says the text could not be checked" contains receipt-downgraded.html.dom "<p class=\"deal-bad\">⚠️ The receipt's text could not be checked against its sealed report"
-check "deal-receipt-downgraded: the page shows no inline line" lacks receipt-downgraded.html.dom '<p class="deal-note">A line nobody sealed.</p>'
+check "deal-receipt-downgraded: no receipt is drawn" lacks receipt-downgraded.html.dom 'class="cv-kit" data-receipt-module='
+check "deal-receipt-downgraded: the page shows no inline line" lacks receipt-downgraded.html.dom '>A line nobody sealed.</p>'
 check "deal-receipt-downgraded: no \"not checked\" label" lacks receipt-downgraded.html.dom 'data-unchecked="x-deal-v0"'
 capsulectl deal verify --bundle receipt-downgraded.html >receipt-downgraded-verify.json 2>/dev/null && verdict=0 || verdict=$?
 check "deal-receipt-downgraded: deal verify --bundle: INVALID, exit 1" test "$verdict" -eq 1

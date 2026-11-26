@@ -43,7 +43,9 @@ Each release has, for linux/amd64, linux/arm64 and darwin/arm64:
   launchers;
 - `standard-history-$V.tar.gz`, the History card's files, which `book card`
   pages read;
-- `deal-view-$V.tar.gz`, the deal view's files;
+- `deal-view-$V.tar.gz`, the files of the receipt modules `capsulectl-deal`
+  offers `capsulectl presentation build` (capsule-viewer's x-deal-v0 receipt
+  modules, and the deal view's composed module);
 - `deal-skill-$V.tar.gz`, the `skills/deal` tree, which is the one agent
   skill for both plugins' commands that an agent's host reads. The commands below do not need it, and
   [actionstate.ai/install](https://actionstate.ai/install) places it for an agent;
@@ -94,7 +96,7 @@ has no `attestation` command). Without it, `SHA256SUMS` is the only check
 name, checks that it is built for the installed core, and refuses a mismatch.
 `capsulectl plugin ls` then lists both plugins. A core up to
 `v0.1.0-rc53` also lists `capsulectl-deal.d` under `refused` ("not a regular
-file"): that is the deal view's folder, not a plugin, and nothing is wrong
+file"): that is the receipt modules' folder, not a plugin, and nothing is wrong
 (capsule-cli#635).
 
 ## The History card page
