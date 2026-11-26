@@ -4299,6 +4299,117 @@
       "intent_signature": [
         true
       ]
+    },
+    {
+      "name": "user-approves-a-verdict-without-rules",
+      "why": "the person's own approval of a passing verdict that carries no rules block: it needs the person's signature, as every person's approval does",
+      "journal": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "check",
+            "at": "2026-11-01T10:01:00Z"
+          },
+          "body": {
+            "action": "pay",
+            "payment_ref": "invoice-17",
+            "nonce": "3bf024fb69bc562647afd67620d9ff96377523ae89cf7feba6c70f7a9e798b1e"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "verdict",
+            "at": "2026-11-01T10:02:00Z",
+            "refs": [
+              {
+                "rel": "checks",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "22ca35932f44c270aada160d4e63aa7103fcb47cd9b8d3d739fbdbde00005051"
+              }
+            ]
+          },
+          "body": {
+            "result": "pass",
+            "differences": [],
+            "options": [],
+            "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
+            "nonce": "c46490a57e67f5b2af968c8880114c545a278dc53f4861f0c41555697e31cc33"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "approval",
+            "at": "2026-11-01T10:03:00Z",
+            "refs": [
+              {
+                "rel": "approves",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+              }
+            ]
+          },
+          "body": {
+            "choice": "proceed",
+            "proceed": true,
+            "approver": "user",
+            "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
+            "nonce": "1d8755f47c8037ddd6b4f8bcc5765fef6431fc4549257795d9aaaf566a203462"
+          }
+        }
+      ],
+      "acts": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "settle",
+            "at": "2026-11-01T10:04:00Z",
+            "seq": 2,
+            "prev": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "agreement_ref": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "seen": null
+          },
+          "body": {
+            "leg": "payer",
+            "statements": [],
+            "check": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "22ca35932f44c270aada160d4e63aa7103fcb47cd9b8d3d739fbdbde00005051"
+            }
+          }
+        }
+      ],
+      "valid": true,
+      "person_signature": [
+        true
+      ],
+      "limit_approvals": [
+        0
+      ],
+      "intent_signature": [
+        false
+      ]
     }
   ],
   "description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization with the error text given. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1)."

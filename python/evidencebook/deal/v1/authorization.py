@@ -55,8 +55,8 @@ class ActAuthorization:
     needs_person_signature: bool
     limit_approvals: list[str] = field(default_factory=list)
     intent: str = ""
-    rules_not_recorded: bool = False
     rules_not_evaluable: bool = False
+    rules_not_recorded: bool = False
 
 
 def rules_unevaluated(rules: dict | None) -> bool:

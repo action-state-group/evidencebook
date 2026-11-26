@@ -440,6 +440,14 @@ func TestApprovalMigration(t *testing.T) {
 	f.pay(c)
 	run("standing-intent-verdict-without-rules", "a passing verdict that carries no rules block: nothing records which rules evaluated the caps, so the act escalates to the person", f, true)
 	assert.Equal(t, []bool{true}, cases[len(cases)-1].PersonSignature)
+	// A person's own approval on such a verdict needs their signature as
+	// it always does, and is not marked as a missing rules block.
+	f = newFlow()
+	c = f.check("pay")
+	f.approve(f.verdictRules(c, "pass", nil), "user", true)
+	f.pay(c)
+	run("user-approves-a-verdict-without-rules", "the person's own approval of a passing verdict that carries no rules block: it needs the person's signature, as every person's approval does", f, true)
+	assert.Equal(t, []bool{true}, cases[len(cases)-1].PersonSignature)
 
 	got, err := json.MarshalIndent(map[string]any{
 		"description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization with the error text given. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1).",

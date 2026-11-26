@@ -571,11 +571,12 @@ fn pair_names_vectors() {
 /// A standing-intent act whose verdict carries no rules block escalates to
 /// the person (Sherlock2's ruling ops bb59237c, after u503; evidencebook#983,
 /// Go `RulesNotRecorded`): rules_not_recorded is set, with
-/// needs_person_signature, on exactly that vector case, and on no act whose
-/// verdict records its rules.
+/// needs_person_signature, on exactly that vector case: on no act whose
+/// verdict records its rules, nor on the person's own approval of a verdict
+/// with none (user-approves-a-verdict-without-rules).
 #[test]
 fn authorization_rules_not_recorded() {
-    let mut seen = false;
+    let (mut seen, mut seen_user) = (false, false);
     for c in vectors("authorization/approval-migration.json") {
         if c["valid"].as_bool() != Some(true) {
             continue;
@@ -593,6 +594,7 @@ fn authorization_rules_not_recorded() {
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         let want = name == "standing-intent-verdict-without-rules";
         seen |= want;
+        seen_user |= name == "user-approves-a-verdict-without-rules";
         for a in &auths {
             assert_eq!(a.rules_not_recorded, want, "{name}");
             if want {
@@ -601,7 +603,10 @@ fn authorization_rules_not_recorded() {
             }
         }
     }
-    assert!(seen, "the vectors hold the case with no rules block");
+    assert!(
+        seen && seen_user,
+        "the vectors hold both cases with no rules block"
+    );
 }
 
 /// check_authorizations reads each at as Go's time.Parse(time.RFC3339, at)
