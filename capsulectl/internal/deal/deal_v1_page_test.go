@@ -53,6 +53,10 @@ func TestAV1ReportHTMLCarriesTheBinarysOwnVerify(t *testing.T) {
 	page, err := os.ReadFile(file)
 	require.NoError(t, err)
 	assert.Contains(t, string(page), "capsuleviewer.receipt.deal/v1")
+	// A person's receipt page runs on the viewer's named pack, never one
+	// named "example" (Sherlock2 on evidencebook#956).
+	assert.Contains(t, string(page), "capsuleviewer.receipt.wording.en/v1")
+	assert.NotContains(t, string(page), "wording.example")
 	report := pageVerifyReport(t, page)
 	assert.Equal(t, "capsule-cli-result/v1", report["spec_version"])
 	assert.Equal(t, "VALID", report["verdict"])
@@ -161,6 +165,7 @@ func TestPresentationV1ReceiptPage(t *testing.T) {
 	assert.Contains(t, got.Text, "Signed by both sides: this copy carries the other party's signed agreement")
 	assert.Contains(t, got.Text, "This file carries no witness receipt, so this page could not check a time-stamp itself.")
 	assert.NotContains(t, got.Text, "has vouched for this log")
+	assert.Contains(t, got.Text, "This page's words: wording pack capsuleviewer.receipt.wording.en/v1, sha256 ", "the footer names the viewer's pack (evidencebook#956)")
 	assert.Empty(t, got.Errors)
 }
 
