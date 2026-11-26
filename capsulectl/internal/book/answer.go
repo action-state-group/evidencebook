@@ -143,7 +143,9 @@ func answerPeerClose(c *cobra.Command, recordType string, reason json.RawMessage
 	}
 	result.RecordID, result.Seq, result.Book = record.RecordID, record.Seq, record.Header.BookID
 	if opened.shelf != nil {
-		result.Window = strings.TrimPrefix(record.Header.BookID, opened.shelf.WindowPolicy().Base+"/")
+		if label, ok := strings.CutPrefix(record.Header.BookID, opened.shelf.WindowPolicy().Base+"/"); ok {
+			result.Window = label
+		}
 	}
 	return cli.Output(c, result)
 }

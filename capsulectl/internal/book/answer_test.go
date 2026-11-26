@@ -363,6 +363,7 @@ func TestAnswersBeforeAConversionStillCount(t *testing.T) {
 	assert.True(t, again.AlreadyRecorded)
 	assert.Equal(t, rebutted.RecordID, again.RecordID)
 	assert.Equal(t, "a", again.Book, "the predecessor JSONL book holds it")
+	assert.Empty(t, again.Window, "the predecessor is no window")
 	_, err = runAnswer(t, p.args("rebut", "--reason", "another")...)
 	require.ErrorIs(t, err, cli.ErrInput)
 	_, err = runAnswer(t, p.args("acknowledge")...)
