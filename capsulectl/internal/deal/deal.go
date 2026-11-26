@@ -75,6 +75,10 @@ type dealSession struct {
 	// it last built, what a bundle that is not witnessed no longer carries;
 	// "not_carried" for a bundle read from a file (deal report --from-bundle).
 	hostCadence map[string]interface{}
+	// cardReceiptLeftOut is set by standardHistoryBundle when the card's
+	// checkpoint held a witness receipt that did not verify, so it was left
+	// out (shAnchorWitness); the card verb says so on stderr.
+	cardReceiptLeftOut bool
 	// htmlDeferred is a --html given with an email that is deferred: no
 	// page is written until the email is sealed, and the result says so.
 	htmlDeferred bool
