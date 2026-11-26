@@ -175,7 +175,9 @@ func dealAssuranceRung(b, producer map[string]interface{}) map[string]any {
 			default:
 				sealed += "Witness pending. This checkpoint was sent at a cadence tick, but no witness signature has come back yet; it is retried at every tick. "
 			}
-			if reason := cadence["reason"]; reason == "network_consent_needed" || reason == "refused" {
+			// A timeout is the witness being slow, never a consent ask (capsule-cli#644): its reason is passed on
+			// so an agent can tell the two apart.
+			if reason := cadence["reason"]; reason == "network_consent_needed" || reason == "refused" || reason == "witness_timeout" {
 				out["witness_reason"] = reason
 			}
 		}
