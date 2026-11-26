@@ -244,7 +244,7 @@ func v1Stored(t *testing.T, dealID string) string {
 	withSession(t, func(s *dealSession) {
 		journal, err := s.v1DealJournal(t.Context(), dealID)
 		require.NoError(t, err)
-		events, _, _, err := s.v1StoredEvents(t.Context(), dealID)
+		events, err := s.v1StoredEvents(t.Context(), dealID)
 		require.NoError(t, err)
 		out, err = json.Marshal([]any{journal, events})
 		require.NoError(t, err)

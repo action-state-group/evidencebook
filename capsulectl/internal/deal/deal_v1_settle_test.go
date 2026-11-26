@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	dealapi "github.com/action-state-group/evidencebook/deal"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,12 +48,13 @@ func settlementOf(t *testing.T, file string) map[string]any {
 	return m
 }
 
-func sendRow(t *testing.T, dealID, check string) *v1Send {
+func sendRow(t *testing.T, dealID, check string) *dealapi.Send {
 	t.Helper()
-	var v *v1Send
+	var v *dealapi.Send
 	withSession(t, func(s *dealSession) {
-		var err error
-		v, err = s.sendOf(t.Context(), dealID, check)
+		st, err := s.dealStore(t.Context())
+		require.NoError(t, err)
+		v, err = st.SendOf(t.Context(), dealID, check)
 		require.NoError(t, err)
 	})
 	return v
@@ -333,17 +335,42 @@ func TestARefusedSendSealsNothing(t *testing.T) {
 func TestALegSealedBeforeItsSendClosedIsFinished(t *testing.T) {
 	h, check := buyerChecked(t, v1LnHash)
 	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
-	afterLegSealedHook = func() error { return fmt.Errorf("stopped") }
 	file := filepath.Join(t.TempDir(), "leg.json")
 	args := []string{"settle", "--deal", h.dealID, "--check", check, "--status", "failed", "--out", file}
-	assert.Contains(t, v1Err(t, args...), "stopped")
-	afterLegSealedHook = nil
+	first := dealRun(t, args...)
+	// The state a run leaves that stopped between sealing the leg and closing
+	// its send (package deal's writer is where the stop happens; its own
+	// test, TestAPayerLegSealedBeforeAStopIsFinished, stops it there).
+	stopBeforeClosing(t, h.dealID, check)
 	require.Empty(t, sendRow(t, h.dealID, check).Leg, "the run stopped before closing")
 	out := dealRun(t, args...)
+	assert.Equal(t, first["digest"], out["digest"], "the same leg")
 	assert.Equal(t, out["digest"], sendRow(t, h.dealID, check).Leg, "closed by reconciliation")
 	acts := v1ActEvents(t, h.dealID)
 	require.Len(t, acts, 1)
 	assert.Nil(t, acts[0].Event.Act.AmountMinor, "the failed payment counts no spend")
+}
+
+// stopBeforeClosing puts a closed send back as a run leaves it that stopped
+// after sealing its payer leg: open, its act event still counting the
+// amount.
+func stopBeforeClosing(t *testing.T, dealID, check string) {
+	t.Helper()
+	send := sendRow(t, dealID, check)
+	withSession(t, func(s *dealSession) {
+		var local string
+		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT local FROM deal_v1_events WHERE deal_id=? AND n=?`, dealID, send.N).Scan(&local))
+		var ev dealEvent
+		require.NoError(t, json.Unmarshal([]byte(local), &ev))
+		amount := send.AmountMinor
+		ev.Act.AmountMinor, ev.Act.Direction = &amount, "out"
+		b, err := json.Marshal(ev)
+		require.NoError(t, err)
+		_, err = s.db.ExecContext(t.Context(), `UPDATE deal_v1_events SET local=? WHERE deal_id=? AND n=?`, string(b), dealID, send.N)
+		require.NoError(t, err)
+		_, err = s.db.ExecContext(t.Context(), `UPDATE deal_v1_sends SET leg_digest='' WHERE deal_id=? AND check_digest=?`, dealID, check)
+		require.NoError(t, err)
+	})
 }
 
 // Refund edges: a failed payment cannot be refunded; a failed refund leaves
@@ -491,39 +518,14 @@ func TestQualifiersAndAnX402Refund(t *testing.T) {
 	assert.Equal(t, map[string]any{"type": "x402.transaction", "value": refundTx, "network": "base"}, settlementOf(t, file)["payment_ref"])
 }
 
-// A run whose evidence append was stored but reported failed keeps the send
-// and its act event; the evidence is in the journal once and the payment is
-// counted once.
-func TestASendWhoseAppendFailedAfterStoringIsKept(t *testing.T) {
-	h, check := buyerChecked(t, v1LnHash)
-	appendV1JournalAfterHook = func() error { return fmt.Errorf("stopped after storing") }
-	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "stopped after storing")
-	appendV1JournalAfterHook = nil
-	require.NotNil(t, sendRow(t, h.dealID, check), "the send is kept: its record is in the journal")
-	assert.Len(t, v1ActEvents(t, h.dealID), 1, "counted once")
-	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "is in flight")
-	n := 0
-	withSession(t, func(s *dealSession) {
-		all, err := s.v1JournalRecords(t.Context())
-		require.NoError(t, err)
-		for _, jr := range all {
-			if jr.rec.Block.RecordType == xdealv1.TypeEvidence && jr.rec.Block.DealID == h.dealID {
-				n++
-			}
-		}
-	})
-	assert.Equal(t, 1, n, "the payment-sent evidence is in the journal once")
-}
-
 // The rules history reconciles every v1 deal first: a failed leg sealed before
 // its send closed stops counting, and a deal that cannot be reconciled marks
 // the history incomplete instead of failing it.
 func TestTheRulesHistoryReconcilesEveryDeal(t *testing.T) {
 	h, check := buyerChecked(t, v1LnHash)
 	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
-	afterLegSealedHook = func() error { return fmt.Errorf("stopped") }
-	v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--status", "failed", "--out", filepath.Join(t.TempDir(), "f.json"))
-	afterLegSealedHook = nil
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "failed", "--out", filepath.Join(t.TempDir(), "f.json"))
+	stopBeforeClosing(t, h.dealID, check)
 	withSession(t, func(s *dealSession) {
 		history, scope, err := s.rulesHistory(t.Context())
 		require.NoError(t, err)
@@ -554,47 +556,6 @@ func TestAPayeeChainDoesNotFork(t *testing.T) {
 	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
 		"--received", "4500", "--receive-fee", "0", "--status", "failed", "--supersedes", p, "--out", filepath.Join(t.TempDir(), "fork.json")), "already superseded")
 	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel(), "--reverses", s, "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32), "--sent")
-}
-
-// A run that died after storing its send and before appending the evidence is
-// finished by the next command: the same evidence, appended once, and the
-// payment counted once.
-func TestASendStoppedBeforeItsAppendIsFinished(t *testing.T) {
-	h, check := buyerChecked(t, v1LnHash)
-	afterSendStoredHook = func() error { return fmt.Errorf("the process died") }
-	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "the process died")
-	afterSendStoredHook = nil
-	send := sendRow(t, h.dealID, check)
-	require.NotNil(t, send, "the send stays stored")
-	evidence := func() int {
-		n := 0
-		withSession(t, func(s *dealSession) {
-			all, err := s.v1JournalRecords(t.Context())
-			require.NoError(t, err)
-			for _, jr := range all {
-				if jr.rec.Block.RecordType == xdealv1.TypeEvidence && jr.rec.Block.DealID == h.dealID {
-					n++
-				}
-			}
-		})
-		return n
-	}
-	assert.Equal(t, 0, evidence(), "not yet in the journal")
-	assert.Contains(t, v1Err(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash"), "is in flight")
-	assert.Equal(t, 1, evidence(), "the next command appended it")
-	dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, fmt.Sprintf(payInput, `,"payment_ref":"`+strings.Repeat("cd", 32)+`"`)))
-	assert.Equal(t, 1, evidence(), "once")
-	acts := v1ActEvents(t, h.dealID)
-	require.Len(t, acts, 1)
-	assert.Equal(t, acts[0].Digest, sendEvidenceDigest(t, h.dealID, send))
-	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--status", "settled", "--out", filepath.Join(t.TempDir(), "leg.json"))
-}
-
-func sendEvidenceDigest(t *testing.T, dealID string, send *v1Send) string {
-	t.Helper()
-	var d string
-	require.NoError(t, v1DB(t).QueryRow(`SELECT record_digest FROM deal_v1_events WHERE deal_id=? AND n=?`, dealID, send.N).Scan(&d))
-	return d
 }
 
 // A deal whose local events cannot be read is left out of the rules history,
@@ -630,7 +591,9 @@ func TestARefundOnACancelWithAFeeIsNotBuilt(t *testing.T) {
 		journal, err := s.v1DealJournal(t.Context(), h.dealID)
 		require.NoError(t, err)
 		cancel = checkDigest(t, journal)
-		cb, err := s.checkRecord(t.Context(), h.dealID, cancel)
+		st, err := s.dealStore(t.Context())
+		require.NoError(t, err)
+		cb, err := st.CheckRecord(t.Context(), h.dealID, cancel)
 		require.NoError(t, err)
 		require.Nil(t, cb.AmountMinor, "a seller's cancel records its amount as cancelled_amount_minor")
 		require.NotNil(t, cb.FeeMinor)
@@ -640,17 +603,30 @@ func TestARefundOnACancelWithAFeeIsNotBuilt(t *testing.T) {
 	assert.Contains(t, msg, "evidencebook#743")
 
 	// A refund sent before the rule still completes, with the amount its
-	// send recorded, and the user is told that amount is not checked.
-	refundFeeGuard = false
-	dealRun(t, "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received["digest"].(string), "--sent", "--payment-ref-type", "ln.payment_hash", "--payment-ref", strings.Repeat("71", 32))
-	refundFeeGuard = true
-	t.Cleanup(func() { refundFeeGuard = true })
+	// send recorded, and the user is told that amount is not checked. The
+	// guard is package deal's since #899 phase 3, so the send that predates
+	// it is stored here as such a run left it: open, on the fee-bearing
+	// check, reversing the leg received.
+	withSession(t, func(s *dealSession) {
+		var n int64
+		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT max(n) FROM deal_v1_events WHERE deal_id=?`, h.dealID).Scan(&n))
+		ref := strings.Repeat("71", 32)
+		_, err := s.db.ExecContext(t.Context(), `INSERT INTO deal_v1_sends (deal_id, check_digest, event_n, amount_minor, currency, ref_type, ref_value, ref_json, reverses) VALUES (?, ?, ?, 4500, 'USD', 'ln.payment_hash', ?, ?, ?)`,
+			h.dealID, cancel, n, ref, `{"type":"ln.payment_hash","value":"`+ref+`"}`, received["digest"].(string))
+		require.NoError(t, err)
+	})
 	refundFile := filepath.Join(t.TempDir(), "refund.json")
-	stdout, stderr := invokeSplit(t, "--profile", "deal", "deal", "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received["digest"].(string), "--status", "settled", "--out", refundFile)
+	args := []string{"--profile", "deal", "deal", "settle", "--deal", h.dealID, "--check", cancel, "--reverses", received["digest"].(string), "--status", "settled", "--out", refundFile}
+	stdout, stderr := invokeSplit(t, args...)
 	assert.Contains(t, stdout, "settled")
 	assert.Contains(t, stderr, "is not checked (evidencebook#743)")
 	_, err := os.Stat(refundFile)
 	require.NoError(t, err, "the in-flight refund completed")
+	again, _ := invokeSplit(t, args...)
+	var first, second map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &first))
+	require.NoError(t, json.Unmarshal([]byte(again), &second))
+	assert.Equal(t, first["digest"], second["digest"], "the same refund leg, written again")
 }
 
 // A person copies the check_id `deal check` printed: deal settle takes it,

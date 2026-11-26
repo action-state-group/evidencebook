@@ -91,6 +91,40 @@ var cliRefusals = map[dealapi.Code]cliRefusal{
 	dealapi.CodeSettleNegative: {0, func([]string) string {
 		return "--received, --receive-fee and --routing-fee are amounts in minor units and are never negative"
 	}},
+	dealapi.CodeNotSent: {2, func(a []string) string {
+		return "no payment on check " + a[1] + " was sent: run deal settle --deal " + a[0] + " --check " + a[1] + " --sent before the handoff"
+	}},
+	dealapi.CodeSendInFlight: {7, func(a []string) string {
+		// Args: check, amount, currency, ref type, ref value, deal id, reverses.
+		ref := a[3] + " " + a[4]
+		if a[4] == "" {
+			ref = a[3] + ", the order number to come with --status"
+		}
+		return "a payment on check " + a[0] + " is in flight (" + a[1] + " " + a[2] + ", " + ref + "): when the rail answers, run " + statusHint(a[5], a[0], a[6], a[3])
+	}},
+	dealapi.CodeInFlight: {5, func(a []string) string {
+		// Args: deal id, check, reverses, ref type, record type.
+		return "a payment of deal " + a[0] + " is in flight (check " + a[1] + "): a " + a[4] +
+			" record that changes the deal's details would void its authorization, so it waits until the payment is settled or failed (`" + statusHint(a[0], a[1], a[2], a[3]) + "`)"
+	}},
+	dealapi.CodeSettlePayee: {3, func(a []string) string {
+		if a[0] == "refund" {
+			return "a refund you receive is a payee leg, which cites no --check: give --received, --receive-fee and --status"
+		}
+		return "you do not owe row " + a[1] + " of deal " + a[2] + ": what you received is a payee leg, which cites no --check"
+	}},
+	dealapi.CodeCheckAction: {3, func(a []string) string {
+		if a[0] == "refund" {
+			return "a refund rests on a cancel check, and --check " + a[1] + " is a " + a[2] + " check"
+		}
+		return "a payment rests on a pay check, and --check " + a[1] + " is a " + a[2] + " check"
+	}},
+	dealapi.CodeSentOtherwise: {2, func(a []string) string {
+		if a[1] == "" {
+			return "the payment on check " + a[0] + " was sent as a payment, not a refund: leave out --reverses"
+		}
+		return "the refund on check " + a[0] + " was sent as reversing leg " + a[1] + ": give --reverses " + a[1]
+	}},
 	dealapi.CodeRecordNotRebuilt: {1, func(a []string) string {
 		return fmt.Sprintf("the record %s was sealed but its file was not made, and the library cannot rebuild it: for an offer, cancel it with `deal offer cancel`", a[0])
 	}},

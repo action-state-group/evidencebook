@@ -66,7 +66,9 @@ func TestDealJournalGolden(t *testing.T) {
 	// send, and a details change, while it is in flight; the leg; the same
 	// leg again; a send on the used check.
 	leg := g.file("leg.json")
-	settle := func(extra ...string) []string { return append([]string{"settle", "--deal", dealID, "--check", check}, extra...) }
+	settle := func(extra ...string) []string {
+		return append([]string{"settle", "--deal", dealID, "--check", check}, extra...)
+	}
 	g.run(buyer, "status before the send", settle("--status", "settled", "--out", g.file("x1.json")))
 	g.run(buyer, "send", settle("--sent", "--payment-ref-type", "ln.payment_hash"))
 	g.run(buyer, "send again in flight", settle("--sent", "--payment-ref-type", "ln.payment_hash"))

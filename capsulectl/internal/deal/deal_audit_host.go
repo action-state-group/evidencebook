@@ -601,7 +601,7 @@ func (s *dealSession) allCoverSteps(ctx context.Context) (_ []*dealCoverStep, er
 		return nil, err
 	}
 	for _, id := range v1 {
-		events, _, _, err := s.v1StoredEvents(ctx, id)
+		events, err := s.v1StoredEvents(ctx, id)
 		if err != nil {
 			return nil, err
 		}

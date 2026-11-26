@@ -3,7 +3,6 @@
 package deal
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/action-state-group/evidencebook"
@@ -100,19 +99,6 @@ func TestAV1NoteSealsItsJournalRecord(t *testing.T) {
 	assert.Equal(t, []bool{false, true}, withDeal)
 }
 
-// An append that fails while the command runs withdraws the step, so the
-// user's retry seals it once.
-func TestAV1StepWhoseAppendFailedIsWithdrawn(t *testing.T) {
-	h := openedV1(t)
-	appendV1JournalHook = func() error { return errors.New("stopped") }
-	_, err := invoke(t, "", "--profile", "deal", "deal", "note", "--deal", h.dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"counterparty","text":"It ships Monday."}`))
-	appendV1JournalHook = nil
-	require.Error(t, err)
-	dealRun(t, "note", "--deal", h.dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"counterparty","text":"It ships Monday."}`))
-	types, _ := journalTypes(t, h.dealID)
-	assert.Equal(t, []string{"intent", "message"}, types, "one message, not two")
-}
-
 // A process that dies after storing its step and before appending its record
 // leaves the payload stored: the next command that loads the deal appends it.
 func TestAV1StepADeadRunLeftIsSealedByTheNextCommand(t *testing.T) {
@@ -192,26 +178,6 @@ func TestAV1NoteRefusesALocalIdentifier(t *testing.T) {
 	assert.Equal(t, []string{"intent"}, types, "nothing was stored")
 }
 
-// An opening whose intent cannot be sealed stores nothing: the opening and its
-// intent are stored together or not at all.
-func TestAV1OpeningIsStoredWithItsIntentOrNotAtAll(t *testing.T) {
-	h := receivedOffer(t)
-	appendV1JournalHook = func() error { return errors.New("stopped") }
-	_, err := invoke(t, "", "--profile", "deal", "deal", "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
-	appendV1JournalHook = nil
-	require.Error(t, err)
-	withSession(t, func(s *dealSession) {
-		var n int
-		require.NoError(t, s.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM deal_v1_events WHERE deal_id=?`, h.dealID).Scan(&n))
-		assert.Equal(t, 0, n, "the opening and the failed intent were both withdrawn")
-	})
-	// The same command, run again, opens the deal.
-	res := dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
-	assert.Equal(t, true, res["opened"])
-	types, _ := journalTypes(t, h.dealID)
-	assert.Equal(t, []string{"intent"}, types)
-}
-
 func TestOpeningGoesOnlyOnAV1DealsFirstIntent(t *testing.T) {
 	h := openedV1(t)
 	assert.Contains(t, v1Err(t, "note", "--deal", h.dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"user","text":"x"}`), "--opening", writeJSON(t, v1Opening)), "--opening goes only on")
@@ -243,23 +209,4 @@ func TestTheV1LocalListStaysInTheStore(t *testing.T) {
 		require.Error(t, err, verb[0])
 		assert.NotContains(t, out, marker, verb[0])
 	}
-}
-
-// An append that fails after its record was stored keeps the whole batch: the
-// intent is in the journal, so the opening stays with it and the deal is open.
-func TestAV1OpeningWhoseAppendFailedAfterStoringIsKept(t *testing.T) {
-	h := receivedOffer(t)
-	appendV1JournalAfterHook = func() error { return errors.New("failed after storing") }
-	_, err := invoke(t, "", "--profile", "deal", "deal", "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
-	appendV1JournalAfterHook = nil
-	require.Error(t, err)
-	withSession(t, func(s *dealSession) {
-		events, err := s.v1Events(t.Context(), h.dealID)
-		require.NoError(t, err)
-		require.Len(t, events, 2, "the opening and its intent both stay")
-		assert.Equal(t, "open", events[0].Event.Kind)
-	})
-	note(t, h.dealID, "message", `{"from":"counterparty","text":"It ships Monday."}`)
-	types, _ := journalTypes(t, h.dealID)
-	assert.Equal(t, []string{"intent", "message"}, types)
 }
