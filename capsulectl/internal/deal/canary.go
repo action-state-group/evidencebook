@@ -3,7 +3,9 @@ package deal
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +26,9 @@ import (
 )
 
 // The canary is a scripted DEMO deal run on a schedule, and a watcher that
-// reads only the public witness.
+// reads only the public witness, signing its read with the log's checkpoint
+// key: the witness answers a log's size, root and time to that key alone
+// (capsule-anchor#110, ruling u226).
 //
 // A deal profile's cadence log grows by one entry per tick whether or not
 // anything happened (see deal_cadence.go), so on a profile with its own tick
@@ -47,6 +52,14 @@ func (canaryAlarm) Is(target error) bool { return target == cli.ErrAlarm }
 // errWitnessUnread is `canary watch` unable to read the witness at all: it
 // cannot tell whether the log advanced, so it says so instead of alarming.
 var errWitnessUnread = errors.New("witness not readable")
+
+// errReadKeyRefused is the witness refusing the read key for the log: its
+// checkpoints are signed by another key. An alarm, as a key change always was.
+var errReadKeyRefused = errors.New("the witness refused this key for the log")
+
+// errUnsignedFork is an answer without the checkpoint that still lists the
+// log's flagged equivocations: a fork, so an alarm, though nothing else was read.
+var errUnsignedFork = errors.New("history was rewritten")
 
 func canaryCommands() *cobra.Command {
 	canary := &cobra.Command{Use: "canary", Short: "A scheduled DEMO deal, and a watcher that alarms from the public witness when it stops",
@@ -269,22 +282,76 @@ type canaryObservation struct {
 var canaryHTTP = canaryClient(nil)
 
 // canaryClient reads the witness with transport (nil: the default), and
-// never follows a redirect off HTTPS: an answer about a public log must come
-// over the same kind of channel it was asked on.
+// follows no redirect: the read carries a signature that anyone holding it
+// can replay for a few minutes, so it goes to the witness named and nowhere
+// else.
 func canaryClient(transport http.RoundTripper) *http.Client {
 	return &http.Client{
 		Timeout:   20 * time.Second,
 		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return errors.New("too many redirects")
-			}
-			if !witnessURLAllowed(req.URL) {
-				return errors.New("redirected to a non-HTTPS URL")
-			}
-			return nil
+			return errors.New("redirected; a signed read follows no redirect")
 		},
 	}
+}
+
+// The signed read of GET /checkpoints/{log_id} (capsule-anchor
+// checkpoint_read.py): Ed25519 over "capsule-anchor/checkpoint-read/v1" LF
+// log_id LF unix seconds, the signature base64url without padding.
+const (
+	readTimeHeader      = "Checkpoint-Read-Time"
+	readSignatureHeader = "Checkpoint-Read-Signature"
+	readDomain          = "capsule-anchor/checkpoint-read/v1"
+)
+
+func signRead(key ed25519.PrivateKey, logID string, at time.Time) (string, string) {
+	t := strconv.FormatInt(at.Unix(), 10)
+	sig := ed25519.Sign(key, []byte(readDomain+"\n"+logID+"\n"+t))
+	return t, base64.RawURLEncoding.EncodeToString(sig)
+}
+
+// canaryReadKey is the key `canary watch` signs its read with: the selected
+// profile's checkpoint key, or a seed from --read-key-file / --read-key-env
+// when it runs off the canary's host. It also settles the log id: a profile's
+// own cadence log unless --log-id names it.
+func canaryReadKey(c *cobra.Command, logID string) (ed25519.PrivateKey, string, error) {
+	file, _ := c.Flags().GetString("read-key-file")
+	env, _ := c.Flags().GetString("read-key-env")
+	profile, _ := c.Flags().GetString("profile")
+	sources := 0
+	for _, v := range []string{file, env, profile} {
+		if v != "" {
+			sources++
+		}
+	}
+	if sources > 1 {
+		return nil, "", cli.InputError("give one of --profile, --read-key-file or --read-key-env")
+	}
+	if file != "" || env != "" {
+		if logID == "" {
+			return nil, "", cli.InputError("--log-id is required with --read-key-file or --read-key-env")
+		}
+		key, err := cli.PrivateKey(cli.Secret{File: file, Env: env})
+		return key, logID, err
+	}
+	p, err := cli.Selected(c)
+	if err != nil {
+		return nil, "", cli.Hint(err, "the witness answers a log's checkpoint only to the log's own key: pass --profile with the canary's profile, or --read-key-file / --read-key-env with its checkpoint seed")
+	}
+	if p.Checkpoint.Signing == (cli.Secret{}) {
+		return nil, "", cli.InputError("profile " + p.Name + " has no checkpoint signing key to sign the read with")
+	}
+	switch {
+	case logID == "":
+		logID = p.LogID
+	case logID != p.LogID:
+		return nil, "", cli.InputError("--log-id " + logID + " is not profile " + p.Name + "'s cadence log " + p.LogID + ": the witness answers a log only to its own key")
+	}
+	if logID == "" {
+		return nil, "", cli.InputError("profile " + p.Name + " has no cadence log yet: run `deal canary run` on it first")
+	}
+	key, err := cli.PrivateKey(p.Checkpoint.Signing)
+	return key, logID, err
 }
 
 // witnessURLAllowed: https, or plain http to a loopback address (a witness
@@ -310,11 +377,15 @@ func canaryWatchCommand() *cobra.Command {
 		witness, _ := c.Flags().GetString("witness")
 		every, _ := c.Flags().GetDuration("expect-every")
 		statePath, _ := c.Flags().GetString("state")
-		if logID == "" || every <= 0 {
-			return cli.InputError("--log-id and a positive --expect-every are required")
+		if every <= 0 {
+			return cli.InputError("a positive --expect-every is required")
 		}
 		if u, err := url.Parse(witness); err != nil || u.Host == "" || !witnessURLAllowed(u) {
 			return cli.Hint(cli.ErrInput, "--witness must be an https URL (plain http only for a witness on this machine)")
+		}
+		key, logID, err := canaryReadKey(c, logID)
+		if err != nil {
+			return err
 		}
 		if statePath == "" {
 			dir, err := cli.ProfilesDir()
@@ -324,7 +395,16 @@ func canaryWatchCommand() *cobra.Command {
 			statePath = filepath.Join(filepath.Dir(dir), "canary", canaryStateName(logID)+".json")
 		}
 		now := cli.DealClock().UTC()
-		cp, found, err := readWitnessCheckpoint(c.Context(), witness, logID)
+		// The read is signed with the real clock: the witness checks it
+		// against its own, not against this command's deal clock.
+		cp, found, err := readWitnessCheckpoint(c.Context(), witness, logID, key, time.Now())
+		if errors.Is(err, errUnsignedFork) {
+			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s %s", logID, err))
+		}
+		if errors.Is(err, errReadKeyRefused) {
+			// The last good observation is kept, so every later run alarms too.
+			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s: %s (its checkpoints are now signed by another key, or this is not the log's key)", logID, err))
+		}
 		if err != nil {
 			return cli.Hint(errWitnessUnread, fmt.Sprintf("could not read %s for %s (%s); cannot tell whether it advanced", witness, logID, err))
 		}
@@ -367,7 +447,9 @@ func canaryWatchCommand() *cobra.Command {
 			"continuity_grade": cp.ContinuityGrade,
 		})
 	}}
-	cmd.Flags().String("log-id", "", "The canary profile's cadence log id (deal-cadence/...)")
+	cmd.Flags().String("log-id", "", "The canary profile's cadence log id (deal-cadence/...); default: the --profile's own")
+	cmd.Flags().String("read-key-file", "", "Off the canary's host: a file (mode 0600) holding the canary profile's 32-byte checkpoint seed in hex, to sign the read with")
+	cmd.Flags().String("read-key-env", "", "Off the canary's host: an environment variable holding that seed")
 	cmd.Flags().String("witness", DealDefaultWitness, "The public witness to read")
 	cmd.Flags().Duration("expect-every", 0, "Alarm when the log has not advanced for longer than this: the canary's schedule plus the tick interval and jitter")
 	cmd.Flags().String("state", "", "Where this watcher keeps its last observation (default: under the config directory)")
@@ -395,7 +477,7 @@ func canaryRewritten(cp witnessCheckpoint, prev canaryObservation, hadPrev bool)
 	return ""
 }
 
-func readWitnessCheckpoint(ctx context.Context, witness, logID string) (witnessCheckpoint, bool, error) {
+func readWitnessCheckpoint(ctx context.Context, witness, logID string, key ed25519.PrivateKey, at time.Time) (witnessCheckpoint, bool, error) {
 	base, err := url.Parse(witness)
 	if err != nil || base.Host == "" || !witnessURLAllowed(base) {
 		return witnessCheckpoint{}, false, errors.New("not an https URL")
@@ -409,6 +491,9 @@ func readWitnessCheckpoint(ctx context.Context, witness, logID string) (witnessC
 	if err != nil {
 		return witnessCheckpoint{}, false, err
 	}
+	t, sig := signRead(key, logID, at)
+	req.Header.Set(readTimeHeader, t)
+	req.Header.Set(readSignatureHeader, sig)
 	resp, err := canaryHTTP.Do(req)
 	if err != nil {
 		var redirect *url.Error
@@ -421,6 +506,9 @@ func readWitnessCheckpoint(ctx context.Context, witness, logID string) (witnessC
 	if resp.StatusCode == http.StatusNotFound {
 		return witnessCheckpoint{}, false, nil
 	}
+	if resp.StatusCode == http.StatusForbidden {
+		return witnessCheckpoint{}, false, readRefusal(resp.Body)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return witnessCheckpoint{}, false, fmt.Errorf("status %d", resp.StatusCode)
 	}
@@ -431,7 +519,40 @@ func readWitnessCheckpoint(ctx context.Context, witness, logID string) (witnessC
 	if cp.LogID != logID {
 		return witnessCheckpoint{}, false, fmt.Errorf("answered for log %q", cp.LogID)
 	}
+	if cp.Root == "" || cp.Timestamp == "" {
+		// The answer an unsigned read gets: the read's headers did not reach
+		// the witness, so nothing here says whether the log advanced. Its
+		// equivocations are still public, and a fork is still an alarm.
+		if n := len(cp.Equivocations); n > 0 {
+			return witnessCheckpoint{}, false, fmt.Errorf("%w: the witness has flagged %d conflicting checkpoint(s) for this log", errUnsignedFork, n)
+		}
+		return witnessCheckpoint{}, false, errors.New("answered without the checkpoint, as to an unsigned read")
+	}
 	return cp, true, nil
+}
+
+// readRefusal names a 403 from the witness by its code. A key mismatch is
+// errReadKeyRefused (an alarm); anything else leaves the log unread.
+func readRefusal(body io.Reader) error {
+	var refusal struct {
+		Detail struct {
+			Code string `json:"code"`
+		} `json:"detail"`
+	}
+	if err := json.NewDecoder(io.LimitReader(body, 1<<16)).Decode(&refusal); err != nil {
+		// A body that does not decode names no code: a partly decoded one
+		// must not read as a key change.
+		return errors.New("status 403")
+	}
+	switch refusal.Detail.Code {
+	case "read_key_mismatch":
+		return errReadKeyRefused
+	case "read_time_skew":
+		return errors.New("refused the read: this machine's clock is more than 5 minutes from the witness's")
+	case "read_signature_malformed":
+		return errors.New("refused the read as malformed")
+	}
+	return errors.New("status 403")
 }
 
 var canaryUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
