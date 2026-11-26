@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/action-state-group/agent-action-capsule/go/personalhistory"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
@@ -27,23 +26,16 @@ import (
 // anything the counterparty sent with this deal.
 //
 // It is read on x-deal-v1 deals only; x-deal-v0 is frozen (evidencebook#626).
-// The kinds read are a personal_history_basic/1 History (H3) and a stapled
-// history_card/2 (H4), each verified with capsule-cli's own verifier
-// (HistoryVerdict, StapleVerdict); history_card/1 is not read (staples are
-// history_card/2 only).
+// The one kind read is a stapled history_card/2 (H4), verified with
+// capsule-cli's own staple verifier (StapleVerdict). history_card/1 is not
+// read (staples are history_card/2 only), nor is a personal_history_basic/1
+// History: the personal-history forms are frozen (Steven on Q5,
+// asg-agent-team-ethan#391; evidencebook#962).
 
 const (
-	// receivedHistoryKind is the History kind (H3) `--history` reads beside
-	// a stapled history_card/2: a personal_history_basic/1 History, per
-	// Steven's u527 (1). Which
-	// kind follows Steven's ruling on asg-agent-team-ethan#391, which may
-	// supersede u527 (1); a switch changes this constant and the verifier
-	// call in verifyReceivedHistory.
-	receivedHistoryKind  = personalhistory.Name
 	receivedHistoryAbout = "counterparty"
-	// receivedHistoryBound is an H3's request_binding: each answer is bound
-	// to the request octets in the file (PH §8.2). A staple that answers no
-	// request of ours would carry NOT_PRESENT (design §5.2).
+	// receivedHistoryBound is a staple's request_binding when it is accepted
+	// as an answer to our request (design §5.2).
 	receivedHistoryBound = "BOUND"
 	// receivedHistoryNotBound is a staple's request_binding when it checks
 	// out but answers no request of ours (design §5.2).
@@ -90,12 +82,12 @@ func historyFlagsGiven(c *cobra.Command) bool {
 }
 
 // readReceivedHistory reads `deal check --history FILE` with
-// --counterparty-key, verifying every document before anything else runs. It
-// returns nil when no --history was given. A document that is not accepted
-// under the given keys, leaves a check not run, is of a kind not read here, or
-// is a second of its kind (or the same bytes twice) refuses the whole check
-// with its reason: no document is dropped, so the host never believes a
-// History was read when it was not (design §5.2).
+// --counterparty-key and --checkpoint-key, verifying the document before
+// anything else runs. It returns nil when no --history was given. A check
+// reads one stapled card under one counterparty key; a document that is not
+// accepted under the given keys, leaves a check not run, or is of a kind not
+// read here refuses the whole check with its reason, so the host never
+// believes a History was read when it was not (design §5.2).
 func readReceivedHistory(c *cobra.Command) (*receivedHistory, error) {
 	paths, _ := c.Flags().GetStringArray("history")
 	keys, _ := c.Flags().GetStringSlice("counterparty-key")
@@ -109,82 +101,27 @@ func readReceivedHistory(c *cobra.Command) (*receivedHistory, error) {
 		return nil, cli.InputError("--counterparty-key goes with --history: it is the key the counterparty's History is verified under")
 	case len(keys) == 0:
 		return nil, cli.InputError("--history needs --counterparty-key: the counterparty's key from your deployment policy, never one read from the History or from anything the counterparty sent")
+	case len(paths) > 1:
+		return nil, cli.InputError("--history is given " + fmt.Sprint(len(paths)) + " times: a check reads one stapled " + historyCardStaple2)
+	case len(keys) > 1:
+		return nil, cli.InputError("--history needs exactly one --counterparty-key, this deal's counterparty's, so the card is read as theirs and no one else's")
 	}
 	for _, k := range append(slices.Clone(keys), checkpointKeys...) {
 		if len(k) != 64 || !cli.IsLowerHex(k) {
 			return nil, cli.InputError("--counterparty-key and --checkpoint-key are raw Ed25519 public keys as 64 lowercase hex characters")
 		}
 	}
-	h := &receivedHistory{About: receivedHistoryAbout, CounterpartyKeys: keys, CheckpointKeys: checkpointKeys, Histories: []receivedHistoryDoc{}}
-	seen := map[string]bool{}
-	kinds := map[string]bool{}
-	for _, path := range paths {
-		raw, err := cli.ReadInput(path)
-		if err != nil {
-			return nil, err
-		}
-		sum := sha256.Sum256(raw)
-		digest := hex.EncodeToString(sum[:])
-		if seen[digest] {
-			return nil, cli.InputError("--history " + path + " is the same document as an earlier --history")
-		}
-		seen[digest] = true
-		doc, err := verifyReceivedHistory(path, raw, keys, checkpointKeys)
-		if err != nil {
-			return nil, err
-		}
-		if kinds[doc.Kind] {
-			return nil, cli.InputError("--history " + path + " is a second " + doc.Kind + ": a check reads at most one document of each kind, so no rule counts the same deals twice")
-		}
-		kinds[doc.Kind] = true
-		doc.SHA256 = digest
-		h.Histories = append(h.Histories, doc)
-	}
-	if len(checkpointKeys) > 0 && !kinds[historyCardStaple2] {
-		return nil, cli.InputError("--checkpoint-key goes with a stapled " + historyCardStaple2 + ": it is the key its checkpoints are signed by")
-	}
-	return h, nil
-}
-
-// verifyReceivedHistory verifies one document with capsule-cli's History
-// verifier under keys, and returns it as the checker reads it. Every reason
-// it refuses with is the verifier's, never text from the document.
-func verifyReceivedHistory(path string, raw []byte, keys, checkpointKeys []string) (receivedHistoryDoc, error) {
-	var head struct {
-		History any `json:"history"`
-		Profile any `json:"profile"`
-	}
-	if json.Unmarshal(raw, &head) != nil {
-		head.History = nil
-	}
-	if kind, _ := head.History.(string); kind != receivedHistoryKind {
-		// Anything else is read as a staple, as `verify --history` reads it
-		// (the kind is the file's own, history before profile), or refused.
-		return verifyReceivedStaple(path, raw, keys, checkpointKeys)
-	}
-	file, err := personalhistory.ParseFile(raw)
+	raw, err := cli.ReadInput(paths[0])
 	if err != nil {
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not a one-file History (" + receivedHistoryKind + ", PH §8.2): " +
-			strings.TrimPrefix(err.Error(), personalhistory.ErrInvalid.Error()+": "))
+		return nil, err
 	}
-	report, err := cli.HistoryVerdict(file, keys)
-	if errors.Is(err, cli.ErrInput) {
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " could not be verified: " + cli.SafeError(err))
-	} else if err != nil {
-		return receivedHistoryDoc{}, err
-	}
-	if report.Verdict != "ACCEPTED" {
-		why := "it is not accepted under --counterparty-key"
-		if len(report.Findings) > 0 {
-			why += " (" + strings.Join(report.Findings, "; ") + ")"
-		}
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is not verified: " + why + ". It is not attributable to this counterparty, so the check does not run")
-	}
-	document, err := jcsReadyDocument(raw)
+	doc, err := verifyReceivedStaple(paths[0], raw, keys[0], checkpointKeys)
 	if err != nil {
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " cannot be handed to the rules checker: " + err.Error())
+		return nil, err
 	}
-	return receivedHistoryDoc{Kind: receivedHistoryKind, RequestBinding: receivedHistoryBound, Document: document}, nil
+	sum := sha256.Sum256(raw)
+	doc.SHA256 = hex.EncodeToString(sum[:])
+	return &receivedHistory{About: receivedHistoryAbout, CounterpartyKeys: keys, CheckpointKeys: checkpointKeys, Histories: []receivedHistoryDoc{doc}}, nil
 }
 
 // verifyReceivedStaple verifies a stapled history_card/2 (H4) with
@@ -195,21 +132,14 @@ func verifyReceivedHistory(path string, raw []byte, keys, checkpointKeys []strin
 // reads as verified; a check left unrun, or a card not accepted, refuses
 // the check. The staple must be read under exactly the key given (Sherlock2
 // on capsule-cli#567: a staple under another key is not this counterparty's).
-func verifyReceivedStaple(path string, raw []byte, keys, checkpointKeys []string) (receivedHistoryDoc, error) {
-	notRead := cli.InputError("--history " + path + " is not a History this check reads: want a " + receivedHistoryKind + " History or a stapled " + historyCardStaple2)
-	if len(keys) != 1 {
-		if _, err := cli.StapleVerdict(raw, nil, nil); err != nil {
-			return receivedHistoryDoc{}, notRead
-		}
-		return receivedHistoryDoc{}, cli.InputError("--history " + path + " is a stapled card: give exactly one --counterparty-key, this deal's counterparty's, so the card is read as theirs and no one else's")
-	}
-	result, err := cli.StapleVerdict(raw, keys, checkpointKeys)
+func verifyReceivedStaple(path string, raw []byte, key string, checkpointKeys []string) (receivedHistoryDoc, error) {
+	result, err := cli.StapleVerdict(raw, []string{key}, checkpointKeys)
 	if errors.Is(err, cli.ErrInput) {
-		return receivedHistoryDoc{}, notRead
+		return receivedHistoryDoc{}, notReadHistory(path)
 	} else if err != nil {
 		return receivedHistoryDoc{}, err
 	}
-	if err := stapleCard(path, result, keys[0]); err != nil {
+	if err := stapleCard(path, result, key); err != nil {
 		return receivedHistoryDoc{}, err
 	}
 	binding, err := stapleBinding(path, result)
@@ -223,12 +153,17 @@ func verifyReceivedStaple(path string, raw []byte, keys, checkpointKeys []string
 	return receivedHistoryDoc{Kind: historyCardStaple2, RequestBinding: binding, Document: document}, nil
 }
 
+// notReadHistory refuses a document that is no stapled history_card/2.
+func notReadHistory(path string) error {
+	return cli.InputError("--history " + path + " is not a History this check reads: want a stapled " + historyCardStaple2)
+}
+
 // stapleCard refuses a staple that is not one history_card/2 read under key:
 // several cards, a history_card/1 (staples are /2 only), a card of another
 // kind, or a result under another key. A card with no readable derivation
 // that failed a check is left to stapleBinding, which says why.
 func stapleCard(path string, result cli.StapleResult, key string) error {
-	notRead := cli.InputError("--history " + path + " is not a History this check reads: want a " + receivedHistoryKind + " History or a stapled " + historyCardStaple2)
+	notRead := notReadHistory(path)
 	switch {
 	case len(result.Derivations) != 1:
 		return cli.InputError("--history " + path + " staples " + fmt.Sprint(len(result.Derivations)) + " cards: a check reads one stapled card")
