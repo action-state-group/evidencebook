@@ -562,6 +562,10 @@ func TestSettleChecksThePaymentRef(t *testing.T) {
 		{`{"type":"x-deal-v1.merchant_order","value":"A-17","origin":"https://Shop.Example/"}`, "payment_ref origin https://Shop.Example/ is not in normal form: https://shop.example"},
 		{`{"type":"x-deal-v1.merchant_order","value":"A-17","origin":"ftp://shop.example"}`, "payment_ref origin ftp://shop.example is not a checkout origin: its scheme is not https or http"},
 		{`{"type":"x-deal-v1.merchant_order","value":"4111 1111 1111 1111","origin":"https://shop.example"}`, "payment_ref value looks like a card number"},
+		{`{"type":"x-deal-v1.merchant_order","value":"\t4111111111111111","origin":"https://shop.example"}`, "payment_ref value has spaces around it"},
+		{`{"type":"acp.order_id","value":"A-17\n"}`, "payment_ref value has spaces around it"},
+		{`{"type":"acp.order_id","value":"A-17"} garbage`, "payment_ref is not one JSON object: something follows it"},
+		{`{"type":"acp.order_id","value":"A-17"} {}`, "payment_ref is not one JSON object: something follows it"},
 	} {
 		_, err := seller.store.Settle(ctx, dealID, with(tc.ref))
 		assert.Contains(t, inputReason(t, err), tc.want, tc.ref)

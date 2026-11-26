@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"slices"
 	"strconv"
 	"strings"
@@ -310,6 +311,9 @@ func checkPaymentRef(raw json.RawMessage) (map[string]any, error) {
 	if err := dec.Decode(&ref); err != nil || ref == nil {
 		return bad("is not a JSON object")
 	}
+	if dec.Decode(&struct{}{}) != io.EOF {
+		return bad("is not one JSON object: something follows it")
+	}
 	text := func(name string) (string, bool) {
 		v, ok := ref[name].(string)
 		return v, ok
@@ -318,6 +322,9 @@ func checkPaymentRef(raw json.RawMessage) (map[string]any, error) {
 	value, ok := text("value")
 	if !ok || strings.TrimSpace(value) == "" {
 		return bad("has no value: the payment's reference")
+	}
+	if value != strings.TrimSpace(value) {
+		return bad("value has spaces around it: give the reference as shown, trimmed")
 	}
 	if xdealv1.CardLike(value) {
 		return bad("value looks like a card number: no card data goes in a payment reference")
