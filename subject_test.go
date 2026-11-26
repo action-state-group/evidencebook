@@ -648,6 +648,9 @@ func TestSubjectBundleHeldByDigestIsChecked(t *testing.T) {
 	mustAppend(t, book, foreign)
 	bundle, verified := fullBundle(t, book, SubjectBundleRequest{})
 	require.Equal(t, []string{dg("a counterparty's half")}, verified.HeldByDigest)
+	huge, err := VerifySubjectBundle(editExtension(t, bundle.JSON, func(ext *SubjectExtension) { ext.ClosureDepth = 1<<53 - 1 }))
+	require.NoError(t, err, "an enormous closure depth ends with the closure")
+	assert.Equal(t, verified.HeldByDigest, huge.HeldByDigest)
 	for name, held := range map[string][]string{"dropped": {}, "added": {dg("a counterparty's half"), dg("unrelated")}} {
 		_, err := VerifySubjectBundle(editExtension(t, bundle.JSON, func(ext *SubjectExtension) { ext.HeldByDigest = held }))
 		assert.ErrorIs(t, err, ErrInvalid, name)

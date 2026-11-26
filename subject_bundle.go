@@ -654,7 +654,9 @@ func verifyHeldByDigest(ext SubjectExtension, byID map[string]PeerRecord) error 
 	for _, m := range ext.Members {
 		seen := map[string]bool{m: true}
 		frontier := []string{m}
-		for range ext.ClosureDepth {
+		// The depth is the bundle's word; the walk ends when no new record
+		// is reached, so an enormous one costs no more than the closure.
+		for hop := 0; hop < ext.ClosureDepth && len(frontier) > 0; hop++ {
 			var next []string
 			for _, id := range frontier {
 				for _, link := range byID[id].Header.Links {
