@@ -12,7 +12,10 @@ plan `.github/scripts/race-packages.sh` makes for a pull request, plus
 `capsulectl/internal/deal` in parallel shards when the change reaches it,
 which no pull request runs in CI. `--plan` prints what it would run. Push to
 main and the nightly race every package. It prints each suite's time and
-exits nonzero if any failed; push only when it passes. `--all` took 24 minutes on an Apple M5 Pro (18 cores, 2026-11-25, other
+exits nonzero if any failed; push only when it passes. On the same machine
+(2026-11-26, under the heavy lock), a one-line change to an internal/deal test
+file took 746 seconds before evidencebook#973 and 650 after; the same change
+to an internal/book test file took 215 after. `--all` took 24 minutes on an Apple M5 Pro (18 cores, 2026-11-25, other
 work running): capsulectl 21 minutes in nine parallel shards per pass, the
 root module 8 minutes more when its test cache is cold. The jobs that need a pinned
 Chrome or capsule-engine (deal pages, presentation pass, the Goose loop) run
