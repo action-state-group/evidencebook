@@ -379,64 +379,43 @@ func (s *dealSession) legStatusAt(ctx context.Context, d *v1Deal, seq int) (stri
 	return m.Status, nil
 }
 
-// refundTaken refuses a new refund of a leg that is already being refunded.
-// The leg is its whole supersedes chain (a payee leg's later observations of
-// one payment): a payer refund is refused when another send reverses any leg
-// of the chain (open, or closed by a leg that did not fail); a payee refund
-// received is refused when a refund received of the chain, at its latest
-// observation, did not fail (a later observation of that refund names it
-// with --supersedes instead).
-func (s *dealSession) refundTaken(ctx context.Context, a *v1ActDeal, target string, payer bool) error {
+// refundTaken refuses a new refund send of a leg that is already being
+// refunded: another send that reverses any leg of its supersedes chain (a
+// payee leg's later observations of one payment), open or closed by a leg
+// that did not fail. A refund received is package deal's (Store.Settle).
+func (s *dealSession) refundTaken(ctx context.Context, a *v1ActDeal, target string) error {
 	taken := cli.InputError("leg " + target + " is already refunded: a later observation of that refund names it with --supersedes, and a failed refund leaves the leg free to refund again")
 	chain := legChain(a.book, target)
-	if payer {
-		rows, err := s.db.QueryContext(ctx, `SELECT reverses, leg_digest FROM deal_v1_sends WHERE deal_id=?`, a.d.DealID)
-		if err != nil {
+	rows, err := s.db.QueryContext(ctx, `SELECT reverses, leg_digest FROM deal_v1_sends WHERE deal_id=?`, a.d.DealID)
+	if err != nil {
+		return err
+	}
+	var legs []string
+	for rows.Next() {
+		var rev, l string
+		if err := rows.Scan(&rev, &l); err != nil {
+			rows.Close()
 			return err
 		}
-		var legs []string
-		for rows.Next() {
-			var rev, l string
-			if err := rows.Scan(&rev, &l); err != nil {
-				rows.Close()
-				return err
-			}
-			if chain[rev] {
-				legs = append(legs, l)
-			}
+		if chain[rev] {
+			legs = append(legs, l)
 		}
-		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-			return err
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for _, l := range legs {
+		if l == "" {
+			return taken
 		}
-		for _, l := range legs {
-			if l == "" {
-				return taken
-			}
-			for i, r := range a.book {
-				if d, err := xdealv1.Digest(r); err == nil && d == l {
-					if st, err := s.legStatusAt(ctx, a.d, i+1); err != nil {
-						return err
-					} else if st != legFailed {
-						return taken
-					}
+		for i, r := range a.book {
+			if d, err := xdealv1.Digest(r); err == nil && d == l {
+				if st, err := s.legStatusAt(ctx, a.d, i+1); err != nil {
+					return err
+				} else if st != legFailed {
+					return taken
 				}
 			}
-		}
-		return nil
-	}
-	for _, r := range a.book {
-		b, ok := settleOf(r)
-		if !ok || b.Leg != xdealv1.LegPayee || b.Reverses == nil || !chain[b.Reverses.Digest] {
-			continue
-		}
-		d, err := xdealv1.Digest(r)
-		if err != nil {
-			return err
-		}
-		if failed, err := s.chainFailed(ctx, a.d, a.book, d); err != nil {
-			return err
-		} else if !failed {
-			return taken
 		}
 	}
 	return nil
@@ -869,7 +848,7 @@ func (s *dealSession) settleSent(ctx context.Context, c *cobra.Command, a *v1Act
 		return cli.InputError("a payment on check " + in.check + " is in flight (" + strconv.FormatInt(prev.Amount, 10) + " " + prev.Currency + ", " + ref + "): when the rail answers, run " + statusHint(in.dealID, in.check, prev.Reverses, prev.RefType))
 	}
 	if in.reverses != "" {
-		if err := s.refundTaken(ctx, a, in.reverses, true); err != nil {
+		if err := s.refundTaken(ctx, a, in.reverses); err != nil {
 			return err
 		}
 	}
