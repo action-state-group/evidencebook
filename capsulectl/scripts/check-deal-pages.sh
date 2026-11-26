@@ -137,15 +137,18 @@ check "deal-receipt-edited: deal verify --bundle names the report that does not 
 
 # deal-receipt-downgraded: the standalone report dropped and edited text put
 # inline in x-deal-v0, as a receipt from before reports were sealed carries
-# it. No receipt module draws it, so the page shows the records only, never the
-# inline text, and never under a "not checked" label; deal verify --bundle
-# calls it INVALID: the copy names no sealed report.
+# it. The receipt module draws, in place of the receipt, that its text could
+# not be checked and what deal verify --bundle says of it (capsule-viewer#453),
+# never the inline text and never under a "not checked" label; deal verify
+# --bundle calls it INVALID: the copy names no sealed report.
 jq -c '.extensions["x-deal-report/v0"].agent_input.report as $text
   | .extensions["x-deal-v0"] = ($text | .did_line = "A line nobody sealed.") | del(.extensions["x-deal-report/v0"])' receipt.json >receipt-downgraded.json
 replace_bundle receipt.html receipt-downgraded.json >receipt-downgraded.html
 check "deal-receipt-downgraded: the page carries the inline line" contains receipt-downgraded.html 'A line nobody sealed.'
 render receipt-downgraded.html
-check "deal-receipt-downgraded: no receipt is drawn" lacks receipt-downgraded.html.dom 'class="cv-kit" data-receipt-module='
+check "deal-receipt-downgraded: the page says the text could not be checked" contains receipt-downgraded.html.dom '<div class="cv-tone--caution" data-cannot-check="true" data-cannot-check-reason="downgraded">'
+check "deal-receipt-downgraded: and why, in that block" contains receipt-downgraded.html.dom "data-cannot-check-reason=\"downgraded\"><p>⚠️ The receipt's text is not shown: this copy names no sealed report, so its text could not be checked.</p><p>"
+check "deal-receipt-downgraded: and what deal verify says of it" contains receipt-downgraded.html.dom "reports this copy as INVALID (sealed_report_not_named).</p></div>"
 check "deal-receipt-downgraded: the page shows no inline line" lacks receipt-downgraded.html.dom '>A line nobody sealed.</p>'
 check "deal-receipt-downgraded: no \"not checked\" label" lacks receipt-downgraded.html.dom 'data-unchecked="x-deal-v0"'
 capsulectl deal verify --bundle receipt-downgraded.html >receipt-downgraded-verify.json 2>/dev/null && verdict=0 || verdict=$?
