@@ -1005,9 +1005,11 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 				scope.Complete = false
 				continue
 			}
-			record, err := s.v1CapsuleWithInput(a.id, evs)
-			if err != nil || record == nil {
+			record, complete := s.v1HistoryAct(a.deal, a.id, evs)
+			if !complete {
 				scope.Complete = false
+			}
+			if record == nil {
 				continue
 			}
 			history = append(history, record)
@@ -1117,14 +1119,92 @@ func (s *dealSession) actCounterparty(ctx context.Context, actID string) (map[st
 	if err != nil || sealed == nil {
 		return nil, err
 	}
+	return sealedCounterparty(sealed), nil
+}
+
+// sealedCounterparty is the counterparty a sealed check names: its x-deal-v0
+// header's, or a typed check's body's; nil when it names none.
+func sealedCounterparty(sealed map[string]interface{}) map[string]interface{} {
 	record, _ := sealed["agent_input"].(map[string]interface{})
 	if block, ok := record["x-deal-v0"].(map[string]interface{}); ok {
 		cp, _ := block["counterparty"].(map[string]interface{})
-		return cp, nil
+		return cp
 	}
 	body, _ := record["body"].(map[string]interface{})
 	cp, _ := body["counterparty"].(map[string]interface{})
-	return cp, nil
+	return cp
+}
+
+// v1ActCheck is, among a v1 deal's events, the check an act rests on, as
+// actCheck reads it for a v0 act: the act's authorization (an approval, or
+// a verdict that needed none) and the check that verdict is of. Empty when
+// any link is missing.
+func v1ActCheck(events []sealedEvent, actID string) string {
+	byID := make(map[string]*dealEvent, len(events))
+	for i := range events {
+		byID[events[i].CapsuleID] = &events[i].Event
+	}
+	act := byID[actID]
+	if act == nil || act.Act == nil || act.Act.AuthorizedBy == "" {
+		return ""
+	}
+	verdict := byID[act.Act.AuthorizedBy]
+	if verdict != nil && verdict.Approval != nil {
+		verdict = byID[verdict.Approval.Check]
+	}
+	if verdict == nil || verdict.Check == nil {
+		return ""
+	}
+	return verdict.Check.Snapshot
+}
+
+// v1HistoryAct is an earlier x-deal-v1 act as the rules history gives it:
+// the v0-shaped record of its own deal's events, with who the act was with,
+// as a v0 act carries it (rulesHistory): the payee keyed per profile and the
+// counterparty its check sealed, so a rule keyed on an earlier payment to this
+// merchant reads a v1 payment too (evidencebook#890). Both records are built
+// under the act's own deal key, never the key of the deal being checked, so
+// their per-deal fingerprints are the ones that deal sealed. complete is false
+// when the act, its chain to its check, or the check cannot be read; record is
+// nil when the act cannot.
+func (s *dealSession) v1HistoryAct(dealID, actID string, evs []sealedEvent) (record map[string]interface{}, complete bool) {
+	defer func(key []byte) { s.dkey = key }(s.dkey)
+	s.dkey = dealprofile.DealKey(s.secret, dealID)
+	record, err := s.v1CapsuleWithInput(actID, evs)
+	if err != nil || record == nil {
+		return nil, false
+	}
+	// Every act the history reads rests on an authorization (v1RulesActs), so
+	// one whose chain to its check is broken is kept without who it was with,
+	// and the history is then not complete: a rule never reads that merchant
+	// as new without saying so.
+	check := v1ActCheck(evs, actID)
+	if check == "" {
+		return record, false
+	}
+	if cp := v1CheckCounterpartyProfile(evs, check); cp != nil {
+		record["counterparty_profile"] = cp
+	}
+	sealed, err := s.v1CapsuleWithInput(check, evs)
+	if err != nil || sealed == nil {
+		return record, false
+	}
+	if party := sealedCounterparty(sealed); party != nil {
+		record["counterparty"] = party
+	}
+	return record, true
+}
+
+// v1CheckCounterpartyProfile is the payee keyed per profile that a v1
+// check's companion sealed, as a block; nil when it has none.
+func v1CheckCounterpartyProfile(events []sealedEvent, check string) map[string]interface{} {
+	var out map[string]interface{}
+	for _, se := range events {
+		if cp := se.Event.CounterpartyProfile; se.Event.Kind == "counterparty_profile" && cp != nil && cp.Check == check {
+			out = counterpartyProfileBlock(cp.Payee)
+		}
+	}
+	return out
 }
 
 // actCounterpartyProfile is the payee keyed per profile for an earlier act:
