@@ -54,13 +54,18 @@ func heldPeerBundle(peer VerifiedBundle) (VerifiedBundle, error) {
 	return derived, nil
 }
 
-// holdBundleLocked returns the id of the held_bundle record holding peer for
-// a record of type reliedBy: one the log already has, if an earlier attempt
-// sealed it and no record cites it yet (a Close that failed after it), or a
-// new one appended now.
-func (b *Book) holdBundleLocked(ctx context.Context, peer VerifiedBundle, counterparty, reliedBy string) (string, error) {
-	payload := digestBytes(peer.Bytes)
-	statement := HeldBundleStatement{BundleDigest: peer.Digest, Peer: peer.LogID, ReliedBy: reliedBy}
+// heldStatement is the held_bundle statement for peer relied on by a
+// record of type reliedBy.
+func heldStatement(peer VerifiedBundle, reliedBy string) HeldBundleStatement {
+	return HeldBundleStatement{BundleDigest: peer.Digest, Peer: peer.LogID, ReliedBy: reliedBy}
+}
+
+// uncitedHeldLocked finds the latest held_bundle record holding peer for
+// counterparty and a record of type reliedBy that nothing cites yet and
+// whose bytes are AVAILABLE: what an earlier attempt that failed after
+// holding the bundle left. Nil when there is none.
+func (b *Book) uncitedHeldLocked(peer VerifiedBundle, counterparty, reliedBy string) *Record {
+	payload, statement := digestBytes(peer.Bytes), heldStatement(peer, reliedBy)
 	for i := len(b.log) - 1; i >= 0; i-- {
 		r := b.log[i]
 		if r.Header.RecordType != RecordTypeHeldBundle || !slices.Equal(r.Header.PayloadCommitments, []string{payload}) || r.Header.CounterpartyRef != counterparty {
@@ -73,9 +78,15 @@ func (b *Book) holdBundleLocked(ctx context.Context, peer VerifiedBundle, counte
 		if state, _, _, err := b.retentionLocked(r.RecordID); err != nil || state != Available {
 			continue
 		}
-		return r.RecordID, nil
+		return &r
 	}
-	raw, err := json.Marshal(statement)
+	return nil
+}
+
+// appendHeldLocked appends a held_bundle record holding peer and returns
+// its id.
+func (b *Book) appendHeldLocked(ctx context.Context, peer VerifiedBundle, counterparty, reliedBy string) (string, error) {
+	raw, err := json.Marshal(heldStatement(peer, reliedBy))
 	if err != nil {
 		return "", err
 	}

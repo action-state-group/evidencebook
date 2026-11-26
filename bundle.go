@@ -60,11 +60,12 @@ type BundleRequest struct {
 	// set is withheld with its digest.
 	WithholdPayloads bool
 	// DiscloseHeld carries the payload of a selected held_bundle record (a
-	// peer bundle a Close relied on: the counterparty's own account) under
-	// payloads=selected. Without it that payload is withheld with its
-	// digest, so a bundle discloses no more of the counterparty than it did
-	// before held_bundle existed. payloads=all carries it as it carries
-	// every payload; Withhold and WithholdPayloads withhold it either way.
+	// peer bundle a Close relied on: the counterparty's own account).
+	// Without it, under payloads=selected, that payload is withheld with its
+	// digest, and payloads=all is refused, since it cannot withhold: a
+	// bundle discloses no more of the counterparty than it did before
+	// held_bundle existed. With it, Withhold and WithholdPayloads still
+	// withhold it under payloads=selected.
 	DiscloseHeld bool
 	// Suppress names disclosure members left out of the overlay; suppressing
 	// HeaderMember leaves every disclosed header as withheld-with-digest. A
@@ -382,7 +383,10 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 				statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, PayloadCommitment: digest, Digest: digest})
 				continue
 			}
-			if b.records[id].Header.RecordType == RecordTypeHeldBundle && req.Payloads != PayloadsAll && !req.DiscloseHeld {
+			if b.records[id].Header.RecordType == RecordTypeHeldBundle && !req.DiscloseHeld {
+				if req.Payloads == PayloadsAll {
+					return Bundle{}, fmt.Errorf("%w: payloads=all would disclose held peer bundle %s; set DiscloseHeld to disclose it", ErrInvalid, id)
+				}
 				statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, PayloadCommitment: digest, Digest: digest})
 				continue
 			}

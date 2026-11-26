@@ -195,6 +195,22 @@ func TestARetriedCloseReusesItsUncitedHeldBundle(t *testing.T) {
 	held, _ := heldOf(t, a, sealed)
 	assert.Equal(t, 1, heldCount(t, a), "one copy, reused")
 	assert.Equal(t, sealed.Seq-1, held.Seq)
+	// The open window still ends before the reused held bundle: the head is
+	// the record before it, and it is not counted.
+	v1 := mustReadV1(t, sealed)
+	assert.Equal(t, map[string]int{"observation": 1}, v1.CountsByKind)
+	assert.NotEqual(t, held.RecordID, v1.Head.Digest)
+	from, to, err := v1.Window(held.Seq-1, sealed.Seq)
+	require.NoError(t, err)
+	assert.Equal(t, [2]uint64{1, held.Seq - 1}, [2]uint64{from, to})
+	require.NoError(t, a.Release())
+	reopened, err := Open(ctx, f.config(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reopened.Release() })
+	again0, err := reopened.Get(ctx, sealed.RecordID)
+	require.NoError(t, err)
+	assert.Equal(t, v1, mustReadV1(t, again0), "the Close reads the same after reopen")
+	a = reopened
 
 	// A second Close of the same bundle holds its own copy: the first is
 	// cited already.
@@ -206,7 +222,9 @@ func TestARetriedCloseReusesItsUncitedHeldBundle(t *testing.T) {
 }
 
 // A bundle rooted at the Close discloses no more of the counterparty than
-// before: the held bundle's payload is withheld by digest unless asked for.
+// before: the held bundle's payload is carried only when DiscloseHeld asks
+// for it; otherwise payloads=selected withholds it by digest and
+// payloads=all, which cannot withhold, is refused.
 func TestABundleOfTheCloseWithholdsTheHeldBundleUnlessAsked(t *testing.T) {
 	ctx := context.Background()
 	a, b := twoBooks(t)
@@ -217,20 +235,33 @@ func TestABundleOfTheCloseWithholdsTheHeldBundleUnlessAsked(t *testing.T) {
 	digest := digestBytes(peer.Bytes)
 
 	for _, tc := range []struct {
-		name    string
-		req     BundleRequest
-		carried bool
+		name             string
+		req              BundleRequest
+		carried, refused bool
 	}{
-		{"by default", BundleRequest{}, false},
-		{"asked for", BundleRequest{DiscloseHeld: true}, true},
-		{"payloads=all", BundleRequest{Payloads: PayloadsAll}, true},
-		{"asked for but every payload withheld", BundleRequest{DiscloseHeld: true, WithholdPayloads: true}, false},
-		{"asked for but this one withheld", BundleRequest{DiscloseHeld: true, Withhold: []string{digest}}, false},
+		{"by default", BundleRequest{}, false, false},
+		{"asked for", BundleRequest{DiscloseHeld: true}, true, false},
+		{"payloads=all, not asked for", BundleRequest{Payloads: PayloadsAll}, false, true},
+		{"payloads=all, asked for", BundleRequest{Payloads: PayloadsAll, DiscloseHeld: true}, true, false},
+		{"asked for but every payload withheld", BundleRequest{DiscloseHeld: true, WithholdPayloads: true}, false, false},
+		{"asked for but this one withheld", BundleRequest{DiscloseHeld: true, Withhold: []string{digest}}, false, false},
+		{"payloads=all withholding every payload", BundleRequest{Payloads: PayloadsAll, DiscloseHeld: true, WithholdPayloads: true}, false, true},
+		{"payloads=all withholding this one", BundleRequest{Payloads: PayloadsAll, DiscloseHeld: true, Withhold: []string{digest}}, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := tc.req
 			req.Root = sealed.RecordID
+			size := a.Size()
 			bundle, err := a.Bundle(ctx, req)
+			if tc.refused {
+				assert.ErrorIs(t, err, ErrInvalid, "payloads=all cannot withhold")
+				after, err := a.Query(ctx, Filter{FromSeq: size + 1})
+				require.NoError(t, err)
+				for _, r := range after {
+					assert.NotEqual(t, RecordTypeDisclosure, r.Header.RecordType, "a refused bundle records no disclosure")
+				}
+				return
+			}
 			require.NoError(t, err)
 			verified, err := VerifyBundle(bundle.JSON)
 			require.NoError(t, err)
@@ -321,4 +352,47 @@ func TestHeldByReportsATombstonedReceivedRecordAsDeleted(t *testing.T) {
 	copies, err = s.HeldBy(ctx, dg("b1"))
 	require.NoError(t, err)
 	assert.Equal(t, []HeldCopy{{Received: true, State: Available, Present: true}}, copies)
+}
+
+// failOn fails exactly the n-th log append (from 1), then behaves.
+type failOn struct {
+	Substrate
+	n, calls int
+}
+
+func (f *failOn) Append(ctx context.Context, recordID string, at time.Time) (uint64, error) {
+	f.calls++
+	if f.calls == f.n {
+		return 0, errors.New("substrate unavailable")
+	}
+	return f.Substrate.Append(ctx, recordID, at)
+}
+
+// A Close stored but not yet appended still guards the bundle it cites: the
+// deletion commits it first, and is then refused.
+func TestAPendingCloseStillGuardsItsHeldBundle(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "party-a", 1)
+	cfg := f.config(t)
+	_, b := twoBooks(t)
+	peer := peerBundle(t, b)
+	flaky := &failOn{Substrate: cfg.Substrate}
+	cfg.Substrate = flaky
+	a, err := Open(ctx, cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = a.Release() })
+	mustAppend(t, a, observation("s", "own"))
+	flaky.n = flaky.calls + 2 // the held bundle's append succeeds, the Close's fails
+	_, err = a.Close(ctx, CloseInput{Reconcile: ReconcileInput{Peer: peer, Compare: SamePayloadCommitments}, Counterparty: "party-b", Period: testPeriod, PeerClose: dg("peer-close")})
+	require.Error(t, err)
+	all, err := a.Query(ctx, Filter{})
+	require.NoError(t, err)
+	held := all[len(all)-1]
+	require.Equal(t, RecordTypeHeldBundle, held.Header.RecordType)
+
+	_, err = a.SetRetention(ctx, held.RecordID, Deleted, "")
+	assert.ErrorIs(t, err, ErrHeldCited, "the pending Close is committed first and cites it")
+	got, err := a.ResolvePayload(ctx, held.RecordID, digestBytes(peer.Bytes))
+	require.NoError(t, err)
+	assert.Equal(t, peer.Bytes, got)
 }

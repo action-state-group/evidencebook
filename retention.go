@@ -133,6 +133,11 @@ func (b *Book) SetRetention(ctx context.Context, recordID string, state Retentio
 	if !state.Valid() {
 		return Record{}, fmt.Errorf("%w: retention state %q", ErrInvalid, state)
 	}
+	// A stored record awaiting its append is committed first, so a record
+	// it holds or cites is judged with it (a Close citing a held bundle).
+	if err := b.flushPendingLocked(ctx); err != nil {
+		return Record{}, err
+	}
 	current, latest, held, err := b.retentionLocked(recordID)
 	if err != nil {
 		return Record{}, err
