@@ -313,7 +313,7 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   in `pending` with `not_tried_this_run: true` and its stored reason, for a
   later tick.
 - A delivery whose request never reached the witness (refused, unresolved,
-  timed out, or stopped by a proxy) is reported as "pending: network consent
+  timed out before connecting, or stopped by a proxy) is reported as "pending: network consent
   needed, or no network", in the poll's output and on the receipt: on an
   agent host that asks before network access, that is what a missing grant
   looks like. Ticks run unattended, so choose "Always allow this site" for
@@ -322,11 +322,19 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   it covers agentactioncapsule.org and every subdomain of it. The message
   names the site for whichever witness the profile uses, and
   `capsulectl doctor --check-witness` says the same.
+- A delivery that reached the witness but got no answer in time is reported
+  as "pending: the witness was reached but its answer did not come in time,
+  so the witness or the network to it is slow" (reason `witness_timeout`).
+  It is tried again on a later capsulectl run, after a wait that grows up
+  to an hour; do not ask for a network grant for it.
+  `capsulectl doctor --check-witness` reports `timed_out: true` when its own
+  probe reaches the witness and gets no answer in time.
 - A delivery refused with HTTP 403 is reported as "pending: the request was
   refused (HTTP 403), by the witness or by a network gate on this host",
   with the same standing-grant text (reason `refused`): a host's network
   gate can answer 403 in the witness's place, so the text never claims
-  the witness refused. It is retried at every tick, and a delivery an
+  the witness refused. It is tried again on a later capsulectl run, after a
+  wait that grows up to an hour, and a delivery an
   earlier build stored as failed for good after a 403 is retried at the
   next tick.
 

@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/action-state-group/agent-action-capsule/go v0.24.0
-	github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261125143038-0043a944b22d
+	github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261125234056-dcecbf5a4558
 	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
 	github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261125195103-bb8169bb514b
 	github.com/action-state-group/checkpointed-local-log/go v0.4.0

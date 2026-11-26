@@ -545,6 +545,20 @@ func TestDealPermanentDeliveryIsNotSaidToBeRetried(t *testing.T) {
 	assert.Equal(t, "refused", assurance["witness_reason"])
 	assert.Contains(t, assurance["text"], "Witness pending: the request was refused (HTTP 403), by the witness or by a network gate on this host; it is tried again on a later capsulectl run, after a wait that grows up to an hour.")
 	assert.Contains(t, assurance["text"], `a standing grant ("Always allow this site")`)
+
+	// A delivery that reached the witness and timed out is a slow witness, passed on as such, never a consent ask
+	// (capsule-cli#644).
+	target, err = openOwnedTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
+	require.NoError(t, err)
+	slow := refused
+	slow.LastError = "witness returned HTTP 503: " + cli.WitnessTimedOut
+	require.NoError(t, target.Log.CommitWitness(t.Context(), refused.Attempts, slow))
+	require.NoError(t, target.Close())
+	withBundle = dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
+	assurance = withBundle["assurance"].(map[string]any)
+	assert.Equal(t, "witness_timeout", assurance["witness_reason"])
+	assert.Contains(t, assurance["text"], "the witness was reached but its answer did not come in time")
+	assert.NotContains(t, assurance["text"], "network consent")
 }
 
 func TestWitnessPendingReasons(t *testing.T) {
