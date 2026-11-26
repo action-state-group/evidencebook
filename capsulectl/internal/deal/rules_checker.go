@@ -1015,24 +1015,15 @@ func (s *dealSession) rulesHistory(ctx context.Context) ([]interface{}, *dealRul
 			history = append(history, record)
 			continue
 		}
-		record, err := s.capsuleWithInput(ctx, a.id)
-		if err != nil || record == nil {
+		record, complete, err := s.v0HistoryAct(ctx, a.id)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !complete {
 			scope.Complete = false
+		}
+		if record == nil {
 			continue
-		}
-		cp, err := s.actCounterpartyProfile(ctx, a.id)
-		if err != nil {
-			return nil, nil, err
-		}
-		if cp != nil {
-			record["counterparty_profile"] = cp
-		}
-		party, err := s.actCounterparty(ctx, a.id)
-		if err != nil {
-			return nil, nil, err
-		}
-		if party != nil {
-			record["counterparty"] = party
 		}
 		item, ok := items[a.deal]
 		if !ok {
@@ -1084,42 +1075,70 @@ func (s *dealSession) localStep(ctx context.Context, capsuleID string) (string, 
 // checked snapshot), with the act's deal: the verdict the act rests on, then
 // the check that verdict is of. The act rests on its approval's verdict, or,
 // in typed records, on a verdict that needed no approval, which authorizes
-// the act itself. Empty when a link is missing (an act without authorization).
-func (s *dealSession) actCheck(ctx context.Context, actID string) (dealID, check string, err error) {
+// the act itself. authorized is whether the act cites an authorization at
+// all; check is empty when it cites none (an unchecked act) or when a link
+// from it is missing.
+func (s *dealSession) actCheck(ctx context.Context, actID string) (dealID string, authorized bool, check string, err error) {
 	dealID, act, err := s.localStep(ctx, actID)
 	if err != nil || act == nil || act.Act == nil || act.Act.AuthorizedBy == "" {
-		return "", "", err
+		return "", false, "", err
 	}
 	_, verdict, err := s.localStep(ctx, act.Act.AuthorizedBy)
 	if err != nil || verdict == nil {
-		return "", "", err
+		return "", true, "", err
 	}
 	if verdict.Approval != nil {
 		if _, verdict, err = s.localStep(ctx, verdict.Approval.Check); err != nil || verdict == nil {
-			return "", "", err
+			return "", true, "", err
 		}
 	}
 	if verdict.Check == nil || verdict.Check.Snapshot == "" {
-		return "", "", nil
+		return "", true, "", nil
 	}
-	return dealID, verdict.Check.Snapshot, nil
+	return dealID, true, verdict.Check.Snapshot, nil
 }
 
-// actCounterparty is the counterparty an earlier act's check sealed, exactly
-// as sealed: an x-deal-v0 check's header counterparty (per-deal key), or a
-// typed check's body counterparty (the same fingerprints, named for the
-// chain). An act record names no counterparty itself, so a rule keying acts
-// on who they were with reads it here. Nil when the check names none.
-func (s *dealSession) actCounterparty(ctx context.Context, actID string) (map[string]interface{}, error) {
-	_, check, err := s.actCheck(ctx, actID)
-	if err != nil || check == "" {
-		return nil, err
+// v0HistoryAct is an earlier x-deal-v0 act as the rules history gives it:
+// its sealed record, with who the act was with, read from the check it rests
+// on: the payee keyed per profile (the check's companion) and the
+// counterparty the check sealed (an act record names no counterparty itself).
+// complete is false when the act cannot be read, or when it cites an
+// authorization whose chain to its check, or the check itself, cannot be
+// read: the act is then kept without who it was with, and a rule never reads
+// that merchant as new without saying so (evidencebook#955, as v1HistoryAct
+// does for v1). An unchecked act cites no authorization, so it has no
+// counterparty and leaves the history complete. record is nil when the act
+// cannot be read.
+func (s *dealSession) v0HistoryAct(ctx context.Context, actID string) (record map[string]interface{}, complete bool, err error) {
+	record, err = s.capsuleWithInput(ctx, actID)
+	if err != nil || record == nil {
+		return nil, false, nil
+	}
+	dealID, authorized, check, err := s.actCheck(ctx, actID)
+	if err != nil {
+		return nil, false, err
+	}
+	if !authorized {
+		return record, true, nil
+	}
+	if check == "" {
+		return record, false, nil
+	}
+	cp, err := s.checkCounterpartyProfile(ctx, dealID, check)
+	if err != nil {
+		return nil, false, err
+	}
+	if cp != nil {
+		record["counterparty_profile"] = cp
 	}
 	sealed, err := s.capsuleWithInput(ctx, check)
 	if err != nil || sealed == nil {
-		return nil, err
+		return record, false, nil
 	}
-	return sealedCounterparty(sealed), nil
+	if party := sealedCounterparty(sealed); party != nil {
+		record["counterparty"] = party
+	}
+	return record, true, nil
 }
 
 // sealedCounterparty is the counterparty a sealed check names: its x-deal-v0
@@ -1207,17 +1226,10 @@ func v1CheckCounterpartyProfile(events []sealedEvent, check string) map[string]i
 	return out
 }
 
-// actCounterpartyProfile is the payee keyed per profile for an earlier act:
-// the verdict the act rests on, the check that verdict is of, and that
-// check's companion. The act rests on its approval's verdict, or, in typed
-// records, on a verdict that needed no approval, which authorizes the act
-// itself. Nil when any link is missing: an act without authorization, or one
-// checked before checks had a companion.
-func (s *dealSession) actCounterpartyProfile(ctx context.Context, actID string) (map[string]interface{}, error) {
-	dealID, check, err := s.actCheck(ctx, actID)
-	if err != nil || check == "" {
-		return nil, err
-	}
+// checkCounterpartyProfile is the payee keyed per profile that a v0 check's
+// companion sealed, as a block: nil when it has none, as for a check sealed
+// before checks had a companion.
+func (s *dealSession) checkCounterpartyProfile(ctx context.Context, dealID, check string) (map[string]interface{}, error) {
 	steps, err := s.index.steps(ctx, stepFilter{DealID: dealID, Kinds: []string{"counterparty_profile"}})
 	if err != nil {
 		return nil, err
