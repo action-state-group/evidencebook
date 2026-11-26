@@ -226,6 +226,11 @@ type PaymentSent struct {
 type SendIn struct {
 	Check, Row, Reverses string
 	PaymentRef           json.RawMessage
+	// RefFor, when set, gives the payment_ref from the check it rests on, in
+	// place of PaymentRef: the check's own payment_ref is what a send binds
+	// on most rails. It is called once the check and the deal's earlier legs
+	// have been checked.
+	RefFor func(check *xdealv1.CheckBody) (json.RawMessage, error)
 	Statements           []xdealv1.StatementItem
 	Marks                []string
 	RemedyRow            string
@@ -266,7 +271,13 @@ func (s *Store) SendPayment(ctx context.Context, dealID string, in SendIn) (Paym
 			return PaymentSent{}, inputError("check " + in.Check + " already has a payer leg: a check authorizes one payment")
 		}
 	}
-	ref, err := checkPaymentRef(in.PaymentRef, true)
+	rawRef := in.PaymentRef
+	if in.RefFor != nil {
+		if rawRef, err = in.RefFor(p.cb); err != nil {
+			return PaymentSent{}, err
+		}
+	}
+	ref, err := checkPaymentRef(rawRef, true)
 	if err != nil {
 		return PaymentSent{}, err
 	}
@@ -489,7 +500,13 @@ func (s *Store) settlePayer(ctx context.Context, dealID string, in SettleIn) (Ac
 	if send.AmountMinor != p.amount || send.Currency != p.currency {
 		return Acted{}, conflictf("the payment was sent as %d %s, and check %s records %d %s", send.AmountMinor, send.Currency, in.Check, p.amount, p.currency)
 	}
-	ref, err := checkPaymentRef(in.PaymentRef, in.Status == LegFailed || send.RefType == xdealv1.MerchantOrderType)
+	rawRef := in.PaymentRef
+	if in.LegRef != nil {
+		if rawRef, err = in.LegRef(p.cb, send); err != nil {
+			return Acted{}, err
+		}
+	}
+	ref, err := checkPaymentRef(rawRef, in.Status == LegFailed || send.RefType == xdealv1.MerchantOrderType)
 	if err != nil {
 		return Acted{}, err
 	}

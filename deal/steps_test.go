@@ -234,6 +234,11 @@ func TestSealJournalRecovery(t *testing.T) {
 	var pending int
 	require.NoError(t, seller.db.QueryRowContext(ctx, `SELECT count(*) FROM deal_v1_events WHERE deal_id=? AND payload IS NOT NULL`, dealID).Scan(&pending))
 	assert.Equal(t, 1, pending, "kept: its record reached the journal")
+	stored, err := seller.store.StoredSteps(ctx, dealID)
+	require.NoError(t, err)
+	assert.Len(t, stored, 1)
+	require.NoError(t, seller.db.QueryRowContext(ctx, `SELECT count(*) FROM deal_v1_events WHERE deal_id=? AND payload IS NOT NULL`, dealID).Scan(&pending))
+	assert.Equal(t, 1, pending, "StoredSteps writes nothing")
 	steps, err = seller.store.Steps(ctx, dealID)
 	require.NoError(t, err)
 	assert.Len(t, steps, 1)

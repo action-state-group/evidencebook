@@ -377,9 +377,14 @@ func checkPaymentRef(raw json.RawMessage, emptyOrder bool) (map[string]any, erro
 // payment this one replaces. Statements, Marks and RemedyRow are as for
 // [PerformIn].
 type SettleIn struct {
-	Check                     string
-	RoutingFee                *int64
-	CloseStep                 func(json.RawMessage) (json.RawMessage, error)
+	Check      string
+	RoutingFee *int64
+	CloseStep  func(json.RawMessage) (json.RawMessage, error)
+	// LegRef, when set on a payer leg, gives the leg's payment_ref from its
+	// check and its send, in place of PaymentRef: on most rails the leg
+	// carries the reference its send bound. It is called once the send has
+	// been found and its amount checked.
+	LegRef                    func(check *xdealv1.CheckBody, send *Send) (json.RawMessage, error)
 	Row, Reverses, Supersedes string
 	Status                    string
 	Received, ReceiveFee      int64

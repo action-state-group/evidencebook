@@ -242,3 +242,27 @@ func TestAPendingDetailsChangeIsReadBeforeAPayment(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, held, "the stopped run's record was appended")
 }
+
+// RefFor and LegRef give the references from the check and the send.
+func TestTheReferenceCallbacks(t *testing.T) {
+	ctx := t.Context()
+	buyer, _, dealID := agreedBuyerFirst(t)
+	check := paidCheck(t, buyer, dealID, "callbacks")
+	var sawCheck *xdealv1.CheckBody
+	_, err := buyer.store.SendPayment(ctx, dealID, SendIn{Check: check, RefFor: func(cb *xdealv1.CheckBody) (json.RawMessage, error) {
+		sawCheck = cb
+		return json.RawMessage(`{"type":"ln.payment_hash","value":"` + cb.PaymentRef + `"}`), nil
+	}})
+	require.NoError(t, err)
+	require.NotNil(t, sawCheck)
+	buyer.tick()
+	var sawSend *Send
+	leg, err := buyer.store.Settle(ctx, dealID, SettleIn{Check: check, Status: LegSettled, LegRef: func(_ *xdealv1.CheckBody, send *Send) (json.RawMessage, error) {
+		sawSend = send
+		return send.RefJSON, nil
+	}})
+	require.NoError(t, err)
+	require.NotNil(t, sawSend)
+	assert.Equal(t, sawCheck.PaymentRef, sawSend.Ref)
+	assert.False(t, leg.Again)
+}

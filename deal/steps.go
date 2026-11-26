@@ -119,6 +119,14 @@ func (s *Store) Steps(ctx context.Context, dealID string) ([]Step, error) {
 	return out, nil
 }
 
+// StoredSteps reads a deal's local step list as stored, writing nothing: a
+// record a stopped run stored and did not append stays pending (Steps
+// appends it). For a reader that must not write, such as an audit.
+func (s *Store) StoredSteps(ctx context.Context, dealID string) ([]Step, error) {
+	out, _, err := s.storedSteps(ctx, dealID)
+	return out, err
+}
+
 // storedSteps reads the step list as stored, writing nothing, with the
 // steps whose record is still pending an append.
 func (s *Store) storedSteps(ctx context.Context, dealID string) (out []Step, pending []preparedStep, err error) {
