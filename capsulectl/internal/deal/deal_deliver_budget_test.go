@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -422,4 +423,52 @@ func TestDealTickRefusesANegativeBudget(t *testing.T) {
 	cadenceFixture(t, "https://127.0.0.1:1", public, "1h", "0s", 0)
 	_, err := invoke(t, "", "--profile", "deal", "deal", "tick", "--deliver-for", "-1s")
 	require.Error(t, err)
+}
+
+// A checkpoint the witness refused again after its retry, whose re-anchor
+// got no answer, is stored as failed but is still pending (capsule-cli#649).
+// The next tick, with no new checkpoint due, hands it to the delivery first
+// and holds the later ones, instead of leaving it out of the tick.
+func TestDealTickRetriesAReanchorDueCheckpoint(t *testing.T) {
+	public, _ := witnessPair(t)
+	cadenceFixture(t, "https://127.0.0.1:1", public, "1m", "0s", 0)
+	retailDeal(t)
+	h := hookDelivery(t)
+	clock := backlog(t, h, 3)
+	*clock = clock.Add(-30 * time.Second) // no tick due
+	h.calls = nil
+	var due uint64
+	dealDeliverWitness = func(ctx context.Context, _ cli.Profile, store cll.WitnessStateStore, service string, size uint64, _ time.Time) (cll.WitnessState, error) {
+		h.calls = append(h.calls, size)
+		state, err := store.GetWitness(ctx, service, size)
+		require.NoError(t, err)
+		if due != 0 {
+			return state, nil
+		}
+		due = size
+		// The marks capsule-cli keeps on a row refused again after its re-arm
+		// (cli/checkpoint.go witnessRearmed, cli/witness_reanchor.go witnessTip).
+		next := state
+		next.Attempts++
+		next.Permanent = true
+		next.LastError = "witness returned HTTP 400: " + cli.WitnessFailureBody(409) +
+			"; re-armed once after a continuity refusal; the witness last accepted mmr_size 1 root " + strings.Repeat("ab", 32)
+		require.NoError(t, store.CommitWitness(ctx, state.Attempts, next))
+		return next, nil
+	}
+	first := pendingRows(t, dealRun(t, "tick"))
+	require.Len(t, h.calls, 1, "a row due for its re-anchor holds the later ones")
+	require.NotEmpty(t, first)
+	assert.Contains(t, first[0]["text"], "capsulectl proves it again from that checkpoint")
+
+	h.calls = nil
+	rows := pendingRows(t, dealRun(t, "tick"))
+	assert.Equal(t, []uint64{due}, h.calls, "the re-anchor-due row is tried again, and only it")
+	require.Len(t, rows, 3)
+	assert.Equal(t, float64(due), rows[0]["checkpoint"])
+	assert.Equal(t, "witness_error", rows[0]["reason"])
+	assert.Contains(t, rows[0]["text"], "capsulectl proves it again from that checkpoint")
+	for _, row := range rows[1:] {
+		assert.Equal(t, true, row["not_tried_this_run"])
+	}
 }
