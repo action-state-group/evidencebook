@@ -191,7 +191,7 @@ holder's document, and no tier, setting or request adds a row:
 |---|---|---|
 | `amounts`, `exact_timestamps`, `payload_content`, `free_text` of one deal | the counterparty of that deal, for that deal only | Reference v3 §3A.6 (L-content); u590 counterparty level |
 | `counterparty_identities`: the counterparty's own identity, never another counterparty's | that counterparty | `NeverList` `counterparties_except_to_themselves`; u590 (the counterparty copy as is) |
-| the same, plus the referee material | the adjudicator that deal names | u590 adjudicator level |
+| `amounts`, `exact_timestamps`, `payload_content` and `free_text` of that deal's records, plus the referee material | the adjudicator that deal names | u590 adjudicator level |
 | `amounts` and `exact_timestamps` of the holder's own payment legs: side, amount sent or received with the receive fee, routing fee, payment reference, status, observed time, the terms leg paid; never a preimage, never the counterparty's legs | a countersigner the holder engages, after the countersign sign-up step has said so plainly before the holder agreed, and while the countersigner's directory row says the same | u640 (conditions: evidencebook#1001 acceptance 2) |
 | `payload_content` of a `declared_count` record | a countersigner, only when the holder opts in for that countersign and that record kind; never by default and never as a standing setting; the countersigner refuses a payload whose digest does not match the sealed record | u593 |
 | any class, for the holder's own copy | the holder | `NeverList` `forum_exception_holders_own_copy_only` |
@@ -214,7 +214,7 @@ authentication (`interop_respond.go:179-181`, `:680-690`), never from what a req
 |---|---|---|
 | `stranger` | `checkpoints`, `checkpoint_range`, `history_card/1`, `history_card/2` | all four (plugin `STRANGER_SAFE`, `commitment.rs:126-131`); the Goose example lists `history_card/2` only (`commitment.py:53`) |
 | `identified` | the stranger ceiling; `personal_history_basic/1`; `personal_history_outcome/1` with a declared purpose; `standard_history/1`; Mesh's Service History derivations and `exchange_corroboration/1` (half digests, never record bodies) | node: stranger's plus `exchange_corroboration/1` (plugin defaults: `share_standard_history` off, `share_exchange_corroboration` on, `share_policy.rs:44-52`, `:150-175`); person: stranger's plus `standard_history/1` |
-| `counterparty` | the identified ceiling, every derivation in it answered under every setting (as the plugin answers a counterparty, `commitment.rs:83-93`); `record`, `exchange`, `correlation` when every record the subject names names the requester (`mayHave`, `interop_respond.go:196-209`); `deal_half`; `adjudication` to its subjects | all of it |
+| `counterparty` | the identified ceiling; Mesh's Service History derivations and `exchange_corroboration/1` whatever the identified tier lists, as the plugin answers a counterparty today (`commitment.rs:83-93`), while every other derivation, `standard_history/1` included, follows the holder's list (with `standard_history: off` it is refused to everyone, `interop_respond.go:146-149`); `record`, `exchange`, `correlation` when every record the subject names names the requester (`mayHave`, `interop_respond.go:196-209`); `deal_half`; `adjudication` to its subjects | all of it |
 | `under_contract` | `range`, `full_history`, only when a signed contract's `evidence_obligations` names them | empty: `range` and `full_history` are refused under every setting today (evidencebook#114), and `evidence_obligations` is not specified yet (roadmap 3.5) |
 
 `answers` lists each derivation by its name on the wire, as the commitment's `answers.derivations`
@@ -286,12 +286,14 @@ With those inputs:
 
 An asker cannot know the responder's count: an ask may be lost or arrive in another window, and
 one refused at the limit is not counted (§5). So a budget never decides the check. A refusal that a
-budget could explain, `policy_declined` for a tier that has a budget, is `NOT_CHECKED`.
+budget could explain is `NOT_CHECKED`: a `policy_declined` of a request that a finite budget of
+its tier counts. A tier with `asks: null`, and the stranger tier's own answers, which no budget
+counts (§5), keep their `MISMATCH`.
 
 - `MISMATCH` when the policy lists the subject or derivation for a tier the asker has shown it
   holds, every prerequisite above is met, and the refusal withholds it: `derivation_unsupported`;
   `no_such_subject` for a subject the responder's own signed record proves; or, under
-  `evidence-interop/1`, `not_authorized`, and `policy_declined` for a tier without a budget.
+  `evidence-interop/1`, `not_authorized`, and `policy_declined` of a request no finite budget counts.
 - `MATCH` when the policy does not list it for that tier and no lower tier lists it, when a
   required purpose is missing, or by the plugin's `MATCH` rules.
 - `NOT_CHECKED` in every other case, including each plugin `NOT_CHECKED` rule.
@@ -299,7 +301,8 @@ budget could explain, `policy_declined` for a tier that has a budget, is `NOT_CH
 The vectors carry the plugin's existing cases unchanged and add: a counterparty of one deal asking
 about another deal; a subject naming records of two counterparties; a record only the asker sealed;
 a subject the responder does not hold; a missing and a present purpose; a `policy_declined` under a
-budget (lost, delayed and refused-at-limit asks); a policy changed between two asks (the retained
+finite budget (lost, delayed and refused-at-limit asks), under `asks: null`, and of an exempt
+stranger answer; a counterparty asking `standard_history/1` with `standard_history: off`; a policy changed between two asks (the retained
 body decides); a nonempty `judged`; and a member in one of today's shapes, which keeps the plugin's
 rules and reads `NOT_CHECKED` above the stranger tier.
 
