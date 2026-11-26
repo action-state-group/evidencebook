@@ -16,6 +16,7 @@ import (
 	aacsettlement "github.com/action-state-group/agent-action-capsule/go/settlement"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	dealapi "github.com/action-state-group/evidencebook/deal"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
@@ -698,6 +699,9 @@ func dealSettleCommand() *cobra.Command {
 }
 
 func (s *dealSession) settle(ctx context.Context, c *cobra.Command, in settleIn) error {
+	if in.check == "" {
+		return s.settlePayee(ctx, c, in)
+	}
 	a, err := s.loadV1ActDeal(ctx, in.dealID)
 	if err != nil {
 		return err
@@ -744,9 +748,6 @@ func (s *dealSession) settle(ctx context.Context, c *cobra.Command, in settleIn)
 	termsRef, err := s.termsRef(ctx, a.d)
 	if err != nil {
 		return err
-	}
-	if in.check == "" {
-		return s.settlePayee(ctx, c, a, in, body, marks, currency, termsRef, events)
 	}
 	if leg != xdealv1.LegPayer {
 		if in.reverses != "" {
@@ -1271,121 +1272,68 @@ func (s *dealSession) closeSend(ctx context.Context, dealID, check, leg, status 
 	return tx.Commit()
 }
 
-func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, a *v1ActDeal, in settleIn, body xdealv1.SettleBody, marks []string, currency, termsRef string, events []sealedEvent) error {
-	if body.Leg != xdealv1.LegPayee {
-		if in.reverses != "" {
-			return cli.InputError("a refund you make is a payer leg: it rests on your cancel check (--check), sent with --sent first")
-		}
-		return cli.InputError("you owe this row: a payment you make rests on your pay check (--check), sent with --sent first")
+// settlePayee seals what the holder received, a payee leg, through package
+// deal (Store.Settle): the leg cites no check. A settled refund received of
+// the holder's own payment is then counted as money returned (creditRefund).
+func (s *dealSession) settlePayee(ctx context.Context, c *cobra.Command, in settleIn) error {
+	st, events, book, err := s.v1ActSession(ctx, in.dealID)
+	if err != nil {
+		return err
 	}
-	if in.supersedes != "" {
-		ok := false
-		for _, r := range a.book {
-			if b, isSettle := settleOf(r); isSettle && b.Leg == xdealv1.LegPayee {
-				if d, err := xdealv1.Digest(r); err == nil && d == in.supersedes {
-					ok = (b.Reverses == nil) == (body.Reverses == nil) && (b.Reverses == nil || b.Reverses.Digest == body.Reverses.Digest)
-				}
-			}
-		}
-		if !ok {
-			return cli.InputError("--supersedes must name an earlier leg of what you received in your own book, of the same payment")
-		}
-		r := xdealv1.RefTo(in.supersedes)
-		body.Supersedes = &r
+	stmts, err := parseStatementFlags(in.statements)
+	if err != nil {
+		return err
 	}
 	refMember, err := in.ref.member()
 	if err != nil {
 		return err
 	}
-	received, err := legAmountOf(in.received, currency)
+	ref, err := json.Marshal(refMember)
 	if err != nil {
 		return err
 	}
-	fee, err := legAmountOf(in.receiveFee, currency)
+	res, err := st.Settle(ctx, in.dealID, dealapi.SettleIn{
+		Row: in.row, Reverses: in.reverses, Supersedes: in.supersedes, Status: in.status,
+		Received: in.received, ReceiveFee: in.receiveFee, PaymentRef: ref,
+		Statements: stmts, Marks: in.marks, RemedyRow: in.remedyRow,
+		Before: func(xdealv1.Record, *xdealv1.ActAuthorization) error { return refuseExistingOut(in.out) },
+	})
 	if err != nil {
-		return err
+		return libErr(err)
 	}
-	member, err := settleMember(map[string]any{"version": aacsettlement.Version, "leg": "payee_observed", "sealer_role": "payee", "terms_ref": termsRef,
-		"received": received, "receive_fee": fee, "payment_ref": refMember, "status": in.status, "observed_at": v1Now()})
-	if err != nil {
-		return err
-	}
-	result := map[string]any{"deal_id": in.dealID, "record": xdealv1.TypeSettle, "leg": xdealv1.LegPayee, "status": in.status}
-	if seq, err := s.sealedPayeeLike(ctx, a, body, marks, member); err != nil {
-		return err
-	} else if seq > 0 {
-		return s.writeSealedAt(ctx, c, a.d, seq, a.book[seq-1], in.out, result)
-	}
-	if in.reverses != "" && in.supersedes == "" {
-		if err := s.refundTaken(ctx, a, in.reverses, false); err != nil {
+	if !res.Again {
+		currency, err := s.legCurrency(ctx, st, in.dealID, int(res.Seq))
+		if err != nil {
+			return err
+		}
+		if _, err := s.creditRefund(ctx, in.dealID, book, events, res.Record, res.Digest, in.status, in.received, currency); err != nil {
 			return err
 		}
 	}
-	// A new observation names the latest one of its payment: a leg already
-	// superseded is not superseded again (asked only after a re-run of the
-	// same observation has been found).
-	if in.supersedes != "" {
-		for _, r := range a.book {
-			if b, isSettle := settleOf(r); isSettle && b.Supersedes != nil && b.Supersedes.Digest == in.supersedes {
-				return cli.InputError("leg " + in.supersedes + " is already superseded: a later observation names the latest one of its payment")
-			}
-		}
+	result := map[string]any{"deal_id": in.dealID, "record": xdealv1.TypeSettle, "leg": xdealv1.LegPayee, "status": in.status, "digest": res.Digest, "seq": res.Seq}
+	return writePush(c, res.Pair, in.out, result)
+}
+
+// legCurrency is the currency of the leg at seq of the holder's book: its
+// settlement member's received amount's.
+func (s *dealSession) legCurrency(ctx context.Context, st *dealapi.Store, dealID string, seq int) (string, error) {
+	d, err := st.Deal(ctx, dealID)
+	if err != nil || d == nil {
+		return "", err
 	}
-	if err := refuseExistingOut(in.out); err != nil {
-		return err
-	}
-	sealed, err := s.sealBookV1(ctx, in.dealID, bookRecordIn{Body: body, Marks: marks, Members: map[string]json.RawMessage{"settlement": member}})
+	member, err := st.SettlementAt(ctx, d, seq)
 	if err != nil {
-		return err
+		return "", libErr(err)
 	}
-	if _, err := s.creditRefund(ctx, in.dealID, a.book, events, sealed.Record, sealed.Digest, in.status, in.received, currency); err != nil {
-		return err
+	var m struct {
+		Received struct {
+			AssetCode string `json:"assetCode"`
+		} `json:"received"`
 	}
-	result["digest"], result["seq"] = sealed.Digest, sealed.Seq
-	return writePush(c, sealed.Pair, in.out, result)
-}
-
-// sealedPayeeLike is the seq of a payee leg a re-run already sealed: the same
-// body and marks, a member equal but for its observed time, and no later
-// record stating the same rows. Every candidate is compared, not only the
-// first with the same body.
-func (s *dealSession) sealedPayeeLike(ctx context.Context, a *v1ActDeal, body xdealv1.SettleBody, marks []string, member json.RawMessage) (int, error) {
-	for i, r := range a.book {
-		if r.Block.RecordType != xdealv1.TypeSettle {
-			continue
-		}
-		same, err := sameRecordInput(r, body, marks)
-		if err != nil {
-			return 0, err
-		}
-		if !same || statedAfter(a.book, i, body.Statements) {
-			continue
-		}
-		held, err := s.ownSettleMember(ctx, a.d, i+1)
-		if err != nil {
-			return 0, err
-		}
-		if sameButObservedAt(held, member) {
-			return i + 1, nil
-		}
+	if err := json.Unmarshal(member, &m); err != nil {
+		return "", fmt.Errorf("%w: the settlement member of record %d: %v", evidencebook.ErrCorrupt, seq, err)
 	}
-	return 0, nil
-}
-
-// statedAfter says a record of the book after place i states any of the rows.
-func statedAfter(book []xdealv1.Record, i int, items []xdealv1.StatementItem) bool {
-	rows := map[string]bool{}
-	for _, it := range items {
-		rows[it.Row] = true
-	}
-	for _, r := range book[i+1:] {
-		for _, it := range statementsOf(r) {
-			if rows[it.Row] {
-				return true
-			}
-		}
-	}
-	return false
+	return m.Received.AssetCode, nil
 }
 
 func sameButObservedAt(a, b json.RawMessage) bool {

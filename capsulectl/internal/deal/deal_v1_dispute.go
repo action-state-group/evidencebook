@@ -3,13 +3,12 @@ package deal
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	dealapi "github.com/action-state-group/evidencebook/deal"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
 )
@@ -35,53 +34,6 @@ func disputeOf(r xdealv1.Record) (*xdealv1.DisputeBody, bool) {
 		return &b, true
 	}
 	return nil, false
-}
-
-// openDisputeOn finds the holder's own dispute on a row that no later
-// withdrawal of the same row has taken back: its place in the book (seq) and
-// body. ok is false when none is open. last is the latest dispute-type
-// record on the row (a dispute or a withdrawal), seq 0 when there is none.
-func openDisputeOn(book []xdealv1.Record, row string) (seq int, open bool, last *xdealv1.DisputeBody, lastSeq int) {
-	for i, r := range book {
-		b, ok := disputeOf(r)
-		if !ok || b.Row != row {
-			continue
-		}
-		last, lastSeq = b, i+1
-		switch b.Kind {
-		case xdealv1.KindDispute:
-			seq, open = i+1, true
-		case xdealv1.KindWithdrawal:
-			seq, open = 0, false
-		}
-	}
-	return seq, open, last, lastSeq
-}
-
-// statementsOnRow are the record digests of the holder's own statements on a
-// row that exist now: what a dispute cites (design §3.3).
-func statementsOnRow(book []xdealv1.Record, row string) ([]xdealv1.Ref, error) {
-	refs := []xdealv1.Ref{}
-	for _, r := range book {
-		var sb xdealv1.StatementBody
-		switch b := r.Body.(type) {
-		case *xdealv1.StatementBody:
-			sb = *b
-		case xdealv1.StatementBody:
-			sb = b
-		default:
-			continue
-		}
-		if !slices.ContainsFunc(sb.Statements, func(it xdealv1.StatementItem) bool { return it.Row == row }) {
-			continue
-		}
-		d, err := xdealv1.Digest(r)
-		if err != nil {
-			return nil, err
-		}
-		refs = append(refs, xdealv1.RefTo(d))
-	}
-	return refs, nil
 }
 
 // bookPairAt is the pair of the record at a place of the holder's own book,
@@ -183,94 +135,21 @@ or withdrawal. Needs your agreement (deal agree) and an x-deal-v1 deal.`,
 				return cli.InputError("--forum goes with a dispute, not with --withdraw")
 			}
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
-				if _, err := s.requireMigrated(ctx); err != nil {
-					return err
-				}
-				if err := s.ensureV1Tables(ctx); err != nil {
-					return err
-				}
-				d, err := s.v1DealOf(ctx, dealID)
+				st, err := s.v1Store(ctx)
 				if err != nil {
 					return err
 				}
-				if d == nil {
-					return cli.InputError("deal " + dealID + " is not an x-deal-v1 deal this profile holds")
-				}
-				if d.OwnLogID != "" {
-					if err := s.repairIfStopped(ctx, d); err != nil {
-						return err
-					}
-				}
-				if d.OwnAgreementID == "" {
-					return cli.InputError("deal " + dealID + " has no agreement of yours yet: `deal agree` opens your deal book")
-				}
-				book, err := s.ownBookV1(ctx, d)
-				if err != nil {
-					return err
-				}
-				agreement := book[0]
-				ag, ok := agreeOf(agreement)
-				if !ok || ag.Kind != xdealv1.KindAgreement {
-					return cli.InputError("the first record of your deal book is not your agreement")
-				}
-				if ag.Adjudicator.IsNull() || !ag.Adjudicator.Present {
-					return cli.InputError("the agreement of deal " + dealID + " names no adjudicator and no forum, so no dispute is possible")
-				}
-				offer, err := s.offerByDigest(ctx, d.OfferDigest)
-				if err != nil {
-					return err
-				}
-				if offer == nil {
-					return cli.InputError("this profile no longer holds the offer of deal " + dealID)
-				}
-				prop, _ := proposeOf(offer.Record)
-				if !slices.ContainsFunc(prop.TermsRows.Rows, func(r xdealv1.Row) bool { return r.ID == row }) {
-					return cli.InputError("deal " + dealID + " has no row " + row + ": the rows are the ones its offer names")
-				}
-				seq, open, last, lastSeq := openDisputeOn(book, row)
-				result := map[string]any{"deal_id": dealID, "row": row}
+				before := func(xdealv1.Record, *xdealv1.ActAuthorization) error { return refuseExistingOut(out) }
+				var res dealapi.Acted
 				if withdraw {
-					if !open {
-						// The withdrawal already sealed is written again, never sealed twice.
-						if last != nil && last.Kind == xdealv1.KindWithdrawal {
-							return s.writeSealedDispute(ctx, c, d, lastSeq, book[lastSeq-1], out, result)
-						}
-						return cli.InputError("you have no open dispute on row " + row + " of deal " + dealID + " to take back")
-					}
-					return s.sealDispute(ctx, c, d, xdealv1.DisputeBody{Kind: xdealv1.KindWithdrawal, Row: row}, nil, out, result)
+					res, err = st.WithdrawDispute(ctx, dealID, dealapi.WithdrawIn{Row: row, Before: before})
+				} else {
+					res, err = st.Dispute(ctx, dealID, dealapi.DisputeIn{Row: row, Forum: forum, Before: before})
 				}
-				if open {
-					// The same dispute again is written again, never sealed twice.
-					prev, _ := disputeOf(book[seq-1])
-					if forum != "" && forum != prev.Forum {
-						return cli.InputError("you already have an open dispute on row " + row + " in forum " + prev.Forum + ": take it back with --withdraw first")
-					}
-					return s.writeSealedDispute(ctx, c, d, seq, book[seq-1], out, result)
-				}
-				if forum == "" {
-					if len(ag.Forums) != 1 {
-						return cli.InputError("--forum is required: the agreement accepts " + strings.Join(ag.Forums, ", "))
-					}
-					forum = ag.Forums[0]
-				}
-				stmts, err := statementsOnRow(book, row)
 				if err != nil {
-					return err
+					return libErr(err)
 				}
-				body := xdealv1.DisputeBody{
-					Kind: xdealv1.KindDispute, Row: row, Statements: stmts,
-					Adjudicator: ag.Adjudicator.V.KeyID, Forum: forum,
-				}
-				// The finished record is held to the holder's own agreement before
-				// anything is stored: the adjudicator and forum it names are the
-				// agreement's, and it is bound to that agreement.
-				validate := func(rec xdealv1.Record) error {
-					if err := xdealv1.CheckDispute(rec, agreement); err != nil {
-						return cli.InputError("the dispute does not pass the x-deal-v1 checks: " + err.Error())
-					}
-					return nil
-				}
-				return s.sealDispute(ctx, c, d, body, validate, out, result)
+				return writeDispute(c, res, out, map[string]any{"deal_id": dealID, "row": row})
 			})
 		},
 	}
@@ -284,43 +163,13 @@ or withdrawal. Needs your agreement (deal agree) and an x-deal-v1 deal.`,
 	return cmd
 }
 
-// sealDispute seals a dispute record in the holder's book and writes it.
-func (s *dealSession) sealDispute(ctx context.Context, c *cobra.Command, d *v1Deal, body xdealv1.DisputeBody, validate func(xdealv1.Record) error, out string, result map[string]any) error {
-	// A file already at --out is never this new record's: an old command run
-	// again must not seal a record only to fail on its file.
-	if out != "" {
-		// Lstat, so a dangling link at the path counts as there too.
-		if _, err := os.Lstat(out); err == nil {
-			return cli.InputError(out + " exists: --out names a new file, and this seals a new record")
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
-	sealed, err := s.sealBookV1(ctx, d.DealID, bookRecordIn{Body: body, Validate: validate})
-	if err != nil {
-		return err
-	}
-	result["kind"], result["dispute"], result["seq"] = body.Kind, sealed.Digest, sealed.Seq
-	if body.Forum != "" {
-		result["forum"] = body.Forum
-	}
-	return writePush(c, sealed.Pair, out, result)
-}
-
-// writeSealedDispute writes again a dispute record the book already holds.
-func (s *dealSession) writeSealedDispute(ctx context.Context, c *cobra.Command, d *v1Deal, seq int, rec xdealv1.Record, out string, result map[string]any) error {
-	pair, err := s.bookPairAt(ctx, d, seq)
-	if err != nil {
-		return err
-	}
-	digest, err := xdealv1.Digest(rec)
-	if err != nil {
-		return err
-	}
-	b, _ := disputeOf(rec)
-	result["kind"], result["dispute"], result["seq"] = b.Kind, digest, seq
+// writeDispute writes a dispute record package deal sealed, or found sealed,
+// as the file to send, and prints what it is.
+func writeDispute(c *cobra.Command, res dealapi.Acted, out string, result map[string]any) error {
+	b, _ := disputeOf(res.Record)
+	result["kind"], result["dispute"], result["seq"] = b.Kind, res.Digest, res.Seq
 	if b.Forum != "" {
 		result["forum"] = b.Forum
 	}
-	return writePush(c, pair, out, result)
+	return writePush(c, res.Pair, out, result)
 }

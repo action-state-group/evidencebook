@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	dealapi "github.com/action-state-group/evidencebook/deal"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
 )
@@ -38,56 +39,15 @@ func runChallenge(c *cobra.Command, dealID, ruling, grounds, out string, withRow
 	sum := sha256.Sum256(raw)
 	commitment := hex.EncodeToString(sum[:])
 	return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
-		if _, err := s.requireMigrated(ctx); err != nil {
-			return err
-		}
-		if err := s.ensureV1Tables(ctx); err != nil {
-			return err
-		}
-		d, err := s.v1DealOf(ctx, dealID)
+		st, err := s.v1Store(ctx)
 		if err != nil {
 			return err
 		}
-		if d == nil {
-			return cli.InputError("deal " + dealID + " is not an x-deal-v1 deal this profile holds")
-		}
-		if d.OwnLogID != "" {
-			if err := s.repairIfStopped(ctx, d); err != nil {
-				return err
-			}
-		}
-		if d.OwnAgreementID == "" {
-			return cli.InputError("deal " + dealID + " has no agreement of yours yet: `deal agree` opens your deal book")
-		}
-		book, err := s.ownBookV1(ctx, d)
+		res, err := st.Challenge(ctx, dealID, dealapi.ChallengeIn{Ruling: ruling, GroundsCommitment: commitment,
+			Before: func(xdealv1.Record, *xdealv1.ActAuthorization) error { return refuseExistingOut(out) }})
 		if err != nil {
-			return err
+			return libErr(err)
 		}
-		ag, ok := agreeOf(book[0])
-		if !ok || ag.Kind != xdealv1.KindAgreement {
-			return cli.InputError("the first record of your deal book is not your agreement")
-		}
-		if ag.Adjudicator.V == nil {
-			return cli.InputError("the agreement of deal " + dealID + " names no adjudicator, so it has no ruling to challenge")
-		}
-		_, found, err := xdealv1.HeldRuling(ctx, s.shelf, dealID, ag.Adjudicator.V.KeyID, ruling)
-		if err != nil {
-			return err
-		}
-		if !found {
-			return cli.InputError("ruling " + ruling + " is unavailable: this profile holds no such ruling of deal " + dealID +
-				" from its adjudicator; take the adjudicator's file with deal receive first")
-		}
-		result := map[string]any{"deal_id": dealID, "ruling": ruling, "grounds_commitment": commitment}
-		for i, r := range book {
-			if b, ok := disputeOf(r); ok && b.Kind == xdealv1.KindChallenge && b.Ruling != nil &&
-				b.Ruling.Digest == ruling && b.GroundsCommitment == commitment {
-				// The same challenge again is written again, never sealed twice.
-				return s.writeSealedDispute(ctx, c, d, i+1, r, out, result)
-			}
-		}
-		ref := xdealv1.RefTo(ruling)
-		body := xdealv1.DisputeBody{Kind: xdealv1.KindChallenge, Ruling: &ref, GroundsCommitment: commitment}
-		return s.sealDispute(ctx, c, d, body, nil, out, result)
+		return writeDispute(c, res, out, map[string]any{"deal_id": dealID, "ruling": ruling, "grounds_commitment": commitment})
 	})
 }

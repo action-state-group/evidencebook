@@ -66,6 +66,31 @@ var cliRefusals = map[dealapi.Code]cliRefusal{
 	dealapi.CodeRecordRetry: {0, func([]string) string {
 		return "the deal book kept changing while the record was sealed; run the command again"
 	}},
+	dealapi.CodeNoAgreement: {1, func(a []string) string {
+		return "deal " + a[0] + " has no agreement of yours yet: `deal agree` opens your deal book"
+	}},
+	dealapi.CodeDisputeOpen: {2, func(a []string) string {
+		return "you already have an open dispute on row " + a[0] + " in forum " + a[1] + ": take it back with --withdraw first"
+	}},
+	dealapi.CodeChallengeUnknownRuling: {2, func(a []string) string {
+		return "ruling " + a[0] + " is unavailable: this profile holds no such ruling of deal " + a[1] +
+			" from its adjudicator; take the adjudicator's file with deal receive first"
+	}},
+	dealapi.CodeSettleWhichRow: {0, func([]string) string {
+		return "the offer has more than one payment row: name it with --row"
+	}},
+	dealapi.CodeSettlePayer: {1, func(a []string) string {
+		if a[0] == "refund" {
+			return "a refund you make is a payer leg: it rests on your cancel check (--check), sent with --sent first"
+		}
+		return "you owe this row: a payment you make rests on your pay check (--check), sent with --sent first"
+	}},
+	dealapi.CodeSettleRefunded: {1, func(a []string) string {
+		return "leg " + a[0] + " is already refunded: a later observation of that refund names it with --supersedes, and a failed refund leaves the leg free to refund again"
+	}},
+	dealapi.CodeSettleNegative: {0, func([]string) string {
+		return "--received, --receive-fee and --routing-fee are amounts in minor units and are never negative"
+	}},
 	dealapi.CodeRecordNotRebuilt: {1, func(a []string) string {
 		return fmt.Sprintf("the record %s was sealed but its file was not made, and the library cannot rebuild it: for an offer, cancel it with `deal offer cancel`", a[0])
 	}},

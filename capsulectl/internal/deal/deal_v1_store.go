@@ -21,10 +21,12 @@ import (
 // it owns the deal tables (deal_versions, deal_sent, deal_v1, deal_v1_offers,
 // deal_v1_admits), the journal send writer and the deal-book writer, and
 // seals the deal.open records (offer, cancellation, decline, admit,
-// agreement). The plugin keeps those verbs' flags, files and output, and for
-// now its own deal_v1_events and deal_v1_sends tables and the bodies of
-// perform, settle, statement and dispute. This file opens the store over the
-// session's shelf and maps its errors to the CLI's.
+// agreement) and the deal-book records of perform, statement, dispute and a
+// payee settle. The plugin keeps those verbs' flags, files and output, and
+// for now writes its own deal_v1_events and deal_v1_sends (which the store
+// creates and reads) and builds a payer leg itself (#899 phase 3 moves both).
+// This file opens the store over the session's shelf and maps its errors to
+// the CLI's.
 
 type (
 	v1Deal       = dealapi.Deal
@@ -67,6 +69,9 @@ func (s *dealSession) dealStore(ctx context.Context) (*dealapi.Store, error) {
 		ShelfLogID:    logID,
 		// The deal clock, read each time, as every v1 record's time was.
 		Now: func() time.Time { return cli.DealClock() },
+		// The first-act gate's profile: set when the shelf was opened for
+		// x-deal-v1 records (v1ReceiveContext), which every act verb does.
+		ReceiveProfile: s.v1Profile,
 	})
 	return s.store, err
 }
