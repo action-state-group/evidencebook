@@ -105,7 +105,8 @@ of mode 0600 (`--read-key-file`) or an environment variable (`--read-key-env`),
 and needs `--log-id`. That seed also signs the canary log's checkpoints, so
 keep it as a secret, give it only to the watcher, and use it for the canary
 profile alone, whose log holds nothing but DEMO deals. An unsigned read shows
-only the log's flagged conflicts, and that the log was witnessed at all, not whether it advanced.
+only the log's flagged conflicts, and that the log was witnessed at all, not
+whether it advanced.
 
 ```bash
 CANARY_CHECKPOINT_SEED=... capsulectl deal canary watch --log-id deal-cadence/<16 hex> \
