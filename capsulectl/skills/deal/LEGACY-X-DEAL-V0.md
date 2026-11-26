@@ -451,18 +451,15 @@ standard-history declare`) shares none. When it is not shared the copy withholds
 of what it is (listed, contents withheld); the other side's receipt has no verdict to read and says "not shared". The pack is named by its digest alone, never by a name. It is never on a History
 card. Say it as "their own check (their rules)", never as the deal's result.
 
-### TEMPORARY: a finished deal that did not hold
+### An outcome note in an older book
 
-Until the target design's computed row status (evidencebook#461) replaces it, the holder can note that a
-finished deal did not hold with `deal outcome-note seal --deal ID --reason dispute_lost|settled_against|not_delivered|other`
-(after the final close; a deal takes one; evidencebook#462). It is the holder's own sealed note, never a
-counterparty's record, and it is in no shared copy: while a deal holds one, no shared copy of that deal is
-made at all (`deal disclose --share`, `deal report --share` and a shared `deal history` pick refuse, citing u597, and
-`deal respond` to a request naming it answers `policy_declined`), until the computed row status replaces the note;
-your own copy is not affected, and the History card still counts it. Each reason is your own failure
-(`not_delivered` means you did not deliver): a buyer whose seller failed does not write it, because the card
-counts it on the writer's own card. The reason is your own statement, never checked against any ruling. The History card then counts the deal `did_not_hold`;
-a deal without a note counts as before (a failed reconcile stays `undecided`).
+`deal outcome-note seal` is gone: on x-deal-v1 a row's status is computed from both sides' records, and a deal
+that did not hold is shown by a ruling of the adjudicator the agreement names (evidencebook#461,
+evidencebook-skills#285). A book an earlier release wrote may still hold the holder's own `outcome_note`: it is
+still read, the x-deal-v0 History card still counts it until the x-deal-v0 removal (evidencebook#656), and no shared
+copy of a deal that holds one is made (`deal disclose --share`, `deal report --share` and a shared `deal history`
+pick refuse, citing u597; `deal respond` to a request naming it answers `policy_declined`). Your own copy is not
+affected.
 
 ### Cancellation (proving "I cancelled")
 
