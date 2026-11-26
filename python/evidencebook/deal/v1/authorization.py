@@ -38,9 +38,13 @@ class ActAuthorization:
     needs the person's signature; the digests of the confirm_limits
     approvals a standing-intent approval relied on, each also needing it;
     and the digest of the first intent a standing-intent approval rests on
-    (``""`` otherwise). ``rules_not_evaluable`` marks a standing-intent
-    approval whose verdict's rules did not allow the act on their own
-    (:func:`rules_unevaluated`): the act then needs the person's signature
+    (``""`` otherwise). ``rules_not_recorded`` marks a standing-intent
+    approval whose verdict carries no rules block: nothing records which
+    rules, if any, evaluated the person's caps, so the act needs the person's
+    signature too (Sherlock2's ruling ops bb59237c, after u503;
+    evidencebook#983; Go ``RulesNotRecorded``). ``rules_not_evaluable`` marks a
+    standing-intent approval whose verdict's rules did not allow the act on
+    their own (:func:`rules_unevaluated`): the act then needs the person's signature
     too, whatever the verdict's result says (u503; evidencebook#982)."""
 
     act: Record
@@ -51,6 +55,7 @@ class ActAuthorization:
     needs_person_signature: bool
     limit_approvals: list[str] = field(default_factory=list)
     intent: str = ""
+    rules_not_recorded: bool = False
     rules_not_evaluable: bool = False
 
 
@@ -169,7 +174,10 @@ def check_authorizations(journal: list[Any], acts: list[Any]) -> list[ActAuthori
         a = ActAuthorization(act, journal[ci], journal[vi], journal[ai], w.digests[ai],
                              _person_approver(ab["approver"]))
         if ab["approver"] == "standing_intent":
-            if rules_unevaluated(w.verdict[vi].get("rules")):
+            rules = w.verdict[vi].get("rules")
+            if rules is None:
+                a.rules_not_recorded = a.needs_person_signature = True
+            elif rules_unevaluated(rules):
                 a.rules_not_evaluable = a.needs_person_signature = True
             a.limit_approvals = [w.digests[j] for j in w.limits_at[ai]]
             a.intent = w.digests[w.intent_at[ai]]

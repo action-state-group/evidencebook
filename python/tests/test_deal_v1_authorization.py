@@ -35,6 +35,26 @@ def test_approval_migration(case):
     assert [a.intent != "" for a in got] == case["intent_signature"]
 
 
+def test_rules_not_recorded_marks_exactly_the_verdict_without_rules():
+    """A standing-intent act whose verdict carries no rules block escalates
+    to the person (Sherlock2's ruling ops bb59237c, after u503;
+    evidencebook#983, Go ``RulesNotRecorded``); no act whose verdict records
+    its rules is marked."""
+    seen = False
+    for case in CASES:
+        if not case["valid"]:
+            continue
+        got = check_authorizations([text(r) for r in case["journal"] or ()], [text(r) for r in case["acts"] or ()])
+        want = case["name"] == "standing-intent-verdict-without-rules"
+        seen |= want
+        for a in got:
+            assert a.rules_not_recorded is want, case["name"]
+            if want:
+                assert a.needs_person_signature
+                assert not a.rules_not_evaluable, "the flags are exclusive"
+    assert seen, "the vectors hold the case with no rules block"
+
+
 def test_an_act_that_cites_no_check_is_not_gated():
     case = next(c for c in CASES if c["valid"])
     act = json.loads(json.dumps(case["acts"][0]))
