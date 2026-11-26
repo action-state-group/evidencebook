@@ -101,6 +101,10 @@ type Book struct {
 	// commitEmptyRoot names the index whose empty root the checkpoint in
 	// progress commits although it is lazy (proveKeyRangeLocked).
 	commitEmptyRoot string
+	// recommitRoot names the index whose root the checkpoint in progress
+	// commits again even when unchanged, so its index_root record covers
+	// the whole log (a subject bundle's proof, subjectFullLocked).
+	recommitRoot string
 	// forgeSubjects turns off the subject convention's admission checks, so
 	// a test can write the dishonest book a verifier must catch. Nothing
 	// outside the package's tests sets it.
@@ -844,7 +848,7 @@ func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoin
 			break
 		}
 		root := index.Root()
-		if b.roots[root.Index] == root {
+		if b.roots[root.Index] == root && root.Index != b.recommitRoot {
 			continue
 		}
 		if lazy, ok := index.(lazyIndex); ok && !lazy.commitsWhenEmpty() && root.Size == 0 && root.Index != b.commitEmptyRoot {

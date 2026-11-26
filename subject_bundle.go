@@ -44,22 +44,30 @@ const (
 // SubjectBundleDefinition is the derivation definition a holder registers
 // (Book.RegisterDerivation) to grant recipients a subject bundle of one
 // form. Its document names the form, the recipients and the fields, so
-// each grant is its own definition. A full form discloses whole headers:
-// its fields are every header member, and nil fields mean that. A
-// projection declares the header fields it reveals of each record, never
-// seq, since a member's position would show a protected record before it.
+// each grant is its own definition.
+//
+// A full form discloses whole headers, every member the record header
+// has (field_commitments, commit_alg and reproduction included, which no
+// projection declares): its document says so ("fields": "whole_header"),
+// and fields must be nil. A projection declares the header fields it
+// reveals of each record, never seq or links: a position, or the id of a
+// record after a protected one, would show that record.
 func SubjectBundleDefinition(form string, recipients, fields []string) (DerivationDefinition, error) {
-	if form == SubjectBundleFull && fields == nil {
-		fields = slices.Clone(headerFields)
-	}
 	recipients, fields = slices.Clone(recipients), slices.Clone(fields)
 	slices.Sort(recipients)
 	slices.Sort(fields)
+	document := map[string]any{"derivation": DerivationSubjectBundle, "form": form, "recipients": recipients, "fields": fields}
+	if form == SubjectBundleFull {
+		if fields != nil {
+			return DerivationDefinition{}, fmt.Errorf("%w: a full subject bundle discloses whole headers; it declares no fields", ErrInvalid)
+		}
+		fields, document["fields"] = slices.Clone(headerFields), subjectWholeHeader
+	}
 	def := DerivationDefinition{Recipients: recipients, Forms: []SubjectKind{SubjectCorrelation}, Fields: fields}
-	if err := checkSubjectDefinition(form, def); err != nil {
+	if err := checkSubjectDefinition(form, def, document); err != nil {
 		return DerivationDefinition{}, err
 	}
-	doc, err := canonicalJSON(map[string]any{"derivation": DerivationSubjectBundle, "form": form, "recipients": recipients, "fields": fields})
+	doc, err := canonicalJSON(document)
 	if err != nil {
 		return DerivationDefinition{}, err
 	}
@@ -67,17 +75,22 @@ func SubjectBundleDefinition(form string, recipients, fields []string) (Derivati
 	return def, nil
 }
 
+// subjectWholeHeader is a full form definition's fields: the whole header.
+const subjectWholeHeader = "whole_header"
+
 // checkSubjectDefinition refuses a subject bundle definition the form
 // cannot honour.
-func checkSubjectDefinition(form string, def DerivationDefinition) error {
+func checkSubjectDefinition(form string, def DerivationDefinition, document map[string]any) error {
 	switch form {
 	case SubjectBundleFull:
-		if !sameSet(def.Fields, headerFields) {
-			return fmt.Errorf("%w: a full subject bundle discloses whole headers, so it declares every header field", ErrInvalid)
+		if document["fields"] != subjectWholeHeader || !sameSet(def.Fields, headerFields) {
+			return fmt.Errorf("%w: a full subject bundle discloses whole headers: its document's fields are %q", ErrInvalid, subjectWholeHeader)
 		}
 	case SubjectBundleProjection:
-		if slices.ContainsFunc(def.Fields, func(f string) bool { return f == "seq" || strings.HasPrefix(f, "seq.") }) {
-			return fmt.Errorf("%w: a subject bundle projection carries no position, so it cannot declare seq", ErrInvalid)
+		for _, field := range def.Fields {
+			if name, _, _ := strings.Cut(field, "."); name == "seq" || name == "links" {
+				return fmt.Errorf("%w: a subject bundle projection carries no position or record id, so it cannot declare %s", ErrInvalid, name)
+			}
 		}
 	default:
 		return fmt.Errorf("%w: subject bundle form %q is neither %s nor %s", ErrInvalid, form, SubjectBundleFull, SubjectBundleProjection)
@@ -156,9 +169,12 @@ type SubjectExtension struct {
 	// KeyRange is the subject_id index's proof of the subject's records,
 	// for a field membership.
 	KeyRange *KeyRangeAnswer `json:"key_range,omitempty"`
-	// HeldByDigest are the members' outward citations the book does not
-	// hold as records: foreign evidence, found in the held store by digest
-	// (Shelf.Held, Shelf.HeldBy).
+	// ClosureDepth is how many link hops each member's outward closure
+	// follows.
+	ClosureDepth int `json:"closure_depth"`
+	// HeldByDigest are the targets the members' outward closure reaches
+	// that the book does not hold as records: foreign evidence, found in
+	// the held store by digest (Shelf.Held, Shelf.HeldBy).
 	HeldByDigest []string `json:"held_by_digest"`
 }
 
@@ -232,7 +248,7 @@ func (b *Book) subjectFullLocked(ctx context.Context, s subjectOf, members []Rec
 	include := slices.Clone(records)
 	var anchor Checkpoint
 	if s.statement.Membership != MembershipLog {
-		answer, err := b.proveKeyRangeLocked(ctx, SubjectIDIndexName, s.statement.SubjectID, s.statement.SubjectID)
+		answer, err := b.proveKeyRangeLocked(ctx, SubjectIDIndexName, s.statement.SubjectID, s.statement.SubjectID, true)
 		if err != nil {
 			return SubjectBundle{}, err
 		}
@@ -244,7 +260,17 @@ func (b *Book) subjectFullLocked(ctx context.Context, s subjectOf, members []Rec
 			return SubjectBundle{}, fmt.Errorf("%w: the subject_id index holds %d records for %q; the log holds %d", ErrCorrupt, len(proved), s.statement.SubjectID, len(records))
 		}
 		anchor, ext.KeyRange, ext.Level = answer.Anchor, &answer, SubjectLevelHolderCommitment
-		include = append(include, answer.RootRecordID)
+		// The index root is committed afresh, so it covers the log up to
+		// its as_of_seq and only the index roots of the same checkpoint
+		// follow it; they are disclosed too, so a verifier sees that no
+		// member or close follows the proof (verifySubjectKeyRange).
+		asOf, err := indexRootAsOf(b.records[answer.RootRecordID].Header)
+		if err != nil {
+			return SubjectBundle{}, err
+		}
+		for _, r := range b.log[asOf:anchor.Entries] {
+			include = append(include, r.RecordID)
+		}
 	} else {
 		var err error
 		if anchor, err = b.checkpointLocked(ctx); err != nil {
@@ -264,6 +290,7 @@ func (b *Book) subjectFullLocked(ctx context.Context, s subjectOf, members []Rec
 	if depth == 0 {
 		depth = DefaultClosureDepth
 	}
+	ext.ClosureDepth = depth
 	held := map[string]struct{}{}
 	for _, m := range members {
 		selected, missing, err := b.closureLocked(m.RecordID, depth)
@@ -327,17 +354,24 @@ func (b *Book) subjectProjectionLocked(ctx context.Context, s subjectOf, def der
 		SubjectKind: s.statement.SubjectKind, SubjectID: s.statement.SubjectID,
 		Completeness: SubjectLevelHolderAssertion, Members: []map[string]any{},
 	}
+	// A record is protected when it cites a conduct pack, or when it cannot
+	// be classified (fail closed, as bookView does): either way it is left
+	// out as if it did not exist. A protected root is a protected subject,
+	// answered as an unknown one.
+	protected := func(r Record) bool {
+		pack, err := conductPackCited(r.RecordID, r.Header, req.ConductPacks)
+		return pack != "" || err != nil
+	}
+	if protected(s.root) {
+		return SubjectBundle{}, fmt.Errorf("%w: subject %q", ErrNotFound, req.SubjectID)
+	}
 	var err error
 	if out.Root, err = project(s.root); err != nil {
 		return SubjectBundle{}, err
 	}
 	links := []Link{{Type: Cites, Target: s.root.RecordID}}
 	for _, m := range b.membersLocked(s) {
-		pack, err := conductPackCited(m.RecordID, m.Header, req.ConductPacks)
-		if err != nil {
-			return SubjectBundle{}, err
-		}
-		if pack != "" {
+		if protected(m) {
 			continue
 		}
 		projected, err := project(m)
@@ -496,24 +530,33 @@ func VerifySubjectBundle(data []byte) (VerifiedSubject, error) {
 		}
 		listed = append(listed, ext.Close)
 	}
+	if err := verifyHeldByDigest(ext, byID); err != nil {
+		return VerifiedSubject{}, err
+	}
 	switch ext.Level {
 	case SubjectLevelHolderCommitment:
-		if err := verifySubjectKeyRange(ext, listed, disclosed); err != nil {
+		if err := verifySubjectKeyRange(ext, listed, disclosed, verified); err != nil {
 			return VerifiedSubject{}, err
 		}
 	case SubjectLevelLogPrefix:
 		if stated.Membership != MembershipLog {
-			if err := verifySubjectKeyRange(ext, listed, disclosed); err != nil {
+			if err := verifySubjectKeyRange(ext, listed, disclosed, verified); err != nil {
 				return VerifiedSubject{}, err
 			}
 		}
 		if verified.IntervalFirst != 1 || uint64(len(verified.Records)) != verified.IntervalLast {
 			return VerifiedSubject{}, fmt.Errorf("%w: a log-prefix subject bundle carries every record from seq 1, not %d records of %d to %d", ErrInvalid, len(verified.Records), verified.IntervalFirst, verified.IntervalLast)
 		}
+		if stated.Membership == MembershipLog && root.Seq != 1 {
+			return VerifiedSubject{}, fmt.Errorf("%w: a log subject_root is its book's first record, not seq %d", ErrInvalid, root.Seq)
+		}
 		var members []string
 		for _, r := range verified.Records {
 			if !r.HeaderVerified || r.Header == nil {
 				return VerifiedSubject{}, fmt.Errorf("%w: record %s of the log prefix is not disclosed, so its kind is unknown", ErrInvalid, r.RecordID)
+			}
+			if stated.Membership == MembershipLog && r.Header.RecordType == RecordTypeSubjectRoot && r.RecordID != ext.Root {
+				return VerifiedSubject{}, fmt.Errorf("%w: a per-subject book roots one subject; the prefix holds root %s too", ErrInvalid, r.RecordID)
 			}
 			if r.Seq > root.Seq && subject.isMember(*r.Header) {
 				members = append(members, r.RecordID)
@@ -534,7 +577,7 @@ func VerifySubjectBundle(data []byte) (VerifiedSubject, error) {
 // verifySubjectKeyRange checks a full form's key range proof: it proves
 // exactly the listed records under the subject id, and its index root is
 // the one a disclosed, covered index_root record commits.
-func verifySubjectKeyRange(ext SubjectExtension, listed []string, disclosed func(id, what string) (PeerRecord, error)) error {
+func verifySubjectKeyRange(ext SubjectExtension, listed []string, disclosed func(id, what string) (PeerRecord, error), verified VerifiedBundle) error {
 	kr := ext.KeyRange
 	if kr == nil || kr.Root.Index != SubjectIDIndexName {
 		return fmt.Errorf("%w: a field subject's bundle carries the %s index's key range proof", ErrInvalid, SubjectIDIndexName)
@@ -550,12 +593,93 @@ func verifySubjectKeyRange(ext SubjectExtension, listed []string, disclosed func
 	if err != nil {
 		return err
 	}
-	var committed struct {
-		IndexRoot
-		AsOfSeq uint64 `json:"as_of_seq"`
-	}
-	if r.Header.RecordType != RecordTypeIndexRoot || json.Unmarshal(r.Header.Statement, &committed) != nil || committed.IndexRoot != kr.Root {
+	committed, err := readIndexRoot(*r.Header)
+	if err != nil || committed.IndexRoot != kr.Root || committed.AsOfSeq >= r.Seq {
 		return fmt.Errorf("%w: record %s does not commit the key range proof's index root", ErrInvalid, kr.RootRecordID)
+	}
+	// The proof is the index as of as_of_seq. Every record after that, to
+	// the anchor, must be disclosed and be an index root committed with it,
+	// so no member or close sealed after the proof can hide behind an
+	// older, honest proof.
+	tail := uint64(0)
+	for _, t := range verified.Records {
+		if t.Seq <= committed.AsOfSeq {
+			continue
+		}
+		tail++
+		if !t.HeaderVerified || t.Header == nil || t.Header.RecordType != RecordTypeIndexRoot {
+			return fmt.Errorf("%w: record %s follows the key range proof's index root and is not a disclosed index root", ErrInvalid, t.RecordID)
+		}
+		if other, err := readIndexRoot(*t.Header); err != nil || (other.Index == SubjectIDIndexName && t.RecordID != kr.RootRecordID) {
+			return fmt.Errorf("%w: record %s commits a newer %s index root than the proof's", ErrInvalid, t.RecordID, SubjectIDIndexName)
+		}
+	}
+	if verified.IntervalLast < committed.AsOfSeq || tail != verified.IntervalLast-committed.AsOfSeq {
+		return fmt.Errorf("%w: the bundle does not carry every record after the key range proof's index root", ErrInvalid)
+	}
+	return nil
+}
+
+// committedIndexRoot is the statement of an index_root record.
+type committedIndexRoot struct {
+	IndexRoot
+	AsOfSeq uint64 `json:"as_of_seq"`
+}
+
+func readIndexRoot(h Header) (committedIndexRoot, error) {
+	var committed committedIndexRoot
+	if h.RecordType != RecordTypeIndexRoot {
+		return committed, fmt.Errorf("%w: not an index_root record", ErrInvalid)
+	}
+	if err := json.Unmarshal(h.Statement, &committed); err != nil {
+		return committed, fmt.Errorf("%w: index_root statement: %v", ErrInvalid, err)
+	}
+	return committed, nil
+}
+
+// indexRootAsOf is the log length an index_root record's root covers.
+func indexRootAsOf(h Header) (uint64, error) {
+	committed, err := readIndexRoot(h)
+	return committed.AsOfSeq, err
+}
+
+// verifyHeldByDigest recomputes the members' outward closure over the
+// bundle's disclosed records and checks that its targets the bundle does
+// not carry are exactly the extension's held_by_digest.
+func verifyHeldByDigest(ext SubjectExtension, byID map[string]PeerRecord) error {
+	if ext.ClosureDepth < 1 {
+		return fmt.Errorf("%w: a subject bundle's closure depth is at least 1", ErrInvalid)
+	}
+	foreign := map[string]bool{}
+	for _, m := range ext.Members {
+		seen := map[string]bool{m: true}
+		frontier := []string{m}
+		for range ext.ClosureDepth {
+			var next []string
+			for _, id := range frontier {
+				for _, link := range byID[id].Header.Links {
+					target, carried := byID[link.Target]
+					switch {
+					case !carried:
+						foreign[link.Target] = true
+					case !target.HeaderVerified || target.Header == nil:
+						return fmt.Errorf("%w: record %s of member %s's closure is not disclosed", ErrInvalid, link.Target, m)
+					case !seen[link.Target]:
+						seen[link.Target] = true
+						next = append(next, link.Target)
+					}
+				}
+			}
+			frontier = next
+		}
+	}
+	var derived []string
+	for id := range foreign {
+		derived = append(derived, id)
+	}
+	slices.Sort(derived)
+	if !slices.Equal(derived, ext.HeldByDigest) && !(len(derived) == 0 && len(ext.HeldByDigest) == 0) {
+		return fmt.Errorf("%w: the members' closure reaches %d records the bundle does not carry; held_by_digest lists %d", ErrInvalid, len(derived), len(ext.HeldByDigest))
 	}
 	return nil
 }

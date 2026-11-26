@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func TestSubjectRootRefusals(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalid, "a second root for one subject id is refused")
 	_, err = book.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "deal", SubjectID: "deal-1", Membership: MembershipLog}, Entry{})
 	assert.ErrorIs(t, err, ErrInvalid, "a log root is the book's first record")
-	for _, membership := range []string{"", "field:", "field:x", "field://", "logs"} {
+	for _, membership := range []string{"", "field:", "field:x", "field:/a~2", "field:/a~", "logs"} {
 		_, err = book.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "exchange", SubjectID: "x-" + membership, Membership: membership}, Entry{})
 		assert.ErrorIs(t, err, ErrInvalid, "membership %q", membership)
 	}
@@ -510,4 +511,230 @@ func TestSubjectBundleUnderConcurrentAppends(t *testing.T) {
 	wg.Wait()
 	_, err := book.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true})
 	require.False(t, errors.Is(err, ErrCorrupt))
+}
+
+// A projection definition declares neither seq nor links: a visible
+// member citing another visible member would otherwise carry an id that a
+// protected record before it changes.
+func TestSubjectProjectionCarriesNoRecordIDs(t *testing.T) {
+	ctx := context.Background()
+	for _, fields := range [][]string{{"links"}, {"seq"}, {"record_type", "links"}} {
+		_, err := SubjectBundleDefinition(SubjectBundleProjection, []string{"peer"}, fields)
+		assert.ErrorIs(t, err, ErrInvalid, "%v", fields)
+	}
+	def, err := SubjectBundleDefinition(SubjectBundleProjection, []string{"peer"}, []string{"record_type", "correlation", "payload_commitments"})
+	require.NoError(t, err)
+	write := func(protectedFirst bool) []byte {
+		f := newFixture(t, "holder", 1)
+		book := f.open(t)
+		root := subjectRoot(t, book, testSubject)
+		if protectedFirst {
+			p := member(root, testSubject, "ask")
+			p.SubjectRef = "conduct-pack@1"
+			mustAppend(t, book, p)
+		}
+		v1 := mustAppend(t, book, member(root, testSubject, "v1"))
+		v2 := member(root, testSubject, "v2")
+		v2.Links = append(v2.Links, Link{Type: Cites, Target: v1.RecordID})
+		mustAppend(t, book, v2)
+		id, err := book.RegisterDerivation(def)
+		require.NoError(t, err)
+		bundle, err := book.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, Derivation: id, Requester: "peer", ConductPacks: []string{"conduct-pack"}})
+		require.NoError(t, err)
+		return bundle.JSON
+	}
+	assert.Equal(t, string(write(false)), string(write(true)))
+}
+
+// A protected root makes the subject a protected one, answered as an
+// unknown subject is; a member that cannot be classified is left out, as
+// a protected one is, so it changes neither the bytes nor the refusal.
+func TestSubjectProjectionFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	def, err := SubjectBundleDefinition(SubjectBundleProjection, []string{"peer"}, []string{"record_type", "correlation"})
+	require.NoError(t, err)
+	ask := func(book *Book, subject string) ([]byte, error) {
+		id, err := book.RegisterDerivation(def)
+		require.NoError(t, err)
+		bundle, err := book.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: subject, Derivation: id, Requester: "peer", ConductPacks: []string{"conduct-pack"}})
+		return bundle.JSON, err
+	}
+
+	book := newFixture(t, "holder", 1).open(t)
+	_, err = book.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "exchange", SubjectID: "private", Membership: MembershipExchangeID}, Entry{SubjectRef: "conduct-pack@1"})
+	require.NoError(t, err)
+	_, protectedErr := ask(book, "private")
+	_, unknownErr := ask(book, "no-such-subject")
+	require.ErrorIs(t, protectedErr, ErrNotFound)
+	require.ErrorIs(t, unknownErr, ErrNotFound)
+	assert.Equal(t, strings.ReplaceAll(unknownErr.Error(), "no-such-subject", "private"), protectedErr.Error())
+
+	write := func(malformed bool) []byte {
+		book := newFixture(t, "holder", 1).open(t)
+		root := subjectRoot(t, book, testSubject)
+		if malformed {
+			m := member(root, testSubject, "odd")
+			m.Statement = json.RawMessage(`{"contract_ref":7}`)
+			mustAppend(t, book, m)
+		}
+		mustAppend(t, book, member(root, testSubject, "v1"))
+		data, err := ask(book, testSubject)
+		require.NoError(t, err)
+		return data
+	}
+	without, with := write(false), write(true)
+	assert.Equal(t, string(without), string(with))
+}
+
+// A forged per-subject book, its log root after seq 1 or a second root in
+// it, does not pass at the log-prefix level.
+func TestSubjectBundleForgedLogRoot(t *testing.T) {
+	ctx := context.Background()
+	for _, name := range []string{"root after seq 1", "second root"} {
+		t.Run(name, func(t *testing.T) {
+			book := newFixture(t, "deal-book", 1).open(t)
+			book.forgeSubjects = true
+			if name == "root after seq 1" {
+				mustAppend(t, book, observation("hidden", "before the root"))
+			}
+			_, err := book.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "deal", SubjectID: "deal-1", Membership: MembershipLog}, Entry{})
+			require.NoError(t, err)
+			if name == "second root" {
+				_, err := book.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "deal", SubjectID: "deal-2", Membership: MembershipLog}, Entry{})
+				require.NoError(t, err)
+			}
+			mustAppend(t, book, observation("deal-1", "offer"))
+			book.forgeSubjects = false
+			bundle, err := book.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: "deal-1", OwnerCopy: true})
+			require.NoError(t, err)
+			_, err = VerifySubjectBundle(bundle.JSON)
+			assert.ErrorIs(t, err, ErrInvalid)
+		})
+	}
+}
+
+// An older, honest key range proof cannot stand in for the newer state the
+// bundle's anchor covers.
+func TestSubjectBundleRefusesAStaleProof(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "holder", 1).open(t)
+	root := subjectRoot(t, book, testSubject)
+	m1 := mustAppend(t, book, member(root, testSubject, "one"))
+	old, _ := fullBundle(t, book, SubjectBundleRequest{})
+	var oldExt SubjectExtension
+	{
+		verified, err := VerifyBundle(old.JSON)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(verified.Extensions[ExtensionSubject], &oldExt))
+	}
+	mustAppend(t, book, member(root, testSubject, "two"))
+	_, err := book.CloseSubject(ctx, root.RecordID)
+	require.NoError(t, err)
+	current, _ := fullBundle(t, book, SubjectBundleRequest{})
+	stale := editExtension(t, current.JSON, func(ext *SubjectExtension) {
+		ext.Members, ext.Close, ext.Closed, ext.KeyRange = []string{m1.RecordID}, "", false, oldExt.KeyRange
+	})
+	_, err = VerifySubjectBundle(stale)
+	assert.ErrorIs(t, err, ErrInvalid)
+}
+
+// held_by_digest is checked against the members' closure: neither a
+// dropped foreign citation nor an added one passes.
+func TestSubjectBundleHeldByDigestIsChecked(t *testing.T) {
+	book := newFixture(t, "holder", 1).open(t)
+	root := subjectRoot(t, book, testSubject)
+	foreign := member(root, testSubject, "one")
+	foreign.Links = append(foreign.Links, Link{Type: Cites, Target: dg("a counterparty's half")})
+	mustAppend(t, book, foreign)
+	bundle, verified := fullBundle(t, book, SubjectBundleRequest{})
+	require.Equal(t, []string{dg("a counterparty's half")}, verified.HeldByDigest)
+	for name, held := range map[string][]string{"dropped": {}, "added": {dg("a counterparty's half"), dg("unrelated")}} {
+		_, err := VerifySubjectBundle(editExtension(t, bundle.JSON, func(ext *SubjectExtension) { ext.HeldByDigest = held }))
+		assert.ErrorIs(t, err, ErrInvalid, name)
+	}
+}
+
+// A close after a member left pending by a substrate failure counts it.
+func TestCloseSubjectCountsAPendingMember(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "holder", 1)
+	cfg := f.config(t)
+	flaky := &flakySubstrate{Substrate: cfg.Substrate}
+	cfg.Substrate = flaky
+	book, err := Open(ctx, cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = book.Release() })
+	root := subjectRoot(t, book, testSubject)
+	flaky.failures = 1
+	_, err = book.Append(ctx, member(root, testSubject, "pending"))
+	require.Error(t, err)
+	closed, err := book.CloseSubject(ctx, root.RecordID)
+	require.NoError(t, err)
+	var statement SubjectCloseStatement
+	require.NoError(t, json.Unmarshal(closed.Header.Statement, &statement))
+	assert.Equal(t, uint64(1), statement.Members)
+
+	flaky.failures = 1
+	_, err = book.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "exchange", SubjectID: "late-root", Membership: MembershipExchangeID}, Entry{})
+	require.Error(t, err)
+	pendingRoot := book.pending.RecordID
+	_, err = book.CloseSubject(ctx, pendingRoot)
+	assert.NoError(t, err, "a pending root joins the log before the close looks it up")
+}
+
+// Membership pointers follow RFC 6901: an empty member name, the ~0 and ~1
+// escapes, and array indices.
+func TestSubjectMembershipPointers(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "holder", 1).open(t)
+	for _, c := range []struct{ pointer, statement string }{
+		{"/statement/", `{"":"s-empty"}`},
+		{"/statement/a~1b", `{"a/b":"s-slash"}`},
+		{"/statement/a~0b", `{"a~b":"s-tilde"}`},
+		{"/statement/list/1", `{"list":["x","s-index"]}`},
+	} {
+		var id string
+		var statement map[string]any
+		require.NoError(t, json.Unmarshal([]byte(c.statement), &statement))
+		for _, v := range statement {
+			if s, ok := v.(string); ok {
+				id = s
+			} else {
+				id = v.([]any)[1].(string)
+			}
+		}
+		root, err := book.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "session", SubjectID: id, Membership: MembershipFieldPrefix + c.pointer}, Entry{})
+		require.NoError(t, err, c.pointer)
+		mustAppend(t, book, Entry{RecordType: "turn", EpistemicType: ObservedEvent, Statement: json.RawMessage(c.statement), Links: []Link{{Type: Cites, Target: root.RecordID}}})
+		_, err = book.Append(ctx, Entry{RecordType: "turn", EpistemicType: ObservedEvent, Statement: json.RawMessage(`{"other":1}`), Links: []Link{{Type: Cites, Target: root.RecordID}}})
+		assert.ErrorIs(t, err, ErrInvalid, c.pointer)
+	}
+}
+
+// A full form discloses the whole header, field commitments and all; its
+// definition declares no field list.
+func TestSubjectBundleFullFormWholeHeader(t *testing.T) {
+	ctx := context.Background()
+	_, err := SubjectBundleDefinition(SubjectBundleFull, []string{"adjudicator"}, headerFields)
+	assert.ErrorIs(t, err, ErrInvalid)
+	book := newFixture(t, "holder", 1).open(t)
+	root := subjectRoot(t, book, testSubject)
+	m := member(root, testSubject, "one")
+	m.Fields = map[string]string{"note": "a committed field"}
+	sealed := mustAppend(t, book, m)
+	require.NotEmpty(t, sealed.Header.FieldCommitments)
+	def, err := SubjectBundleDefinition(SubjectBundleFull, []string{"adjudicator"}, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(def.Document), `"fields":"whole_header"`)
+	id, err := book.RegisterDerivation(def)
+	require.NoError(t, err)
+	bundle, err := book.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, Derivation: id, Requester: "adjudicator"})
+	require.NoError(t, err)
+	verified, err := VerifySubjectBundle(bundle.JSON)
+	require.NoError(t, err)
+	for _, r := range verified.Bundle.Records {
+		if r.RecordID == sealed.RecordID {
+			assert.Equal(t, sealed.Header.FieldCommitments, r.Header.FieldCommitments)
+		}
+	}
 }

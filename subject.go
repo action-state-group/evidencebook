@@ -88,8 +88,12 @@ func (s SubjectRootStatement) pointer() ([]string, bool) {
 	}
 	tokens := strings.Split(raw[1:], "/")
 	for i, token := range tokens {
-		if token == "" {
-			return nil, false
+		// RFC 6901 §3: "~" is escaped as "~0" and "/" as "~1"; any other
+		// "~" is malformed. An empty token names the member "".
+		for j := 0; j < len(token); j++ {
+			if token[j] == '~' && (j+1 == len(token) || (token[j+1] != '0' && token[j+1] != '1')) {
+				return nil, false
+			}
 		}
 		tokens[i] = strings.ReplaceAll(strings.ReplaceAll(token, "~1", "/"), "~0", "~")
 	}
@@ -332,6 +336,11 @@ func (b *Book) SealSubjectRoot(ctx context.Context, statement SubjectRootStateme
 func (b *Book) CloseSubject(ctx context.Context, root string) (Record, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// A record left pending joins the log first, so the count is the one
+	// the close's admission computes.
+	if err := b.flushPendingLocked(ctx); err != nil {
+		return Record{}, err
+	}
 	s, ok := b.subjectByRootLocked(root)
 	if !ok {
 		return Record{}, fmt.Errorf("%w: subject_root %s", ErrNotFound, root)

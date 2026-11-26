@@ -144,7 +144,7 @@ func (b *Book) RegisterDerivation(def DerivationDefinition) (string, error) {
 	}
 	subjectForm := subjectFormOf(document)
 	if subjectForm != "" {
-		if err := checkSubjectDefinition(subjectForm, def); err != nil {
+		if err := checkSubjectDefinition(subjectForm, def, document); err != nil {
 			return "", err
 		}
 	}

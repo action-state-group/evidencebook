@@ -369,13 +369,15 @@ type KeyRangeAnswer struct {
 func (b *Book) ProveKeyRange(ctx context.Context, index, lo, hi string) (KeyRangeAnswer, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.proveKeyRangeLocked(ctx, index, lo, hi)
+	return b.proveKeyRangeLocked(ctx, index, lo, hi, false)
 }
 
 // proveKeyRangeLocked is ProveKeyRange under the book's lock. An index
 // whose empty root a checkpoint leaves out (lazyIndex) has it committed
-// here, since the proof is against a committed root.
-func (b *Book) proveKeyRangeLocked(ctx context.Context, index, lo, hi string) (KeyRangeAnswer, error) {
+// here, since the proof is against a committed root. With fresh, the root
+// is committed again even when unchanged, so the proof's index_root record
+// covers every record before it.
+func (b *Book) proveKeyRangeLocked(ctx context.Context, index, lo, hi string, fresh bool) (KeyRangeAnswer, error) {
 	var target AuthenticatedIndex
 	for _, candidate := range b.index {
 		if candidate.Name() == index {
@@ -386,8 +388,11 @@ func (b *Book) proveKeyRangeLocked(ctx context.Context, index, lo, hi string) (K
 		return KeyRangeAnswer{}, fmt.Errorf("%w: no authenticated index %q", ErrNotFound, index)
 	}
 	b.commitEmptyRoot = index
+	if fresh {
+		b.recommitRoot = index
+	}
 	anchor, err := b.checkpointLocked(ctx)
-	b.commitEmptyRoot = ""
+	b.commitEmptyRoot, b.recommitRoot = "", ""
 	if err != nil {
 		return KeyRangeAnswer{}, err
 	}
