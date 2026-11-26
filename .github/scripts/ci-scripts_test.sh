@@ -99,6 +99,132 @@ expect_has "root: a Python file the root tests read races the root package" . ro
 expect "root: go.mod races everything" "$root_all" root go.mod
 expect "root: testdata races everything" "$root_all" root testdata/shelf/after-continue.json
 
+# The local policy (scripts/pre-push.sh, evidencebook#973) drops the
+# exclusions, so internal/deal is raced when a change reaches it, through its
+# own files, a package its tests import or a shared input, and only then.
+run_local() { # module paths...
+  local module=$1
+  shift
+  printf '%s\n' "$@" | RACE_PACKAGES_LOCAL=1 bash "$here/race-packages.sh" "$module"
+}
+local_has() { # description, want (0 raced, 1 not), package, module, paths...
+  local what=$1 want=$2 pkg=$3 out got=1
+  shift 3
+  if ! out=$(run_local "$@"); then
+    printf 'FAIL %s: race-packages.sh exited nonzero\n' "$what"
+    fails=$((fails + 1))
+    return
+  fi
+  grep -qxF "$pkg" <<<"$out" && got=0
+  if ((got == want)); then printf 'ok   %s\n' "$what"; else
+    printf 'FAIL %s: %s raced is %s\n' "$what" "$pkg" "$( ((got == 0)) && echo true || echo false)"
+    fails=$((fails + 1))
+  fi
+}
+local_has "local: a deal change races internal/deal" 0 ./internal/deal capsulectl capsulectl/internal/deal/deal.go
+local_has "local: a packfile change races internal/deal (its tests import it)" 0 ./internal/deal capsulectl capsulectl/internal/packfile/packfile.go
+local_has "local: go.mod races internal/deal" 0 ./internal/deal capsulectl capsulectl/go.mod
+local_has "local: a book change does not race internal/deal" 1 ./internal/deal capsulectl capsulectl/internal/book/book.go
+local_has "local: a bookdemo change does not race internal/deal" 1 ./internal/deal capsulectl capsulectl/scripts/bookdemo/main.go
+
+# scripts/pre-push.sh --plan: which suites run and what each races.
+prepush_plan() { # description, want (lines joined by "|"), paths... ("--all" alone: no paths, --all)
+  local what=$1 want=$2 got ch
+  shift 2
+  ch=$(mktemp)
+  local args=(--plan)
+  if [[ "${1:-}" == --all ]]; then args+=(--all); else printf '%s\n' "$@" > "$ch"; fi
+  if ! got=$(PRE_PUSH_CHANGED=$ch bash "$here/../../scripts/pre-push.sh" "${args[@]}"); then
+    printf 'FAIL %s: pre-push.sh --plan exited nonzero\n' "$what"
+    fails=$((fails + 1))
+    rm -f "$ch"
+    return
+  fi
+  rm -f "$ch"
+  got=${got//$'\n'/|}
+  if [[ "$got" == "$want" ]]; then printf 'ok   %s\n' "$what"; else
+    printf 'FAIL %s\n  want: %s\n  got:  %s\n' "$what" "$want" "$got"
+    fails=$((fails + 1))
+  fi
+}
+prepush_plan "pre-push: a bookdemo change races only bookdemo" \
+  "suites: capsulectl|root race: none|capsulectl race: ./scripts/bookdemo" capsulectl/scripts/bookdemo/main.go
+prepush_plan "pre-push: a book change races book and its launchers, not internal/deal" \
+  "suites: capsulectl|root race: none|capsulectl race: ./cmd ./cmd/capsulectl-book ./internal/book" capsulectl/internal/book/book.go
+prepush_plan "pre-push: a doc change runs the root suite and races nothing" \
+  "suites: root|root race: none|capsulectl race: none" docs/GUIDE.md
+prepush_plan "pre-push: capsulectl's go.mod races every capsulectl package" \
+  "suites: capsulectl|root race: none|capsulectl race: $(pkgs_of capsulectl)" capsulectl/go.mod
+prepush_plan "pre-push: --all races everything" \
+  "suites: root capsulectl report rust python|root race: ./...|capsulectl race: ./..." --all
+if PRE_PUSH_CHANGED=/dev/null bash "$here/../../scripts/pre-push.sh" --bogus > /dev/null 2>&1; then
+  printf 'FAIL pre-push: an unknown flag exited 0\n'
+  fails=$((fails + 1))
+else printf 'ok   pre-push: an unknown flag fails\n'; fi
+
+# scripts/pre-push.sh's capsulectl suite, run against a fake go that logs its
+# calls: go test answers -list with $TEST_NAMES and fails a race run when
+# FAIL_RACE is set (FAIL_LIST fails -list); go list fails when FAIL_PLAN is
+# set and is real otherwise, so the planner sees this checkout's graph.
+gofake=$(mktemp -d)
+real_go_exec=$(command -v go)
+cat > "$gofake/go" <<FAKE
+#!/usr/bin/env bash
+echo "\$*" >> "\$GO_LOG"
+case "\$1" in
+  test)
+    if [[ " \$* " == *" -list "* ]]; then
+      [[ -z "\${FAIL_LIST:-}" ]] || exit 1
+      [[ -z "\${TEST_NAMES:-}" ]] || printf '%s\n' \$TEST_NAMES
+      exit 0
+    fi
+    if [[ " \$* " == *" -race "* && -n "\${FAIL_RACE:-}" ]]; then echo "--- FAIL: TestInjected (0.00s)"; exit 1; fi
+    exit 0 ;;
+  vet | mod | generate) exit 0 ;;
+  list) [[ -z "\${FAIL_PLAN:-}" ]] || { echo "go: injected failure" >&2; exit 1; } ;;
+esac
+exec "$real_go_exec" "\$@"
+FAKE
+chmod +x "$gofake/go"
+# prepush_run description, want_exit, want_race_runs, want_plain_runs, race package ("" none), changed path, env...
+prepush_run() {
+  local what=$1 want_exit=$2 want_race=$3 want_plain=$4 pkg=$5 path=$6 st=0 race plain
+  shift 6
+  printf '%s\n' "$path" > "$gofake/changed"
+  : > "$gofake/log"
+  env PATH="$gofake:$PATH" GO_LOG="$gofake/log" PRE_PUSH_CHANGED="$gofake/changed" PRE_PUSH_NESTED=1 PRE_PUSH_SHARDS=4 "$@" \
+    bash "$here/../../scripts/pre-push.sh" > "$gofake/out" 2>&1 || st=$?
+  race=$(grep -E '^test -v .*-race' "$gofake/log" || true)
+  plain=$(grep -E '^test -v ' "$gofake/log" | grep -v -- -race || true)
+  local nrace nplain bad=""
+  nrace=$(grep -c . <<<"$race" || true)
+  nplain=$(grep -c . <<<"$plain" || true)
+  ((st == want_exit)) || bad+=" exit $st (want $want_exit)"
+  ((nrace == want_race)) || bad+=" race runs $nrace (want $want_race)"
+  ((nplain == want_plain)) || bad+=" plain runs $nplain (want $want_plain)"
+  if [[ -n "$pkg" ]] && grep -v -- " $pkg\$" <<<"$race" | grep -q .; then bad+=" a race run not over $pkg"; fi
+  if [[ -z "$bad" ]]; then printf 'ok   %s\n' "$what"; else
+    printf 'FAIL %s:%s\n' "$what" "$bad"
+    sed 's/^/    /' "$gofake/out" | tail -15
+    fails=$((fails + 1))
+  fi
+}
+prepush_run "pre-push run: three tests get three shards, each over the planned package" \
+  0 3 3 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC"
+prepush_run "pre-push run: several tests run in the configured shards" \
+  0 4 4 "./cmd ./cmd/capsulectl-book ./internal/book" capsulectl/internal/book/book.go TEST_NAMES="TestA TestB TestC TestD TestE TestF"
+prepush_run "pre-push run: packages with no tests still build under race, in one unfiltered shard" \
+  0 1 1 ./scripts/genconfusables capsulectl/scripts/genconfusables/main.go TEST_NAMES=
+prepush_run "pre-push run: an empty race plan runs only the plain pass" \
+  0 0 3 "" capsulectl/README.md TEST_NAMES="TestA TestB TestC"
+prepush_run "pre-push run: a failed race run fails the push check" \
+  1 3 3 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC" FAIL_RACE=1
+prepush_run "pre-push run: a failed test listing fails the push check" \
+  1 0 0 "" capsulectl/scripts/bookdemo/main.go FAIL_LIST=1
+prepush_run "pre-push run: a failed race plan stops the script" \
+  2 0 0 "" capsulectl/scripts/bookdemo/main.go FAIL_PLAN=1
+rm -rf "$gofake"
+
 # A go list error fails the planner instead of yielding an empty plan.
 fake=$(mktemp -d)
 trap 'rm -rf "$fake"' EXIT

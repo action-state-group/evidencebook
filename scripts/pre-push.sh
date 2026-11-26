@@ -3,15 +3,23 @@
 # The check to run before every push (evidencebook#925): pull requests run only
 # fast checks in CI, so the heavy suites run here. By default it runs every
 # suite the branch's changes reach (against the merge base with origin/main),
-# using the same rules as CI; --all runs every suite. It runs each suite in
-# full, including internal/deal under the race detector, which no pull
-# request runs in CI.
+# using the same rules as CI; --all runs every suite. Each suite's plain tests
+# run in full; the race detector runs over the packages the change reaches
+# (evidencebook#973): .github/scripts/race-packages.sh's plan, the one a pull
+# request's race job uses, with internal/deal included when the change reaches
+# it (RACE_PACKAGES_LOCAL=1). --all races every package. Push to main and the
+# nightly race everything in CI.
 #
-#   scripts/pre-push.sh [--all]
+#   scripts/pre-push.sh [--all] [--plan]
+#
+# --plan prints the suites and race packages it would run, one line each, and
+# runs nothing. PRE_PUSH_CHANGED=<file> reads the changed paths from that file
+# instead of git, and PRE_PUSH_NESTED=1 leaves out the planning scripts' own
+# tests (those tests use both, so they can run this script without recursing).
 #
 # Suites: root (format, module files, vet, tests, race), capsulectl (format,
-# module files, vet, the generated confusables table, every test plain and
-# under the race detector, the race pass in parallel shards), report (vet,
+# module files, vet, the generated confusables table, every test plain, the
+# race pass over its planned packages, both in parallel shards), report (vet,
 # tests, race), rust (fmt, clippy, tests), python (pytest, needs python/.venv
 # as CLAUDE.md sets it up) and the CI planning scripts' tests. The jobs that
 # need a pinned Chrome or capsule-engine (deal pages, presentation pass, the
@@ -23,15 +31,23 @@ set -uo pipefail
 
 root=$(git rev-parse --show-toplevel)
 cd "$root" || exit 2
-all=0
-[[ "${1:-}" == --all ]] && all=1
+all=0 plan=0
+for arg in "$@"; do
+  case "$arg" in
+    --all) all=1 ;;
+    --plan) plan=1 ;;
+    *) echo "usage: scripts/pre-push.sh [--all] [--plan]" >&2; exit 2 ;;
+  esac
+done
 
 changed=$(mktemp)
 log=$(mktemp -d)
 trap 'rm -rf "$changed" "$log"' EXIT
 # Selection errors stop the script: a check that silently skipped a suite
 # would pass without running what the changes need.
-if ((!all)); then
+if [[ -n "${PRE_PUSH_CHANGED:-}" ]]; then
+  cp "$PRE_PUSH_CHANGED" "$changed" || exit 2
+elif ((!all)); then
   base=$(git merge-base HEAD origin/main) || { echo "no merge base with origin/main; fetch it or pass --all" >&2; exit 2; }
   git diff --no-renames --name-only "$base" > "$changed" || { echo "git diff failed" >&2; exit 2; }
   git ls-files --others --exclude-standard >> "$changed" || { echo "git ls-files failed" >&2; exit 2; }
@@ -59,6 +75,14 @@ reaches_python() {
   matched -E '^(python/|testdata/|dealprofile/|[^/]+\.go$|go\.(mod|sum)$)'
 }
 
+# The packages of one module the race pass runs, space-separated (empty: none).
+race_plan() { # root|capsulectl
+  if ((all)); then echo ./...; return; fi
+  local out
+  out=$(RACE_PACKAGES_LOCAL=1 bash .github/scripts/race-packages.sh "$1" < "$changed") || { echo "race-packages.sh $1 failed" >&2; exit 2; }
+  printf '%s\n' "$out" | paste -sd ' ' - | sed 's/^ *$//'
+}
+
 results=()
 status=0
 suite() { # name, command...
@@ -76,18 +100,28 @@ go_module() { # dir: format, module files, vet
 }
 
 root_suite() {
-  go_module . && go test ./... && go test -race ./...
+  go_module . && go test ./... || return 1
+  if [[ -z "$root_race" ]]; then echo "race: no package the change reaches"; return 0; fi
+  # shellcheck disable=SC2086 # the plan is a space-separated package list
+  go test -race $root_race
 }
 
-# One pass of capsulectl's tests in parallel shards (scripts/test.sh), every
-# case of internal/deal included; a shard's failures are printed only when it
-# fails. One process per pass is too slow: internal/deal alone ran past the
-# plain pass's ten-minute timeout on a laptop.
-capsulectl_pass() { # plain|race
-  local pass=$1 n=${PRE_PUSH_SHARDS:-$(($(getconf _NPROCESSORS_ONLN) / 2))} i pids=() st=0
+# One pass of capsulectl's tests in parallel shards (scripts/test.sh) over the
+# given packages; a shard's failures are printed only when it fails. One
+# process per pass is too slow: internal/deal alone ran past the plain pass's
+# ten-minute timeout on a laptop. A pass over few tests gets at most one shard
+# per top-level test, since scripts/test.sh fails an empty shard; one over
+# packages with no tests (scripts/genconfusables) runs one unfiltered shard,
+# so they still build under the race detector.
+capsulectl_pass() { # plain|race, packages (space-separated)
+  local pass=$1 pkgs=$2 n=${PRE_PUSH_SHARDS:-$(($(getconf _NPROCESSORS_ONLN) / 2))} i pids=() st=0 tests
   ((n >= 1)) || n=1
+  # shellcheck disable=SC2086 # the plan is a space-separated package list
+  tests=$(cd capsulectl && go test -list '.*' $pkgs | awk '/^(Test|Example|Fuzz)/ && !seen[$0]++ { n++ } END { print n + 0 }') || return 1
+  ((tests >= 1)) || tests=1
+  ((n <= tests)) || n=$tests
   for ((i = 1; i <= n; i++)); do
-    (cd capsulectl && CAPSULE_TEST_PASS=$pass CAPSULE_TEST_SHARD="$i/$n" CAPSULE_TEST_RACE_TIMEOUT=60m \
+    (cd capsulectl && CAPSULE_TEST_PASS=$pass CAPSULE_TEST_SHARD="$i/$n" CAPSULE_TEST_PKGS="$pkgs" CAPSULE_TEST_RACE_TIMEOUT=60m \
       bash scripts/test.sh > "$log/capsulectl-$pass-$i.log" 2>&1) &
     pids+=($!)
   done
@@ -99,7 +133,7 @@ capsulectl_pass() { # plain|race
         tail -20 "$log/capsulectl-$pass-$((i + 1)).log"
     fi
   done
-  printf '%s pass: %d shards, %s\n' "$pass" "$n" "$( ((st == 0)) && echo ok || echo FAIL)"
+  printf '%s pass over %s: %d shards, %s\n' "$pass" "$pkgs" "$n" "$( ((st == 0)) && echo ok || echo FAIL)"
   return "$st"
 }
 
@@ -107,8 +141,12 @@ capsulectl_suite() {
   go_module capsulectl || return 1
   (cd capsulectl && go generate ./internal/deal && git diff --exit-code -- internal/deal/confusables_table.go) || return 1
   local st=0
-  capsulectl_pass plain || st=1
-  capsulectl_pass race || st=1
+  capsulectl_pass plain ./... || st=1
+  if [[ -z "$capsulectl_race" ]]; then
+    echo "race: no package the change reaches"
+  else
+    capsulectl_pass race "$capsulectl_race" || st=1
+  fi
   return "$st"
 }
 
@@ -131,12 +169,30 @@ python_suite() {
 }
 
 skipped() { results+=("$(printf '%-12s %s' "$1" 'skipped (the changes do not reach it)')"); }
-suite ci-scripts bash .github/scripts/ci-scripts_test.sh
-if reaches_root; then suite root root_suite; else skipped root; fi
-if reaches .github/workflows/capsulectl.yml; then suite capsulectl capsulectl_suite; else skipped capsulectl; fi
-if reaches .github/workflows/report.yml; then suite report report_suite; else skipped report; fi
-if reaches .github/workflows/rust.yml; then suite rust rust_suite; else skipped rust; fi
-if reaches_python; then suite python python_suite; else skipped python; fi
+run_root=0 run_capsulectl=0 run_report=0 run_rust=0 run_python=0
+reaches_root && run_root=1
+reaches .github/workflows/capsulectl.yml && run_capsulectl=1
+reaches .github/workflows/report.yml && run_report=1
+reaches .github/workflows/rust.yml && run_rust=1
+reaches_python && run_python=1
+root_race="" capsulectl_race=""
+# race_plan runs in a command substitution, so its failure is checked here.
+if ((run_root)); then root_race=$(race_plan root) || exit 2; fi
+if ((run_capsulectl)); then capsulectl_race=$(race_plan capsulectl) || exit 2; fi
+
+if ((plan)); then
+  printf 'suites:'
+  for s in root capsulectl report rust python; do v=run_$s; ((${!v})) && printf ' %s' "$s"; done
+  printf '\nroot race: %s\ncapsulectl race: %s\n' "${root_race:-none}" "${capsulectl_race:-none}"
+  exit 0
+fi
+
+if [[ "${PRE_PUSH_NESTED:-}" != 1 ]]; then suite ci-scripts bash .github/scripts/ci-scripts_test.sh; fi
+if ((run_root)); then suite root root_suite; else skipped root; fi
+if ((run_capsulectl)); then suite capsulectl capsulectl_suite; else skipped capsulectl; fi
+if ((run_report)); then suite report report_suite; else skipped report; fi
+if ((run_rust)); then suite rust rust_suite; else skipped rust; fi
+if ((run_python)); then suite python python_suite; else skipped python; fi
 
 printf '\n== summary (%s) ==\n' "$( ((all)) && echo all suites || echo suites the changes reach)"
 printf '%s\n' "${results[@]}"
