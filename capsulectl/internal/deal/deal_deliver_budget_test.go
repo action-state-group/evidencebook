@@ -36,8 +36,9 @@ func hookDelivery(t *testing.T) *deliveryHook {
 	return h
 }
 
-// stall is a witness that never answers in time: nothing is stored, so
-// every checkpoint stays pending.
+// stall is a delivery that sends nothing and records no attempt, as
+// cli.DeliverWitnessBy does when the budget crosses its floor or a row's
+// retry is not due: every checkpoint stays pending.
 func (h *deliveryHook) stall() {
 	dealDeliverWitness = func(ctx context.Context, _ cli.Profile, store cll.WitnessStateStore, service string, size uint64, _ time.Time) (cll.WitnessState, error) {
 		h.calls = append(h.calls, size)
@@ -132,12 +133,15 @@ func TestDealTickStopsDeliveringAtTheBudget(t *testing.T) {
 	clock := backlog(t, h, 3)
 	*clock = clock.Add(-30 * time.Second) // no tick due
 
+	h.calls = nil
 	tick := dealRun(t, "tick")
 	rows := pendingRows(t, tick)
 	require.Len(t, rows, 3, "%v", tick)
-	assert.Equal(t, "not_attempted", rows[0]["reason"])
-	assert.NotContains(t, rows[0], "not_tried_this_run", "the oldest was tried")
-	for _, row := range rows[1:] {
+	assert.Equal(t, []uint64{uint64(rows[0]["checkpoint"].(float64))}, h.calls, "only the oldest was handed to the delivery")
+	// The stalled delivery recorded no attempt, as cli.DeliverWitnessBy does
+	// when the budget crosses its floor after deliverCadence's own check, so
+	// the oldest is not tried this run either.
+	for _, row := range rows {
 		assert.Equal(t, true, row["not_tried_this_run"], "%v", row)
 		assert.Equal(t, "not_attempted", row["reason"], "a row not tried keeps its stored reason")
 	}

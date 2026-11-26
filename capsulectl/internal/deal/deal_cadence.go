@@ -213,16 +213,28 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 		// attempt until the receipt, if one landed, is reported.
 		migrated := s.migrated
 		s.migrated = false
-		// A delivery error is pending, read from state as before; whether a
-		// receipt landed anyway is read back from the log below.
-		state, _ := dealDeliverWitness(ctx, p, t.Log, service, w.CheckpointSize, deadline)
+		// A delivery error is pending; what the delivery did, a receipt
+		// included, is read back from the log below, not from its return,
+		// which an error leaves empty.
+		_, _ = dealDeliverWitness(ctx, p, t.Log, service, w.CheckpointSize, deadline)
 		receipt, ok, err := verifiedReceipt(ctx, p, t.Log, service, w.CheckpointSize)
 		if err != nil {
 			return nil, nil, err
 		}
 		if !ok {
+			state, err := t.Log.GetWitness(ctx, service, w.CheckpointSize)
+			if err != nil {
+				return nil, nil, err
+			}
 			reason, text := cli.WitnessPendingReason(state, p.Checkpoint.Endpoint)
-			pending = append(pending, map[string]any{"checkpoint": w.CheckpointSize, "reason": reason, "text": text})
+			row := map[string]any{"checkpoint": w.CheckpointSize, "reason": reason, "text": text}
+			// No attempt recorded: the delivery sent nothing, because the
+			// budget crossed capsule-cli's floor after the check above or the
+			// row's retry is not due yet.
+			if state.Attempts == w.Attempts && !state.Permanent {
+				row["not_tried_this_run"] = true
+			}
+			pending = append(pending, row)
 			s.migrated = migrated
 			// Failed for good, the witness decides on the next one without
 			// it (selectedWitness); otherwise every later one waits for it.
