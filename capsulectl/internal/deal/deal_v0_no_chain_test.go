@@ -279,3 +279,29 @@ func TestADirectReceiptIsReadWithoutTheShelf(t *testing.T) {
 	assert.NotContains(t, a, "holder_witnessed")
 	assert.NotContains(t, a["text"], "2026-10-04T09:00:00Z")
 }
+
+// A receipt on the copy's own checkpoint still travels and verifies, and the
+// standalone report's as_of still says not witnessed: it claims less than
+// the copy carries, never more (u225).
+func TestADirectReceiptVerifiesAndAsOfStaysNotWitnessed(t *testing.T) {
+	dealFixture(t)
+	setDealClock(t, "2026-09-27T18:00:00Z")
+	id := retailDeal(t)
+	b, _ := sharedCopy(t, id, cli.DealAudienceCounterparty, "the shop")
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	witnessed(t, key)(b)
+	path := writeBundle(t, b)
+	result, err := verifyWithDirectory(t, path, writeDirectory(t, rawKeyRow(testWitness, public)))
+	require.NoError(t, err)
+	assert.Equal(t, "VALID", result["verdict"])
+	assert.Equal(t, "pass", result["witnesses"].(map[string]any)["status"], "the direct receipt verifies")
+	found := false
+	for _, raw := range result["extensions"].([]any) {
+		if e := raw.(map[string]any); e["kind"] == "x-deal-v0" {
+			found = true
+			assert.Equal(t, "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed", e["as_of"])
+		}
+	}
+	assert.True(t, found, "the x-deal-v0 entry")
+}

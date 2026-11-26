@@ -546,15 +546,16 @@ against the step's seal; the words shown come from this device's local
 store. If a byte was changed, the page says "This report did not verify"
 instead. Message text appears only when an anomaly cites that message.
 
-The page's witness line reads only what the copy carries: a receipt on the
-deal's own checkpoint, or in a copy written before u225 the cadence chain
-above. A new copy of a deal witnessed only through the cadence carries
-neither, so the page reads "missing" there; the holder's own witnessing is in
-the report's `assurance`, never on the page. The email states no witness of
-its own: it points the reader at `capsulectl deal verify`. The page does not
-check the receipt itself and says so; `capsulectl deal verify --bundle FILE
---witness-directory DIRECTORY.json` does, against a witness directory the
-reader chooses. Making a report never contacts the witness.
+The page's witness line reads the cadence chain a copy carries, which only a
+copy written before u225 does: the page's runtime checks that chain's
+receipts under the reader's own witness list, and reads "missing" when the
+copy carries no chain, as every new copy does. The holder's own witnessing is
+in the report's `assurance`, never on the page. A receipt on the deal's own
+checkpoint, when a copy carries one, is not read by the page; the email
+states no witness of its own and points the reader at `capsulectl deal
+verify --bundle FILE --witness-directory DIRECTORY.json`, which checks both
+kinds against a witness directory the reader chooses. Making a report never
+contacts the witness.
 
 The page and the email both say, on their face, "This receipt covers this
 one exchange. It is not a record of everything the agent did." They also say
