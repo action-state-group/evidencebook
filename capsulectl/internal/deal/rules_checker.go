@@ -359,8 +359,10 @@ const rulesDeclaredNotMeasured = "declared, not measured"
 // isDeclaredRule says f is a rule the ruleset declares and no check
 // measures. It names no check: the sealed finding carries no reason, so a
 // verifier tells a declared rule from a measured one by its check alone
-// (xdealv1.RulesUnevaluated), and this reads both, so the check and the
-// verifier never disagree about a finding.
+// (xdealv1.RulesUnevaluated). This reads both, so the two differ only on a
+// finding that names no check with another reason: the check pauses on it
+// and the verifier reads it as declared, the fail-closed direction
+// (Sherlock2, u250, ops evidence-network/inbox.md:704, 2026-11-26, condition 1).
 func isDeclaredRule(f dealRulesFinding) bool {
 	return f.Verdict == "not_evaluable" && f.Reason == rulesDeclaredNotMeasured && f.Check == ""
 }
@@ -409,14 +411,16 @@ func declaredRules(r *dealRules) []string {
 // checker gave (its reason, else its id), in the order it reported them: the
 // failing rules, and the rules it could not evaluate, which also move a
 // verdict that is not an allow (rulesDifferences) and are said as such.
-// Declared rules are never among them: they take no part in the verdict.
+// Under an allow only a rule it could not evaluate flags the check
+// (unevaluatedUnderAllow), so only those are named. Declared rules are never
+// among them: they take no part in the verdict.
 func ruleCauses(r *dealRules) []string {
-	if r == nil || r.Status != "evaluated" || r.Verdict == "allow" {
+	if r == nil || r.Status != "evaluated" {
 		return nil
 	}
 	var causes []string
 	for _, f := range r.Findings {
-		if isDeclaredRule(f) || f.Verdict != "fail" && f.Verdict != "not_evaluable" {
+		if isDeclaredRule(f) || f.Verdict != "fail" && f.Verdict != "not_evaluable" || r.Verdict == "allow" && f.Verdict != "not_evaluable" {
 			continue
 		}
 		cause := strings.TrimSpace(f.Reason)
@@ -530,7 +534,7 @@ func rulesDifferences(r *dealRules) []dealDifference {
 // rules_not_evaluable per measured rule the checker could not evaluate. A cap
 // that cannot be evaluated never allows, whatever the checker's overall
 // verdict says, so the check pauses for the person (u503; Sherlock2's ruling
-// ops fe0e13eb, evidencebook#982), and a standing intent never approves it.
+// u249, ops evidence-network/inbox.md:703, 2026-11-26; evidencebook#982), and a standing intent never approves it.
 func unevaluatedUnderAllow(r *dealRules) []dealDifference {
 	var out []dealDifference
 	for _, f := range r.Findings {

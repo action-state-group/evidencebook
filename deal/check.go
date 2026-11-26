@@ -38,8 +38,8 @@ type Checked struct {
 // u233, ops evidence-network/inbox.md:666, 2026-11-25). A verdict with no rules block is refused: under a standing
 // intent nothing would record whether the person's caps were evaluated
 // (u234, ops evidence-network/inbox.md:669; xdealv1.CheckActs escalates such an act). Under a standing
-// intent an act also escalates to the person when the rules could not
-// evaluate the person's caps (xdealv1.RulesUnevaluated, evidencebook#982),
+// intent an act also escalates to the person when the rules did not allow
+// the act on their own (xdealv1.RulesUnevaluated, evidencebook#982),
 // whatever the verdict's Result says. A finding names its Check exactly when
 // a check measured it: one that names none reads as a rule the ruleset only
 // declares and never escalates, so a measured finding must keep its Check.

@@ -417,7 +417,7 @@ func TestApprovalMigration(t *testing.T) {
 	run("check-not-held", "an act citing a check the journal does not hold is refused", f, false)
 
 	// A standing intent never stands in for the person on caps the rules
-	// could not evaluate (u503; Sherlock2's ruling ops fe0e13eb,
+	// could not evaluate (u503; Sherlock2's ruling u249, ops evidence-network/inbox.md:703, 2026-11-26,
 	// evidencebook#982). Each case states the person-signature answer it
 	// expects, so a regenerated vector never records a wrong one.
 	for _, rc := range unevaluatedRulesCases {

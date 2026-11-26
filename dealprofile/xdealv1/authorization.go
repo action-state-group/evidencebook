@@ -49,8 +49,8 @@ type ActAuthorization struct {
 	// so a caller that requires the person's signature refuses the act until
 	// one over ApprovalDigest, from the person's own key, is held. It is set
 	// too for a standing-intent approval whose verdict carries no rules
-	// block (RulesNotRecorded) or rules that could not evaluate a measured
-	// rule (RulesNotEvaluable).
+	// block (RulesNotRecorded) or rules that did not allow the act on their
+	// own (RulesNotEvaluable).
 	NeedsPersonSignature bool
 	// RulesNotRecorded says the act rests on a standing-intent approval
 	// whose verdict carries no rules block: nothing records which rules, if
@@ -61,12 +61,12 @@ type ActAuthorization struct {
 	// alone (Sherlock2's ruling u234, ops evidence-network/inbox.md:669, 2026-11-25, after u503; evidencebook#899).
 	RulesNotRecorded bool
 	// RulesNotEvaluable says the act rests on a standing-intent approval
-	// whose verdict's rules could not evaluate the person's caps: the rules
+	// whose verdict's rules did not allow the act on their own: the rules
 	// were not evaluated, the checker's own verdict is not allow, or a
 	// measured finding is not_evaluable, whatever the rules' status
 	// (RulesUnevaluated). Such an act
 	// escalates to the person as RulesNotRecorded does, whatever the
-	// verdict's result says (u503; Sherlock2's ruling ops fe0e13eb,
+	// verdict's result says (u503; Sherlock2's ruling u249, ops evidence-network/inbox.md:703, 2026-11-26;
 	// evidencebook#982).
 	RulesNotEvaluable bool
 	// LimitApprovals are the record digests of the confirm_limits approvals
@@ -214,8 +214,8 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 	return out, nil
 }
 
-// RulesUnevaluated says a verdict's rules could not evaluate the person's
-// caps (PROFILE §8): their status is not_evaluated; or they were evaluated
+// RulesUnevaluated says a verdict's rules did not allow the act on their own
+// (PROFILE §8): their status is not_evaluated; or they were evaluated
 // and the checker's own verdict is not allow; or, whatever their status, a
 // measured finding is not_evaluable. A finding is measured when it names its
 // check: a rule its ruleset only declares, which no check measures, names

@@ -43,11 +43,11 @@ pub struct ActAuthorization {
     pub approval_digest: String,
     /// The approval is the person's (approver user or agent_card), so it
     /// needs the person's signature over `approval_digest`. It is set too for
-    /// a standing-intent approval whose verdict's rules could not evaluate a
-    /// measured rule (`rules_not_evaluable`).
+    /// a standing-intent approval whose verdict's rules did not allow the act
+    /// on their own (`rules_not_evaluable`).
     pub needs_person_signature: bool,
     /// The act rests on a standing-intent approval whose verdict's rules
-    /// could not evaluate the person's caps ([`rules_unevaluated`]): it
+    /// did not allow the act on their own ([`rules_unevaluated`]): it
     /// escalates to the person whatever the verdict's result says (u503;
     /// evidencebook#982; Go `RulesNotEvaluable`).
     pub rules_not_evaluable: bool,
@@ -59,7 +59,7 @@ pub struct ActAuthorization {
     pub intent: String,
 }
 
-/// Whether a verdict's rules could not evaluate the person's caps (PROFILE
+/// Whether a verdict's rules did not allow the act on their own (PROFILE
 /// §8; Go `RulesUnevaluated`): their status is not_evaluated; or they were
 /// evaluated and the checker's own verdict is not allow; or, whatever their
 /// status, a measured finding is not_evaluable. A finding is measured when it

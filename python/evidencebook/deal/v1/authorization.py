@@ -39,7 +39,7 @@ class ActAuthorization:
     approvals a standing-intent approval relied on, each also needing it;
     and the digest of the first intent a standing-intent approval rests on
     (``""`` otherwise). ``rules_not_evaluable`` marks a standing-intent
-    approval whose verdict's rules could not evaluate the person's caps
+    approval whose verdict's rules did not allow the act on their own
     (:func:`rules_unevaluated`): the act then needs the person's signature
     too, whatever the verdict's result says (u503; evidencebook#982)."""
 
@@ -55,7 +55,7 @@ class ActAuthorization:
 
 
 def rules_unevaluated(rules: dict | None) -> bool:
-    """Whether a verdict's rules could not evaluate the person's caps (PROFILE
+    """Whether a verdict's rules did not allow the act on their own (PROFILE
     §8; Go ``RulesUnevaluated``): their status is not_evaluated; or they were
     evaluated and the checker's own verdict is not allow; or, whatever their
     status, a measured finding is not_evaluable. A finding is measured when it
