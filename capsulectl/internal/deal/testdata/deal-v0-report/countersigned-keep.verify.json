@@ -1,0 +1,190 @@
+{
+  "bundle_digest": "db1a50034b1dd762d9661eec90f8fc329e995d31dbf3a535983d7f4423aea984",
+  "checkpoint": {
+    "findings": [],
+    "status": "pass"
+  },
+  "countersignatures": [],
+  "disclosures": [
+    {
+      "capsule_id": "04a4b4c46c3a839720be9ad3301abb32c7ab5346ec479eb61621a56778738334",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "2f9164a656cd139cd8fa7cfeca1c6723d3a5e38265d8c44a1ffc2323a82250ec",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "30c5889b36d169f25afca27f67509e91c22c57de5ee2a060a7cea2ebb76852a5",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "3f592c45aaac364b943a23a6260aff03b7824912464ea665bdd8d23e58af809f",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "42bdb70387b1edf205817272c76fedcc8d88edaad4b09075d70cda1179130283",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "60433b9080b54f7147d8639a0ef28ef50a07130738ed4b07b7c9dd5ec68d963a",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "762d140ae5f802d4b994acfc10ad78471d291a36d51903f9ed467331c577c377",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "7f8c6534761f727192d2a365fe3f60a8aaaf4daa3da4764843438241c66cc6c2",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "88106b37df1a19ebf3eb0ca5a1a7bf9aac3b20a7b4d068dfb30bfcff779a652e",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "e4c5d1d271c07f23d38afa66b6f49a88c1833ad29191dcc27b155a9e114af910",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "f2f75311238ea26710dcd38646896df34f9c1fcaccbfb319b444390262d3b576",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    },
+    {
+      "capsule_id": "fdb5309d908255dc1f67fd9eb410e6cdd669da605cd1385d8063294200deb976",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    }
+  ],
+  "extensions": [
+    {
+      "kind": "x-cadence-witness/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "kind": "x-deal-report/v0",
+      "status": "uninterpreted"
+    },
+    {
+      "as_of": "as of the deal's last step at 2026-10-27T22:09:19Z (the producer's time); not witnessed",
+      "kind": "x-deal-v0",
+      "report": "standalone",
+      "sealed_report": "a858fcf0c3dace6ebba3abb8effd55c1172ed1e01bfe116286bedfa0311e8b4e",
+      "status": "pass",
+      "witnessed": {
+        "status": "verified",
+        "witness": "witness.example",
+        "at": "2026-10-27T22:10:00Z"
+      },
+      "countersign": {
+        "directory": "countersigners.json",
+        "countersignatures_sha256": "2d773846990febcded2352b61c339ecc633ad746ca6aa9c737bc85848846b856",
+        "entries": [
+          {
+            "state": "resolved",
+            "receipt": "absent",
+            "signer": {
+              "id": "did:web:countersign.example",
+              "key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+            },
+            "independent": true,
+            "signer_name": "Example Countersigners Ltd",
+            "checks": [
+              {
+                "name": "chain consistency",
+                "result": "established"
+              }
+            ],
+            "recomputed_at": "2026-11-20T00:00:00Z"
+          },
+          {
+            "state": "not_independent",
+            "receipt": "absent",
+            "signer": {
+              "id": "did:web:producer.example",
+              "key_id": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+            },
+            "independent": false,
+            "recomputed_at": "2026-11-20T00:00:00Z"
+          },
+          {
+            "state": "unresolved_signer",
+            "receipt": "absent",
+            "signer": {
+              "id": "did:web:unknown.example",
+              "key_id": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce"
+            },
+            "independent": true,
+            "recomputed_at": "2026-11-20T00:00:00Z"
+          }
+        ]
+      }
+    }
+  ],
+  "graph_closure": {
+    "findings": [],
+    "status": "pass"
+  },
+  "interval_coverage": {
+    "findings": [],
+    "status": "pass"
+  },
+  "per_record_membership": {
+    "findings": [],
+    "status": "pass"
+  },
+  "producer_signatures": {
+    "findings": [],
+    "status": "pass"
+  },
+  "record_identity": {
+    "04a4b4c46c3a839720be9ad3301abb32c7ab5346ec479eb61621a56778738334": "passed",
+    "2f9164a656cd139cd8fa7cfeca1c6723d3a5e38265d8c44a1ffc2323a82250ec": "passed",
+    "30c5889b36d169f25afca27f67509e91c22c57de5ee2a060a7cea2ebb76852a5": "passed",
+    "3f592c45aaac364b943a23a6260aff03b7824912464ea665bdd8d23e58af809f": "passed",
+    "42bdb70387b1edf205817272c76fedcc8d88edaad4b09075d70cda1179130283": "passed",
+    "60433b9080b54f7147d8639a0ef28ef50a07130738ed4b07b7c9dd5ec68d963a": "passed",
+    "762d140ae5f802d4b994acfc10ad78471d291a36d51903f9ed467331c577c377": "passed",
+    "7f8c6534761f727192d2a365fe3f60a8aaaf4daa3da4764843438241c66cc6c2": "passed",
+    "88106b37df1a19ebf3eb0ca5a1a7bf9aac3b20a7b4d068dfb30bfcff779a652e": "passed",
+    "e4c5d1d271c07f23d38afa66b6f49a88c1833ad29191dcc27b155a9e114af910": "passed",
+    "f2f75311238ea26710dcd38646896df34f9c1fcaccbfb319b444390262d3b576": "passed",
+    "fdb5309d908255dc1f67fd9eb410e6cdd669da605cd1385d8063294200deb976": "passed"
+  },
+  "record_signatures": {
+    "04a4b4c46c3a839720be9ad3301abb32c7ab5346ec479eb61621a56778738334": "authored",
+    "2f9164a656cd139cd8fa7cfeca1c6723d3a5e38265d8c44a1ffc2323a82250ec": "authored",
+    "30c5889b36d169f25afca27f67509e91c22c57de5ee2a060a7cea2ebb76852a5": "authored",
+    "3f592c45aaac364b943a23a6260aff03b7824912464ea665bdd8d23e58af809f": "authored",
+    "42bdb70387b1edf205817272c76fedcc8d88edaad4b09075d70cda1179130283": "authored",
+    "60433b9080b54f7147d8639a0ef28ef50a07130738ed4b07b7c9dd5ec68d963a": "authored",
+    "762d140ae5f802d4b994acfc10ad78471d291a36d51903f9ed467331c577c377": "authored",
+    "7f8c6534761f727192d2a365fe3f60a8aaaf4daa3da4764843438241c66cc6c2": "authored",
+    "88106b37df1a19ebf3eb0ca5a1a7bf9aac3b20a7b4d068dfb30bfcff779a652e": "authored",
+    "e4c5d1d271c07f23d38afa66b6f49a88c1833ad29191dcc27b155a9e114af910": "authored",
+    "f2f75311238ea26710dcd38646896df34f9c1fcaccbfb319b444390262d3b576": "authored",
+    "fdb5309d908255dc1f67fd9eb410e6cdd669da605cd1385d8063294200deb976": "authored"
+  },
+  "say": "Checked: unchanged since it was locked.",
+  "spec_version": "capsule-cli-result/v1",
+  "verdict": "VALID",
+  "voice": "report",
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}

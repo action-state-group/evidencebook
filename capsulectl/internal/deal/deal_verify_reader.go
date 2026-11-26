@@ -3,6 +3,8 @@
 package deal
 
 import (
+	"context"
+	"crypto/ed25519"
 	"strings"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
@@ -47,6 +49,17 @@ type dealReader struct {
 	// proof is verify's --stamp-proof, for an x-deal-v1 copy's witnessed
 	// member (deal_v1_witnessed.go); nil when none was given.
 	proof *entryProof
+	// countersign is verify's --countersign-directory and --producer-key,
+	// for an x-deal-v0 copy's countersign member
+	// (deal_v0_countersign_report.go); nil when no directory was given.
+	countersign *countersignInput
+}
+
+// countersignInput is what the countersign member is computed with.
+type countersignInput struct {
+	ctx          context.Context
+	directory    string
+	producerKeys []ed25519.PublicKey
 }
 
 // newDealReader is the factory the plugin passes the core.
@@ -82,6 +95,13 @@ func (r *dealReader) Read(ctx *cli.ExtensionContext, kind string) (map[string]an
 		// reported only, never a claim, so the verdict is unchanged.
 		if r.proof != nil && kind == DealProfileV1 && entry["report"] == "standalone" {
 			entry["witnessed"] = v1Witnessed(ctx.Value, r.proof, ctx.Directory)
+		}
+		// capsulectl's check of an x-deal-v0 copy's countersignatures:
+		// reported only, never a claim.
+		if in := r.countersign; in != nil && kind == DealProfile {
+			if member := v0CountersignMember(in.ctx, ctx.Value, in.directory, in.producerKeys); member != nil {
+				entry["countersign"] = member
+			}
 		}
 		// A v1 report words its own as_of: its time is the holder's
 		// computation time, not the checkpoint's.
@@ -159,24 +179,46 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 		}
 		core := c.RunE
 		c.Long = strings.TrimSpace(c.Long + "\n\n" + cardAnchorVerifyHelp)
+		c.Flags().String(countersignDirectoryFlag, "", "With --bundle on an x-deal-v0 copy that carries countersignatures: the countersigner directory (HTTPS URL or file) that resolves who countersigned; the copy's x-deal-v0 entry reports countersign (each countersignature's state, as capsulectl countersign verify reports it), which never changes the verdict")
+		c.Flags().StringArray(producerKeyFlag, nil, "With --"+countersignDirectoryFlag+": a key of the copy's producer, as 64 lowercase hex characters (repeat for each); a countersignature by it is reported not independent")
 		c.Flags().String(stampProofFlag, "", "With --bundle on your own x-deal-v1 copy: the proof file deal checkpoint proof wrote for it; the copy's x-deal-v1 entry reports witnessed (verified, failed, or withheld when no --witness-directory is given), which never changes the verdict")
 		c.RunE = func(c *cobra.Command, args []string) error {
 			bundle, _ := c.Flags().GetString("bundle")
 			proofPath, _ := c.Flags().GetString(stampProofFlag)
+			csDir, _ := c.Flags().GetString(countersignDirectoryFlag)
+			producerKeys, _ := c.Flags().GetStringArray(producerKeyFlag)
 			if bundle == "" || otherVerifyInput(c) {
-				if proofPath != "" {
+				switch {
+				case proofPath != "":
 					return cli.InputError("--" + stampProofFlag + " goes with --bundle")
+				case csDir != "" || len(producerKeys) > 0:
+					return cli.InputError("--" + countersignDirectoryFlag + " and --" + producerKeyFlag + " go with --bundle")
 				}
 				return core(c, args)
 			}
-			reader := newDealReader
+			if len(producerKeys) > 0 && csDir == "" {
+				return cli.InputError("--" + producerKeyFlag + " goes with --" + countersignDirectoryFlag)
+			}
+			var proof *entryProof
 			if proofPath != "" {
-				proof, err := readStampProof(proofPath)
-				if err != nil {
+				var err error
+				if proof, err = readStampProof(proofPath); err != nil {
 					return err
 				}
-				reader = func() cli.ExtensionReader { return &dealReader{proof: proof} }
 			}
+			var cs *countersignInput
+			if csDir != "" {
+				keys, err := cli.ParseKeys(producerKeys)
+				if err != nil {
+					return cli.InputError("--" + producerKeyFlag + ": " + err.Error())
+				}
+				ctx := c.Context()
+				if ctx == nil {
+					ctx = context.Background()
+				}
+				cs = &countersignInput{ctx: ctx, directory: csDir, producerKeys: keys}
+			}
+			reader := func() cli.ExtensionReader { return &dealReader{proof: proof, countersign: cs} }
 			return cli.VerifyBundleFileWith(c, bundle, reader)
 		}
 	}
