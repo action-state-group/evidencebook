@@ -173,7 +173,7 @@ func TestEverydayLimitsOnAV1Deal(t *testing.T) {
 		pinEverydayLimits(t, 7000, 10000)
 		out := everydayPayCheck(t, h.dealID, 6000, v1LnHash)
 		rules := out["rules"].(map[string]any)
-		assert.Equal(t, "asg/everyday/0.3.8", rules["ruleset_id"])
+		assert.Equal(t, "asg/everyday/0.3.10", rules["ruleset_id"], "capsule-engine guard check's default buyer rules")
 		assertCaps(t, out, "per_purchase", "pass", 7000, 6000)
 		assertCaps(t, out, "7d", "pass", 10000, 6000)
 		assert.NotContains(t, differenceTexts(out), "r05-spending-limits", "a purchase within the limits raises none")
@@ -364,5 +364,10 @@ func TestAV1HistoryActWithABrokenCheckLinkIsIncomplete(t *testing.T) {
 	g := againWith(t, h)
 	out := everydayPayCheck(t, g.dealID, 6000, strings.Repeat("cd", 32))
 	assert.Equal(t, false, out["rules"].(map[string]any)["history"].(map[string]any)["complete"])
-	assert.NotEqual(t, "pass", rulesFinding(t, out, "r02-ordinary-purchase")["verdict"])
+	// Everyday Rules 0.3.10: r02 and r06 could not be checked, as r05's
+	// 7-day limit, rather than reading the merchant as new (capsule-engine#327).
+	for _, id := range []string{"r02-ordinary-purchase", "r06-new-merchant", "r05-spending-limits#7d"} {
+		assert.Equal(t, "not_evaluable", rulesFinding(t, out, id)["verdict"], id)
+	}
+	assert.NotContains(t, differenceTexts(out), "no earlier payment", "the merchant is not read as new")
 }

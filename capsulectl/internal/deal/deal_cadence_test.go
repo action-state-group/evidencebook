@@ -615,7 +615,7 @@ func TestTickRearmsARefusedDelivery(t *testing.T) {
 	old := dealDeliverWitness
 	t.Cleanup(func() { dealDeliverWitness = old })
 	var sent []uint64
-	dealDeliverWitness = func(_ context.Context, p cli.Profile, store cll.WitnessStateStore, service string, size uint64) (cll.WitnessState, error) {
+	dealDeliverWitness = func(_ context.Context, p cli.Profile, store cll.WitnessStateStore, service string, size uint64, _ time.Time) (cll.WitnessState, error) {
 		state, err := store.GetWitness(t.Context(), service, size)
 		require.NoError(t, err)
 		require.False(t, state.Permanent, "re-armed before delivery")

@@ -168,8 +168,11 @@ func (s *dealSession) tick(ctx context.Context, stampNow bool, budget time.Durat
 //   - a checkpoint comes back undelivered and not failed for good: the
 //     witness holds every later one until this one has a receipt, and the
 //     next call would send this one again first (cli.DeliverWitness);
-//   - the delivery budget is spent (zero is no limit), checked between
-//     deliveries; one under way is never cancelled.
+//   - the delivery budget is spent (zero is no limit): it is one deadline
+//     for every witness request of the run (cli.DeliverWitnessBy), so a
+//     request under way at the deadline is ended and recorded like any
+//     timed-out delivery, and a row with less than deliverFloor left is not
+//     sent. Storing a result and checking a receipt come after the deadline.
 //
 // Oldest first is the protocol's order, not a choice: the witness refuses a
 // checkpoint whose predecessor it has not registered. Each row not tried
@@ -188,13 +191,16 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 		return nil, nil, err
 	}
 	delivered, pending = []uint64{}, []map[string]any{}
-	start, tried, stopped := dealDeliverNow(), 0, false
+	var deadline time.Time
+	if budget > 0 {
+		deadline = dealDeliverNow().Add(budget)
+	}
+	stopped := false
 	for _, w := range waiting {
 		if w.WitnessID != service {
 			continue
 		}
-		// The first is always tried, so every tick makes an attempt.
-		if !stopped && tried > 0 && budget > 0 && dealDeliverNow().Sub(start) >= budget {
+		if !stopped && !deadline.IsZero() && deadline.Sub(dealDeliverNow()) < deliverFloor {
 			stopped = true
 		}
 		if stopped {
@@ -207,17 +213,28 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 		// attempt until the receipt, if one landed, is reported.
 		migrated := s.migrated
 		s.migrated = false
-		tried++
-		// A delivery error is pending, read from state as before; whether a
-		// receipt landed anyway is read back from the log below.
-		state, _ := dealDeliverWitness(ctx, p, t.Log, service, w.CheckpointSize)
+		// A delivery error is pending; what the delivery did, a receipt
+		// included, is read back from the log below, not from its return,
+		// which an error leaves empty.
+		_, _ = dealDeliverWitness(ctx, p, t.Log, service, w.CheckpointSize, deadline)
 		receipt, ok, err := verifiedReceipt(ctx, p, t.Log, service, w.CheckpointSize)
 		if err != nil {
 			return nil, nil, err
 		}
 		if !ok {
+			state, err := t.Log.GetWitness(ctx, service, w.CheckpointSize)
+			if err != nil {
+				return nil, nil, err
+			}
 			reason, text := cli.WitnessPendingReason(state, p.Checkpoint.Endpoint)
-			pending = append(pending, map[string]any{"checkpoint": w.CheckpointSize, "reason": reason, "text": text})
+			row := map[string]any{"checkpoint": w.CheckpointSize, "reason": reason, "text": text}
+			// No attempt recorded: the delivery sent nothing, because the
+			// budget crossed capsule-cli's floor after the check above or the
+			// row's retry is not due yet.
+			if state.Attempts == w.Attempts && !state.Permanent {
+				row["not_tried_this_run"] = true
+			}
+			pending = append(pending, row)
 			s.migrated = migrated
 			// Failed for good, the witness decides on the next one without
 			// it (selectedWitness); otherwise every later one waits for it.
@@ -249,9 +266,17 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 	return delivered, pending, nil
 }
 
-// dealDeliverWitness is cli.DeliverWitness, a test hook for a delivery
+// dealDeliverWitness is cli.DeliverWitnessBy, a test hook for a delivery
 // that stores its receipt and then fails.
-var dealDeliverWitness = cli.DeliverWitness
+var dealDeliverWitness = cli.DeliverWitnessBy
+
+// deliverFloor is the least time left before the delivery deadline at which
+// deliverCadence still sends a row. It is capsule-cli's own floor
+// (witnessBudgetFloor, 2 s at 16ec5bc9, unexported), below which
+// DeliverWitnessBy sends nothing and records no attempt; checking it here
+// lets the row be reported not tried this run rather than read back as an
+// unchanged pending row.
+const deliverFloor = 2 * time.Second
 
 // dealDeliverNow is the clock the delivery budget is measured on: the wall
 // clock, not cli.DealClock, which tests and demos may pin. A test hook.
@@ -551,7 +576,7 @@ func dealTickCommand() *cobra.Command {
 		}
 	}}
 	cmd.Flags().Bool("now", false, "Stamp at once, whatever the schedule, as deal agree and deal ruling do: the witness then sees a stamp off the cadence, so its time can say when this profile acted (for demos and tests; a scheduler never passes it)")
-	cmd.Flags().Duration("deliver-for", dealDeliverBudget, "How long each poll spends delivering checkpoints still pending for the witness, oldest first, before leaving the rest for a later tick; checked between deliveries, so one under way still finishes. 0 is no limit, the default with --wait-up-to, whose runs nobody waits on")
+	cmd.Flags().Duration("deliver-for", dealDeliverBudget, "How long each poll spends on witness requests for checkpoints still pending, oldest first, before leaving the rest for a later tick; a request still running then is ended and tried again at a later tick, and none starts with under 2s left. 0 is no limit, the default with --wait-up-to, whose runs nobody waits on")
 	cmd.Flags().Duration("wait-up-to", 0, "The scheduler's period (for example 5m): wait for each tick due within this long and publish it on time, so the cadence keeps its jitter; the run stays alive up to this long")
 	return cmd
 }
