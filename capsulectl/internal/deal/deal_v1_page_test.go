@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -296,4 +297,92 @@ func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
 	opened.eval(t, `document.getElementById("app").textContent`, &text)
 	assert.Contains(t, text, "Time-stamped by Action State's witness at Nov 25, 2026, 2:41 PM UTC (14:41:19 UTC), as capsulectl verify reported on your own book. This file carries no witness receipt, so this page did not check it itself.")
 	assert.NotContains(t, text, "so this page could not check a time-stamp itself", "the header line is left out on this page (capsule-viewer#424)")
+	// The demo's own copy draws the receipt design's top line and its seal
+	// (capsule-viewer#442; the seal's cases:
+	// https://github.com/action-state-group/capsule-viewer/issues/382#issuecomment-7190374309).
+	var top []string
+	opened.eval(t, `[document.querySelector("[data-top-line]").getAttribute("data-top-line"), document.querySelector("[data-top-line]").textContent,
+  [...document.querySelectorAll("svg[data-seal]")].map((e) => e.getAttribute("data-seal")).join(",")]`, &top)
+	assert.Equal(t, []string{"settled", "Sale settled, as your records show", "done"}, top)
+}
+
+// The receipt design (capsule-viewer#442, Steven 2026-11-26: "we had these
+// designs, why not showing that look and feel. keep the ladder and the
+// producer envelope etc."): the default `deal report --html` page draws the
+// design's surfaces on top, every sealed record and the producer's lines
+// under "For checkers", and the ladder of rungs under "Technical details"
+// only (CAPSULECTL_CHROME).
+func TestPresentationV1ReceiptDesign(t *testing.T) {
+	binary := os.Getenv("CAPSULECTL_CHROME")
+	if binary == "" {
+		t.Skip("CAPSULECTL_CHROME is not set")
+	}
+	usePluginVerify(t)
+	chrome := startHeadlessChrome(t, binary)
+	h := paidLegs(t, "6000")
+	// Past the contest window, the term is met: settled, and both sides say
+	// the same.
+	clockAt(t, time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	file := filepath.Join(t.TempDir(), "receipt.html")
+	dealRun(t, "report", "--deal", h.dealID, "--html", file)
+	page := chrome.open(t, "file://"+file, presentationViews[1])
+	var got struct {
+		Surfaces  []string `json:"surfaces"`
+		Header    string   `json:"header"`
+		TopLine   string   `json:"top_line"`
+		Seals     []string `json:"seals"`
+		Cards     []string `json:"cards"`
+		Steps     []string `json:"steps"`
+		Proof     string   `json:"proof"`
+		NotProven string   `json:"not_proven"`
+		L1        string   `json:"l1"`
+		Records   int      `json:"records"`
+		L2Rungs   []string `json:"l2_rungs"`
+		UpperRung int      `json:"upper_rungs"`
+		L2        string   `json:"l2"`
+		Errors    []any    `json:"errors"`
+	}
+	page.eval(t, `(() => {
+  const level = (l) => document.querySelector('[data-receipt-module="capsuleviewer.receipt.deal/v1"] [data-level="' + l + '"]');
+  const l0 = level("L0"), l1 = level("L1"), l2 = level("L2");
+  const attr = (root, sel, name) => (root.querySelector(sel) || { getAttribute: () => "" }).getAttribute(name);
+  const all = (root, sel, name) => [...root.querySelectorAll(sel)].map((e) => e.getAttribute(name));
+  return {
+    surfaces: all(l0, "[data-surface]", "data-surface"),
+    header: (l0.querySelector('[data-surface="header"]') || {}).textContent || "",
+    top_line: attr(l0, "[data-top-line]", "data-top-line"),
+    seals: all(l0, "svg[data-seal]", "data-seal"),
+    cards: all(l0, "[data-card]", "data-card"),
+    steps: all(l0, "[data-step]", "data-step-kind"),
+    proof: attr(l0, "[data-proof]", "data-proof"),
+    not_proven: (l0.querySelector('[data-surface="not-proven"]') || {}).textContent || "",
+    l1: l1.textContent,
+    records: l1.querySelectorAll("[data-inventory-record]").length,
+    l2_rungs: all(l2, "[data-rung]", "data-rung"),
+    upper_rungs: l0.querySelectorAll("[data-rung]").length + l1.querySelectorAll("[data-rung]").length,
+    l2: l2.textContent,
+    errors: window.__renderErrors || [],
+  };
+})()`, &got)
+	assert.Equal(t, []string{"header", "top", "cards", "stamps", "steps", "else", "proof", "check", "not-proven"}, got.Surfaces)
+	assert.Contains(t, got.Header, "Sale receipt")
+	assert.Contains(t, got.Header, "Private: your copy")
+	assert.Contains(t, got.Header, "Download proof file")
+	assert.Equal(t, "settled", got.TopLine)
+	assert.Equal(t, []string{"done"}, got.Seals)
+	assert.Equal(t, []string{"paid", "status", "other"}, got.Cards)
+	assert.Equal(t, []string{"agree", "settle"}, got.Steps, "one step per record the copy carries")
+	assert.Equal(t, "passed", got.Proof)
+	assert.Contains(t, got.NotProven, "What this does not prove")
+	// For checkers: every sealed record once, and the producer's lines.
+	assert.Contains(t, got.L1, "For checkers: every sealed record")
+	assert.Equal(t, 2, got.Records)
+	assert.Contains(t, got.L1, "Producer version")
+	assert.Contains(t, got.L1, "Profile checked against")
+	// Technical details: the ladder, and nowhere above it.
+	assert.Contains(t, got.L2, "Technical details")
+	assert.Equal(t, []string{"witness", "counterparty-half", "countersign"}, got.L2Rungs)
+	assert.Zero(t, got.UpperRung)
+	assert.Empty(t, got.Errors)
 }
