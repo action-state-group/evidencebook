@@ -116,7 +116,10 @@ func heldBy(log []Record, record Record, now time.Time) bool {
 
 // SetRetention appends a lifecycle record moving recordID to state. DELETED
 // is permanent and is refused while the record is held: under LEGAL_HOLD set
-// by a lifecycle record, or covered by a live retention commitment. Deleting purges
+// by a lifecycle record, or covered by a live retention commitment. DELETED
+// on a held_bundle record is also refused (ErrHeldCited) while a kept record
+// cites it: any record but a lifecycle record whose own state is not
+// DELETED, a record with no retention state (a Close) always. Deleting purges
 // the record's originals from the artifact store after the lifecycle record
 // is committed; the record's own commitments, and every other record's
 // originals, are untouched. Asking for DELETED again on a deleted record
@@ -141,6 +144,14 @@ func (b *Book) SetRetention(ctx context.Context, recordID string, state Retentio
 		return Record{}, fmt.Errorf("%w: record %s is already deleted", ErrInvalid, recordID)
 	case held && state == Deleted:
 		return Record{}, fmt.Errorf("%w: record %s", ErrLegalHold, recordID)
+	case state == Deleted && b.records[recordID].Header.RecordType == RecordTypeHeldBundle:
+		citer, err := b.keptCiterLocked(recordID)
+		if err != nil {
+			return Record{}, err
+		}
+		if citer != "" {
+			return Record{}, fmt.Errorf("%w: held bundle %s is relied on by record %s, which is kept", ErrHeldCited, recordID, citer)
+		}
 	}
 	statement, err := json.Marshal(LifecycleStatement{RetentionState: state, Reason: reason})
 	if err != nil {

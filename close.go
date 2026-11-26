@@ -106,6 +106,14 @@ type CloseInput struct {
 // counts by record type and its head, and, when a peer Close is named, the
 // tallies and a cites link to that Close. Its status is read later from the
 // links other records make to it.
+//
+// A Close naming a peer Close relies on the peer bundle for its tallies, so
+// it holds the bundle in full (evidencebook#116): the peer bundle must carry
+// its Bytes, the reconcile is computed from those bytes re-read, and a
+// held_bundle record holding them is appended after the window is taken
+// and before the Close, which cites it in its header. If the Close then
+// fails, a later Close of the same bundle for the same counterparty reuses
+// that held_bundle rather than appending another.
 func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	if in.Counterparty == "" {
 		return Record{}, fmt.Errorf("%w: a Close names its counterparty", ErrInvalid)
@@ -115,6 +123,13 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	}
 	if in.PeerClose != "" && !hex64.MatchString(in.PeerClose) {
 		return Record{}, fmt.Errorf("%w: peer Close %q is not a record id", ErrInvalid, in.PeerClose)
+	}
+	if in.PeerClose != "" {
+		peer, err := heldPeerBundle(in.Reconcile.Peer)
+		if err != nil {
+			return Record{}, err
+		}
+		in.Reconcile.Peer = peer
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -169,6 +184,13 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	if in.PeerClose != "" {
 		statement.Reconcile = &CloseReconcile{Tallies: recon.Tallies.result(), Status: Unilateral}
 		statement.EvidenceLinks = []Link{{Type: Cites, Target: in.PeerClose}}
+		// The tallies rely on the peer bundle, so it is held in full first,
+		// after the window it does not belong to was taken, and cited.
+		held, err := b.holdBundleLocked(ctx, in.Reconcile.Peer, in.Counterparty, HeldBundleReliedByClose)
+		if err != nil {
+			return Record{}, err
+		}
+		links = append(links, Link{Type: Cites, Target: held})
 	}
 	entry := Entry{RecordType: RecordTypeClose, EpistemicType: ProducerClaim, Links: links, CounterpartyRef: in.Counterparty}
 	return b.commitEntryLocked(ctx, entry, nil, nil, func(seq uint64, committedAt string) (json.RawMessage, error) {
