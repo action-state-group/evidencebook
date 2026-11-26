@@ -66,7 +66,12 @@ func (f *authFlow) check(action string) Ref {
 }
 
 func (f *authFlow) verdict(check Ref, result string) Ref {
-	vb := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: result, Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(check)}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 0"))}
+	// Every verdict records its rules, as capsulectl's deal check always
+	// does (not_configured when no checker is pinned): a standing-intent
+	// act on a verdict with none escalates (ops bb59237c), which
+	// TestStandingIntentVerdictWithNoRulesEscalates covers.
+	vb := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: result, Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(check),
+		Rules: &dealprofile.VerdictBodyRules{Status: "not_configured"}}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 0"))}
 	if result != "pass" {
 		vb.Differences = []dealprofile.Difference{{Question: "terms", Rule: "limit"}}
 		vb.Options = []string{"hold", "proceed"}
@@ -508,4 +513,35 @@ func TestCheckAuthorizationsRefusesASharedNonce(t *testing.T) {
 	f.journal = append(f.journal, again)
 	_, err = CheckAuthorizations(f.journal, f.acts)
 	assert.ErrorContains(t, err, "a nonce is drawn fresh")
+}
+
+// A standing-intent act whose verdict carries no rules block escalates to
+// the person (Sherlock2's ruling ops bb59237c, after u503): it needs the
+// person's signature over its approval digest. With the rules block it
+// needs none, as before.
+func TestStandingIntentVerdictWithNoRulesEscalates(t *testing.T) {
+	for _, withRules := range []bool{true, false} {
+		f := &authFlow{t: t}
+		f.intent("pay")
+		c := f.check("pay")
+		v := f.verdict(c, "pass")
+		if !withRules {
+			last := &f.journal[len(f.journal)-1]
+			vb := last.Body.(*VerdictBody)
+			vb.Rules = nil
+			d, err := Digest(*last)
+			require.NoError(t, err)
+			delete(f.cards, v.Digest)
+			v = RefTo(d)
+			f.cards[v.Digest] = vb.CardCommitment
+		}
+		f.approve(v, "standing_intent", true)
+		f.pay(c)
+		auths, err := CheckAuthorizations(f.journal, f.acts)
+		require.NoError(t, err)
+		require.Len(t, auths, 1)
+		assert.Equal(t, !withRules, auths[0].RulesNotRecorded, "with rules: %v", withRules)
+		assert.Equal(t, !withRules, auths[0].NeedsPersonSignature, "with rules: %v", withRules)
+		assert.NotEmpty(t, auths[0].Intent)
+	}
 }

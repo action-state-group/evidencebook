@@ -47,8 +47,18 @@ type ActAuthorization struct {
 	// composed). The approval record's Capsule is signed by the holder's
 	// record key, the agent's: that signature never stands for the person's,
 	// so a caller that requires the person's signature refuses the act until
-	// one over ApprovalDigest, from the person's own key, is held.
+	// one over ApprovalDigest, from the person's own key, is held. It is set
+	// too for a standing-intent approval whose verdict carries no rules
+	// block (RulesNotRecorded).
 	NeedsPersonSignature bool
+	// RulesNotRecorded says the act rests on a standing-intent approval
+	// whose verdict carries no rules block: nothing records which rules, if
+	// any, evaluated the person's caps for it. Under a standing intent the
+	// caps act only through the verdict, so such an act escalates to the
+	// person: it needs the person's signature over ApprovalDigest, as a
+	// person's approval does, and is never allowed on the standing intent
+	// alone (Sherlock2's ruling ops bb59237c, after u503; evidencebook#899).
+	RulesNotRecorded bool
 	// LimitApprovals are the record digests of the confirm_limits approvals
 	// whose confirmed proposals put in force the allowed a standing-intent
 	// approval relied on. Each is the person's own approval and needs the
@@ -168,6 +178,9 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 		a := ActAuthorization{Act: act, Check: journal[ci], Verdict: journal[vi], Approval: journal[ai], AmountNotHeld: notHeld,
 			ApprovalDigest: w.digests[ai], NeedsPersonSignature: personApprover(ab.Approver)}
 		if ab.Approver == "standing_intent" {
+			if w.verdict[vi].Rules == nil {
+				a.RulesNotRecorded, a.NeedsPersonSignature = true, true
+			}
 			for _, j := range w.limitsAt[ai] {
 				a.LimitApprovals = append(a.LimitApprovals, w.digests[j])
 			}

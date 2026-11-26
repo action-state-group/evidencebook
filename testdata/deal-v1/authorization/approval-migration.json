@@ -36,6 +36,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -54,7 +57,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -161,6 +164,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "1647e1ba77894abe0a346bae2402b1b01647e1ba77894abe0a346bae2402b1b0",
@@ -179,7 +185,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "159d9ec23e4f39b4d4cff78661664ec2a659985c55bb0d8ffd5372635970e8eb"
+                "digest": "0074098cf4f2b70b52e8438f44e855ff175b148ba6bd17e167be8d08c50d09a2"
               }
             ]
           },
@@ -270,6 +276,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -288,7 +297,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -371,6 +380,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -449,6 +461,9 @@
           },
           "body": {
             "result": "pause",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [
               {
                 "question": "terms",
@@ -475,7 +490,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "274a45666d87cea6f5a877427118c6dac367cdb92731bf1a20692cafa716385a"
+                "digest": "63c9377e4709e6e9cede79c11446a3cd14db9849eefe4834c0a25d9dc2d666da"
               }
             ]
           },
@@ -500,7 +515,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "274a45666d87cea6f5a877427118c6dac367cdb92731bf1a20692cafa716385a"
+                "digest": "63c9377e4709e6e9cede79c11446a3cd14db9849eefe4834c0a25d9dc2d666da"
               }
             ]
           },
@@ -585,6 +600,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -603,7 +621,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -732,6 +750,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "1647e1ba77894abe0a346bae2402b1b01647e1ba77894abe0a346bae2402b1b0",
@@ -750,7 +771,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "159d9ec23e4f39b4d4cff78661664ec2a659985c55bb0d8ffd5372635970e8eb"
+                "digest": "0074098cf4f2b70b52e8438f44e855ff175b148ba6bd17e167be8d08c50d09a2"
               }
             ]
           },
@@ -862,6 +883,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "e6cd5b6d0874c70cd4d46cfabf456b20e6cd5b6d0874c70cd4d46cfabf456b20",
@@ -880,7 +904,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "a60d7aa8e0c988b1053e51999812ffcc962420f93e84d3633cdc30879bbf5f39"
+                "digest": "0a1fce9c2f3fd23ce65ec680c77c954dbf7147246c2cdcb3bd5b7793444ae9d3"
               }
             ]
           },
@@ -1029,6 +1053,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "533d03149fff2ab8f672a8ed7fa0efa7533d03149fff2ab8f672a8ed7fa0efa7",
@@ -1047,7 +1074,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "87079438e613161281a69dbcdc4ccf0d1c861913a01b7901781bb0a66e0a49a8"
+                "digest": "29e30e7a738789385f1a8e91ffa2f38d40df24fdf69ad1f78ded617154610ae7"
               }
             ]
           },
@@ -1242,6 +1269,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "aafe8f2445159c5a792cc1980a37b361aafe8f2445159c5a792cc1980a37b361",
@@ -1260,7 +1290,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "1240fdcc9cc405d8318466569dd0b0b11a5231ddf46d431c0a12a2c9bffddf3a"
+                "digest": "08d1c9f62dc25de5779e76170a8ac88ea9fcacd7d80852766bc872a82121021b"
               }
             ]
           },
@@ -1357,6 +1387,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "1647e1ba77894abe0a346bae2402b1b01647e1ba77894abe0a346bae2402b1b0",
@@ -1387,7 +1420,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "159d9ec23e4f39b4d4cff78661664ec2a659985c55bb0d8ffd5372635970e8eb"
+                "digest": "0074098cf4f2b70b52e8438f44e855ff175b148ba6bd17e167be8d08c50d09a2"
               }
             ]
           },
@@ -1470,6 +1503,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -1488,7 +1524,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -1573,6 +1609,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "d6f295db073a6b804d5bca28010b9bd2d6f295db073a6b804d5bca28010b9bd2",
@@ -1591,7 +1630,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "056661ae47ceb175b1d326af334926a7614774a23a05d89f6561ea2dc62ce9b4"
+                "digest": "175fc98f08c7e899b497d50fb378f7b75f9ecf9fbd9b81e036412b69ab73ca10"
               }
             ]
           },
@@ -1676,6 +1715,9 @@
           },
           "body": {
             "result": "pause",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [
               {
                 "question": "terms",
@@ -1702,7 +1744,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "274a45666d87cea6f5a877427118c6dac367cdb92731bf1a20692cafa716385a"
+                "digest": "63c9377e4709e6e9cede79c11446a3cd14db9849eefe4834c0a25d9dc2d666da"
               }
             ]
           },
@@ -1787,6 +1829,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -1805,7 +1850,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -1890,6 +1935,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -1908,7 +1956,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -1992,6 +2040,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -2010,7 +2061,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -2102,6 +2153,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -2120,7 +2174,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -2221,6 +2275,9 @@
           },
           "body": {
             "result": "pause",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [
               {
                 "question": "terms",
@@ -2247,7 +2304,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "274a45666d87cea6f5a877427118c6dac367cdb92731bf1a20692cafa716385a"
+                "digest": "63c9377e4709e6e9cede79c11446a3cd14db9849eefe4834c0a25d9dc2d666da"
               }
             ]
           },
@@ -2443,6 +2500,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -2461,7 +2521,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -2565,6 +2625,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -2589,6 +2652,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -2607,7 +2673,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -2759,6 +2825,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -2777,7 +2846,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
@@ -2924,6 +2993,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "f2be1001b9878ccb70fa353da42629b3f2be1001b9878ccb70fa353da42629b3",
@@ -2942,7 +3014,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "1260f5b7ad3b27ea076514f94afb3ee4ba87c32234e3972bb61fa2aec7c18b6e"
+                "digest": "18dff60950452c335e04a9caa73faccf93b41ccc85c643306e116aed2a434b23"
               }
             ]
           },
@@ -3100,6 +3172,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "f2be1001b9878ccb70fa353da42629b3f2be1001b9878ccb70fa353da42629b3",
@@ -3118,7 +3193,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "1260f5b7ad3b27ea076514f94afb3ee4ba87c32234e3972bb61fa2aec7c18b6e"
+                "digest": "18dff60950452c335e04a9caa73faccf93b41ccc85c643306e116aed2a434b23"
               }
             ]
           },
@@ -3286,6 +3361,9 @@
           },
           "body": {
             "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
             "differences": [],
             "options": [],
             "card_commitment": "22ca35932f44c270aada160d4e63aa7122ca35932f44c270aada160d4e63aa71",
@@ -3304,7 +3382,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "66216387d19e2387ccc1a2fd22b47e9c7b4df5434334ef61f48840f8874c7675"
+                "digest": "9a113c8b1931e6ca6bba4fb07affccac461d2e0bb9984433fa370639d43723fe"
               }
             ]
           },
