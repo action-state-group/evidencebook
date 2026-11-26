@@ -208,6 +208,9 @@ func TestAV1WithheldCapsulesCarryOnlyTheListedMembers(t *testing.T) {
 		}
 	}
 	for _, member := range withheldCapsuleMembers {
+		if member == "settlement" {
+			continue // a payment leg's: TestAV1WithheldBundleOfADealWithPayments
+		}
 		assert.True(t, seen[member], "listed member %s appears in some Capsule", member)
 	}
 
@@ -225,4 +228,109 @@ func TestAV1WithheldCapsulesCarryOnlyTheListedMembers(t *testing.T) {
 	require.NoError(t, err)
 	_, err = withheldForm(raw)
 	require.ErrorContains(t, err, "a model_attestation other than the header's digest")
+}
+
+// A deal with payments, as an ARD deal has (evidencebook#998): the buyer pays
+// and the seller records it, the seller refunds and the buyer records the
+// refund. Each side's withheld bundle carries its own legs' settlement members
+// exactly as sealed, nothing else beyond the listed members; `countersign
+// request` takes it, and a countersignature over it is stored and stated. A
+// settlement member that is not a payer or payee leg is refused.
+func TestAV1WithheldBundleOfADealWithPayments(t *testing.T) {
+	h, check := buyerChecked(t, v1LnHash)
+	legs := map[string][]map[string]any{} // side -> the settlement members its pushed legs carry
+	pushed := map[string][]string{}       // side -> its pushed leg files, which the other side receives
+	push := func(side string, args ...string) map[string]any {
+		file := filepath.Join(t.TempDir(), "leg.json")
+		out := dealRun(t, append(args, "--out", file)...)
+		legs[side] = append(legs[side], settlementOf(t, file))
+		pushed[side] = append(pushed[side], file)
+		return out
+	}
+	dealRun(t, "settle", "--deal", h.dealID, "--check", check, "--sent", "--payment-ref-type", "ln.payment_hash")
+	paid := push("buyer", "settle", "--deal", h.dealID, "--check", check, "--status", "settled")
+
+	h.seller.act(t)
+	received := push("seller", "settle", "--deal", h.dealID, "--payment-ref-type", "ln.payment_hash", "--payment-ref", v1LnHash,
+		"--received", "4470", "--receive-fee", "30", "--status", "settled")
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1Intent), "--opening", writeJSON(t, v1Opening))
+	out := dealRun(t, "check", "--deal", h.dealID, "--input", writeJSON(t, `{"action":"cancel","amount_minor":4500,"terms":{"item":"lamp","price_minor":4500,"currency":"USD"}}`))
+	require.Equal(t, "pass", out["verdict"], "%v", out)
+	refundRef := strings.Repeat("71", 32)
+	dealRun(t, "settle", "--deal", h.dealID, "--check", out["check_id"].(string), "--reverses", received["digest"].(string), "--sent", "--payment-ref-type", "ln.payment_hash", "--payment-ref", refundRef)
+	push("seller", "settle", "--deal", h.dealID, "--check", out["check_id"].(string), "--reverses", received["digest"].(string), "--status", "settled")
+
+	h.buyer.act(t)
+	push("buyer", "settle", "--deal", h.dealID, "--reverses", paid["digest"].(string), "--payment-ref-type", "ln.payment_hash", "--payment-ref", refundRef,
+		"--received", "4500", "--receive-fee", "0", "--status", "settled")
+	// Each side holds the other's legs too: they stay out of its withheld bundle.
+	for _, f := range pushed["buyer"] {
+		h.seller.act(t)
+		assert.Equal(t, "kept, and counted", dealRun(t, "receive", f)["record"])
+	}
+	for _, f := range pushed["seller"] {
+		h.buyer.act(t)
+		assert.Equal(t, "kept, and counted", dealRun(t, "receive", f)["record"])
+	}
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+
+	files := map[string]string{}
+	for name, side := range map[string]v1Side{"buyer": h.buyer, "seller": h.seller} {
+		side.act(t)
+		require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+		file := filepath.Join(t.TempDir(), name+".json")
+		dealRun(t, "report", "--deal", h.dealID, "--bundle", file, "--withheld")
+		files[name] = file
+		var shown []map[string]any
+		for _, r := range readBundleFile(t, file)["records"].([]interface{}) {
+			capsule := r.(map[string]interface{})
+			for member := range capsule {
+				assert.Contains(t, withheldCapsuleMembers, member)
+			}
+			if m, ok := capsule["settlement"]; ok {
+				var plain map[string]any // json.Number to float64, as settlementOf reads a leg
+				raw, err := json.Marshal(m)
+				require.NoError(t, err)
+				require.NoError(t, json.Unmarshal(raw, &plain))
+				shown = append(shown, plain)
+			}
+		}
+		assert.ElementsMatch(t, legs[name], shown, "%s's bundle shows exactly its own legs, as sealed", name)
+		// The docs promise the countersigner never sees a preimage. An
+		// x-deal-v1 settle takes none (deal settle has no such input), so the
+		// property checked is that no member of that name reaches the file.
+		written, readErr := os.ReadFile(file)
+		require.NoError(t, readErr)
+		assert.NotContains(t, strings.ToLower(string(written)), "preimage", "%s's bundle carries no preimage", name)
+		err := countersignRequest(t, file)
+		assert.Contains(t, err.Error(), "certificate", "%s: the request took the bundle and failed only at the untrusted service", name)
+	}
+	require.Len(t, legs["buyer"], 2)
+	require.Len(t, legs["seller"], 2)
+
+	// A countersignature over the buyer's bundle is stored and stated.
+	h.buyer.act(t)
+	b := readBundleFile(t, files["buyer"])
+	entry, signerKey := countersignerEntry(t, mustDigest(t, b), []cli.CountersignCheck{{Name: "range membership", Result: "established"}})
+	directory := countersignerDirectoryFile(t, "Example Countersigner", signerKey)
+	attached := dealRun(t, "countersign", "--deal", h.dealID, "--bundle", files["buyer"], "--entry", writeEntry(t, entry), "--directory", directory)
+	assert.Equal(t, "countersigned", asView(t, attached["countersign"]).Rung)
+	_, err := invoke(t, "", "profile", "update", "--profile", "deal", "--countersign-directory", directory)
+	require.NoError(t, err)
+	assert.Equal(t, "countersigned", asStamp(t, dealRun(t, "report", "--deal", h.dealID)["countersign"]).Rung)
+
+	// Another value under the name settlement is refused.
+	for _, value := range []any{"a string", map[string]interface{}{"leg": "terms"}, map[string]interface{}{}} {
+		b := readBundleFile(t, files["buyer"])
+		for _, r := range b["records"].([]interface{}) {
+			if capsule := r.(map[string]interface{}); capsule["settlement"] != nil {
+				capsule["settlement"] = value
+				break
+			}
+		}
+		raw, err := json.Marshal(b)
+		require.NoError(t, err)
+		_, err = withheldForm(raw)
+		require.ErrorContains(t, err, "not a payer or payee leg", "%v", value)
+	}
 }
