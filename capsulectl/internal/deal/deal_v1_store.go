@@ -21,12 +21,12 @@ import (
 // it owns the deal tables (deal_versions, deal_sent, deal_v1, deal_v1_offers,
 // deal_v1_admits), the journal send writer and the deal-book writer, and
 // seals the deal.open records (offer, cancellation, decline, admit,
-// agreement) and the deal-book records of perform, statement, dispute and a
-// payee settle. The plugin keeps those verbs' flags, files and output, and
-// for now writes its own deal_v1_events and deal_v1_sends (which the store
-// creates and reads) and builds a payer leg itself (#899 phase 3 moves both).
-// This file opens the store over the session's shelf and maps its errors to
-// the CLI's.
+// agreement), the deal-book records of perform, statement, dispute and both
+// legs of settle, a payment's send, and every journal record of a deal with
+// its local step list (deal_v1_events, deal_v1_sends). The plugin keeps
+// those verbs' flags, files and output, and the steps' local form (v0's
+// dealEvent, which its card folds). This file opens the store over the
+// session's shelf and maps its errors to the CLI's.
 
 type (
 	v1Deal       = dealapi.Deal
@@ -81,18 +81,11 @@ func (s *dealSession) dealStore(ctx context.Context) (*dealapi.Store, error) {
 // agreement, which is the only record that names it.
 const readSessionShelfLog = "deal-cadence/unset"
 
-// ensureV1Tables opens the deal store, which creates its tables, and the
-// plugin's own v1 tables: the local event list and the payment sends.
+// ensureV1Tables opens the deal store, which creates its tables (the deal
+// tables, the local step list and the payment sends).
 func (s *dealSession) ensureV1Tables(ctx context.Context) error {
-	if _, err := s.dealStore(ctx); err != nil {
-		return err
-	}
-	for _, stmt := range []string{dealV1EventsTable, dealV1SendsTable} {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := s.dealStore(ctx)
+	return err
 }
 
 // libErr is a deal-store error as the CLI reports it: a refusal of the input
@@ -163,23 +156,6 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 	}
 	sealed, err := st.SealInBook(ctx, dealID, in)
 	return sealed, libErr(err)
-}
-
-// repairIfStopped records an agreement a stopped run appended, and leaves d
-// as the repair left it.
-func (s *dealSession) repairIfStopped(ctx context.Context, d *v1Deal) error {
-	st, err := s.dealStore(ctx)
-	if err != nil {
-		return err
-	}
-	got, err := st.Repair(ctx, d.DealID)
-	if err != nil {
-		return libErr(err)
-	}
-	if got != nil {
-		*d = *got
-	}
-	return nil
 }
 
 // sentOfferPair is the pair of the offer whose record digest is given, for

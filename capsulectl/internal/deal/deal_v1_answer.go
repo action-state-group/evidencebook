@@ -294,7 +294,12 @@ func (s *dealSession) sealV1Answer(ctx context.Context, dealID, requestDigest, o
 	if err != nil || held {
 		return digest, err
 	}
-	return digest, s.appendV1Journal(ctx, payload)
+	j, err := s.shelf.Journal(ctx)
+	if err != nil {
+		return "", err
+	}
+	_, err = j.Append(ctx, evidencebook.Entry{RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{payload}})
+	return digest, err
 }
 
 // caseCopyOfBundle reads an x-deal-v1 report bundle's report and extension,

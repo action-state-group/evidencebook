@@ -11,31 +11,24 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	dealapi "github.com/action-state-group/evidencebook/deal"
 	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 )
 
-// The local event list of an x-deal-v1 deal (xdealv1-write-path §12). A v1
-// deal's journal records hold commitments of the values its checks read (the
+// The local event list of an x-deal-v1 deal (xdealv1-write-path §12) is
+// package deal's step list (Store.Steps, Store.SealJournal). A v1 deal's
+// journal records hold commitments of the values its checks read (the
 // person's verbatim words, the bounds), so the plugin keeps each deal's plain
-// events here, in the same dealEvent form a v0 deal folds, and runs the
-// unchanged v0 note and check code over them. Each event that has a v1 record
-// carries that record's digest and payload; the row is written before the
-// record is sealed, so a run that stops between the two is finished by the
-// next read (v1Events). The list never leaves this store: no export, bundle,
-// share or disclosure carries it.
-const dealV1EventsTable = `CREATE TABLE IF NOT EXISTS deal_v1_events (
-	deal_id TEXT NOT NULL,
-	n INTEGER NOT NULL,
-	kind TEXT NOT NULL,
-	local TEXT NOT NULL,
-	record_digest TEXT NOT NULL,
-	payload BLOB,
-	PRIMARY KEY (deal_id, n)
-)`
+// events as the steps' local form, in the same dealEvent form a v0 deal
+// folds, and runs the unchanged v0 note and check code over them. The store
+// writes each step and the record it carries together, so a run that stops
+// between the two is finished by the next read. The list never leaves this
+// store: no export, bundle, share or disclosure carries it.
 
 // v1JournalTypes maps the v0 record type a dealEvent builds to the x-deal-v1
 // journal record of the same body (PROFILE §4: the journal overlay and the
@@ -79,62 +72,52 @@ func v1NoteRefusal(kind, dealID string) error {
 	return cli.InputError(head + "has no x-deal-v1 form and is not recorded on this deal")
 }
 
-// v1Events reads a v1 deal's local event list in order, sealing any record a
-// stopped run stored but did not seal.
+// v1Events reads a v1 deal's local event list in order (Store.Steps, which
+// first appends any record a stopped run stored but did not append).
 func (s *dealSession) v1Events(ctx context.Context, dealID string) ([]sealedEvent, error) {
-	out, pending, pendingDigests, err := s.v1StoredEvents(ctx, dealID)
+	st, err := s.dealStore(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i, payload := range pending {
-		held, err := s.journalHolds(ctx, pendingDigests[i])
-		if err != nil {
-			return nil, err
-		}
-		if !held {
-			if err := s.appendV1Journal(ctx, payload); err != nil {
-				return nil, err
-			}
-		}
-		if err := s.v1Appended(ctx, dealID, pendingDigests[i]); err != nil {
-			return nil, err
-		}
+	steps, err := st.Steps(ctx, dealID)
+	if err != nil {
+		return nil, libErr(err)
 	}
-	return out, nil
+	return v1EventsOf(dealID, steps)
 }
 
 // v1StoredEvents reads a v1 deal's local event list in order, as stored,
-// writing nothing, with the journal payloads still pending an append (and
-// their digests), which v1Events appends.
-func (s *dealSession) v1StoredEvents(ctx context.Context, dealID string) (out []sealedEvent, pending [][]byte, pendingDigests []string, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT n, local, record_digest, payload FROM deal_v1_events WHERE deal_id=? ORDER BY n`, dealID)
+// writing nothing (Store.StoredSteps).
+func (s *dealSession) v1StoredEvents(ctx context.Context, dealID string) ([]sealedEvent, error) {
+	st, err := s.dealStore(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var (
-			n       int64
-			local   string
-			digest  string
-			payload []byte
-		)
-		if err := rows.Scan(&n, &local, &digest, &payload); err != nil {
-			return nil, nil, nil, err
+	steps, err := st.StoredSteps(ctx, dealID)
+	if err != nil {
+		return nil, libErr(err)
+	}
+	return v1EventsOf(dealID, steps)
+}
+
+// v1EventsOf reads the store's steps as this plugin's events. A step written
+// without this plugin's local form (by a program that calls package deal
+// directly) has none of the values the card reads, so the deal's card is
+// refused rather than read short.
+func v1EventsOf(dealID string, steps []dealapi.Step) ([]sealedEvent, error) {
+	out := make([]sealedEvent, 0, len(steps))
+	for _, st := range steps {
+		if string(st.Local) == "null" {
+			return nil, cli.InputError("deal " + dealID + "'s step " + strconv.FormatInt(st.N, 10) +
+				" was written by a program that calls evidencebook's package deal directly, without this command line's local form: its card cannot be read here, so continue the deal with that program")
 		}
 		var ev dealEvent
-		if err := json.Unmarshal([]byte(local), &ev); err != nil {
-			return nil, nil, nil, fmt.Errorf("%w: deal %s's local event %d: %v", evidencebook.ErrCorrupt, dealID, n, err)
+		if err := json.Unmarshal(st.Local, &ev); err != nil {
+			return nil, fmt.Errorf("%w: deal %s's local event %d: %v", evidencebook.ErrCorrupt, dealID, st.N, err)
 		}
-		out = append(out, sealedEvent{CapsuleID: v1EventID(dealID, n), Digest: digest, Sequence: uint64(n), Event: ev})
-		if len(payload) > 0 {
-			pending, pendingDigests = append(pending, payload), append(pendingDigests, digest)
-		}
+		out = append(out, sealedEvent{CapsuleID: v1EventID(dealID, st.N), Digest: st.Digest, Sequence: uint64(st.N), Event: ev})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, nil, err
-	}
-	return out, pending, pendingDigests, nil
+	return out, nil
 }
 
 // v1EventID is a local event's id, which the v0 record builder uses to find
@@ -147,9 +130,10 @@ func v1EventID(dealID string, n int64) string {
 
 // sealV1Step is s.seal for a v1 deal: the event is fixed as v0 fixes a step,
 // its v0 record is built and rewrapped as the x-deal-v1 journal record of the
-// same body (with a nonce where PROFILE §5 asks for one, and deal_id where §3
-// puts it), the plain event and the record's payload are stored, and the
-// record is appended to the journal. The opening has no record: it is local.
+// same body, and package deal's writer stores the plain event with the record
+// and appends the record to the journal (with a nonce where PROFILE §5 asks
+// for one, and deal_id where §3 puts it). The opening has no record: it is
+// local.
 func (s *dealSession) sealV1Step(ctx context.Context, dealID string, events []sealedEvent, ev dealEvent) (sealedEvent, error) {
 	return s.sealV1(ctx, dealID, events, ev, false)
 }
@@ -159,149 +143,127 @@ func (s *dealSession) sealV1Step(ctx context.Context, dealID string, events []se
 // own intent and moves nothing: v0's fold then narrows the opening's intent by
 // itself, which changes nothing.
 func (s *dealSession) sealV1(ctx context.Context, dealID string, events []sealedEvent, ev dealEvent, opening bool) (sealedEvent, error) {
-	prepared, err := s.prepareV1(dealID, events, ev, opening)
+	sealed, err := s.storeV1(ctx, dealID, s.v1Step(dealID, events, ev, opening))
 	if err != nil {
 		return sealedEvent{}, err
 	}
-	if err := s.refuseWhileInFlight(ctx, dealID, prepared.payload); err != nil {
-		return sealedEvent{}, err
-	}
-	if err := s.storeV1(ctx, dealID, prepared); err != nil {
-		return sealedEvent{}, err
-	}
-	return prepared.se, nil
+	return sealed[0], nil
 }
 
-// preparedV1 is one fixed step: its sealed event, its plain JSON and, unless it
-// is the opening, its record's payload.
-type preparedV1 struct {
-	se      sealedEvent
-	local   []byte
-	payload []byte
+// v1PendingStep is a step for package deal's writer and the event it fixed
+// once built.
+type v1PendingStep struct {
+	step dealapi.JournalStep
+	ev   *dealEvent
 }
 
-// prepareV1 fixes a step and builds its record, storing nothing.
-func (s *dealSession) prepareV1(dealID string, events []sealedEvent, ev dealEvent, opening bool) (preparedV1, error) {
-	ev, err := s.fixStep(dealID, events, ev)
+// v1Step fixes ev as v0 fixes a step, at the place and time the store gives
+// it, and builds its record: none for the opening or a check's
+// counterparty profile, which stay local (an x-deal-v1 counterparty_profile
+// record has no member for the payee's fingerprint; only the checker and the
+// cross-deal memory read it).
+func (s *dealSession) v1Step(dealID string, events []sealedEvent, ev dealEvent, opening bool) v1PendingStep {
+	fixed := new(dealEvent)
+	return v1PendingStep{ev: fixed, step: dealapi.JournalStep{Kind: ev.Kind, Build: func(f dealapi.StepFacts) (dealapi.StepParts, error) {
+		e, err := s.fixStep(dealID, events, ev)
+		if err != nil {
+			return dealapi.StepParts{}, err
+		}
+		if e.N != f.N || e.Prev != f.Prev {
+			return dealapi.StepParts{}, fmt.Errorf("%w: deal %s's local events moved while a step was sealed; run the command again", cli.ErrConflict, dealID)
+		}
+		e.At = f.At
+		if opening {
+			e.Journey = ""
+		}
+		local, err := json.Marshal(e)
+		if err != nil {
+			return dealapi.StepParts{}, err
+		}
+		*fixed = e
+		parts := dealapi.StepParts{Local: local}
+		if e.Kind != "open" && e.Kind != "counterparty_profile" {
+			if parts.Record, err = s.v1Record(events, e); err != nil {
+				return dealapi.StepParts{}, err
+			}
+		}
+		return parts, nil
+	}}}
+}
+
+// v1LocalStep is a step that is local only and names a record sealed
+// elsewhere by its digest (a deal-book act, a refund received): ev is fixed
+// at the store's place and keeps the act's own time at.
+func (s *dealSession) v1LocalStep(dealID string, events []sealedEvent, ev dealEvent, at, digest string) v1PendingStep {
+	fixed := new(dealEvent)
+	return v1PendingStep{ev: fixed, step: dealapi.JournalStep{Kind: ev.Kind, Build: func(f dealapi.StepFacts) (dealapi.StepParts, error) {
+		e, err := s.fixStep(dealID, events, ev)
+		if err != nil {
+			return dealapi.StepParts{}, err
+		}
+		if e.N != f.N || e.Prev != f.Prev {
+			return dealapi.StepParts{}, fmt.Errorf("%w: deal %s's local events moved while a step was sealed; run the command again", cli.ErrConflict, dealID)
+		}
+		e.At = at
+		local, err := json.Marshal(e)
+		if err != nil {
+			return dealapi.StepParts{}, err
+		}
+		*fixed = e
+		return dealapi.StepParts{Local: local, Digest: digest}, nil
+	}}}
+}
+
+// storeV1 stores steps in one batch through package deal's writer
+// (Store.SealJournal: one transaction, then the records' appends, and a
+// batch whose append failed before any record reached the journal is
+// withdrawn) and returns their events.
+func (s *dealSession) storeV1(ctx context.Context, dealID string, steps ...v1PendingStep) ([]sealedEvent, error) {
+	st, err := s.dealStore(ctx)
 	if err != nil {
-		return preparedV1{}, err
+		return nil, err
 	}
-	if opening {
-		ev.Journey = ""
+	js := make([]dealapi.JournalStep, len(steps))
+	for i, p := range steps {
+		js[i] = p.step
 	}
-	local, err := json.Marshal(ev)
+	sealed, err := st.SealJournal(ctx, dealID, js...)
 	if err != nil {
-		return preparedV1{}, err
+		return nil, libErr(err)
 	}
-	var payload []byte
-	var digest string
-	if ev.Kind == "open" || ev.Kind == "counterparty_profile" {
-		// The opening has no record. It gets a local digest so the v0
-		// record builder's references to it are well formed; v1Record maps
-		// any reference to it onto the deal's first journal record. A check's
-		// companion (the payee's fingerprint) stays local too: an x-deal-v1
-		// counterparty_profile record has no member to carry the fingerprint
-		// (PROFILE §2 block, v0's empty body), and only the checker and the
-		// cross-deal memory read it.
-		digest = digestBytesHex(local)
-	} else if payload, digest, err = s.v1Record(events, ev); err != nil {
-		return preparedV1{}, err
+	out := make([]sealedEvent, len(sealed))
+	for i, step := range sealed {
+		out[i] = sealedEvent{CapsuleID: v1EventID(dealID, step.N), Digest: step.Digest, Sequence: uint64(step.N), Event: *steps[i].ev}
 	}
-	return preparedV1{se: sealedEvent{CapsuleID: v1EventID(dealID, ev.N), Digest: digest, Sequence: uint64(ev.N), Event: ev}, local: local, payload: payload}, nil
-}
-
-// storeV1 stores prepared steps in one transaction, then appends their records.
-// An append that fails while the process lives withdraws the steps it did not
-// append, as v0's seal withdraws its index row, so a retry seals the step once;
-// a process that dies leaves them stored, and the next read appends them.
-func (s *dealSession) storeV1(ctx context.Context, dealID string, steps ...preparedV1) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	for _, p := range steps {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO deal_v1_events (deal_id, n, kind, local, record_digest, payload) VALUES (?, ?, ?, ?, ?, ?)`,
-			dealID, p.se.Event.N, p.se.Event.Kind, string(p.local), p.se.Digest, p.payload); err != nil {
-			return errors.Join(err, tx.Rollback())
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	for _, p := range steps {
-		if p.payload == nil {
-			continue
-		}
-		if err := s.appendV1Journal(ctx, p.payload); err != nil {
-			return errors.Join(err, s.settleFailedV1(ctx, dealID, steps))
-		}
-		if err := s.v1Appended(ctx, dealID, p.se.Digest); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// settleFailedV1 decides a batch whose append failed while the command ran.
-// An append can fail after its record was stored, so the batch's records are
-// asked for: if none is in the journal, every step of the batch is withdrawn
-// in one transaction, the opening included, and a retry seals the batch once;
-// if any is held, or the answer is uncertain, every step stays and the next
-// command that loads the deal appends what is missing. A deal is never left
-// with an intent but no opening, or an opening but no intent.
-func (s *dealSession) settleFailedV1(ctx context.Context, dealID string, steps []preparedV1) error {
-	for _, q := range steps {
-		if q.payload == nil {
-			continue
-		}
-		held, err := s.journalHolds(ctx, q.se.Digest)
-		if err != nil || held {
-			return err
-		}
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	for _, q := range steps {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM deal_v1_events WHERE deal_id=? AND n=?`, dealID, q.se.Event.N); err != nil {
-			return errors.Join(err, tx.Rollback())
-		}
-	}
-	return tx.Commit()
-}
-
-// v1Appended clears a stored payload once its record is in the journal, so a
-// read only looks at true leftovers.
-func (s *dealSession) v1Appended(ctx context.Context, dealID, digest string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE deal_v1_events SET payload=NULL WHERE deal_id=? AND record_digest=?`, dealID, digest)
-	return err
+	return out, nil
 }
 
 // v1Record builds an event's x-deal-v1 journal record: v0's record builder
 // gives the body, and the block is the v1 one.
-func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) ([]byte, string, error) {
+func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) (*dealapi.JournalRecord, error) {
 	// The v0 record is checked as a v0 step is, before anything is stored:
 	// the profile's privacy and wording scans against the deal's local values
 	// (checkSealable), so a v1 record never carries what a v0 one may not.
 	v0payload, _, err := encodeDealRecord(ev, events, s.dkey)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if err := checkSealable(v0payload, events, ev); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	v0, err := buildDealRecord(ev, events, s.dkey)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	block, _ := v0["x-deal-v0"].(map[string]interface{})
 	body, _ := v0["body"].(map[string]interface{})
 	rtype, _ := block["record_type"].(string)
 	if !v1JournalTypes[rtype] {
-		return nil, "", cli.InputError("this step has no x-deal-v1 journal record (" + rtype + ")")
+		return nil, cli.InputError("this step has no x-deal-v1 journal record (" + rtype + ")")
 	}
-	b := map[string]interface{}{"profile": xdealv1.Profile, "canonicalization": xdealv1.Canonicalization, "record_type": rtype, "at": ev.At}
+	// The block members the record keeps from v0's builder; package deal
+	// sets its profile, canonicalization, record type, time and deal_id.
+	b := map[string]any{}
 	for _, k := range []string{"producer", "commit_alg", "refs", "counterparty"} {
 		if v, ok := block[k]; ok {
 			b[k] = v
@@ -318,16 +280,7 @@ func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) ([]byte, stri
 			}
 		}
 	}
-	// deal_id where PROFILE §3 puts it: never on an intent, a disclosure, a
-	// counterparty profile or a confirm_limits approval, which span deals;
-	// on every other journal record of a v1 deal, whose offer exists.
-	switch {
-	case rtype == "intent", rtype == "disclosure", rtype == "counterparty_profile":
-	case rtype == "approval" && body["choice"] == "confirm_limits":
-	default:
-		b["deal_id"] = ev.DealID
-	}
-	nb := make(map[string]interface{}, len(body)+1)
+	nb := make(map[string]any, len(body)+1)
 	for k, v := range body {
 		nb[k] = v
 	}
@@ -339,49 +292,17 @@ func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) ([]byte, stri
 	if rtype == "verdict" && ev.Check != nil && ev.Check.Rules != nil && ev.Check.Rules.ReceivedHistory != nil {
 		nb["received_history"] = ev.Check.Rules.ReceivedHistory
 	}
+	out := &dealapi.JournalRecord{RecordType: rtype, Block: b, Body: nb}
+	// The record's nonce, drawn here, where it always was, so a step's draws
+	// keep their order.
 	if v1NonceTypes[rtype] {
 		nonce, err := xdealv1.NewNonce()
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
-		nb["nonce"] = nonce
+		out.Nonce = nonce
 	}
-	rec := map[string]interface{}{xdealv1.Profile: b, "body": nb}
-	raw, err := json.Marshal(rec)
-	if err != nil {
-		return nil, "", err
-	}
-	if err := xdealv1.CheckSealed(raw, xdealv1.SealContext{OfferExists: true}); err != nil {
-		return nil, "", cli.InputError("the x-deal-v1 " + rtype + " record does not pass the profile's checks: " + err.Error())
-	}
-	return xdealv1.Encode(raw)
-}
-
-// appendV1JournalHook lets a test stop a run between storing a local event and
-// appending its record.
-var appendV1JournalHook func() error
-
-// appendV1JournalAfterHook lets a test fail an append after its record was
-// stored, as Book.Append can.
-var appendV1JournalAfterHook func() error
-
-// appendV1Journal appends one journal record. A record stored but not yet in
-// the log is recovered by the next Journal open (Shelf.Journal).
-func (s *dealSession) appendV1Journal(ctx context.Context, payload []byte) error {
-	if appendV1JournalHook != nil {
-		if err := appendV1JournalHook(); err != nil {
-			return err
-		}
-	}
-	j, err := s.shelf.Journal(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = j.Append(ctx, evidencebook.Entry{RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{payload}})
-	if err == nil && appendV1JournalAfterHook != nil {
-		err = appendV1JournalAfterHook()
-	}
-	return err
+	return out, nil
 }
 
 // v1OpeningInput is the first intent note's --opening on a v1 deal: the parts
@@ -446,19 +367,24 @@ func (s *dealSession) openV1(ctx context.Context, dealID string, raw, opening []
 	open.Materiality = predicate.Ref()
 	// The opening and its intent are prepared first and stored together, so
 	// a deal never holds an opening without its journal intent.
-	opened, err := s.prepareV1(dealID, nil, dealEvent{Kind: "open", Open: &open}, false)
-	if err != nil {
-		return nil, err
-	}
+	opened := s.v1Step(dealID, nil, dealEvent{Kind: "open", Open: &open}, false)
 	intent := open.Intent
-	first, err := s.prepareV1(dealID, []sealedEvent{opened.se}, dealEvent{Kind: "intent", Intent: &intent}, true)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.storeV1(ctx, dealID, opened, first); err != nil {
-		return nil, err
-	}
-	return []sealedEvent{opened.se, first.se}, nil
+	// The intent is built after the opening, on the events the opening
+	// leaves: its own digest, the digest of its local form.
+	var afterOpening []sealedEvent
+	first := v1PendingStep{ev: new(dealEvent)}
+	first.step = dealapi.JournalStep{Kind: "intent", Build: func(f dealapi.StepFacts) (dealapi.StepParts, error) {
+		local, err := json.Marshal(*opened.ev)
+		if err != nil {
+			return dealapi.StepParts{}, err
+		}
+		afterOpening = []sealedEvent{{CapsuleID: v1EventID(dealID, opened.ev.N), Digest: digestBytesHex(local), Sequence: uint64(opened.ev.N), Event: *opened.ev}}
+		p := s.v1Step(dealID, afterOpening, dealEvent{Kind: "intent", Intent: &intent}, true)
+		parts, err := p.step.Build(f)
+		*first.ev = *p.ev
+		return parts, err
+	}}
+	return s.storeV1(ctx, dealID, opened, first)
 }
 
 // dealTermsOf maps an offer's terms to the plain terms the v0 checks read.
