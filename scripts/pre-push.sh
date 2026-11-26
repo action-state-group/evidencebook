@@ -14,7 +14,8 @@
 #
 # --plan prints the suites and race packages it would run, one line each, and
 # runs nothing. PRE_PUSH_CHANGED=<file> reads the changed paths from that file
-# instead of git (the planning scripts' tests use both).
+# instead of git, and PRE_PUSH_NESTED=1 leaves out the planning scripts' own
+# tests (those tests use both, so they can run this script without recursing).
 #
 # Suites: root (format, module files, vet, tests, race), capsulectl (format,
 # module files, vet, the generated confusables table, every test plain, the
@@ -109,14 +110,15 @@ root_suite() {
 # given packages; a shard's failures are printed only when it fails. One
 # process per pass is too slow: internal/deal alone ran past the plain pass's
 # ten-minute timeout on a laptop. A pass over few tests gets at most one shard
-# per top-level test, since scripts/test.sh fails an empty shard.
+# per top-level test, since scripts/test.sh fails an empty shard; one over
+# packages with no tests (scripts/genconfusables) runs one unfiltered shard,
+# so they still build under the race detector.
 capsulectl_pass() { # plain|race, packages (space-separated)
   local pass=$1 pkgs=$2 n=${PRE_PUSH_SHARDS:-$(($(getconf _NPROCESSORS_ONLN) / 2))} i pids=() st=0 tests
   ((n >= 1)) || n=1
   # shellcheck disable=SC2086 # the plan is a space-separated package list
   tests=$(cd capsulectl && go test -list '.*' $pkgs | awk '/^(Test|Example|Fuzz)/ && !seen[$0]++ { n++ } END { print n + 0 }') || return 1
-  # Packages without tests (scripts/genconfusables, internal/packfile) leave nothing to run.
-  ((tests >= 1)) || { echo "$pass pass: no tests in $pkgs"; return 0; }
+  ((tests >= 1)) || tests=1
   ((n <= tests)) || n=$tests
   for ((i = 1; i <= n; i++)); do
     (cd capsulectl && CAPSULE_TEST_PASS=$pass CAPSULE_TEST_SHARD="$i/$n" CAPSULE_TEST_PKGS="$pkgs" CAPSULE_TEST_RACE_TIMEOUT=60m \
@@ -185,7 +187,7 @@ if ((plan)); then
   exit 0
 fi
 
-suite ci-scripts bash .github/scripts/ci-scripts_test.sh
+if [[ "${PRE_PUSH_NESTED:-}" != 1 ]]; then suite ci-scripts bash .github/scripts/ci-scripts_test.sh; fi
 if ((run_root)); then suite root root_suite; else skipped root; fi
 if ((run_capsulectl)); then suite capsulectl capsulectl_suite; else skipped capsulectl; fi
 if ((run_report)); then suite report report_suite; else skipped report; fi
