@@ -66,7 +66,12 @@ func (f *authFlow) check(action string) Ref {
 }
 
 func (f *authFlow) verdict(check Ref, result string) Ref {
-	vb := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: result, Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(check)}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 0"))}
+	// Every verdict records its rules, as capsulectl's deal check always
+	// does (not_configured when no checker is pinned): a standing-intent
+	// act on a verdict with none escalates (u234, ops evidence-network/inbox.md:669), which
+	// TestStandingIntentVerdictWithNoRulesEscalates covers.
+	vb := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: result, Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(check),
+		Rules: &dealprofile.VerdictBodyRules{Status: "not_configured"}}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 0"))}
 	if result != "pass" {
 		vb.Differences = []dealprofile.Difference{{Question: "terms", Rule: "limit"}}
 		vb.Options = []string{"hold", "proceed"}
@@ -508,4 +513,50 @@ func TestCheckAuthorizationsRefusesASharedNonce(t *testing.T) {
 	f.journal = append(f.journal, again)
 	_, err = CheckAuthorizations(f.journal, f.acts)
 	assert.ErrorContains(t, err, "a nonce is drawn fresh")
+}
+
+// A standing-intent act whose verdict carries no rules block escalates to
+// the person (Sherlock2's ruling u234, ops evidence-network/inbox.md:669, 2026-11-25, after u503): it needs the
+// person's signature over its approval digest. With the rules block it
+// needs none, as before.
+func TestStandingIntentVerdictWithNoRulesEscalates(t *testing.T) {
+	for _, withRules := range []bool{true, false} {
+		f := &authFlow{t: t}
+		f.intent("pay")
+		c := f.check("pay")
+		v := f.verdict(c, "pass")
+		if !withRules {
+			last := &f.journal[len(f.journal)-1]
+			vb := last.Body.(*VerdictBody)
+			vb.Rules = nil
+			d, err := Digest(*last)
+			require.NoError(t, err)
+			delete(f.cards, v.Digest)
+			v = RefTo(d)
+			f.cards[v.Digest] = vb.CardCommitment
+		}
+		f.approve(v, "standing_intent", true)
+		f.pay(c)
+		auths, err := CheckAuthorizations(f.journal, f.acts)
+		require.NoError(t, err)
+		require.Len(t, auths, 1)
+		assert.Equal(t, !withRules, auths[0].RulesNotRecorded, "with rules: %v", withRules)
+		assert.Equal(t, !withRules, auths[0].NeedsPersonSignature, "with rules: %v", withRules)
+		assert.NotEmpty(t, auths[0].Intent)
+	}
+}
+
+// CheckJournal refuses what the walk refuses, before any act is read.
+func TestCheckJournal(t *testing.T) {
+	f := &authFlow{t: t}
+	c := f.check("commit")
+	v := f.verdict(c, "pass")
+	f.approve(v, "user", true)
+	require.NoError(t, CheckJournal(f.journal))
+
+	// A person's approval with no card commitment leaves the journal
+	// unwalkable: every later act of the deal would be refused.
+	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f')}, Nonce: label("unbound approval")}
+	f.seal(TypeApproval, true, a, rel("approves", v))
+	assert.ErrorContains(t, CheckJournal(f.journal), "commits to the card it answered")
 }

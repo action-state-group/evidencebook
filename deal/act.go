@@ -33,6 +33,9 @@ type Acted struct {
 	Again         bool
 	Gate          *xdealv1.ActGate
 	Authorization *xdealv1.ActAuthorization
+	// AmountNotChecked says a refund's amount was not held to its cancel
+	// check (RefundFeeNotChecked); a caller shows it.
+	AmountNotChecked bool
 }
 
 // actDeal is what a call on an agreed deal reads first: the deal, the
@@ -256,8 +259,14 @@ func (e *NotAuthorizedError) Unwrap() []error {
 // verdict and approval it rests on and the digests the person signs. earlier
 // are the holder's acts before it, in book order; settlement is the act's
 // settlement member, which rule 5 holds to the checked amount (nil for
-// none). A refusal is a [NotAuthorizedError].
+// none). A record a stopped run stored in the deal's step list and did not
+// append is appended first. A refusal is a [NotAuthorizedError].
 func (s *Store) Authorize(ctx context.Context, dealID string, earlier []xdealv1.Record, act xdealv1.Record, settlement json.RawMessage) (*xdealv1.ActAuthorization, error) {
+	// A record a stopped run stored and did not append (a details change,
+	// say) is appended first, so the authorization reads it.
+	if _, err := s.Steps(ctx, dealID); err != nil {
+		return nil, err
+	}
 	journal, err := s.DealJournal(ctx, dealID)
 	if err != nil {
 		return nil, err

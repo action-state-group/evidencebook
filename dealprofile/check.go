@@ -86,6 +86,22 @@ func Check(record any, localValues []string) error {
 	return checkDoc(doc, localValues)
 }
 
+// CheckText runs only the personal_data and wording stages over record, of
+// any profile (an x-deal-v1 record included): no raw phone number, email
+// address or local-store value, and no prohibited word, anywhere in it. It
+// returns the first refusal as a *StageError. localValues are as for
+// Encode.
+func CheckText(record any, localValues []string) error {
+	doc, err := decode(record)
+	if err != nil {
+		return err
+	}
+	if err := stagePersonalData(doc, localValues); err != nil {
+		return err
+	}
+	return stageWording(doc)
+}
+
 // Digest is a record's digest: lowercase hex SHA-256 over its JCS bytes
 // (PROFILE.md §5).
 func Digest(record any) (string, error) {

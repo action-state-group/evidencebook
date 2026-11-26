@@ -195,3 +195,13 @@ func TestDateInTextIsNotAPhoneNumber(t *testing.T) {
 		assert.Equal(t, StagePersonalData, enc(bad), "a phone number beside a date is still refused: %q", bad)
 	}
 }
+
+func TestCheckTextScansAnyProfile(t *testing.T) {
+	v1 := map[string]any{"x-deal-v1": map[string]any{"record_type": "message"}, "body": map[string]any{"text_commitment": strings.Repeat("a", 64)}}
+	assert.NoError(t, CheckText(v1, nil))
+	leaked := map[string]any{"x-deal-v1": map[string]any{"record_type": "message"}, "body": map[string]any{"note": "call me at +1 415 555 0100"}}
+	assert.Equal(t, StagePersonalData, stageOf(t, CheckText(leaked, nil)))
+	local := map[string]any{"body": map[string]any{"note": "order for Alice Example"}}
+	assert.Equal(t, StagePersonalData, stageOf(t, CheckText(local, []string{"alice example"})))
+	assert.NoError(t, CheckText(local, []string{"bob"}))
+}

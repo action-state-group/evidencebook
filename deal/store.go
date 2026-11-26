@@ -217,7 +217,7 @@ func codedConflict(code Code, reason string, args ...string) error {
 // renaming or removing one breaks a caller that matches on it.
 type Code string
 
-// The coded refusals: 23. Each lists, in order, the Args its message names.
+// The coded refusals: 29. Each lists, in order, the Args its message names.
 const (
 	// CodeCancelAgain: the offer is already cancelled. No Args.
 	CodeCancelAgain Code = "cancel-again"
@@ -288,6 +288,30 @@ const (
 	CodeSettleRefunded Code = "settle-refunded"
 	// CodeSettleNegative: an amount of the leg is negative. No Args.
 	CodeSettleNegative Code = "settle-negative"
+	// CodeInFlight: a journal record that changes the deal's details while
+	// one of its payments is in flight. Args: the deal id, the open send's
+	// check digest, the leg it reverses ("" for a payment), its payment_ref
+	// type, the record's type.
+	CodeInFlight Code = "in-flight"
+	// CodeSettlePayee: a leg that cites a check, where the holder is owed
+	// the row: what it received is a payee leg, which cites none. Args:
+	// "refund" or "payment", the row, the deal id.
+	CodeSettlePayee Code = "settle-payee"
+	// CodeCheckAction: the check a payer leg rests on is of another action.
+	// Args: "payment" (a pay check is needed) or "refund" (a cancel check),
+	// the check digest, its action.
+	CodeCheckAction Code = "check-action"
+	// CodeSendInFlight: a payment on the check is already in flight. Args:
+	// the check digest, the amount, the currency, the payment_ref type and
+	// value, the deal id, the leg it reverses ("" for a payment).
+	CodeSendInFlight Code = "send-in-flight"
+	// CodeNotSent: a payer leg on a check with no send. Args: the deal id,
+	// the check digest.
+	CodeNotSent Code = "not-sent"
+	// CodeSentOtherwise: the leg reverses something other than its send
+	// did. Args: the check digest, the leg the send reverses ("" for a
+	// payment).
+	CodeSentOtherwise Code = "sent-otherwise"
 )
 
 // now is the store's clock, in UTC.

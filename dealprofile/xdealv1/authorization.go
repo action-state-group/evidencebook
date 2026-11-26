@@ -47,8 +47,18 @@ type ActAuthorization struct {
 	// composed). The approval record's Capsule is signed by the holder's
 	// record key, the agent's: that signature never stands for the person's,
 	// so a caller that requires the person's signature refuses the act until
-	// one over ApprovalDigest, from the person's own key, is held.
+	// one over ApprovalDigest, from the person's own key, is held. It is set
+	// too for a standing-intent approval whose verdict carries no rules
+	// block (RulesNotRecorded).
 	NeedsPersonSignature bool
+	// RulesNotRecorded says the act rests on a standing-intent approval
+	// whose verdict carries no rules block: nothing records which rules, if
+	// any, evaluated the person's caps for it. Under a standing intent the
+	// caps act only through the verdict, so such an act escalates to the
+	// person: it needs the person's signature over ApprovalDigest, as a
+	// person's approval does, and is never allowed on the standing intent
+	// alone (Sherlock2's ruling u234, ops evidence-network/inbox.md:669, 2026-11-25, after u503; evidencebook#899).
+	RulesNotRecorded bool
 	// LimitApprovals are the record digests of the confirm_limits approvals
 	// whose confirmed proposals put in force the allowed a standing-intent
 	// approval relied on. Each is the person's own approval and needs the
@@ -61,6 +71,16 @@ type ActAuthorization struct {
 	// signature over its digest (evidencebook#500, option b), as
 	// ApprovalDigest does. "" for an approval that is not a standing intent.
 	Intent string
+}
+
+// CheckJournal refuses a journal that x-deal-v1's authorization walk
+// refuses (PROFILE §8): the walk CheckActs runs over the whole journal
+// before it reads any act, so a record that fails it leaves every later act
+// of the deal unauthorizable. A writer runs it over the deal's journal with
+// a candidate record appended, before the record is sealed.
+func CheckJournal(journal []Record) error {
+	_, err := walkJournal(journal)
+	return err
 }
 
 // CheckAuthorizations checks every act that cites a check. journal is the
@@ -168,6 +188,9 @@ func CheckActs(journal []Record, ins []ActIn) ([]ActAuthorization, error) {
 		a := ActAuthorization{Act: act, Check: journal[ci], Verdict: journal[vi], Approval: journal[ai], AmountNotHeld: notHeld,
 			ApprovalDigest: w.digests[ai], NeedsPersonSignature: personApprover(ab.Approver)}
 		if ab.Approver == "standing_intent" {
+			if w.verdict[vi].Rules == nil {
+				a.RulesNotRecorded, a.NeedsPersonSignature = true, true
+			}
 			for _, j := range w.limitsAt[ai] {
 				a.LimitApprovals = append(a.LimitApprovals, w.digests[j])
 			}

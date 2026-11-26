@@ -342,6 +342,7 @@ dealprofile	func	AssetScale	x-deal-v0	frozen #652	frozen #651
 dealprofile	func	Check	x-deal-v0	ported	ported
 dealprofile	func	CheckChain	x-deal-v0	ported	frozen #651
 dealprofile	func	CheckDigest	x-deal-v0	ported	ported
+dealprofile	func	CheckText	x-deal-v0	frozen #976	frozen #977
 dealprofile	func	CommitText	x-deal-v0	ported	ported
 dealprofile	func	CounterpartyWithheld	x-deal-v0	frozen #652	frozen #651
 dealprofile	func	DealKey	x-deal-v0	ported	ported
@@ -487,6 +488,7 @@ dealprofile/xdealv1	func	CheckAuthorizations	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckCase	x-deal-v1	frozen #774	ported
 dealprofile/xdealv1	func	CheckCaseRecord	x-deal-v1	frozen #774	ported
 dealprofile/xdealv1	func	CheckDispute	x-deal-v1	ported	ported
+dealprofile/xdealv1	func	CheckJournal	x-deal-v1	frozen #976	frozen #977
 dealprofile/xdealv1	func	CheckRuling	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	CheckSealed	x-deal-v1	ported	ported
 dealprofile/xdealv1	func	DecideCase	x-deal-v1	frozen #875	frozen #876
