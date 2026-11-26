@@ -39,7 +39,7 @@ func dealNodeCheckpointCommand() *cobra.Command {
 covers, its root and the key that signed it. It is cut now when the book has grown since the last one. --out writes the
 signed statement (COSE) to a new file, for a host to submit to its witness; deal node bundle --at names the checkpoint by
 its id. --list prints every checkpoint the book holds with whether a witnessed cadence tick covers it and how (cadence_extent: "all" when a tick carries that very checkpoint, "part"
-when it carries an earlier one), and cuts none.`,
+when it carries an earlier one), and cuts none: that is this node's own reading of its shelf, which no bundle carries.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
 			p, err := cli.Selected(c)
@@ -96,8 +96,8 @@ when it carries an earlier one), and cuts none.`,
 }
 
 // listNodeCheckpoints is every checkpoint the book holds, oldest first, with
-// whether a witnessed cadence tick carries it: the ids deal node bundle --at can
-// prove a record under with the cadence chain attached.
+// whether a witnessed cadence tick carries it, as this node's own reading of
+// its shelf (no bundle carries the chain since u230).
 func listNodeCheckpoints(c *cobra.Command, ctx context.Context, s *dealSession, b *evidencebook.Book, book string) error {
 	checkpoints, err := b.Checkpoints(ctx)
 	if err != nil {
@@ -145,15 +145,12 @@ hop, whatever the link type, which can reach another party's records held in thi
 Capsules), and their payloads. Disclosing is a record of the book: the book commits a disclosure record
 naming what the bundle disclosed (permanent, and naming what was shown, not who it was shown to), so the book's own
 history says it was shown, and the book has grown: the next
-newest checkpoint is a new one, which a witnessed tick carries only as a later checkpoint of the book (the cadence chain
-then travels as "part": an earlier witnessed checkpoint and a consistency proof). To have the tick's own checkpoint ("all"),
-pass --at with a checkpoint whose cadence_extent deal node checkpoint --list shows as "all". With "part" the witness saw
-only the earlier checkpoint: records after it are in the book by the consistency proof, but the witness did not see them.
+newest checkpoint is a new one.
 
 --witness-receipt FILE (a checkpoint.witnesses entry: ts_url, entry_hash, receipt_b64, leaf_index, tree_size) with
 --witness-directory FILE (witnesses.json) and --at carries the witness's receipt for that checkpoint; the receipt must
-verify under the directory, or no bundle is written. When a witnessed cadence tick carries the checkpoint, the cadence
-chain travels in the bundle's parent-log-witness/v1 extension. What a bundle shows is that the record is in the book at that
+verify under the directory, or no bundle is written. The bundle carries no cadence chain: it would show the book's shelf
+position and cadence to everyone it is published to. What a bundle shows is that the record is in the book at that
 position; it does not show the record's content is true.`,
 		Args: cli.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) (err error) {
@@ -239,27 +236,10 @@ position; it does not show the record's content is true.`,
 				}
 				req.At = &cp
 			}
-			// The witnessed cadence chain for the checkpoint, when a witnessed tick carries it.
-			extensions := map[string]json.RawMessage{}
-			cadence, _, e := s.cadenceOf(ctx)
-			if e != nil {
-				return e
-			}
-			var cadenceExtent any
-			if chain, e := cadence.Chain(ctx, req.At.Statement); e == nil {
-				name, value, _ := cadenceExtensionEntry(chain) // Chain returns only a witnessed chain
-				raw, e := json.Marshal(value)
-				if e != nil {
-					return e
-				}
-				extensions[name] = raw
-				cadenceExtent = chain["extent"]
-			} else if !errors.Is(e, evidencebook.ErrNotFound) {
-				return e
-			}
-			if len(extensions) > 0 {
-				req.Extensions = extensions
-			}
+			// The bundle carries no cadence chain (u219, u230: it would show the
+			// book's shelf position and cadence to everyone the book is
+			// published to); a receipt over its own --at checkpoint travels
+			// with --witness-receipt.
 			bundle, err := b.Bundle(ctx, req)
 			if err != nil {
 				return nodeBookError(err)
@@ -279,9 +259,6 @@ position; it does not show the record's content is true.`,
 			}
 			result := map[string]any{"book": book, "record": record, "file": out, "checkpoint": req.At.ID, "entries": req.At.Entries,
 				"witnessed": receiptPath != "", "disclosed": disclose}
-			if cadenceExtent != nil {
-				result["cadence_extent"] = cadenceExtent
-			}
 			if bundle.Disclosure.RecordID != "" {
 				result["disclosure_record"] = bundle.Disclosure.RecordID
 			}

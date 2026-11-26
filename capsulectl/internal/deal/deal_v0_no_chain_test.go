@@ -154,22 +154,19 @@ func TestSealedReportCarriesWitnessCoverage(t *testing.T) {
 	assert.False(t, sealedReportCarriesWitnessCoverage(b(map[string]any{"report": map[string]any{"witness_coverage": map[string]any{}}}), "other"))
 }
 
-// Only `deal node bundle` builds a cadence chain into a bundle; no deal copy
-// builder does (u225). A guard against a writer coming back.
-func TestOnlyTheNodeBundleWritesACadenceChain(t *testing.T) {
+// No bundle builder writes a cadence chain (u225, u230): no production file
+// names the chain's extension as something to write. A guard against a
+// writer coming back.
+func TestNoBundleBuilderWritesACadenceChain(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
-	call := regexp.MustCompile(`cadenceExtensionEntry\(`)
+	write := regexp.MustCompile(`\[(DealParentWitnessExtension|DealCadenceExtension)\]\s*=`)
 	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") || f == "deal_verify_names.go" {
+		if strings.HasSuffix(f, "_test.go") {
 			continue
 		}
-		n := len(call.FindAllIndex(mustRead(t, f), -1))
-		if f == "deal_node_bundle.go" {
-			assert.Equal(t, 1, n, f)
-			continue
-		}
-		assert.Zero(t, n, f)
+		assert.Empty(t, write.FindAllIndex(mustRead(t, f), -1), f)
+		assert.NotContains(t, string(mustRead(t, f)), "cadenceExtensionEntry(", f)
 	}
 }
 

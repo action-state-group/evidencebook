@@ -86,7 +86,7 @@ func holderWitnessedLine(chain map[string]interface{}) string {
 		}
 		return what + " cut at " + at
 	}
-	const notCarried = "This copy does not carry the witness signature (it would show your shelf's position and cadence), so whoever you send it to sees it sealed on your device only. "
+	const notCarried = "This copy does not carry this witnessing (it would show your shelf's position and cadence), so whoever you send it to does not see it. "
 	if chain["extent"] == "part" {
 		k, _ := JSONUint(chain["steps_witnessed"])
 		n, _ := JSONUint(chain["steps"])

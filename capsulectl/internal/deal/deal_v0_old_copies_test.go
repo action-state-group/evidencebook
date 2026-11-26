@@ -115,3 +115,35 @@ func withProfileSession(t *testing.T, p cli.Profile, fn func(s *dealSession)) {
 	defer func() { require.NoError(t, s.close()) }()
 	fn(s)
 }
+
+// cadenceExtensionEntry is the extension that carried a cadence chain before
+// u225 and u230 (no bundle carries one now); tests build old-copy chains with
+// it (withHolderChain).
+//
+// It is the extension that carries a cadence chain
+// (dealWitnessState's map) in a bundle: a witnessed chain as the
+// parent-log-witness/v1 block, which is the chain with its "cadence" member
+// named "parent" as -03 calls it. Members -03 does not define (state, extent,
+// checkpoint_at, steps_witnessed, steps, rest) stay; a verifier ignores them
+// and computes the extent from the checkpoints. A state that is not a
+// witnessed chain (scheduled, pending, unverified, not_configured) names no
+// leaf and no receipt, so it is no block a verifier could check, and no new
+// bundle carries it under any name (Sherlock2, buzz 8c3ec04f: not under
+// x-cadence-witness/v0, which a reader would take for a chain to check
+// elsewhere). The words for such a state come from the producer's own state
+// when the report is made (dealAssuranceRung's producer), not from the bundle.
+// ok is false for those states.
+func cadenceExtensionEntry(chain map[string]interface{}) (name string, block map[string]interface{}, ok bool) {
+	parent, isObject := chain["cadence"].(map[string]interface{})
+	if chain["state"] != "witnessed" || !isObject {
+		return "", nil, false
+	}
+	block = make(map[string]interface{}, len(chain))
+	for k, v := range chain {
+		if k != "cadence" {
+			block[k] = v
+		}
+	}
+	block["parent"] = parent
+	return DealParentWitnessExtension, block, true
+}
