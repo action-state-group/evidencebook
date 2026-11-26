@@ -33,6 +33,9 @@ type Acted struct {
 	Again         bool
 	Gate          *xdealv1.ActGate
 	Authorization *xdealv1.ActAuthorization
+	// AmountNotChecked says a refund's amount was not held to its cancel
+	// check (RefundFeeNotChecked); a caller shows it.
+	AmountNotChecked bool
 }
 
 // actDeal is what a call on an agreed deal reads first: the deal, the

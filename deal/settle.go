@@ -303,7 +303,7 @@ func sameButObservedAt(a, b json.RawMessage) bool {
 // type names, or x-deal-v1's own merchant order (xdealv1.MerchantOrderType)
 // with its order number and the checkout origin in normal form. No value may
 // be a card number (evidencebook#771).
-func checkPaymentRef(raw json.RawMessage) (map[string]any, error) {
+func checkPaymentRef(raw json.RawMessage, emptyOrder bool) (map[string]any, error) {
 	bad := func(why string) (map[string]any, error) { return nil, fieldError("payment_ref", " "+why) }
 	var ref map[string]any
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -320,7 +320,10 @@ func checkPaymentRef(raw json.RawMessage) (map[string]any, error) {
 	}
 	typ, _ := text("type")
 	value, ok := text("value")
-	if !ok || strings.TrimSpace(value) == "" {
+	// A merchant order may have no order number yet (a pay check made before
+	// the checkout showed one) or none at all (a checkout that failed), where
+	// the caller says so; every other reference has a value.
+	if !ok || (strings.TrimSpace(value) == "" && !(emptyOrder && typ == xdealv1.MerchantOrderType && ok && value == "")) {
 		return bad("has no value: the payment's reference")
 	}
 	if value != strings.TrimSpace(value) {
@@ -360,7 +363,12 @@ func checkPaymentRef(raw json.RawMessage) (map[string]any, error) {
 	return ref, nil
 }
 
-// SettleIn is a payee leg's input: what the holder received on a payment
+// SettleIn is a leg's input. With Check, it is a payer leg, sealed when
+// the rail answers (Status settled or failed), bound to the send
+// SendPayment opened on that check: PaymentRef is the reference the leg
+// carries, RoutingFee a routing fee paid (nil: none), and CloseStep rewrites
+// the send's local step when the payment failed (nil: left as it is).
+// Without Check, it is a payee leg:  what the holder received on a payment
 // row (Row, or the offer's only payment row), net of any receive fee, and
 // the fee taken (both in minor units), the leg's Status (LegPending,
 // LegSettled or LegFailed) and its PaymentRef, AAC's flat payment_ref
@@ -369,6 +377,9 @@ func checkPaymentRef(raw json.RawMessage) (map[string]any, error) {
 // payment this one replaces. Statements, Marks and RemedyRow are as for
 // [PerformIn].
 type SettleIn struct {
+	Check                     string
+	RoutingFee                *int64
+	CloseStep                 func(json.RawMessage) (json.RawMessage, error)
 	Row, Reverses, Supersedes string
 	Status                    string
 	Received, ReceiveFee      int64
@@ -386,8 +397,12 @@ type SettleIn struct {
 // deal and the input: the terms it names are the deal's offer as sent. A
 // payee leg rests on no check and is not gated. Called again with the same input, it seals nothing and returns the
 // leg already sealed. A leg the holder owes (a payment or a refund it
-// makes) is a payer leg, which this call does not seal.
+// makes) is a payer leg: it cites its check (SettleIn.Check) and is sealed
+// after SendPayment opened its send (settlePayer).
 func (s *Store) Settle(ctx context.Context, dealID string, in SettleIn) (Acted, error) {
+	if in.Check != "" {
+		return s.settlePayer(ctx, dealID, in)
+	}
 	a, err := s.loadActDeal(ctx, dealID)
 	if err != nil {
 		return Acted{}, err
@@ -447,7 +462,7 @@ func (s *Store) Settle(ctx context.Context, dealID string, in SettleIn) (Acted, 
 		r := xdealv1.RefTo(in.Supersedes)
 		body.Supersedes = &r
 	}
-	ref, err := checkPaymentRef(in.PaymentRef)
+	ref, err := checkPaymentRef(in.PaymentRef, false)
 	if err != nil {
 		return Acted{}, err
 	}
