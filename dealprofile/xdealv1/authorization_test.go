@@ -545,3 +545,18 @@ func TestStandingIntentVerdictWithNoRulesEscalates(t *testing.T) {
 		assert.NotEmpty(t, auths[0].Intent)
 	}
 }
+
+// CheckJournal refuses what the walk refuses, before any act is read.
+func TestCheckJournal(t *testing.T) {
+	f := &authFlow{t: t}
+	c := f.check("commit")
+	v := f.verdict(c, "pass")
+	f.approve(v, "user", true)
+	require.NoError(t, CheckJournal(f.journal))
+
+	// A person's approval with no card commitment leaves the journal
+	// unwalkable: every later act of the deal would be refused.
+	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f')}, Nonce: label("unbound approval")}
+	f.seal(TypeApproval, true, a, rel("approves", v))
+	assert.ErrorContains(t, CheckJournal(f.journal), "commits to the card it answered")
+}

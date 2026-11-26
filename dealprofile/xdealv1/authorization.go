@@ -73,6 +73,16 @@ type ActAuthorization struct {
 	Intent string
 }
 
+// CheckJournal refuses a journal that x-deal-v1's authorization walk
+// refuses (PROFILE §8): the walk CheckActs runs over the whole journal
+// before it reads any act, so a record that fails it leaves every later act
+// of the deal unauthorizable. A writer runs it over the deal's journal with
+// a candidate record appended, before the record is sealed.
+func CheckJournal(journal []Record) error {
+	_, err := walkJournal(journal)
+	return err
+}
+
 // CheckAuthorizations checks every act that cites a check. journal is the
 // holder's journal records of the deal's task, in journal order; acts are
 // its deal-book perform and settle records, in book order. A journal record
