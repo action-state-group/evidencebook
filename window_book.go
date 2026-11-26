@@ -118,7 +118,7 @@ type bookWindow struct {
 // open record only first and only from the shelf, its close record only
 // from the shelf, the index roots its own checkpoints commit, every other
 // record only inside its window, and in its grace only a close/v1 Close for
-// a period inside the window.
+// a period inside the window and the held_bundle such a Close relies on.
 func (w *bookWindow) admits(h Header, at time.Time, checkpointing bool) error {
 	recordType, seq := h.RecordType, h.Seq
 	if w == nil {
@@ -171,6 +171,13 @@ func (w *bookWindow) admits(h Header, at time.Time, checkpointing bool) error {
 	if recordType == RecordTypeClose && (w.bounded || !at.Before(w.End)) && at.Before(w.graceEnd) {
 		return w.closeInside(h)
 	}
+	// A Close citing a peer Close appends the peer bundle it relies on just
+	// before itself (evidencebook#116), so a window that takes the Close in
+	// its grace takes that held_bundle too. The chain verifier names one no
+	// late Close cites.
+	if recordType == RecordTypeHeldBundle && (w.bounded || !at.Before(w.End)) && at.Before(w.graceEnd) {
+		return heldForClose(h)
+	}
 	if w.bounded {
 		return fmt.Errorf("%w: window %s has ended and takes only a Close for a period inside it", ErrWindowClosed, w.Label)
 	}
@@ -178,6 +185,16 @@ func (w *bookWindow) admits(h Header, at time.Time, checkpointing bool) error {
 		return fmt.Errorf("%w: window %s is in its grace until %s, which takes only a Close for a period inside it", ErrWindowClosed, w.Label, windowTime(w.graceEnd))
 	}
 	return fmt.Errorf("%w: %s is outside window %s [%s, %s)", ErrWindowClosed, at.Format(time.RFC3339Nano), w.Label, windowTime(w.Start), windowTime(w.End))
+}
+
+// heldForClose checks that a held_bundle is one a Close relies on, the one
+// kind of held_bundle a window takes in its grace.
+func heldForClose(h Header) error {
+	var held HeldBundleStatement
+	if decodeStrict(h.Statement, &held) != nil || held.ReliedBy != HeldBundleReliedByClose {
+		return fmt.Errorf("%w: a window in its grace takes a held_bundle only for a Close relying on it", ErrWindowClosed)
+	}
+	return nil
 }
 
 // closeInside checks that a Close is a close/v1 whose period lies inside

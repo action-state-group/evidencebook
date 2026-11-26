@@ -331,15 +331,18 @@ checkpoint is stored; a next window's open record is written from the stored bou
 period inside the window, a superseding Close included; a legacy body is refused) and the index
 roots its own checkpoints commit; at or after `End + Grace` it takes nothing, rolled or not. An
 acknowledgement or rebuttal goes in the current window at any time, as do a Close sealed after
-the grace and `reconcile` (which adds no record).
+the grace and `reconcile` (which adds no record). A Close citing a peer Close appends the peer
+bundle it relies on, a `held_bundle` with `relied_by` `close`, just before itself
+(evidencebook#116), so a window in grace takes that `held_bundle` too, and no other.
 
 **Chain v2.** Each window entry also carries the boundary checkpoint (with receipts when the host
 has them), a CLL consistency proof from the boundary tree to the final tree, and the **tail**:
 every leaf after the boundary up to the close record, each with its inclusion proof under the
 final checkpoint. `VerifyWindowChain` checks the next window's `previous` against the boundary
 tree, the consistency proof, that the tail is contiguous from the boundary's last leaf + 1 to
-the close record, and that every tail record is a close/v1 for a period inside the window or a
-strictly decoded `index_root`; any other record is a named finding (`window 2026-10 holds a
+the close record, and that every tail record is a close/v1 for a period inside the window, a
+strictly decoded `index_root`, or a `held_bundle` a later close/v1 in the tail cites; any other
+record, an uncited `held_bundle` included, is a named finding (`window 2026-10 holds a
 late <type> record at <seq>`), as is a missing leaf. The boundary is positional, so a backdated
 `committed_at` cannot hide a record; once a window took its boundary its book refuses every
 record but a Close for its period, whatever the clock reads. What a chain does not show: that a
