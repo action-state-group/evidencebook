@@ -129,7 +129,8 @@ func (p *side) approvedCheck(dealID, action, approver, label string) string {
 	p.t.Helper()
 	check := p.journal(dealID, true, &xdealv1.CheckBody{CheckBody: dealprofile.CheckBody{Action: action}, Nonce: nonceOf(label + " check")})
 	card := nonceOf(label + " card")
-	verdict := p.journal(dealID, true, &xdealv1.VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: card},
+	verdict := p.journal(dealID, true, &xdealv1.VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: card,
+		Rules: &dealprofile.VerdictBodyRules{Status: "not_configured"}},
 		Nonce: nonceOf(label + " verdict")}, relTo("checks", check))
 	a := &xdealv1.ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: approver}, Nonce: nonceOf(label + " approval")}
 	if approver == "user" {

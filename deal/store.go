@@ -217,7 +217,7 @@ func codedConflict(code Code, reason string, args ...string) error {
 // renaming or removing one breaks a caller that matches on it.
 type Code string
 
-// The coded refusals: 23. Each lists, in order, the Args its message names.
+// The coded refusals: 24. Each lists, in order, the Args its message names.
 const (
 	// CodeCancelAgain: the offer is already cancelled. No Args.
 	CodeCancelAgain Code = "cancel-again"
@@ -288,6 +288,11 @@ const (
 	CodeSettleRefunded Code = "settle-refunded"
 	// CodeSettleNegative: an amount of the leg is negative. No Args.
 	CodeSettleNegative Code = "settle-negative"
+	// CodeInFlight: a journal record that changes the deal's details while
+	// one of its payments is in flight. Args: the deal id, the open send's
+	// check digest, the leg it reverses ("" for a payment), its payment_ref
+	// type, the record's type.
+	CodeInFlight Code = "in-flight"
 )
 
 // now is the store's clock, in UTC.
