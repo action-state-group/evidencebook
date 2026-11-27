@@ -176,7 +176,13 @@ start=$SECONDS
 if ((${#selected[@]})); then
   # act reads the chosen workflows from their own directory; the checkout it
   # runs in stays whole.
-  for f in "${selected[@]}"; do cp "$wfdir/$f" "$work/workflows/$f"; done
+  # act does not evaluate an expression in strategy.max-parallel (it then runs
+  # the matrix one entry at a time: capsulectl's three plain shards back to
+  # back). Here the bound is --concurrent-jobs, so the copy states the same
+  # number.
+  for f in "${selected[@]}"; do
+    sed -E "s/^( +max-parallel: )\\$\{\{.*\}\}[[:space:]]*$/\1$n/" "$wfdir/$f" > "$work/workflows/$f"
+  done
   cat > "$work/event.json" <<EOF
 {"pull_request": {"number": 0, "head": {"sha": "$head", "ref": "local", "repo": {"full_name": "action-state-group/evidencebook"}},
  "base": {"sha": "$base", "ref": "main", "repo": {"full_name": "action-state-group/evidencebook"}}},
