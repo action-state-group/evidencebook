@@ -168,3 +168,50 @@ func TestAnOpeningAfterTheAgreementIsNotCited(t *testing.T) {
 	ag, _ := agreeOf(b.Record)
 	assert.Nil(t, ag.Intent)
 }
+
+// A run that died after storing the opening and before appending its
+// intent to the journal leaves the intent pending: deal agree's default
+// appends it first and cites it, never a digest the journal lacks.
+func TestAgreeCitesAnOpeningADeadRunLeftPending(t *testing.T) {
+	newV1Side(t)
+	offer := strings.Replace(v1OfferInput, `"owed_by": "buyer",`, `"owed_by": "buyer", "recomputed": true,`, 1)
+	offerOf := func() (dealID, digest string) {
+		res := dealRun(t, "offer", "--input", writeJSON(t, offer), "--out", filepath.Join(t.TempDir(), "o.json"))
+		return res["deal_id"].(string), res["offer"].(string)
+	}
+	// A first deal opened as usual gives an opening to build the second's from.
+	first, _ := offerOf()
+	dealRun(t, "note", "--deal", first, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, v1Opening))
+	dealID, offerDigest := offerOf()
+	var intentDigest string
+	withSession(t, func(s *dealSession) {
+		firstEvents, err := s.v1Events(t.Context(), first)
+		require.NoError(t, err)
+		open := *firstEvents[0].Event.Open
+		opened, err := s.prepareV1(dealID, nil, dealEvent{Kind: "open", Open: &open}, false)
+		require.NoError(t, err)
+		intent := open.Intent
+		seller := &dealSeller{Name: "Kettle Shop", Domain: "kettle.example"}
+		p, err := s.prepareV1(dealID, []sealedEvent{opened.se}, dealEvent{Kind: "intent", Intent: &intent, Seller: seller}, true)
+		require.NoError(t, err)
+		require.NotNil(t, p.payload)
+		intentDigest = p.se.Digest
+		_, err = s.db.ExecContext(t.Context(), `INSERT INTO deal_v1_events (deal_id, n, kind, local, record_digest, payload) VALUES (?, ?, ?, ?, ?, NULL), (?, ?, ?, ?, ?, ?)`,
+			dealID, opened.se.Event.N, "open", string(opened.local), opened.se.Digest,
+			dealID, p.se.Event.N, "intent", string(p.local), intentDigest, p.payload)
+		require.NoError(t, err)
+		held, err := s.journalHolds(t.Context(), intentDigest)
+		require.NoError(t, err)
+		require.False(t, held, "the dead run never appended the intent")
+	})
+
+	dealRun(t, "agree", offerDigest, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "a.json"))
+	ag, _ := agreeOf(ownBook(t, dealID)[0])
+	require.NotNil(t, ag.Intent)
+	assert.Equal(t, intentDigest, ag.Intent.Digest, "the agreement cites the opening it recovered")
+	withSession(t, func(s *dealSession) {
+		held, err := s.journalHolds(t.Context(), intentDigest)
+		require.NoError(t, err)
+		assert.True(t, held, "appended before it was cited")
+	})
+}
