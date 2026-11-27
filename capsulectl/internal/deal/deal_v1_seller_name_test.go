@@ -215,3 +215,27 @@ func TestAgreeCitesAnOpeningADeadRunLeftPending(t *testing.T) {
 		assert.True(t, held, "appended before it was cited")
 	})
 }
+
+// An explicit --intent is cited as given: another buyer opening that names
+// the same seller (here both sellers keep no signed records, so both keys
+// are null) is cited with its seller, and deal B's own opening is not.
+func TestAnExplicitIntentNamingTheSameSellerIsCited(t *testing.T) {
+	newV1Side(t)
+	offer := strings.Replace(v1OfferInput, `"owed_by": "buyer",`, `"owed_by": "buyer", "recomputed": true,`, 1)
+	open := func() (dealID, offerDigest, intent string) {
+		res := dealRun(t, "offer", "--input", writeJSON(t, offer), "--out", filepath.Join(t.TempDir(), "o.json"))
+		dealID, offerDigest = res["deal_id"].(string), res["offer"].(string)
+		in := strings.Replace(v1BuyerIntent, "buy the lamp", "buy the lamp for "+dealID, 1)
+		note := dealRun(t, "note", "--deal", dealID, "--kind", "intent", "--input", writeJSON(t, in), "--opening", writeJSON(t, v1Opening))
+		return dealID, offerDigest, note["intent"].(string)
+	}
+	_, _, first := open()
+	second, offerDigest, own := open()
+	require.NotEqual(t, first, own)
+
+	dealRun(t, "agree", offerDigest, "--admit", sealAdmit(t, "GO"), "--intent", first, "--out", filepath.Join(t.TempDir(), "a.json"))
+	ag, _ := agreeOf(ownBook(t, second)[0])
+	require.NotNil(t, ag.Intent)
+	assert.Equal(t, first, ag.Intent.Digest, "the --intent given, not the deal's own opening")
+	assert.True(t, ag.CounterpartyKey.IsNull())
+}
