@@ -119,9 +119,9 @@ jobs:
 
   plan:
     # Whether this run concerns capsulectl, and which test jobs run: on a pull
-    # request three plain shards and one race job over race-packages.sh's
-    # packages (none when it lists none); otherwise ten race shards and three
-    # plain shards over every package.
+    # request one race job over race-packages.sh's packages (none when it lists
+    # none) and three plain shards over the other packages; otherwise ten race
+    # shards and three plain shards over every package.
     name: capsulectl plan
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -160,6 +160,14 @@ jobs:
             pkgs=$(bash .github/scripts/race-packages.sh capsulectl < "$RUNNER_TEMP/changed.txt")
             pkgs=${pkgs//$'\n'/ }
             echo "Race over: ${pkgs:-nothing}" >> "$GITHUB_STEP_SUMMARY"
+            # The plain shards leave the race job's packages to it: it runs the
+            # same tests with the race detector, and only internal/deal, which a
+            # pull request never races, changes under it (evidencebook#1038;
+            # .github/scripts/ci-scripts_test.sh checks both).
+            module=$(cd capsulectl && go list -m)
+            all=$(cd capsulectl && go list ./... | sed "s#^$module\$#.#; s#^$module/#./#" | sort)
+            rest=$(comm -23 <(printf '%s\n' "$all") <(printf '%s\n' $pkgs | sort) | paste -sd ' ' -)
+            plain=$(jq -cn --arg p "$rest" '[range(1;4) | {pass:"plain",shard:"\(.)/3",pkgs:$p}]')
             matrix=$(jq -cn --arg p "$pkgs" --argjson plain "$plain" \
               '(if $p == "" then [] else [{pass:"race",shard:"1/1",pkgs:$p}] end) + $plain')
           else
