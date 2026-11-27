@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -861,7 +862,9 @@ func (s *dealSession) fixStep(dealID string, events []sealedEvent, ev dealEvent)
 	ev.OfferClass = dealOfferClassVersion
 	ev.Journey = dealJourneyVersion
 	ev.Nonces = map[string]string{}
-	for name := range dealTexts(ev) {
+	// Drawn in name order, not map order, so a seeded test random gives
+	// each text the same nonce on every run.
+	for _, name := range slices.Sorted(maps.Keys(dealTexts(ev))) {
 		nonce := make([]byte, 32)
 		if _, err := rand.Read(nonce); err != nil {
 			return dealEvent{}, err
