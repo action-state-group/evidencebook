@@ -259,4 +259,3 @@ func (s *dealSession) v0PageWitnessOf(ctx context.Context, dealID string, b map[
 	}
 	return &v0PageWitness{proof: proof, directory: abs}, nil
 }
-
