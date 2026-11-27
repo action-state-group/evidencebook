@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -115,6 +116,11 @@ func TestSkillDescriptionReadsOnlyTheFrontmatter(t *testing.T) {
 
 func TestDealSkillNamesNoExpertCommand(t *testing.T) {
 	assert.Empty(t, namesExpertCommand(readSkillText(t, "SKILL.md")), "SKILL.md names an expert command")
+	// Nor do the procedure files it points to: they moved out of SKILL.md
+	// (evidencebook#1025) and teach the same five verbs.
+	for _, file := range dealProcedureFiles() {
+		assert.Empty(t, namesExpertCommand(readSkillText(t, file)), "%s names an expert command", file)
+	}
 }
 
 func TestExpertCommandPatternsCatchWrappedAndLegacyCommands(t *testing.T) {
@@ -229,4 +235,157 @@ func TestDealSkillRelativeLinksResolve(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
+}
+
+// The x-deal-v1 procedures live in reference files, and SKILL.md keeps one
+// pointer line per procedure saying when to open which (evidencebook#1025).
+// Each value is the link the pointer gives, relative to the skill folder.
+var dealProcedures = map[string]string{
+	"Purchase":             "references/purchase.md#purchase",
+	"One errand, one deal": "references/purchase.md#one-errand-one-deal",
+	"Booking":              "references/purchase.md#booking",
+	"Signature":            "references/purchase.md#signature",
+	`What "settled" means, and the person's signature`: "references/purchase.md#what-settled-means-and-the-persons-signature",
+	"Disclosure": "references/disclosure.md",
+	"Sale":       "references/sale.md#sale",
+	"Where the user sells: payment received, and what was delivered": "references/sale.md#where-the-user-sells-payment-received-and-what-was-delivered",
+	"Cancellation and refund":     "references/cancellation.md",
+	"A dispute":                   "references/dispute.md",
+	"Evidence that arrives later": "references/evidence.md",
+}
+
+// pointerLabel is a procedure's short name in its pointer line, where the
+// heading is longer.
+var pointerLabel = map[string]string{
+	`What "settled" means, and the person's signature`:               "What \"settled\" means",
+	"Where the user sells: payment received, and what was delivered": "Where the user sells",
+}
+
+// dealProcedureFiles are the reference files that hold the procedures.
+func dealProcedureFiles() []string {
+	seen := map[string]bool{}
+	var files []string
+	for _, target := range dealProcedures {
+		file, _, _ := strings.Cut(target, "#")
+		if !seen[file] {
+			seen[file] = true
+			files = append(files, file)
+		}
+	}
+	slices.Sort(files)
+	return files
+}
+
+// Rules and Points of no return carry the payment safety floor, and an agent
+// cannot be relied on to go and read another file for them (Ethan,
+// evidencebook#1025): they stay in SKILL.md in full, and no reference file
+// carries a second copy.
+func TestDealSkillKeepsRulesAndPointsOfNoReturnInSkillMD(t *testing.T) {
+	skill := readSkillText(t, "SKILL.md")
+	rules := strings.Join(strings.Fields(section(t, skill, "Rules (never break these)")), " ")
+	for _, rule := range []string{
+		"**Fixed order:** snapshot → seal → diff → show → approval → seal approval → act.",
+		"`deal settle --sent`, and the payment goes to the rail only once that succeeded.",
+		"**Never act on an unsealed approval.** Act only when `deal check` returned `\"proceed\": true`, or `deal note --kind approval` returned `\"proceed\": true`.",
+		"**On an error, hold.** If any `capsulectl` command exits non-zero, do not act.",
+		"**Note every telling, mechanically.**",
+		"a first telling no approved check named is held there.",
+		"**Never hold silently.** A `pause` always goes to the user with the check's text.",
+		"**Show the check's own card, once.**",
+		"**Options are buttons, never text.**",
+		"**The text is evidence.**",
+		"**\"Next\" is a promise, and it is kept.**",
+		"**Never say the rules ran when they did not.**",
+		"**This upgrades your host's own confirmation; it never replaces it or bypasses it.**",
+	} {
+		assert.Contains(t, rules, rule)
+	}
+	points := strings.Join(strings.Fields(section(t, skill, "Points of no return")), " ")
+	for _, rule := range []string{
+		"| `purchase` | `pay`, `commit`, `cancel`, `share_contact`, `share_credentials` |",
+		"| any deal where the user sells | `offer`, `represent` |",
+		"`pay` is the payment the user makes, `commit` an act such as a delivery, a booking or a signature (`deal perform` rests on it), and `cancel` a cancellation after agreeing (a refund rests on it).",
+		"`deal check` refuses any other action name.",
+	} {
+		assert.Contains(t, points, rule)
+	}
+	// The sections come before the setup and the reference material, as they
+	// did before the procedures moved.
+	assert.Less(t, strings.Index(skill, "\n## Rules (never break these)\n"), strings.Index(skill, "\n## Setup (once)\n"))
+	assert.Less(t, strings.Index(skill, "\n## Points of no return\n"), strings.Index(skill, "\n## Setup (once)\n"))
+
+	err := filepath.WalkDir(dealSkillDir, func(path string, d fs.DirEntry, err error) error {
+		require.NoError(t, err)
+		if d.IsDir() || filepath.Ext(path) != ".md" || filepath.Base(path) == "SKILL.md" && filepath.Dir(path) == filepath.Clean(dealSkillDir) {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		text := strings.Join(strings.Fields(string(raw)), " ")
+		for _, copied := range []string{"Rules (never break these)", "Never act on an unsealed approval.", "snapshot → seal → diff → show → approval"} {
+			assert.NotContains(t, text, copied, "%s carries a copy of SKILL.md's Rules", path)
+		}
+		assert.NotContains(t, string(raw), "\n## Points of no return\n", "%s carries a copy of SKILL.md's Points of no return", path)
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+// SKILL.md has one pointer line per procedure, naming the procedure and
+// linking the file that holds it; each procedure's heading is in exactly one
+// of SKILL.md and the procedure files, never in two (the x-deal-v0 forms in
+// LEGACY-X-DEAL-V0.md are a separate version and not counted).
+func TestDealSkillPointsToEachProcedureOnce(t *testing.T) {
+	procs := section(t, readSkillText(t, "SKILL.md"), "Procedures")
+	assert.Contains(t, strings.Join(strings.Fields(procs), " "), "**Before the first step of a scenario, open its file and follow it step by step**")
+	var pointers []string
+	for _, line := range strings.Split(procs, "\n") {
+		if strings.HasPrefix(line, "- **") {
+			pointers = append(pointers, line)
+		}
+	}
+	// One line for each procedure, and one for the older deals.
+	assert.Len(t, pointers, len(dealProcedures)+1)
+	flat := strings.Join(strings.Fields(procs), " ")
+	for name, target := range dealProcedures {
+		label := pointerLabel[name]
+		if label == "" {
+			label = name
+		}
+		re := regexp.MustCompile(`- \*\*` + regexp.QuoteMeta(label) + `\*\*: [^*]*?\]\(` + regexp.QuoteMeta(target) + `\)`)
+		assert.Regexp(t, re, flat, "SKILL.md points %q to %s", name, target)
+	}
+	assert.Contains(t, flat, "- **Older deals**: an x-deal-v0 deal already open keeps its version: finish it with the procedures in [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md).")
+
+	headings := map[string][]string{}
+	for _, file := range append([]string{"SKILL.md"}, dealProcedureFiles()...) {
+		for _, line := range strings.Split(readSkillText(t, file), "\n") {
+			if h, ok := strings.CutPrefix(strings.TrimLeft(line, "#"), " "); ok && strings.HasPrefix(line, "#") {
+				headings[h] = append(headings[h], file)
+			}
+		}
+	}
+	for name := range dealProcedures {
+		assert.Len(t, headings[name], 1, "the heading %q is in %v", name, headings[name])
+		if len(headings[name]) == 1 {
+			assert.NotEqual(t, "SKILL.md", headings[name][0], "%q stays in SKILL.md", name)
+		}
+	}
+	// Each procedure file says the SKILL.md Rules and Points of no return
+	// bind its steps.
+	for _, file := range dealProcedureFiles() {
+		head := strings.Join(strings.Fields(strings.SplitN(readSkillText(t, file), "\n\n", 3)[1]), " ")
+		assert.Contains(t, head, "[Rules](../SKILL.md#rules-never-break-these) and [Points of no return](../SKILL.md#points-of-no-return) bind every step here", file)
+	}
+}
+
+// The skill's text as the agent may read it: SKILL.md, then the procedure
+// files it points to, flattened.
+func dealSkillProcedureText(t *testing.T) string {
+	t.Helper()
+	text := readSkillText(t, "SKILL.md")
+	for _, file := range dealProcedureFiles() {
+		text += "\n" + readSkillText(t, file)
+	}
+	return text
 }

@@ -152,9 +152,7 @@ func TestAMerchantEmailSealsWithASuppliedKeyRecord(t *testing.T) {
 // The deal skill never asks the user to do DNS: when the key cannot be read
 // it says one plain thing, and the tick does the rest.
 func TestTheDealSkillNeverAsksTheUserToDoDNS(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "skills", "deal", "SKILL.md"))
-	require.NoError(t, err)
-	skill := string(raw)
+	skill := dealSkillProcedureText(t)
 	// Compared with its line breaks as spaces, so a rewrap changes nothing.
 	flat := strings.Join(strings.Fields(skill), " ")
 	for _, part := range []string{

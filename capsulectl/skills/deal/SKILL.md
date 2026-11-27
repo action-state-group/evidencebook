@@ -112,541 +112,48 @@ is advisory").
 `OFFER` is the offer's digest it prints. Every `deal` command takes
 `--profile deal` (or the user's deal profile name).
 
-### Purchase
-
-Any checkout or agreed buy: a retail order, a marketplace buy, a
-subscription, an in-app purchase. The user is the buyer here; when the
-seller makes the offer, the two sides swap in steps 2 to 6.
-
-**Two shapes.** When the other side runs this tool too (another agent, a
-marketplace seller who keeps records), the deal is between two books and the
-files go back and forth (steps 2 to 6 as written). When it does not (a shop's
-website, a merchant that keeps no signed records of its own), the deal has your book
-only: your offer names no key, you agree to it yourself, and nothing goes to
-the other side (the "No layer on the other side" notes in steps 2, 3 and 6).
-A retail checkout is almost always the second shape.
-
-1. **Find what they asked for.** Search and show options. Nothing is sealed
-   yet: the deal starts with the offer.
-2. **The offer.** Write the offer's members to a file (the role, the other
-   side's key in `to`, the terms, the admission pack's digest, `agree_by`,
-   the rows each side owes, who referees a dispute and where) and run:
-
-   ```sh
-   capsulectl --profile deal deal offer --input offer.json --out offer.sent.json
-   ```
-
-   **No layer on the other side:** put `"to": null` in the offer. It stays
-   with you; there is nothing to send, and `deal offer` says so.
-
-   The user sends `offer.sent.json` to the seller. A counter-offer is `deal
-   offer --counter-to OFFER --input ...`; withdrawing your own offer before
-   the deal starts is `deal offer cancel OFFER --out FILE`, and declining one
-   sent to you is `deal offer decline OFFER --out FILE`. Each writes the file
-   to send.
-3. **The other side keeps it.** On the seller's side, `deal receive
-   offer.sent.json` (no layer on the other side: skip this step). Every file the other side sends later (its agreement,
-   statements, payment legs, a dispute) is kept the same way, with `deal
-   receive FILE`: what you have not received does not count for you.
-4. **Admission, on each side.** Each side runs its admission pack on the
-   other and seals the decision:
-
-   ```sh
-   capsule-engine admission evaluate --pack PACK --input INPUT --admit ADMIT > admission.json
-   capsulectl --profile deal deal admit --deal ID --input admission.json
-   ```
-
-   Only output with `"admits_deal": true` goes on: a GO, or a LIMIT whose
-   tier holds the deal. An ASK waits for its answers in capsule-engine; a NO
-   stops the deal. Pass the engine's output for this counterparty and this
-   amount: `deal admit` cannot tell which run it came from. `deal agree`
-   refuses a side with no admission decision of its own.
-5. **What the user asked, sealed before agreeing.** The deal's first note is
-   the user's intent with the opening (the deal's type, who and the way
-   back). An intent that gives `party_role` must give your side:
-
-   ```sh
-   capsulectl --profile deal deal note --deal ID --kind intent --input intent.json --opening opening.json
-   # intent.json:  {"verbatim":"buy the desk lamp, at most 70 dollars","max_total_minor":7000}
-   # opening.json: {"type":"purchase","who":{"name":"Lamp Shop","domain":"lamp.example"},
-   #                "recourse":{"rail":"card","refundable":true}}
-   ```
-
-   `verbatim` is the user's exact words, never your paraphrase. `allowed`
-   says what they asked you to do: `"allowed": []` when they only asked for
-   options, the actions (`["pay"]`) when they asked you to act, and left out
-   only when they handed you the whole deal; left out, nothing is
-   restricted. `max_total_minor` is their limit. Then the journey, as notes
-   (see "The user picked from options"), and the intent for the user's pick.
-   The first intent's output prints `intent`, its journal digest: `deal agree
-   --intent DIGEST` cites it.
-6. **The agreement exchange.** The side the offer was sent to agrees first:
-   1. the seller runs `deal agree OFFER --out seller-agreement.json`, and the
-      user sends the file;
-   2. the buyer runs `deal receive seller-agreement.json`, then `deal agree
-      OFFER --out buyer-agreement.json`, and the user sends that back;
-   3. the seller runs `deal receive buyer-agreement.json`.
-
-   Each side checkpoints right after its agreement, and the file carries
-   that checkpoint's proof. Neither side's first act is sealed until it holds
-   the other's: an act run too early is refused and says to run it again
-   once the file arrives. Running `deal agree` again writes the same
-   agreement again, with the newest checkpoint proof that covers it; it
-   never seals a second agreement.
-
-   **No layer on the other side:** run `deal agree OFFER --out
-   agreement.json` on your own offer right after steps 4 and 5. It seals at
-   once, with no file from the other side; the file is your own copy. Your
-   first act then goes ahead without the other side's checkpoint proof, and
-   its output marks it (`first_act_gate`: `counterparty_no_layer`). The
-   payment check cannot match legs the other side never writes, so `deal
-   report` says the record is one-sided.
-7. **Final review:** Before you type any of the user's own details into the
-   checkout (name, email, delivery address, phone), follow "Disclosure"
-   below for them, on this deal. Then fill the checkout up to the last screen
-   before the order is placed; do not press the final button. Then `deal
-   check` with `"action": "pay"`, the cart's item and price as `terms`, the
-   exact total about to be charged, tax and shipping included, as
-   `amount_minor`, `who` and `recourse` as the checkout shows them now (the
-   payee and the rail, so a change since the opening shows), and
-   `payment_ref`, the reference fixed before paying that the payment will be
-   made under (a Lightning payment hash, an ACP order id, the x402
-   authorization nonce, or on a card checkout the merchant's order number
-   when the checkout shows it; when it shows none before you pay,
-   `"payment_ref_after_payment": true` instead, step 9). On a card or a wallet, `authorized_max_minor` is
-   the largest amount the payment may be authorized for, as the checkout or
-   wallet shows it (a hold larger than the total included), never just the
-   total:
-
-   ```sh
-   capsulectl --profile deal deal check --deal ID --input pay.json
-   # pay.json: {"action":"pay","amount_minor":6000,"authorized_max_minor":6000,
-   #            "terms":{"item":"desk lamp","price_minor":6000,"currency":"USD"},"payment_ref":"..."}
-   ```
-
-8. **The user's answer.** Any request to the user to go ahead uses the
-   check's `approval_text`, as it is. On `"proceed": true`, go on. On
-   `pause`, show the card exactly as the Rules say, then seal what the user
-   answered, with the card they saw:
-
-   ```sh
-   capsulectl --profile deal deal note --deal ID --kind approval --check CHECK_ID \
-     --choice proceed --said "yes" --shown-card card.txt
-   ```
-
-   `CHECK_ID` is the `check_id` the check printed; `--choice` is one of the
-   check's `options` (`proceed` or `hold`); `card.txt` holds the check's
-   `card` field unchanged. Go on only if that returns `"proceed":
-   true`.
-9. **The payment, in two calls.** Before handing it to the rail:
-
-   ```sh
-   capsulectl --profile deal deal settle --deal ID --sent --check CHECK_ID --payment-ref-type TYPE
-   ```
-
-   Only once that succeeds, make the payment (press the button, or tell the
-   sub-task to). When the rail answers:
-
-   ```sh
-   capsulectl --profile deal deal settle --deal ID --check CHECK_ID --status settled --out payer-leg.json
-   ```
-
-   (`--status failed` when it failed; a failed payment uses up its check, so
-   check again before retrying.) `TYPE` is the rail's registered reference
-   type: `ln.payment_hash`, `bolt12.invoice_payment_hash`, `acp.order_id`,
-   `ucp.order_id`, `x402.transaction`, and the others `deal settle --help`
-   names. On every type but `ln.payment_hash`, `bolt12.invoice_payment_hash`,
-   `acp.order_id` and `ucp.order_id`, the second call also takes
-   `--payment-ref`, the rail's own reference as it comes back; on x402 give
-   `--payment-ref-network NETWORK` on both calls.
-
-   **A card checkout on a website** has no rail reference: the payment is
-   under the merchant's order number, `x-deal-v1.merchant_order`, with
-   `--payment-ref-origin`, the checkout's origin (`https://shop.example`;
-   scheme and host only). When the checkout shows the order number before
-   you pay, that number is the pay check's `payment_ref` (step 7), and the
-   two calls are:
-
-   ```sh
-   capsulectl --profile deal deal settle --deal ID --sent --check CHECK_ID \
-     --payment-ref-type x-deal-v1.merchant_order --payment-ref-origin https://shop.example
-   capsulectl --profile deal deal settle --deal ID --check CHECK_ID --status settled --out payer-leg.json
-   ```
-
-   When it shows none before you pay, the pay check says
-   `"payment_ref_after_payment": true` instead of `payment_ref`; `--sent` is
-   the same, and `--status settled` adds `--payment-ref ORDER_NUMBER` once
-   the confirmation shows it (a failed checkout may leave it out). The
-   report then says the reference was recorded after payment. Never put a
-   card number, or any part of one, in a reference: it is refused. When the
-   merchant's order number itself looks like a card number, `--status
-   settled` takes `--no-payment-ref` instead, and the report says no
-   reference was recorded. While
-   the rail still says pending, run nothing more for this payment. The user
-   sends `payer-leg.json` to the other side (with no layer there, it is the
-   user's own copy, and nothing is sent).
-10. **How it went.** Each side states how its rows went:
-
-    ```sh
-    capsulectl --profile deal deal statement --deal ID --statement paid_as_agreed=met --out statement.json
-    ```
-
-    `met`, `not_met` or `cannot_tell`. The user sends the file (with no
-    layer on the other side, there is no one to send it to).
-11. **Reading the deal.** `deal report --deal ID` reads your book only up
-    to its last checkpoint, and refuses a book with records after it: then
-    wait for that checkpoint as
-    [references/expert.md](references/expert.md#reading-at-the-last-checkpoint)
-    says, and run it again. Then:
-    - `deal report --deal ID`: each row's status; `--bundle FILE` writes your
-      own copy as an Evidence Bundle;
-    - when the user wants to send it to the other side, make a shared copy,
-      never the user's own: `deal report --deal ID --share counterparty --to
-      NAME --bundle FILE`. It is put on record before the file is written. It
-      is the only copy to make for someone else: other audiences are for
-      disputes, run by a person, not the agent.
-    - `deal report --bundle` (with `--share` too) refuses a copy whose
-      standalone report does not verify. To check a deal copy, run `capsulectl deal
-      verify --bundle FILE`: the core's generic verbs (`capsulectl
-      presentation list`, `presentation build`, and `capsulectl bundle`
-      writing a page) read no deal section, so they can build a page for a
-      copy whose deal fails.
-
-#### The user picked from options
-
-Most purchases go: ask broadly, then pick. "A desk lamp under $70." You show
-five; the user picks one. The deal's first intent holds the broad ask.
-Unless you seal the pick, the check compares the specific item with the broad
-words and reports the user's own choice as "Not what you asked". That is a
-false pause.
-
-So after the first intent (with `--opening`), seal the journey as notes,
-then the pick as an `intent`, **before** `deal check`:
-
-```sh
-capsulectl --profile deal deal note --deal ID --kind searched    --input s.json  # {"where":"ebay, etsy","results":37}
-capsulectl --profile deal deal note --deal ID --kind options     --input o.json  # {"options":[{"item":"...","who":{...},"price_minor":175}, ...],"found":37}
-capsulectl --profile deal deal note --deal ID --kind recommended --input r.json  # {"option":1,"reason":"cheapest delivered"}
-capsulectl --profile deal deal note --deal ID --kind chose       --input c.json  # your choice, only when the user handed it to you
-capsulectl --profile deal deal note --deal ID --kind couldnt     --input x.json  # {"reason":"sign_in_required","who":{...}}
-capsulectl --profile deal deal note --deal ID --kind intent      --input p.json  # the user's pick
-# p.json: {"verbatim":"the brass one","asked":{"item":"Brass desk lamp"}}
-```
-
-- `verbatim` is the user's own words for the pick. `asked` holds only what
-  the user chose, written exactly as the check's `terms` write it. It adds to
-  the ask in force, field by field.
-- capsulectl labels the note itself (`move` in its output): `picked`,
-  `switched`, `narrowed` or `raised`. You never choose the label.
-- Leave `allowed` and `max_total_minor` out to keep the user's. An intent may
-  propose a change; it never applies one. A raised limit needs the user's own
-  words, sealed as `deal note --kind approval --check <the intent's
-  capsule_id> --choice confirm_limits --said "<their words>"`. Seal it only
-  when the user has said it. An intent may lower the limit or drop an action
-  without a confirmation.
-- What you picked yourself (a size, a colour or a delivery option the user never mentioned) stays out of `asked` and in the check's `terms`. The check
-  lists it as yours ("I picked …, not you"). A choice you made is never shown
-  as the user's.
-- When the user hands you the choice ("any of them, the cheapest"), say so in
-  the first intent: `"delegated": ["item"]` with their words in
-  `"delegated_said"`, and seal your choice as `chose`, never as their intent.
-- `couldnt` reasons: `sign_in_required`, `out_of_stock`, `cannot_ship_here`,
-  `blocked`, `payment_declined`, `site_error`, or `other` with a few words in
-  `"detail"`.
-
-The check still reports what the user did not choose, and an unverified
-claim stays unverified. An item different from the user's pick, or a price
-over their limit, still pauses after the pick is sealed.
-
-### One errand, one deal
-
-One deal per errand, kept for the whole errand. On x-deal-v1 the deal starts
-with its offer, so:
-
-1. **Before the offer, nothing is sealed.** Search and show options; the
-   first note is the intent sealed right after the offer is made or
-   received (Purchase, step 5).
-2. **A switch to another merchant is a new offer.** The deal's counterparty
-   is the key its offer names. When the user moves to another merchant, that
-   is a new deal with that merchant's offer; withdraw your own open offer
-   with `deal offer cancel OFFER --out FILE` first, and send the file.
-3. **The merchant comes before the check.** `deal check` needs the opening's
-   `who`, or the user's pick or your `chose`.
-4. **Tax and total go in the amount.** The check's `amount_minor` is
-   everything to be charged; `price_minor` is the item's price. `conditions`
-   hold only choices (a size, a colour, a delivery option).
-5. **Called off.** When the user drops the errand before agreeing, withdraw
-   your offer (`deal offer cancel OFFER --out FILE`) or decline theirs
-   (`deal offer decline OFFER --out FILE`), and send the file.
-6. **Find deals with `deal list`**, never from memory.
-
-### Sale
-
-The user sells one item. On x-deal-v1 each buyer sends an offer: keep each
-with `deal receive`, run admission on the buyer you agree with, and agree to
-that offer (Purchase, steps 4 to 6, with the user as the seller). Decline
-every other buyer's offer with `deal offer decline OFFER --out FILE` and
-send each its file. A sale's listing and its buyer threads are x-deal-v0
-only (see [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md)).
-
-### Where the user sells: payment received, and what was delivered
-
-- **What the user received** is a payee leg, sealed when the payment shows
-  up, with the amount net of any fee taken and the rail's reference:
-
-  ```sh
-  capsulectl --profile deal deal settle --deal ID --received 6000 --receive-fee 0 --status settled \
-    --payment-ref-type TYPE --payment-ref REF --out payee-leg.json
-  ```
-
-  On x402 add `--payment-ref-network NETWORK`. `--status pending` first when
-  the rail says so; a later observation of the same payment names the
-  earlier leg with `--supersedes`.
-- **What was delivered** is an act on a commit check: `deal check` with
-  `"action": "commit"`, the user's answer as in Purchase step 8, then
-
-  ```sh
-  capsulectl --profile deal deal perform --deal ID --act deliver --check CHECK_ID \
-    --observed carrier_scan --out perform.json
-  ```
-
-- Send each file, and state how the rows went (Purchase, step 10).
-
-### Booking
-
-A hotel, flight, table, appointment, rental or ticket. It is a Purchase: the
-offer, admission, intent and agreement as in steps 1 to 6 (a booking site is
-almost always the no-layer shape).
-
-1. Fill the booking form up to the last screen before it is confirmed. Do
-   not press the final button.
-2. **Final review:** when the confirmation charges a card, it is a payment:
-   Purchase steps 7 to 9 with `"action": "pay"`. When it charges nothing now
-   (pay at the hotel, a free table), `deal check` with `"action": "commit"`,
-   the booking as `terms` and its price as `amount_minor`.
-3. Any request to the user to go ahead uses the check's `approval_text`, as
-   it is. On `"proceed": true`, confirm. On `pause`, the user's answer as in
-   Purchase step 8; confirm only if that returns `"proceed": true`.
-4. Right after confirming, on the commit branch, record the booking on that
-   check (on the payment branch the payer leg of Purchase step 9 is the
-   record; `deal perform` rests only on a commit check):
-
-   ```sh
-   capsulectl --profile deal deal perform --deal ID --act book --check CHECK_ID \
-     --observed confirmation_page --out perform.json
-   ```
-
-5. How it went and reading the deal, Purchase steps 10 and 11.
-
-### Signature
-
-A contract, a lease, a rental agreement, a service order, any e-signature.
-It is a Purchase up to the agreement (steps 1 to 6).
-
-1. Read the document, and fill it up to the signature without signing.
-2. **Final review:** `deal check` with `"action": "commit"`, the document's
-   terms as `terms` and what it commits the user to pay as `amount_minor`.
-3. Any request to the user to go ahead uses the check's `approval_text`, as
-   it is. On `"proceed": true`, sign. On `pause`, the user's answer as in
-   Purchase step 8; sign only if that returns `"proceed": true`.
-4. Right after signing:
-
-   ```sh
-   capsulectl --profile deal deal perform --deal ID --act sign --check CHECK_ID \
-     --observed esign_receipt --out perform.json
-   ```
-
-   The record is the agent's: it says the user approved and the document was
-   signed, never that the user's own signature is in it (see What "settled"
-   means).
-5. How it went and reading the deal, Purchase steps 10 and 11.
-
-### Disclosure
-
-Giving anyone the user's name, phone, email, address, a pickup spot or area,
-a login or a code: typed into a page (a checkout's delivery form included) or
-sent in a message. Use the deal of the errand it belongs to.
-
-1. Fill the form or message up to the point of sending, without sending.
-2. **Final review:** `deal check` with `"action": "share_contact"` (or
-   `"share_credentials"`), `"disclosing_to"` and `"disclosing"`: who receives
-   it, and the class of every field you are about to give, for example
-   `{"action":"share_contact","disclosing_to":"counterparty","disclosing":["name","email","address"]}`.
-   `"disclosing_to"` is `"counterparty"`, `"platform"` (with `"recipient":
-   {"name": ..., "domain": ...}`) or `"other"` (with a `"recipient"` naming
-   them). The check pauses the first time a class goes to this recipient and
-   passes with a `note` when you have told them before.
-3. Any request to the user to go ahead uses the check's `approval_text`, as
-   it is. On `"proceed": true`, note it (step 4) and then send. On `pause`,
-   show the card, seal the user's answer as in Purchase step 8, and go on
-   only if that returns `"proceed": true`.
-4. With the form filled and **not yet sent**: `deal note --kind disclosure`
-   naming what you are giving, by class, with the value (it stays on this
-   device; the sealed record keeps only the class and a commitment). One
-   disclosure per send, contact details and credentials separately:
-
-   ```sh
-   capsulectl --profile deal deal note --deal ID --kind disclosure --input d.json
-   # d.json: {"channel":"sms","fields":[{"class":"phone","value":"the number you gave"}]}
-   ```
-
-   To a platform, add `"to":"platform"` and `"who":{...}` named as in its
-   check; to anyone else (a courier), `"to":"other"` and `"who":{...}`:
-   without them the note is for the counterparty, and a check that named
-   someone else does not cover it. `class` is `name`, `phone`, `email`, `home_address`, `address`,
-   `pickup_location`, `pickup_area`, `other_contact`, `credential`,
-   `verification_code`, `payment_card` or `id_document`. If a class would go
-   to this recipient for the first time and no check the user approved named
-   it, the note seals nothing, returns `"proceed": false` with the classes
-   `held`, and exits 7. **Do not send.** Check again naming them.
-5. Send.
-
-### Cancellation and refund
-
-- **Before the deal starts:** `deal offer cancel OFFER --out FILE` (your own
-  offer) or `deal offer decline OFFER --out FILE` (one sent to you), and send
-  the file.
-- **After agreeing:** a cancel is checked like any act: `deal check` with
-  `"action": "cancel"`, the user's answer, then cancel with the merchant.
-- **A refund the user pays** (the user is the seller) rests on that cancel
-  check and names the leg of the user's own book it refunds:
-  `deal settle --deal ID --sent --check CANCEL_CHECK_ID --reverses LEG
-  --payment-ref-type TYPE --payment-ref REF` (the refund's own reference:
-  a cancel check records none), then `--status` as in Purchase step 9.
-- **A refund the user receives** is a payee leg that reverses the user's own
-  payment: `deal settle --deal ID --reverses LEG --received N --receive-fee N
-  --status settled --payment-ref-type TYPE --payment-ref REF --out
-  refund-leg.json`.
-- `LEG` is the `digest` `deal settle` printed for that leg of your own
-  book.
-- A refund leg is shown as not checked: refunds have no terms of their own
-  yet, and the payment check covers the payment's own legs.
-
-### A dispute
-
-When a row did not go as agreed and the agreement names a referee:
-
-```sh
-capsulectl --profile deal deal dispute --deal ID --row ROW --out dispute.json
-```
-
-`--forum` picks one of the agreement's forums (it may be left out when there
-is only one); `--withdraw` takes back your open dispute on the row. The user
-sends the file to the other side. What goes to the referee is the user's
-to make, not yours.
-
-The ruling is the referee's own record, which reaches you as a file. Keep it,
-and write the statement that enters it in the user's book:
-
-```sh
-capsulectl --profile deal deal receive ruling.json --out naming.json
-```
-
-The user sends `naming.json` to the other side, before anything later they
-send: the other side counts none of the user's later records until it holds
-it. The output says when the ruling was stamped (`stamped_at`). "unknown"
-means the file carries no receipt from a witness the agreement names. The
-ruling still counts. A referee whose key is a party's is still flagged, but a
-shared operator through a controller binding cannot be checked until a receipt
-arrives.
-When it says `"independence": "not independent (shared operator)"`, tell the
-user that line as it is: the referee's key is a party's, or bound to one.
-Never say a referee is independent. A controller binding the user holds, such
-as one the referee's operator publishes, is checked with `--binding FILE`.
-
-A ruling read from the parties' answers also says what the referee read each
-side's book from (`sources`). Tell the user each source it lists as not shown,
-as it is: a side that did not answer is not said to have refused, and a ruling
-against it rests only on records it signed. A `fork` line means that side
-signed two different records at one place. A request from the referee for the
-deal is the user's to answer, never yours (`deal respond --help` says how).
-
-To challenge a ruling the user holds, by the digest `deal receive` printed:
-
-```sh
-capsulectl --profile deal deal dispute --deal ID --challenge RULING --grounds grounds.txt --out challenge.json
-```
-
-The grounds stay with the user; only their SHA-256 is sealed. A challenge
-changes no row's status. The user sends the file like a dispute.
-
-The other side's copy (`deal report --share counterparty --bundle`), when it
-arrives, is kept with `deal receive copy.json`. Rulings it carries reach the
-user too, so a referee who gave each side a different ruling shows as two
-records for one place.
-
-### Evidence that arrives later
-
-A delivery photo, a carrier's proof, a checkout response: `deal note --kind
-evidence --input e.json`, or `--object FILE --object-type TYPE` for a held
-object (its SHA-256 is sealed, the bytes stay on this device), at any time on
-the deal.
-
-**The merchant's own email.** Seal it as soon as it arrives (an order
-confirmation, a receipt, a booking or a cancellation). Save the message as a
-raw `.eml` file, headers intact, exactly as received. Never paste, summarize
-or forward it: a summary is your words again and loses the email's DKIM
-signature.
-
-```sh
-capsulectl --profile deal deal note --deal ID --kind evidence --email confirmation.eml
-```
-
-This seals the raw message on this device, reads the signing domain's DKIM
-key from DNS **now**, and seals that key with it; the next cadence tick
-checkpoints it. Do it promptly: DKIM keys are
-rotated and revoked, and a signature can only be checked later against a key
-that was sealed while it was still published.
-Prompt sealing is the whole protection.
-
-**If the signing domain's key cannot be read now.** When this device cannot
-reach DNS, the note is refused and nothing is sealed: on an x-deal-v1 deal
-the email is not held for later. Keep the `.eml` file and note it again when
-the network answers. Tell the user only this, plainly: "the email's
-signature will be checked later". Never ask the user to look anything up,
-run a command, or find a record: checking the key is this tool's job, not
-theirs. Until it is sealed, the email is not checked: never describe it as
-confirmed or as sealed.
-
-The result has two separate statements. Report them separately, in their own
-words, and never as one combined badge:
-
-- `merchant_says`: "merchant-confirmed: …" when a DKIM signature on the email
-  checks out and its signing domain is the merchant's own (aligned with the
-  sender's domain), or "not confirmed: …" with the reason and the domain's
-  DMARC policy. This one is independent: it shows what the signing domain
-  signed, whatever the agent says. Repeat it as written. A message that is not
-  confirmed is still sealed; never drop it or soften the words.
-- `we_say`: what our own seal shows (this device held these exact bytes no
-  later than the seal time). It is our own record, not the merchant's.
-
-**When the user picks "Call the number I found"** on a card, seal that
-choice (`--choice verify_contact`; it does not proceed), then call the number
-from first contact that the option shows, never a number from a later
-message. Note what the call established as evidence, with `verified` true
-only for what the counterparty confirmed on that call:
-
-```sh
-capsulectl --profile deal deal note --deal ID --kind evidence --input call.json   # {"about":"...","source":"phone_call_first_contact_number","verified":true,"detail":"what they said"}
-```
-
-Then run `deal check` again with the same snapshot and show its new card.
-
-### What "settled" means, and the person's signature
-
-An act's output lists `person_signature: missing`, and `deal report` carries
-a `settled_note`: no act on an x-deal-v1 deal carries the person's own
-signature yet, because where those signatures travel is still being defined
-(agent-action-capsule#627). The user's sealed approval is the user's answer
-to a check, recorded by the agent; it is not their signature. Say "settled,
-as the agent's records show"; never say the user signed.
-
-### Older deals
-
-An x-deal-v0 deal already open keeps its version: finish it with the
-procedures in [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md). The same file
-covers a counterparty that runs only x-deal-v0. Cancel-by date and sale
-threads are there only.
+Each scenario's steps are in a reference file. **Before the first step of
+a scenario, open its file and follow it step by step**; the lines below only
+say which one applies. The Rules and Points of no return further down bind
+every step in them.
+
+- **Purchase**: any checkout or agreed buy (a retail order, a marketplace
+  buy, a subscription, an in-app purchase), including the user's pick from
+  options: [references/purchase.md](references/purchase.md#purchase).
+- **One errand, one deal**: keeping one deal for the whole errand, moving to
+  another merchant, or the errand called off:
+  [references/purchase.md](references/purchase.md#one-errand-one-deal).
+- **Sale**: the user sells one item and buyers send offers:
+  [references/sale.md](references/sale.md#sale).
+- **Where the user sells**: on a sale, the payment the user received for
+  it, or what the user delivered (a refund the user receives is under
+  Cancellation and refund):
+  [references/sale.md](references/sale.md#where-the-user-sells-payment-received-and-what-was-delivered).
+- **Booking**: a hotel, flight, table, appointment, rental or ticket:
+  [references/purchase.md](references/purchase.md#booking).
+- **Signature**: a contract, a lease, a rental agreement, a service order,
+  any e-signature: [references/purchase.md](references/purchase.md#signature).
+- **Disclosure**: before giving anyone the user's name, phone, email,
+  address, a pickup spot or area, a login or a code, typed into a page (a
+  checkout's delivery form included) or sent in a message:
+  [references/disclosure.md](references/disclosure.md).
+- **Cancellation and refund**: withdrawing or declining an offer, cancelling
+  after agreeing, or a refund the user pays or receives:
+  [references/cancellation.md](references/cancellation.md).
+- **A dispute**: a row did not go as agreed and the agreement names a
+  referee, a ruling arrives, or the user challenges one:
+  [references/dispute.md](references/dispute.md).
+- **Evidence that arrives later**: a delivery photo, a carrier's proof, the
+  merchant's own email, or the user picked "Call the number I found" on a
+  card: [references/evidence.md](references/evidence.md).
+- **What "settled" means**: before you tell the user an act is settled or
+  signed:
+  [references/purchase.md](references/purchase.md#what-settled-means-and-the-persons-signature).
+- **Older deals**: an x-deal-v0 deal already open keeps its version: finish
+  it with the procedures in [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md). The
+  same file covers a counterparty that runs only x-deal-v0. Cancel-by dates,
+  the party's own rules verdict and a sale's listing and buyer threads exist
+  only there, for x-deal-v0 deals; never use them on an x-deal-v1 deal.
 
 ## Sub-tasks
 
@@ -718,9 +225,14 @@ capsulectl. Follow them; never make up your own narration of a step.
   say nothing about sending.
 - **A report goes out only when asked.** The checkpoint cadence,
   checkpoints and other bookkeeping stay silent. On an x-deal-v1 deal the
-  report is `deal report --deal ID`, read at your last checkpoint (Purchase,
-  step 11); `deal report --deal ID --html FILE` writes your own copy's
-  receipt page, which shows capsulectl's own verify report of that copy.
+  report is `deal report --deal ID`, read at your last checkpoint
+  ([references/purchase.md](references/purchase.md#purchase), Purchase step
+  11); `deal report --deal ID --html FILE` writes your own copy's receipt
+  page, which shows capsulectl's own verify report of that copy. A copy for
+  the other side is the shared copy (`deal report --deal ID --share
+  counterparty --to NAME --bundle FILE`), never the user's own. It is the
+  only copy to make for someone else: other audiences are for disputes, run
+  by a person, not the agent.
 - **"Show my deals" comes from the record, never from memory.** Run `deal
   list --json` and say each deal's `say`, one per line, in the order
   listed. For one deal, find it in the same list by its `say` and

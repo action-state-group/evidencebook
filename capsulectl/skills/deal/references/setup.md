@@ -32,7 +32,7 @@ x-deal-v1 --migrate` (a backup is kept beside the store). That is the user's
 step: show them the message and never run it yourself.
 
 **Admission.** Before agreeing, each side seals capsule-engine's admission
-decision on the other ([SKILL.md](../SKILL.md), Purchase, step 4). capsule-engine is its own program:
+decision on the other ([references/purchase.md](purchase.md#purchase), Purchase, step 4). capsule-engine is its own program:
 if `capsule-engine` is not installed, stop at that step and tell the user.
 
 Which of your own picks (a size, a delivery option the user never named)
