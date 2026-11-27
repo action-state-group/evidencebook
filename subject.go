@@ -178,6 +178,48 @@ func (s subjectOf) isMember(h Header) bool {
 	return ok && id == s.statement.SubjectID
 }
 
+// SubjectsOfRecord returns the subject ids of which the record id of a
+// verified bundle is a member, read from the bundle's verified headers
+// alone (PeerRecord.HeaderVerified): the readers of a claim's subject (the
+// subject convention v0, evidencebook#116 design note section 4, Readers).
+// The root is a record of the member's own book with a lower seq, as the
+// book admits members, and the member is one by isMember (a field member
+// cites the root and carries its id; a log member need not cite it). The result is sorted and has no duplicates; it is
+// empty for a record that is no verified member, such as one whose root
+// the bundle does not carry. A book admits a record to one subject only, so
+// two ids mean the book that sealed it broke that rule; the caller decides.
+func SubjectsOfRecord(records []PeerRecord, id string) []string {
+	var member *Header
+	for _, r := range records {
+		if r.RecordID == id && r.HeaderVerified && r.Header != nil {
+			member = r.Header
+		}
+	}
+	if member == nil {
+		return nil
+	}
+	var out []string
+	for _, r := range records {
+		if !r.HeaderVerified || r.Header == nil || r.Header.RecordType != RecordTypeSubjectRoot || r.RecordID == id {
+			continue
+		}
+		statement, err := readSubjectRoot(r.Header.Statement)
+		if err != nil {
+			continue
+		}
+		s := subjectOf{root: Record{RecordID: r.RecordID, Seq: r.Header.Seq, Header: *r.Header}, statement: statement}
+		// A book admits members to its own subjects only, after their root.
+		if member.BookID != r.Header.BookID || member.Seq <= r.Header.Seq {
+			continue
+		}
+		if s.isMember(*member) && !slices.Contains(out, statement.SubjectID) {
+			out = append(out, statement.SubjectID)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // trackSubjectLocked keeps b.subjects, the subjects the book holds in the
 // order of their roots, as record joins the log. A subject_root whose
 // statement does not read as one (a caller's own record_type of that name

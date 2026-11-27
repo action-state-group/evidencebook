@@ -51,6 +51,7 @@ package	kind	symbol	feature	rust	python
 .	func	StampProofRecomputes	shelf	frozen #875	frozen #876
 .	func	StatusOfClose	reconcile-halves	frozen #644	frozen #643
 .	func	SubjectBundleDefinition	subject-convention	frozen #1012	frozen #1013
+.	func	SubjectsOfRecord	subject-convention	frozen #1012	frozen #1013
 .	func	SuccessorSince	window-books	frozen #798	frozen #799
 .	func	SyncedFile	originals-and-stores	frozen #640	frozen #639
 .	func	VerifyBookEvidence	shelf	frozen #875	frozen #876
