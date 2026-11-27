@@ -55,7 +55,9 @@ func TestAClaimWithNoSourceNoteNamesWhoseItIs(t *testing.T) {
 	report := dealRun(t, "report", "--deal", id)
 	anomalies := reportTexts(t, report, "anomalies")
 	assert.Contains(t, anomalies, "counterparty/unverified_claim: Unverified: The listing shows two jet skis (from your agent)")
-	assert.Contains(t, anomalies, "counterparty/unverified_claim: Unverified: I rented from them last year (from you)")
+	for _, line := range anomalies {
+		assert.NotContains(t, line, "I rented from them last year", "the user's own claim is not the other party's (#1036)")
+	}
 	steps := keepStepLines(t, id)
 	for _, line := range append(anomalies, steps...) {
 		assert.NotContains(t, line, "()")
@@ -68,8 +70,8 @@ func TestAClaimWithNoSourceNoteNamesWhoseItIs(t *testing.T) {
 // Where the user sells, the agent's own claims are the seller's
 // representations: they are not listed as the other party's unverified claims,
 // on the user's own Receipt or in an adjudicator's copy the seller opened
-// them to. The user's own claim and a claim read from the buyer keep their
-// entries (evidencebook#680).
+// them to; nor is the user's own claim on any deal. A claim read from the
+// buyer keeps its entry (evidencebook#680, #1036).
 func TestASellersAgentClaimsAreNotTheCounterpartysUnverifiedClaims(t *testing.T) {
 	dealFixture(t)
 	id := sellerRepOpen(t, `["condition"]`)
@@ -91,7 +93,6 @@ func TestASellersAgentClaimsAreNotTheCounterpartysUnverifiedClaims(t *testing.T)
 	}
 	report := dealRun(t, "report", "--deal", id)
 	assert.Equal(t, []string{
-		"counterparty/unverified_claim: Unverified: I kept it indoors all winter (from you)",
 		"counterparty/unverified_claim: Unverified: The buyer says it will be collected Friday (from buyer message)",
 	}, unverified(reportTexts(t, report, "anomalies")))
 	steps := keepStepLines(t, id)
@@ -114,7 +115,6 @@ func TestASellersAgentClaimsAreNotTheCounterpartysUnverifiedClaims(t *testing.T)
 	}
 	assert.Contains(t, lines, "Claim recorded (your agent): The frame has one small scratch by the seat")
 	assert.Equal(t, []string{
-		"Unverified: I kept it indoors all winter (from you)",
 		"Unverified: The buyer says it will be collected Friday (from buyer message)",
 	}, items)
 

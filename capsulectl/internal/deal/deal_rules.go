@@ -2757,14 +2757,15 @@ func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealRepo
 	}
 	r.Anomalies = kept
 	// Unverified claims, as they stand at the end, each with where it came from.
-	// Where the user sells, the agent's own claims are the seller's
-	// representations, not something the other party said that nobody checked
-	// (evidencebook#680): their record is the represent check and the claim
-	// step, and an unauthorized one is an agent anomaly above.
+	// They are what the other side or an outside source said, so the user's
+	// own claims are never among them; and where the user sells, neither are
+	// the agent's own claims, which are the seller's representations: their
+	// record is the represent check and the claim step, and an unauthorized
+	// one is an agent anomaly above (evidencebook#680, #1036).
 	state, _ := foldDeal(events)
 	seller := dealRole(events) == dealRoleSeller
 	for _, c := range state.claims {
-		if c.Verified || (seller && c.SourceKind == "agent") {
+		if c.Verified || c.SourceKind == "user" || (seller && c.SourceKind == "agent") {
 			continue
 		}
 		step := openID
