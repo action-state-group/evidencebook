@@ -107,10 +107,14 @@ the book, its record capsules, the responder's decision steps (as Go's
 ## Scope
 
 It answers over the native binding (JSON or CBOR octets in, octets out);
-carrying them over A2A or MCP is the caller's. It keeps the two
-authenticated indexes whose roots a checkpoint commits, but serves no
-proofs over them, builds no Evidence Bundles and seals no field
-commitments (it reads and keeps those a Go book sealed).
+carrying them over A2A or MCP is the caller's. It keeps the three
+authenticated indexes whose roots a checkpoint commits (record_id,
+subject_ref and subject_id; subject_id's root only once it holds a leaf),
+but serves no proofs over them, builds no Evidence Bundles and seals no
+field commitments (it reads and keeps those a Go book sealed). It writes
+and admits the subject convention v0 (`subject_root`, `subject_close`) and
+verifies subject bundles (`evidencebook.subject_bundle`), but does not
+build them.
 
 ## Development
 
