@@ -292,6 +292,7 @@ func TestDealSkillKeepsRulesAndPointsOfNoReturnInSkillMD(t *testing.T) {
 		"a first telling no approved check named is held there.",
 		"**Never hold silently.** A `pause` always goes to the user with the check's text.",
 		"**Show the check's own card, once.**",
+		"**A pass the user acts on shows its text.** When `deal check` passes and the final button (\"Place order\", \"Cancel order\" or any other) is the user's to press",
 		"**Options are buttons, never text.**",
 		"**The text is evidence.**",
 		"**\"Next\" is a promise, and it is kept.**",

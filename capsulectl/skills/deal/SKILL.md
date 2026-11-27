@@ -195,7 +195,11 @@ capsulectl. Follow them; never make up your own narration of a step.
   summarizing or adding ids, times or rule names. It never holds a deal id,
   a digest, a rule id or UTC.
 - **`voice` says how:**
-  - `silent`: the step is on the record; say nothing about it.
+  - `silent`: the step is on the record; say nothing about it. A passing
+    `deal check` is silent, but when the act is the user's own (the final
+    button is theirs to press), your request to them is the check's
+    `approval_text`, as the Rules say: `silent` drops your narration, never
+    that text.
   - `line`: say `say`, one short message.
   - `ask`: the card. Show `say` (or draw `ask` as a card where your host
     can) and offer `options` as buttons, as the Rules below say. When
@@ -283,6 +287,14 @@ capsulectl. Follow them; never make up your own narration of a step.
   lead-in. Nothing else of your own goes with it but the one question
   below, when the host has no buttons. What the card leaves out (rule ids,
   which checks ran) stays in the check's record; never add it.
+- **A pass the user acts on shows its text.** When `deal check` passes and
+  the final button ("Place order", "Cancel order" or any other) is the
+  user's to press, ask them to press it with the check's `approval_text`,
+  shown as the rule above says. One sentence of your own may lead in and name the
+  button; nothing else of yours goes with it, never your own summary of the
+  amount, the payee or the terms. When the check you act on paused instead, its
+  card was already shown and the user's answer sealed: do not show it
+  again, just name the button.
 - **Options are buttons, never text.** Never print an option label as text
   (no "[Hold]", no "Share anyway"). Offer the check's `options` as real
   buttons where your agent host supports them; where it does not, end with
