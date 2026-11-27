@@ -615,3 +615,39 @@ def test_a_projection_is_read_from_its_own_text():
         else:
             with pytest.raises(eb.InvalidError):
                 verify_subject_bundle(deep.encode())
+
+
+def _projection_with(tail: str) -> bytes:
+    return (json.dumps(_projection(), separators=(",", ":"))[:-1] + tail).encode()
+
+
+@pytest.mark.parametrize("tail,ok", [
+    # Go keeps a slice's elements past its length and decodes into them when it grows again.
+    (',"members":[{},{"seq":1}],"members":[{}],"members":[{},{}]}', False),
+    (',"members":[{},{},{},{"seq":1}],"members":[{},{},{}],"members":[{},{},{},{}]}', False),
+    # An empty array is a new slice: nothing is kept.
+    (',"members":[{},{"seq":1}],"members":[],"members":[{},{}]}', True),
+    # A number out of float64 range fails in an interface value; -0 and a long integer do not.
+    (',"members":[{"x":1e400}]}', False),
+    (',"root":{"x":[1e999]}}', False),
+    (',"members":[{"x":-0}]}', True),
+    (',"root":{"x":123456789012345678901234567890}}', True),
+])
+def test_a_projection_is_decoded_as_go_decodes_it(tail, ok):
+    if ok:
+        verify_subject_bundle(_projection_with(tail))
+    else:
+        with pytest.raises(eb.InvalidError):
+            verify_subject_bundle(_projection_with(tail))
+
+
+def test_an_unpaired_surrogate_reads_as_the_replacement_character():
+    got = verify_subject_bundle(_projection_with(',"subject_id":"\\ud800","subject_kind":"a\\ud83d\\ude00"}'))
+    assert (got.subject.subject_id, got.subject.subject_kind) == ("\ufffd", "a\U0001f600")
+
+
+def test_a_deep_object_in_a_projection_is_read_without_recursion():
+    p = _projection()
+    p["root"]["deep"] = "@"
+    deep = json.dumps(p).replace('"@"', '{"a":' * 3000 + "1" + "}" * 3000)
+    assert verify_subject_bundle(deep.encode()).form == SUBJECT_BUNDLE_PROJECTION

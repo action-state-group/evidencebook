@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -79,6 +78,29 @@ JSON_NULL = _JSONNull()
 
 class _Pairs(list):
     """An object's members as read from text, in order, duplicates kept."""
+
+
+class GoSlice(list):
+    """A decoded Go slice; ``backing`` is its backing array, which a later
+    member of the same name decodes into (Go keeps elements past a slice's
+    length)."""
+
+    backing: list = []
+
+
+def _grown(cap: int, length: int) -> int:
+    """The capacity Go's growslice gives a slice of capacity ``cap`` grown
+    to ``length`` (nextslicecap; small slices of pointer-sized or
+    power-of-two elements, whose size classes add nothing)."""
+    double = cap + cap
+    if length > double:
+        return length
+    if cap < 256:
+        return double
+    new = cap
+    while new < length:
+        new += (new + 3 * 256) >> 2
+    return new
 
 
 def is_object(value: Any) -> bool:
@@ -176,6 +198,9 @@ def zero(spec: Any) -> Any:
 
 def _read(spec: Any, value: Any, current: Any, where: str) -> Any:
     if spec == RAW:
+        # An interface value: a number out of float64 range fails there.
+        if value is _OVERFLOW or getattr(value, "overflow", False):
+            raise InvalidError(f"{where}: a number out of range")
         return JSON_NULL if value is None else value
     if value is None:
         return None if isinstance(spec, (List, Map, Ptr)) or spec == BYTES else current
@@ -185,7 +210,8 @@ def _read(spec: Any, value: Any, current: Any, where: str) -> Any:
         return value
     if spec in (UINT64, INT):
         lo, hi = (0, 1 << 64) if spec == UINT64 else (-(1 << 63), 1 << 63)
-        if isinstance(value, bool) or not isinstance(value, int) or not lo <= value < hi:
+        if isinstance(value, bool) or not isinstance(value, int) or not lo <= value < hi or \
+                (spec == UINT64 and isinstance(value, NegativeZero)):
             raise InvalidError(f"{where}: not a Go {spec}")
         return value
     if spec == BOOL:
@@ -213,10 +239,18 @@ def _read(spec: Any, value: Any, current: Any, where: str) -> Any:
     if isinstance(spec, List):
         if not isinstance(value, list) or isinstance(value, _Pairs):
             raise InvalidError(f"{where}: not an array")
-        # Go decodes into the elements the slice already has, then appends.
-        have = current or []
-        return [_read(spec.item, v, have[i] if i < len(have) else zero(spec.item), f"{where}[{i}]")
-                for i, v in enumerate(value)]
+        if not value:
+            return GoSlice([])
+        # Go decodes into the elements the slice's backing array already
+        # holds, those past its length included, and grows it as append does.
+        backing = list(getattr(current, "backing", current or []))
+        for i, v in enumerate(value):
+            if i >= len(backing):
+                backing = backing[:i] + [zero(spec.item)] * (_grown(len(backing), i + 1) - i)
+            backing[i] = _read(spec.item, v, backing[i], f"{where}[{i}]")
+        out = GoSlice(backing[:len(value)])
+        out.backing = backing
+        return out
     if isinstance(spec, Map):
         members = _members(value)
         if members is None:
@@ -248,39 +282,190 @@ def decode(value: Any, spec: Any, what: str) -> Any:
     return _read(spec, value, zero(spec), what)
 
 
-def _reject_constant(name: str) -> Any:
-    raise ValueError(f"{name} is not JSON")
+class _Overflow:
+    """A number Go cannot hold as a float64 (strconv.ParseFloat's range
+    error): decoding it into an interface value fails."""
 
 
-def _depth_over(data: bytes, limit: int) -> bool:
-    depth, in_string, escaped = 0, False, False
-    for c in data:
-        if in_string:
-            if escaped:
-                escaped = False
-            elif c == 0x5C:
-                escaped = True
-            elif c == 0x22:
-                in_string = False
-        elif c == 0x22:
-            in_string = True
-        elif c in (0x5B, 0x7B):
-            depth += 1
-            if depth > limit:
-                return True
-        elif c in (0x5D, 0x7D):
-            depth -= 1
-    return False
+_OVERFLOW = _Overflow()
+
+
+class NegativeZero(int):
+    """The literal ``-0``: zero, but not a Go unsigned integer."""
+
+
+class _Array(list):
+    """An array read from text."""
+
+
+_WS = " \t\n\r"
+_ESCAPES = {'"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+_NUMBER_START = "-0123456789"
+
+
+def _read_number(text: str, i: int) -> tuple[Any, int]:
+    j = i
+    if text[j] == "-":
+        j += 1
+    if j >= len(text) or not "0" <= text[j] <= "9":
+        raise ValueError(f"invalid number at {i}")
+    if text[j] == "0":
+        j += 1
+    else:
+        while j < len(text) and "0" <= text[j] <= "9":
+            j += 1
+    fraction = False
+    if j < len(text) and text[j] == ".":
+        j += 1
+        if j >= len(text) or not "0" <= text[j] <= "9":
+            raise ValueError(f"invalid number at {i}")
+        while j < len(text) and "0" <= text[j] <= "9":
+            j += 1
+        fraction = True
+    if j < len(text) and text[j] in "eE":
+        j += 1
+        if j < len(text) and text[j] in "+-":
+            j += 1
+        if j >= len(text) or not "0" <= text[j] <= "9":
+            raise ValueError(f"invalid number at {i}")
+        while j < len(text) and "0" <= text[j] <= "9":
+            j += 1
+        fraction = True
+    token = text[i:j]
+    if fraction:
+        value = float(token)
+        return (_OVERFLOW if value in (float("inf"), float("-inf")) else value), j
+    if len(token) > 4300:
+        # Beyond Python's int conversion limit: no Go integer, and a float64
+        # only while it is in range, which a 4300-digit integer is not.
+        return _OVERFLOW, j
+    value = int(token)
+    if token == "-0":
+        return NegativeZero(0), j
+    if abs(value) > 1.7976931348623157e308:
+        return _OVERFLOW, j
+    return value, j
+
+
+def _read_string(text: str, i: int) -> tuple[str, int]:
+    # text[i] is the opening quote. Go writes an unpaired surrogate escape as
+    # U+FFFD, and refuses a raw control character.
+    out = []
+    j = i + 1
+    while True:
+        if j >= len(text):
+            raise ValueError("unterminated string")
+        c = text[j]
+        if c == '"':
+            return "".join(out), j + 1
+        if c < " ":
+            raise ValueError(f"control character in string at {j}")
+        if c != "\\":
+            out.append(c)
+            j += 1
+            continue
+        if j + 1 >= len(text):
+            raise ValueError("unterminated string")
+        e = text[j + 1]
+        if e in _ESCAPES:
+            out.append(_ESCAPES[e])
+            j += 2
+            continue
+        if e != "u":
+            raise ValueError(f"invalid escape at {j}")
+        h = text[j + 2:j + 6]
+        if len(h) != 4 or any(x not in "0123456789abcdefABCDEF" for x in h):
+            raise ValueError(f"invalid escape at {j}")
+        code = int(h, 16)
+        j += 6
+        if 0xD800 <= code < 0xDC00:
+            low = text[j + 2:j + 6] if text[j:j + 2] == "\\u" else ""
+            if len(low) == 4 and all(x in "0123456789abcdefABCDEF" for x in low) and 0xDC00 <= int(low, 16) < 0xE000:
+                out.append(chr(0x10000 + ((code - 0xD800) << 10) + (int(low, 16) - 0xDC00)))
+                j += 6
+                continue
+            out.append("\ufffd")
+        elif 0xDC00 <= code < 0xE000:
+            out.append("\ufffd")
+        else:
+            out.append(chr(code))
 
 
 def read_text(data: bytes) -> Any:
-    """JSON text as Go's decoder reads it into a typed value: invalid UTF-8
-    replaced, members in document order with duplicates kept, nesting at
-    most :data:`MAX_DEPTH`, trailing data refused. Raises ``ValueError``."""
-    if _depth_over(data, MAX_DEPTH):
-        raise ValueError(f"exceeded max depth {MAX_DEPTH}")
-    return json.loads(data.decode("utf-8", errors="replace"), object_pairs_hook=_Pairs,
-                      parse_constant=_reject_constant)
+    """JSON text as Go's decoder reads it into a typed value, without
+    recursion: invalid UTF-8 and unpaired surrogate escapes as U+FFFD,
+    members in document order with duplicates kept, nesting at most
+    :data:`MAX_DEPTH`, trailing data refused, a number out of float64 range
+    kept as a marker that only an interface value refuses. Raises
+    ``ValueError``."""
+    text = data.decode("utf-8", errors="replace")
+    n = len(text)
+    stack: list[list] = []  # [container, the pending member name]
+    i, state = 0, "value"   # value, key, after
+    while True:
+        while i < n and text[i] in _WS:
+            i += 1
+        if i >= n:
+            raise ValueError("unexpected end of JSON input")
+        c = text[i]
+        value: Any = None
+        if state == "key":
+            if c != '"':
+                raise ValueError(f"expected a member name at {i}")
+            stack[-1][1], i = _read_string(text, i)
+            while i < n and text[i] in _WS:
+                i += 1
+            if i >= n or text[i] != ":":
+                raise ValueError(f"expected : at {i}")
+            i, state = i + 1, "value"
+            continue
+        if state == "after":
+            obj = isinstance(stack[-1][0], _Pairs)
+            if c == ",":
+                i, state = i + 1, "key" if obj else "value"
+                continue
+            if c != ("}" if obj else "]"):
+                raise ValueError(f"expected , or {'}' if obj else ']'} at {i}")
+            value, i = stack.pop()[0], i + 1
+        elif c in "{[":
+            if len(stack) >= MAX_DEPTH:
+                raise ValueError(f"exceeded max depth {MAX_DEPTH}")
+            stack.append([_Pairs() if c == "{" else _Array(), None])
+            i += 1
+            while i < n and text[i] in _WS:
+                i += 1
+            if i < n and text[i] == ("}" if c == "{" else "]"):
+                value, i = stack.pop()[0], i + 1
+            else:
+                state = "key" if c == "{" else "value"
+                continue
+        elif c == '"':
+            value, i = _read_string(text, i)
+        elif c in _NUMBER_START:
+            value, i = _read_number(text, i)
+        elif text.startswith("true", i):
+            value, i = True, i + 4
+        elif text.startswith("false", i):
+            value, i = False, i + 5
+        elif text.startswith("null", i):
+            value, i = None, i + 4
+        else:
+            raise ValueError(f"invalid character at {i}")
+        # Attach the value read.
+        if not stack:
+            while i < n and text[i] in _WS:
+                i += 1
+            if i != n:
+                raise ValueError(f"trailing data at {i}")
+            return value
+        top = stack[-1]
+        if isinstance(top[0], _Pairs):
+            top[0].append((top[1], value))
+        else:
+            top[0].append(value)
+        if value is _OVERFLOW or getattr(value, "overflow", False):
+            top[0].overflow = True
+        state = "after"
 
 
 def decode_text(data: bytes, spec: Any, what: str) -> Any:
