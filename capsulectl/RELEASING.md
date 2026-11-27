@@ -12,9 +12,10 @@ evidencebook#610.) The release is built and published by
 [`release.yml`](../.github/workflows/release.yml)
 through [`scripts/release-build.sh`](scripts/release-build.sh), after a
 release reviewer approves the run. It follows capsule-cli's release process
-([docs/RELEASING.md](https://github.com/action-state-group/capsule-cli/blob/main/docs/RELEASING.md))
-and its rules: agents never approve a release run, and a pushed tag or a
-published release never changes. It is not a `release.py` package: those are
+([docs/RELEASING.md](https://github.com/action-state-group/capsule-cli/blob/main/docs/RELEASING.md)),
+except who approves: the maintainers approve these releases themselves, and
+whoever pushed the tag may approve its run (evidencebook#1049). A pushed tag
+or a published release never changes. It is not a `release.py` package: those are
 tagged by `tag-release.yml`, which publishes a release before its publisher
 runs.
 
@@ -78,8 +79,9 @@ in a fixed shape, so the workflow refuses any other version:
    prints it, a release tag and never a pseudo-version:
    `git tag -a capsulectl/vX.Y.Z <commit> -m "capsulectl vX.Y.Z" &&
    git push origin capsulectl/vX.Y.Z`.
-3. A release reviewer approves the run, after checking that the tag is that
-   version (the workflow refuses it otherwise, before anything is built).
+3. A release reviewer (one of the `capsulectl-release` environment's
+   reviewers, the tag's pusher included) approves the run, after checking that
+   the tag is that version (the workflow refuses it otherwise, before anything is built).
    The release also carries `standard-history-vX.Y.Z.tar.gz`, the History card
    module's files (capsule-viewer's release bundle, vendored in
    `internal/book/assets/standard-history`), unpacked beside the launcher so the
