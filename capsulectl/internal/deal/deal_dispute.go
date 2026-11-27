@@ -223,7 +223,8 @@ func rulingIn(events []sealedEvent) (rulingOf, bool) {
 // ruling's sealed detail never holds a value the page carries.
 func disputeRef(recordDigest string) string { return bodyDigest("dispute-ref:" + recordDigest) }
 
-// rowWords reads a row token as words ("price_as_offered" is "price as offered").
+// rowWords reads a row or source token as words ("price_as_offered" is "price
+// as offered", "buyer_refund_request" is "buyer refund request").
 func rowWords(row string) string { return strings.ReplaceAll(row, "_", " ") }
 
 func winnerWords(forBuyer bool) string {

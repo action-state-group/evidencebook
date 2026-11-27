@@ -594,7 +594,7 @@ func TestDealCallTheNumberThenCheckAgain(t *testing.T) {
 	assert.NotContains(t, again["card"], "unverified:")
 	report := dealRun(t, "report", "--deal", dealID)
 	assert.Contains(t, report["trail"], "your answer: verify_contact")
-	assert.Contains(t, report["trail"], "evidence (phone_call_to_the_number_found_at_first_contact), checked: they have 2 jet skis for Saturday")
+	assert.Contains(t, report["trail"], "evidence (phone call to the number found at first contact), checked: they have 2 jet skis for Saturday")
 
 	// The branch is in the Evidence procedure, and Purchase step 8 sends the
 	// agent there when the user picks it.

@@ -1246,7 +1246,7 @@ func dealShareStepLine(e dealEvent, audience string, p dealPrivate, currency str
 		return "Message from " + e.Message.From + " (text withheld)"
 	case "claim":
 		if adjudicator {
-			return p.scrub("Claim recorded (" + e.Claim.Source + "): " + e.Claim.Text)
+			return p.scrub("Claim recorded (" + claimSourceWords(*e.Claim) + "): " + e.Claim.Text)
 		}
 		return "Claim recorded (withheld)"
 	case "evidence":
@@ -1262,7 +1262,7 @@ func dealShareStepLine(e dealEvent, audience string, p dealPrivate, currency str
 			state = "verified"
 		}
 		if adjudicator {
-			return p.scrub("Evidence (" + e.Evidence.Source + "): " + state)
+			return p.scrub("Evidence (" + rowWords(e.Evidence.Source) + "): " + state)
 		}
 		return "Evidence recorded: " + state
 	case "change":
@@ -1402,9 +1402,6 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 			// An item read from the represent trail (a difference that quotes the
 			// words a represent check was about) says what the withheld claim said.
 			if slices.ContainsFunc(item.Steps, func(id string) bool { return hidden[id] }) {
-				continue
-			}
-			if hideAgent && item.Kind == "unverified_claim" && item.AgentClaim {
 				continue
 			}
 			ids := make([]interface{}, len(item.Steps))
