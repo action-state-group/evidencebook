@@ -21,7 +21,10 @@ an x-deal-v1 `verdict` body (evidencebook#666) is read by Go, Rust and Python
 alike, schema copies and types table included, so a release of one language
 never refuses a verdict another writes (Ethan, 2026-11-25: "所有需要都修了吧，
 没必要留一个雷", fix every place that needs it and leave no landmine). It
-covers that member only.
+covers that member only. The same holds, for the same reason, for the optional
+`seller` member of an x-deal-v1 `intent` body (evidencebook#1031): the vendored
+schema copies must match Go's byte for byte, so a Rust or Python reader that
+took the schema without the type would refuse an intent its own schema admits.
 
 `TestPortParity` (`port_parity_test.go`, run by `go test ./...`) fails when an
 exported API has no row, a row names an API Go no longer exports, or a status

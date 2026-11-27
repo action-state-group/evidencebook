@@ -20,8 +20,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use crate::deal::{
-    ApprovalBody as V0ApprovalBody, CheckBody as V0CheckBody, Counterparty, Producer, Ref, RelRef,
-    Terms, VerdictBody as V0VerdictBody,
+    ApprovalBody as V0ApprovalBody, CheckBody as V0CheckBody, Counterparty,
+    IntentBody as V0IntentBody, Producer, Ref, RelRef, Terms, VerdictBody as V0VerdictBody,
 };
 
 /// A member that is present and may be null, or absent. Its default is
@@ -522,6 +522,52 @@ impl<'de> Deserialize<'de> for CheckBody {
             payment_ref: string_member::<D::Error>(&mut m, "payment_ref", false)?,
             nonce: string_member::<D::Error>(&mut m, "nonce", true)?,
         })
+    }
+}
+
+/// The journal overlay's intent: v0's body and, on a buyer's opening
+/// intent, `seller` (evidencebook#1031), read beside v0's closed body as a
+/// verdict's `received_history` is (Go `xdealv1.IntentBody`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct IntentBody {
+    pub v0: V0IntentBody,
+    /// `None` when absent.
+    pub seller: Option<Seller>,
+}
+
+/// The seller a buyer's book names, by commitment only (Go
+/// `xdealv1.Seller`): its record key as the citing agreement's
+/// `counterparty_key` names it (null with no layer), and sha256-jcs-nonce256
+/// commitments of its name and, when given, its domain.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Seller {
+    #[serde(default)]
+    pub key: Null<String>,
+    pub name_commitment: String,
+    /// Empty when absent.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub domain_commitment: String,
+}
+
+impl Serialize for IntentBody {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let seller = match &self.seller {
+            Some(v) => Some(serde_json::to_value(v).map_err(S::Error::custom)?),
+            None => None,
+        };
+        join_v0(s, &self.v0, vec![("seller", seller)])
+    }
+}
+
+impl<'de> Deserialize<'de> for IntentBody {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<IntentBody, D::Error> {
+        let (v0, mut m) = split_v0::<D, V0IntentBody>(d, &["seller"])?;
+        let seller = match m.remove("seller") {
+            Some(v) => Some(serde_json::from_value(v).map_err(D::Error::custom)?),
+            None => None,
+        };
+        Ok(IntentBody { v0, seller })
     }
 }
 

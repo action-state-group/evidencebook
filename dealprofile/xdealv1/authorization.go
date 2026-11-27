@@ -363,8 +363,7 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 		}
 		switch r.Block.RecordType {
 		case TypeIntent:
-			b, _ := bodyOf[dealprofile.IntentBody](r.Body)
-			lim.narrow(b)
+			lim.narrow(intentV0(r.Body))
 			if firstIntent < 0 {
 				firstIntent = i
 			}
@@ -398,7 +397,7 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 				if err != nil {
 					return nil, err
 				}
-				prop, _ := bodyOf[dealprofile.IntentBody](journal[j].Body)
+				prop := intentV0(journal[j].Body)
 				if err := lim.confirm(b, prop, confirmed[j] || intentBetween(journal, j, i)); err != nil {
 					return nil, bad("%v", err)
 				}
@@ -495,7 +494,7 @@ func ChangesDetails(r Record) bool {
 		b, _ := bodyOf[dealprofile.EvidenceBody](r.Body)
 		return r.Block.Counterparty != nil || (b != nil && b.CounterpartyFacts != nil)
 	case TypeIntent:
-		b, _ := bodyOf[dealprofile.IntentBody](r.Body)
+		b := intentV0(r.Body)
 		return r.Block.Counterparty != nil || (b != nil && b.Move != "" && b.Asked != nil && b.Asked.Item != "")
 	case TypeAgentMove:
 		b, _ := bodyOf[dealprofile.AgentMoveBody](r.Body)
@@ -664,7 +663,7 @@ func subset(a, b []string) bool {
 // verbatim_commitment, whose opening holds a fresh nonce; "" for a type that
 // carries none.
 func nonceOf(r Record) string {
-	if b, ok := bodyOf[dealprofile.IntentBody](r.Body); ok {
+	if b := intentV0(r.Body); b != nil {
 		return b.VerbatimCommitment
 	}
 	if b, ok := bodyOf[AdmitBody](r.Body); ok {
@@ -830,4 +829,13 @@ func settleLeg(r Record) string {
 		return b.Leg
 	}
 	return ""
+}
+
+// intentV0 is an intent record's v0 body, the part the limits, the
+// confirmations and the detail changes read; nil for any other body.
+func intentV0(b Body) *dealprofile.IntentBody {
+	if v1, ok := bodyOf[IntentBody](b); ok {
+		return &v1.IntentBody
+	}
+	return nil
 }

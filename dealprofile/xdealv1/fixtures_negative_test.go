@@ -37,6 +37,7 @@ type negative struct {
 const (
 	nOffer    = "appendix-a/buyer-journal/05-offer.json"
 	nIntent   = "appendix-a/buyer-journal/01-intent.json"
+	nSeller   = "seller-name/buyer-journal/01-intent-seller.json"
 	nAsk      = "appendix-a/buyer-journal/03-ask.json"
 	nCheck    = "appendix-a/buyer-journal/06-check-pay.json"
 	nAdmit    = "appendix-a/buyer-journal/04-admit-go.json"
@@ -171,6 +172,26 @@ func negatives() []negative {
 		{name: "neg-intent-without-verbatim-commitment", description: "an intent, which an agreement cites, carries its salted verbatim_commitment", base: nIntent, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { del(b, "verbatim_commitment") }},
+		// Schema: an intent names the seller only on a buyer's book, by
+		// commitment only (evidencebook#1031).
+		{name: "neg-intent-seller-not-buyer", description: "only a buyer's intent names the seller", base: nSeller, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { set(b, "party_role", "seller") }},
+		{name: "neg-intent-seller-no-role", description: "an intent that names the seller says it is the buyer's", base: nSeller, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "party_role") }},
+		{name: "neg-intent-seller-raw-name", description: "the seller's name is sealed as a commitment, never in the clear", base: nSeller, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { b["seller"].(map[string]any)["name"] = "Alder" }},
+		{name: "neg-intent-seller-without-name", description: "a seller member carries the name's commitment", base: nSeller, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { delete(b["seller"].(map[string]any), "name_commitment") }},
+		{name: "neg-intent-seller-without-key", description: "a seller member names its key, or null", base: nSeller, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { delete(b["seller"].(map[string]any), "key") }},
+		{name: "neg-intent-seller-bad-commitment", description: "a commitment is 64 lowercase hex", base: nSeller, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { b["seller"].(map[string]any)["domain_commitment"] = "Alder.example" }},
 		// Record: placement (§3.1, §3.2).
 		{name: "neg-book-record-without-seq", description: "a deal-book record carries its seq", base: nDelivery, check: "record",
 			stage: StageRecord, contains: "carries its seq",

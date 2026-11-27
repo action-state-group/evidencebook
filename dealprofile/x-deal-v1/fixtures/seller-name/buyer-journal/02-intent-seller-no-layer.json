@@ -1,0 +1,28 @@
+{
+  "fixture": "seller-name/buyer-journal/02-intent-seller-no-layer.json",
+  "expect": "valid",
+  "appendix_a_line": "none (evidencebook#1031)",
+  "story": "The same for a seller that keeps no signed records: its key is null, as the agreement's counterparty_key is.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "record_type": "intent",
+      "at": "2026-11-01T09:01:00Z"
+    },
+    "body": {
+      "verbatim_commitment": "830b8a2fb0e9c0346f88814080b587fe7ac3c727aa60c10e2c87e349c2a79941",
+      "party_role": "buyer",
+      "max_total_minor": 6000,
+      "allowed": [
+        "pay"
+      ],
+      "seller": {
+        "key": null,
+        "name_commitment": "a4c08b93e576b99cdba9078edc5a3dc72c4ca7878eb2dd26824a3acbbaab588a"
+      }
+    }
+  },
+  "expected_digest": "214794c121a8a3dd257fca2abff5e98db942fa7c43634a9090bd97a1dfcbe3f2"
+}

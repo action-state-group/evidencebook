@@ -1131,6 +1131,317 @@
       ]
     },
     {
+      "name": "seller-intent-outside-allowed",
+      "why": "an intent that names the seller still sets the allowed in force: a standing intent approves only an action in it",
+      "journal": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "record_type": "intent",
+            "at": "2026-11-01T10:01:00Z"
+          },
+          "body": {
+            "verbatim_commitment": "6c067bd1feea44eebd2da3c3f50562052d4fc0fe8a02c9585f09b298b0ac1dab",
+            "party_role": "buyer",
+            "allowed": [
+              "commit"
+            ],
+            "seller": {
+              "key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+              "name_commitment": "99c56d35399a4a61728ba7b8a2ce0c8e5913528a50dff1a86c316334d0d31ed3"
+            }
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "check",
+            "at": "2026-11-01T10:02:00Z"
+          },
+          "body": {
+            "action": "pay",
+            "payment_ref": "invoice-17",
+            "nonce": "a1bc593d14f40e3469f5d6cbda108982454855ededf91d5d282a6f442b211b7f"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "verdict",
+            "at": "2026-11-01T10:03:00Z",
+            "refs": [
+              {
+                "rel": "checks",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "1647e1ba77894abe0a346bae2402b1b03f9545a44c6b2c4b71dddcd6b47838c2"
+              }
+            ]
+          },
+          "body": {
+            "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
+            "differences": [],
+            "options": [],
+            "card_commitment": "1647e1ba77894abe0a346bae2402b1b01647e1ba77894abe0a346bae2402b1b0",
+            "nonce": "003217d2ff2fcc048f5322373c9b385cc7a9b4d79e1c06253bdba530828ae2a0"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "approval",
+            "at": "2026-11-01T10:04:00Z",
+            "refs": [
+              {
+                "rel": "approves",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "0074098cf4f2b70b52e8438f44e855ff175b148ba6bd17e167be8d08c50d09a2"
+              }
+            ]
+          },
+          "body": {
+            "choice": "proceed",
+            "proceed": true,
+            "approver": "standing_intent",
+            "nonce": "48f193847610240c68332ccde2db3e5a9110889bcad9711209762cd7907824a5"
+          }
+        }
+      ],
+      "acts": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "settle",
+            "at": "2026-11-01T10:05:00Z",
+            "seq": 2,
+            "prev": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "agreement_ref": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "seen": null
+          },
+          "body": {
+            "leg": "payer",
+            "statements": [],
+            "check": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "1647e1ba77894abe0a346bae2402b1b03f9545a44c6b2c4b71dddcd6b47838c2"
+            }
+          }
+        }
+      ],
+      "valid": false,
+      "error": "[authorization] journal record 4: standing-intent approval for an action the limits in force do not allow"
+    },
+    {
+      "name": "seller-intent-confirmed-proposal",
+      "why": "a confirmed proposal in intents that name the seller is in force, as without the member",
+      "journal": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "record_type": "intent",
+            "at": "2026-11-01T10:01:00Z"
+          },
+          "body": {
+            "verbatim_commitment": "6c067bd1feea44eebd2da3c3f50562052d4fc0fe8a02c9585f09b298b0ac1dab",
+            "party_role": "buyer",
+            "allowed": [
+              "pay"
+            ],
+            "seller": {
+              "key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+              "name_commitment": "99c56d35399a4a61728ba7b8a2ce0c8e5913528a50dff1a86c316334d0d31ed3"
+            }
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "record_type": "intent",
+            "at": "2026-11-01T10:02:00Z"
+          },
+          "body": {
+            "verbatim_commitment": "f9bd6281dc972091c8097c25e04bf8872157e35874bc4251b1d5ed2a3e2e30f7",
+            "party_role": "buyer",
+            "allowed": [
+              "pay",
+              "commit"
+            ],
+            "seller": {
+              "key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+              "name_commitment": "e01599cdac5276d153a5d5af5a989d85ad7e5793024774f0768cbe54033af3eb"
+            }
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "record_type": "approval",
+            "at": "2026-11-01T10:03:00Z",
+            "refs": [
+              {
+                "rel": "approves",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "95ace95cc815dd9eb9911b32428967150ae3eebe8851cb7936d7856e5698c84a"
+              }
+            ]
+          },
+          "body": {
+            "choice": "confirm_limits",
+            "proceed": true,
+            "approver": "user",
+            "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "limits": {
+              "previous": {
+                "allowed": [
+                  "pay"
+                ]
+              },
+              "new": {
+                "allowed": [
+                  "pay",
+                  "commit"
+                ]
+              }
+            },
+            "nonce": "9dfad532bbf841e634d085e64f78fdc80f7883a75c1ad01e1c6f9cc77f6610d3"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "check",
+            "at": "2026-11-01T10:04:00Z"
+          },
+          "body": {
+            "action": "commit",
+            "payment_ref": "invoice-17",
+            "nonce": "a42a7ccfca5bb412dda3751ba6067ced321e024868e29cb1fe74acefa3b3af97"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "verdict",
+            "at": "2026-11-01T10:05:00Z",
+            "refs": [
+              {
+                "rel": "checks",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "533d03149fff2ab8f672a8ed7fa0efa79470b1ef4344f4e6f7d450028fb58e25"
+              }
+            ]
+          },
+          "body": {
+            "result": "pass",
+            "rules": {
+              "status": "not_configured"
+            },
+            "differences": [],
+            "options": [],
+            "card_commitment": "533d03149fff2ab8f672a8ed7fa0efa7533d03149fff2ab8f672a8ed7fa0efa7",
+            "nonce": "a11c14f893db8dc93031b5aaab19a58615fab8e73bb75d56057a6a1290b6ee94"
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "approval",
+            "at": "2026-11-01T10:06:00Z",
+            "refs": [
+              {
+                "rel": "approves",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "29e30e7a738789385f1a8e91ffa2f38d40df24fdf69ad1f78ded617154610ae7"
+              }
+            ]
+          },
+          "body": {
+            "choice": "proceed",
+            "proceed": true,
+            "approver": "standing_intent",
+            "nonce": "c5b92b3868c4b042b7deff5c7bda69dd40748c79574af6b7786fc43bf0f24a29"
+          }
+        }
+      ],
+      "acts": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "record_type": "perform",
+            "at": "2026-11-01T10:07:00Z",
+            "seq": 2,
+            "prev": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "agreement_ref": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "seen": null
+          },
+          "body": {
+            "act": "deliver",
+            "observed": "carrier_scan",
+            "statements": [],
+            "check": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "533d03149fff2ab8f672a8ed7fa0efa79470b1ef4344f4e6f7d450028fb58e25"
+            }
+          }
+        }
+      ],
+      "valid": true,
+      "person_signature": [
+        false
+      ],
+      "limit_approvals": [
+        1
+      ],
+      "intent_signature": [
+        true
+      ]
+    },
+    {
       "name": "confirmation-with-wrong-previous",
       "why": "a confirmation's limits.previous is the limits in force",
       "journal": [

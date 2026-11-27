@@ -112,8 +112,8 @@ offer exists and whether the ask is of an admission. `xdealv1.CheckSealed` takes
 | `ask`, `answer` | an evidence request and its outcome, wrapping the library's documents | the journal, or the deal book when between the two parties (it then has a `seq`) |
 | `admit` | an admission decision | journal |
 
-**The journal overlay**, sealed in the journal only and never sent, with v0's bodies: `intent`,
-`check` (v0's body plus `payment_ref`, the reference a payment will be made under), `verdict`
+**The journal overlay**, sealed in the journal only and never sent, with v0's bodies: `intent`
+(v0's body plus, on a buyer's opening intent, `seller`), `check` (v0's body plus `payment_ref`, the reference a payment will be made under), `verdict`
 (the answer to one check, with exactly one `checks` ref) and `approval` (its `approves` ref names
 the verdict, or on `confirm_limits` the intent).
 
@@ -329,6 +329,16 @@ the digest could try each likely content against it.
   reader that predates the member refuses a verdict that carries it: Go, Rust and Python read it
   from the same release (evidencebook#666).
 - An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment.
+- A buyer's intent MAY carry `seller` (evidencebook#1031): `key`, the seller's record key as the
+  agreement that cites the intent names it in `counterparty_key`, or `null` for a seller with no
+  layer; `name_commitment`, the `sha256-jcs-nonce256` commitment of the seller's name; and
+  `domain_commitment`, of its domain, when the buyer has one. Only an intent whose `party_role` is
+  `buyer` carries it, and the body without it MUST be valid under v0's closed `body_intent`. The
+  record never holds the name or domain in the clear (x-deal-v0 PROFILE section 4): they and
+  their nonces stay in the buyer's local store, and only an opening `{nonce, text}` tells the
+  name to whoever holds it. An agreement that cites such an intent MUST be the buyer's and MUST
+  name the same counterparty: its `counterparty_key` equals `seller.key`, both `null` with no
+  layer (`deal.Store.Agree` refuses otherwise).
 - `xdealv1.CheckAuthorizations` refuses a journal in which two records share a nonce or a
   `verbatim_commitment`.
 - A record sent whole (an offer, a decline, a cancellation; section 7) is exempt. Its content

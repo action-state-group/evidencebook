@@ -583,6 +583,7 @@ dealprofile/xdealv1	type	FirstAct	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	FullCopy	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	type	GatheredCase	x-deal-v1	frozen #875	frozen #876
 dealprofile/xdealv1	type	HalfRead	x-deal-v1	frozen #882	frozen #883
+dealprofile/xdealv1	type	IntentBody	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	Named	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	Null	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	OfferContext	x-deal-v1	ported	ported
@@ -626,6 +627,7 @@ dealprofile/xdealv1	type	RulingRemedy	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	RulingSources	x-deal-v1	frozen #875	not needed
 dealprofile/xdealv1	type	SealContext	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	SealedRuling	x-deal-v1	frozen #774	ported
+dealprofile/xdealv1	type	Seller	x-deal-v1	ported	not needed
 dealprofile/xdealv1	type	SellerSources	x-deal-v1	frozen #875	not needed
 dealprofile/xdealv1	type	Sent	x-deal-v1	ported	ported
 dealprofile/xdealv1	type	SettleBody	x-deal-v1	ported	not needed

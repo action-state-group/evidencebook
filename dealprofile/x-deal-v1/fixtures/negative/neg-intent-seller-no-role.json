@@ -1,0 +1,29 @@
+{
+  "fixture": "neg-intent-seller-no-role",
+  "expect": "invalid",
+  "description": "an intent that names the seller says it is the buyer's",
+  "base": "seller-name/buyer-journal/01-intent-seller.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "allowed": [
+        "pay"
+      ],
+      "max_total_minor": 6000,
+      "seller": {
+        "domain_commitment": "41a6491d8ae09ea09aa32ac18eef904c4f2e151345140f78d2c0c35204cd0cab",
+        "key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+        "name_commitment": "a0068e063f9c94e4c5eacd4592f2a1abff4de2aa1e96340572a92201a1d1b2df"
+      },
+      "verbatim_commitment": "fe2d4246dbecf1f5c911ebdecaedfb97becdcaee9590f030f50af9c57fc27cc8"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T09:00:00Z",
+      "canonicalization": "jcs",
+      "profile": "x-deal-v1",
+      "record_type": "intent"
+    }
+  }
+}

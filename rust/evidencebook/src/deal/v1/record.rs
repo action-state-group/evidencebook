@@ -15,7 +15,7 @@ use super::types::*;
 use crate::canonical::jcs;
 use crate::deal::{
     AgentMoveBody, Claim, CounterpartyProfileBody, DetailChangeBody, DisclosureBody, Error,
-    EvidenceBody, IntentBody, MessageBody, RulesVerdictBody, SaleBody, SaleUnpostBody, ThreadBody,
+    EvidenceBody, MessageBody, RulesVerdictBody, SaleBody, SaleUnpostBody, ThreadBody,
     ThreadOpenedBody, STAGE_CANONICALIZATION,
 };
 

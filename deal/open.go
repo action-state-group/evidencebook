@@ -352,6 +352,7 @@ func (s *Store) Agree(ctx context.Context, cad *evidencebook.Cadence, offerDiges
 	if err != nil {
 		return Agreement{}, err
 	}
+	var intentRec *xdealv1.Record
 	for _, want := range []struct{ field, digest, typ, what string }{
 		{"admit", admit, xdealv1.TypeAdmit, "an admission decision"},
 		{"intent", opts.Intent, xdealv1.TypeIntent, "an intent"},
@@ -374,6 +375,9 @@ func (s *Store) Agree(ctx context.Context, cad *evidencebook.Cadence, offerDiges
 		}
 		if err := citableAdmit(want.digest, rec); err != nil {
 			return Agreement{}, err
+		}
+		if want.field == "intent" {
+			intentRec = rec
 		}
 	}
 	side, role := xdealv1.SideOfferer, prop.Role
@@ -405,6 +409,11 @@ func (s *Store) Agree(ctx context.Context, cad *evidencebook.Cadence, offerDiges
 	counterpartyKey := xdealv1.Some(cptyKey)
 	if noLayer {
 		counterpartyKey = xdealv1.Null[string]{Present: true}
+	}
+	if intentRec != nil {
+		if err := citableSeller(*intentRec, role, counterpartyKey); err != nil {
+			return Agreement{}, err
+		}
 	}
 	body := xdealv1.AgreeBody{
 		Kind: xdealv1.KindAgreement, Offer: xdealv1.RefTo(offerDigest), RowsDigest: rowsDigest,
@@ -490,4 +499,26 @@ func forumsOf(p *xdealv1.ProposeBody) []string {
 		return []string{}
 	}
 	return p.Forums
+}
+
+// citableSeller refuses an intent naming a seller that the agreement citing
+// it would not bind (evidencebook#1031): only a buyer's agreement names the
+// seller, and the seller is the counterparty the agreement names, by the
+// same key or, with no layer, both null.
+func citableSeller(intent xdealv1.Record, role string, counterpartyKey xdealv1.Null[string]) error {
+	b, ok := intent.Body.(*xdealv1.IntentBody)
+	if !ok || b.Seller == nil {
+		return nil
+	}
+	if role != xdealv1.RoleBuyer {
+		return fieldError("intent", " names a seller, and this agreement is the seller's: only a buyer's agreement cites an intent that names the seller")
+	}
+	same := b.Seller.Key.IsNull() == counterpartyKey.IsNull()
+	if same && !counterpartyKey.IsNull() {
+		same = *b.Seller.Key.V == *counterpartyKey.V
+	}
+	if !same {
+		return fieldError("intent", " names a seller by another key than the counterparty this agreement names")
+	}
+	return nil
 }

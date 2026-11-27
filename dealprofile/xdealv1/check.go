@@ -470,6 +470,13 @@ func checkBody(r Record) error {
 		if err := checkV0Body(body.CheckBody, "body_check"); err != nil {
 			return err
 		}
+	case *IntentBody:
+		// v0's body_intent is closed, so the body without seller is
+		// checked against it; the schema's body_intent holds seller to a
+		// buyer's intent (x-deal-v1.schema.json).
+		if err := checkV0Body(body.IntentBody, "body_intent"); err != nil {
+			return err
+		}
 	case *VerdictBody:
 		if err := checkV0Body(body.VerdictBody, "body_verdict"); err != nil {
 			return err

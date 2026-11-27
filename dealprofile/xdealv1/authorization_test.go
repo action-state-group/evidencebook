@@ -26,6 +26,9 @@ type authFlow struct {
 	acts    []Record
 	// cards are each verdict's card commitment, by verdict digest.
 	cards map[string]string
+	// seller makes each intent a buyer's that names the seller
+	// (evidencebook#1031), which the limits read exactly as without it.
+	seller bool
 }
 
 func (f *authFlow) at() string {
@@ -57,7 +60,12 @@ func rel(name string, r Ref) RelRef {
 }
 
 func (f *authFlow) intent(allowed ...string) Ref {
-	return f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Allowed: allowed})
+	b := &IntentBody{IntentBody: dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Allowed: allowed}}
+	if f.seller {
+		b.PartyRole = RoleBuyer
+		b.Seller = &Seller{Key: Some(label("seller record key")), NameCommitment: label(fmt.Sprint("seller name ", len(f.journal)))}
+	}
+	return f.seal(TypeIntent, false, b)
 }
 
 func (f *authFlow) check(action string) Ref {
@@ -259,6 +267,24 @@ func TestApprovalMigration(t *testing.T) {
 	f.perform(c)
 	run("confirmed-proposal", "a proposal the person confirmed is in force; the standing-intent act lists that confirmation as needing the person's signature", f, true)
 
+	// Intents that name the seller (evidencebook#1031) set and narrow the
+	// limits exactly as intents without it.
+	f = &authFlow{t: t, seller: true}
+	f.intent("commit")
+	c = f.check("pay")
+	f.approve(f.verdict(c, "pass"), "standing_intent", true)
+	f.pay(c)
+	run("seller-intent-outside-allowed", "an intent that names the seller still sets the allowed in force: a standing intent approves only an action in it", f, false)
+
+	f = &authFlow{t: t, seller: true}
+	f.intent("pay")
+	p = f.intent("pay", "commit")
+	f.confirm(p, []string{"pay"}, []string{"pay", "commit"})
+	c = f.check("commit")
+	f.approve(f.verdict(c, "pass"), "standing_intent", true)
+	f.perform(c)
+	run("seller-intent-confirmed-proposal", "a confirmed proposal in intents that name the seller is in force, as without the member", f, true)
+
 	f = newFlow()
 	f.intent("pay")
 	p = f.intent("pay", "commit")
@@ -277,7 +303,7 @@ func TestApprovalMigration(t *testing.T) {
 	f.intent("pay")
 	c = f.check("pay")
 	v = f.verdict(c, "pass")
-	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Allowed: []string{}})
+	f.seal(TypeIntent, false, &IntentBody{IntentBody: dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Allowed: []string{}}})
 	f.approve(v, "standing_intent", true)
 	f.pay(c)
 	run("allowed-revoked-before-approval", "a standing intent is judged at the approval: the allowed was emptied after the check", f, false)
@@ -378,7 +404,7 @@ func TestApprovalMigration(t *testing.T) {
 
 	f = newFlow()
 	f.intent("pay")
-	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), BoundsCommitment: hx('b')})
+	f.seal(TypeIntent, false, &IntentBody{IntentBody: dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), BoundsCommitment: hx('b')}})
 	p = f.journal[len(f.journal)-1].digestRef(t)
 	f.confirmSets(p, dealprofile.LimitSet{Allowed: []string{"pay"}}, dealprofile.LimitSet{Allowed: []string{"pay"}, BoundsCommitment: hx('b')})
 	c = f.check("pay")
@@ -388,7 +414,7 @@ func TestApprovalMigration(t *testing.T) {
 
 	f = newFlow()
 	f.intent("pay")
-	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Delegated: []string{"item"}, DelegatedCommitment: hx('d')})
+	f.seal(TypeIntent, false, &IntentBody{IntentBody: dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Delegated: []string{"item"}, DelegatedCommitment: hx('d')}})
 	p = f.journal[len(f.journal)-1].digestRef(t)
 	f.confirmSets(p, dealprofile.LimitSet{Allowed: []string{"pay"}}, dealprofile.LimitSet{Allowed: []string{"pay"}, Delegated: []string{"item"}})
 	c = f.check("pay")
