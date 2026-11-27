@@ -191,8 +191,10 @@ jobs:
     if: needs.plan.outputs.run == 'true'
     strategy:
       fail-fast: false
-      # Main and the nightly leave the organization's other runners to pull requests.
-      max-parallel: ${{ github.event_name == 'pull_request' && 16 || 4 }}
+      # A push to main runs its ten race shards ten at a time, so the run takes
+      # about one shard's time, not three (evidencebook#1038, Ethan's choice);
+      # the nightly still leaves the organization's other runners to pull requests.
+      max-parallel: ${{ github.event_name == 'pull_request' && 16 || github.event_name == 'push' && 10 || 4 }}
       matrix:
         part: ${{ fromJSON(needs.plan.outputs.matrix) }}
     name: capsulectl test (${{ matrix.part.pass }} ${{ matrix.part.shard }})
