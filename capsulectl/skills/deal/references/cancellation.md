@@ -7,6 +7,9 @@ Part of the [deal skill](../SKILL.md): its [Rules](../SKILL.md#rules-never-break
   the file.
 - **After agreeing:** a cancel is checked like any act: `deal check` with
   `"action": "cancel"`, the user's answer, then cancel with the merchant.
+  When the check passed and the user presses the cancel button themselves,
+  ask them with the check's `approval_text`, as it is; after a pause, its
+  card was already shown, so just name the button.
 - **A refund the user pays** (the user is the seller) rests on that cancel
   check and names the leg of the user's own book it refunds:
   `deal settle --deal ID --sent --check CANCEL_CHECK_ID --reverses LEG

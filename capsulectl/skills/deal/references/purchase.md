@@ -136,7 +136,10 @@ A retail checkout is almost always the second shape.
    ```
 
    Only once that succeeds, make the payment (press the button, or tell the
-   sub-task to). When the rail answers:
+   sub-task to). When the user presses it themselves after a check that
+   passed, ask them with the check's `approval_text`, as it is; after a
+   pause, its card was shown in step 8, so just name the button. When the
+   rail answers:
 
    ```sh
    capsulectl --profile deal deal settle --deal ID --check CHECK_ID --status settled --out payer-leg.json
