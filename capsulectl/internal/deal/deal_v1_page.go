@@ -84,23 +84,30 @@ renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined
 
 // v1PageCountersignedCopy is what a v1 receipt page carries for its own
 // check of the deal's countersign rung: the stored countersigned bundle, as
-// stored, and the countersigner rows ({name, key_ids}, the shape of
-// capsule-cli's directory rows and of agent-action-capsule's
-// CountersignerSource) that named its signers.
+// stored, and the countersigner rows ({name, key_ids, independent_of}, the
+// shape of capsule-cli's directory rows; {name, key_ids} is
+// agent-action-capsule's CountersignerSource) that named its signers.
 type v1PageCountersignedCopy struct {
 	Bundle         json.RawMessage          `json:"bundle"`
 	Countersigners []v1PageCountersignerRow `json:"countersigners"`
 }
 
+// IndependentOf is the row's independent_of list as the directory states
+// it. The page, not capsulectl, decides from it whether the row lists the
+// signer as independent of both parties (capsule-viewer#457, u649), and
+// says so when it does not (evidencebook#1019).
 type v1PageCountersignerRow struct {
-	Name   string   `json:"name"`
-	KeyIDs []string `json:"key_ids"`
+	Name          string   `json:"name"`
+	KeyIDs        []string `json:"key_ids"`
+	IndependentOf []string `json:"independent_of,omitempty"`
 }
 
 // v1CountersignedCopy is the copy a page carries for stamp, or nil when it
 // has no rung: the stored bundle of the entry that decides the rung
 // (storedCountersignOf), with a row for each signer resolved on that bundle,
-// named as the profile's countersigner directory names it.
+// named as the profile's countersigner directory names it and with that
+// row's independent_of. Two directory rows that share a name but state
+// different lists stay two page rows, so each key keeps its own row's list.
 func v1CountersignedCopy(stamp dealGradeCountersign) *v1PageCountersignedCopy {
 	if stamp.Rung == "" || stamp.copy == nil {
 		return nil
@@ -111,11 +118,14 @@ func v1CountersignedCopy(stamp dealGradeCountersign) *v1PageCountersignedCopy {
 		if e.State != "resolved" || e.BundleDigest != stamp.copyDigest {
 			continue
 		}
-		i, ok := at[e.Signer]
+		// JSON keys the row by its name and its list unambiguously; a string
+		// and a string slice always encode, so the error is never set.
+		id, _ := json.Marshal([]any{e.Signer, e.independentOf})
+		i, ok := at[string(id)]
 		if !ok {
 			i = len(rows)
-			at[e.Signer] = i
-			rows = append(rows, v1PageCountersignerRow{Name: e.Signer})
+			at[string(id)] = i
+			rows = append(rows, v1PageCountersignerRow{Name: e.Signer, IndependentOf: e.independentOf})
 		}
 		if !slices.Contains(rows[i].KeyIDs, e.KeyID) {
 			rows[i].KeyIDs = append(rows[i].KeyIDs, e.KeyID)

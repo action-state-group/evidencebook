@@ -109,6 +109,12 @@ type dealStoredCountersignature struct {
 	ThroughStep     int    `json:"through_step,omitempty"`
 	Steps           int    `json:"steps"`
 	BundleDigest    string `json:"bundle_digest"`
+
+	// independentOf is, for a resolved entry, the independent_of list of
+	// the directory row that named its signer, as capsule-cli reports it:
+	// what an x-deal-v1 receipt page carries on that signer's row
+	// (v1CountersignedCopy). Never printed.
+	independentOf []string
 }
 
 // profileCountersignDirectory is the countersigner directory the profile
@@ -317,6 +323,7 @@ func (s *dealSession) storedCountersignOf(ctx context.Context, dealID string, to
 			out.Entries = append(out.Entries, dealStoredCountersignature{
 				State: rep.State, Signer: rep.SignerName, KeyID: rep.Signer.KeyID, RecomputedAt: rep.RecomputedAt,
 				Receipt: rep.Receipt, ThroughStep: through, Steps: total, BundleDigest: r.digest,
+				independentOf: rep.SignerIndependentOf,
 			})
 		}
 	}
