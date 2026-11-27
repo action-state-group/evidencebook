@@ -3,6 +3,7 @@ package book
 import (
 	"encoding/hex"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -198,8 +199,13 @@ func TestUnregisteredOrUngrantedPackIsRefused(t *testing.T) {
 	_ = sent
 
 	x.writePack("pack.json", packFileBody(""))
-	_, err := invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(x.dir, "pack.sent"), "--requester", "stranger", "--output", filepath.Join(x.dir, "stranger.response"))
-	require.NoError(t, err)
+	stdout, stderr, err := invokeSplit(t, "respond", "--profile", "b", "--request", filepath.Join(x.dir, "pack.sent"), "--requester", "stranger", "--output", filepath.Join(x.dir, "stranger.response"))
+	require.NoError(t, err, stderr)
+	// The holder's operator sees the reason the gate decided on, on stderr
+	// only; the result, the reply and the record carry policy_declined
+	// (evidencebook#580).
+	assert.Contains(t, stderr, "refused "+evidencebook.ReasonPolicyDeclined+"; the gate decided "+evidencebook.ReasonNotAuthorized)
+	assert.Contains(t, stdout, `"reason":"`+evidencebook.ReasonPolicyDeclined+`"`)
 	raw, err := os.ReadFile(filepath.Join(x.dir, "stranger.response"))
 	require.NoError(t, err)
 	refusal, err := evidencebook.ParseReply(evidencebook.Message{Octets: raw, MediaType: evidencebook.MediaTypeJSON})
@@ -208,6 +214,17 @@ func TestUnregisteredOrUngrantedPackIsRefused(t *testing.T) {
 	// The CLI answers under the uniform refusal policy, which folds
 	// not_authorized into policy_declined (ER -03 §4.2).
 	assert.Equal(t, evidencebook.ReasonPolicyDeclined, refusal.Refusal.Reason)
+	for _, leaked := range [][]byte{[]byte(stdout), raw, storeBytes(t, x.b)} {
+		assert.NotContains(t, string(leaked), evidencebook.ReasonNotAuthorized, "the decided reason leaves only on stderr")
+	}
+
+	// A refusal whose sent reason is the decided one prints nothing extra:
+	// derivation_unsupported once the pack is no longer opted in.
+	require.NoError(t, os.Remove(filepath.Join(derivationDir(x.b), "pack.json")))
+	stdout, stderr, err = invokeSplit(t, "respond", "--profile", "b", "--request", filepath.Join(x.dir, "pack.sent"), "--requester", "a", "--output", filepath.Join(x.dir, "unsupported.response"))
+	require.NoError(t, err, stderr)
+	assert.Contains(t, stdout, `"reason":"`+evidencebook.ReasonDerivationUnsupported+`"`)
+	assert.Empty(t, stderr)
 }
 
 func TestDoctorListsThePacksItServes(t *testing.T) {
@@ -304,6 +321,23 @@ func (x *packExchange) resultRecords() int {
 	records, err := opened.book.Query(x.t.Context(), evidencebook.Filter{RecordType: evidencebook.RecordTypeEvidenceResult})
 	require.NoError(x.t, err)
 	return len(records)
+}
+
+// storeBytes is every file under the profile's store, concatenated: the book
+// and anything sealed or cut beside it.
+func storeBytes(t *testing.T, p cli.Profile) []byte {
+	t.Helper()
+	var all []byte
+	require.NoError(t, filepath.WalkDir(p.Connection.Database, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		all = append(all, b...)
+		return err
+	}))
+	require.NotEmpty(t, all)
+	return all
 }
 
 func (x *packExchange) a() cli.Profile {

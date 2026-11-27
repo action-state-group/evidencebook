@@ -1407,8 +1407,18 @@ func respondCommand() *cobra.Command {
 			// records the answer in the current one (evidencebook#689 §4).
 			respond = opened.shelf.Respond
 		}
+		// The uniform refusal policy sends policy_declined in place of a
+		// reason that would disclose what the policy protects. The operator
+		// running respond is the holder's own, so they see the reason the gate
+		// decided on, on stderr only: it is never in the reply, the record or
+		// this command's result (evidencebook#580).
+		onRefusal := func(digest, decided, sent string) {
+			if decided != sent {
+				fmt.Fprintf(c.ErrOrStderr(), "local diagnostic, not sent or recorded: request %s was refused %s; the gate decided %s\n", digest, sent, decided)
+			}
+		}
 		reply, record, e := respond(c.Context(), evidencebook.Message{Octets: in.Request, MediaType: evidencebook.MediaTypeJSON},
-			evidencebook.RespondOptions{AuthenticatedRequester: in.Requester, Policy: policy, ConductPacks: conduct})
+			evidencebook.RespondOptions{AuthenticatedRequester: in.Requester, Policy: policy, ConductPacks: conduct, OnRefusal: onRefusal})
 		if e != nil {
 			return bookError(e)
 		}
@@ -1438,6 +1448,7 @@ func respondCommand() *cobra.Command {
 	})
 	// The core's help knows no pack directory. A Terms Pack the holder opted
 	// in to serving by digest is answered from the profile's book/derivations.
+	cmd.Long += "\n\nA request the gate refuses for a reason the uniform refusal policy folds into policy_declined is sent policy_declined; stderr then carries one local diagnostic line with the reason the gate decided on, which is never sent, recorded or printed in the result."
 	cmd.Long += "\n\nA Terms Pack named by the digest of its definition is answered only when it is listed in the profile's book/derivations/*.json (see `capsulectl book doctor`). One file that cannot be read stops every answer, public questions included, and the message names the file."
 	return cmd
 }

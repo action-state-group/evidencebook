@@ -356,7 +356,7 @@ func TestRespondReadsTheConductPackList(t *testing.T) {
 	answers := 0
 	respond := func() (cli.EvidenceRespondResult, error) {
 		answers++
-		out, err := invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(x.dir, "record.sent"), "--requester", "a", "--output", filepath.Join(x.dir, fmt.Sprintf("record%d.response", answers)))
+		out, _, err := invokeSplit(t, "respond", "--profile", "b", "--request", filepath.Join(x.dir, "record.sent"), "--requester", "a", "--output", filepath.Join(x.dir, fmt.Sprintf("record%d.response", answers)))
 		var result cli.EvidenceRespondResult
 		if err == nil {
 			require.NoError(t, json.Unmarshal([]byte(out), &result), out)
