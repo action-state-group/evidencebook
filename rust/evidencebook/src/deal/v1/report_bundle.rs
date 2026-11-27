@@ -16,6 +16,7 @@ use super::exact::{exact_object, Spec};
 use super::names::*;
 use super::report::{ROWS_LISTED, ROWS_NOT_STARTED, ROWS_WITHHELD, SIDE_ADJUDICATOR};
 use super::report_verify::{verify_report, ReportRead, STAGE_REPORT};
+use super::sent::verify_sent;
 use super::start::STATE_STARTED;
 use crate::deal::names::{AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP};
 use crate::deal::Error;
@@ -42,6 +43,14 @@ pub struct ReportBook {
     pub agreement: Option<Value>,
     #[serde(default)]
     pub relied_on: Option<BTreeMap<String, Value>>,
+    /// The offer the agreement cites, as its sent pair `{record,
+    /// agent_input}` (Go `ReportBook.Offer`); a `null` is kept, and refused.
+    #[serde(
+        default,
+        deserialize_with = "keep_null",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub offer: Option<Value>,
 }
 
 /// The x-deal-v1 bundle extension (Go `ReportBundle`): the sealed report's
@@ -59,7 +68,11 @@ const EXTENSION: Spec = Spec::Obj(&[
     ("sealed_report", Spec::Leaf),
     (
         "book",
-        Spec::Obj(&[("agreement", Spec::Leaf), ("relied_on", Spec::Leaf)]),
+        Spec::Obj(&[
+            ("agreement", Spec::Leaf),
+            ("relied_on", Spec::Leaf),
+            ("offer", Spec::Leaf),
+        ]),
     ),
 ]);
 
@@ -71,7 +84,8 @@ fn bad(m: String) -> Error {
 /// the x-deal-v1 bundle extension that carries it, `ext` (Go
 /// `VerifyReportBundle`), so every host and page applies one rule. `ext` is
 /// exactly `{sealed_report, book: {agreement, relied_on}}`, `relied_on` an
-/// object (empty when no row relies on a record). It is refused unless:
+/// object (empty when no row relies on a record), its book optionally also
+/// carrying `offer`. It is refused unless:
 ///
 /// - the report passes [`verify_report`] against `book.agreement`, and
 ///   `sealed_report` is the report Capsule's id;
@@ -90,7 +104,11 @@ fn bad(m: String) -> Error {
 ///   records sit in one log;
 /// - an adjudicator's copy, and only it, names a referee;
 /// - when the rows are listed, the keys are exactly the records the rows name
-///   in relied_on, each named with the side of its pair's signer.
+///   in relied_on, each named with the side of its pair's signer;
+/// - an offer, carried only in a keep or counterparty copy, passes
+///   [`verify_sent`], is a propose whose record digest is the offer the
+///   agreement cites, and is signed by the offerer: the agreement's own key
+///   when the holder made the offer, else its counterparty_key.
 ///
 /// A bundle that passes shows the records the holder says its rows rest on,
 /// signed by the deal's parties; like the report, it is not a recomputation.
@@ -177,6 +195,33 @@ pub fn verify_report_bundle(report: &[u8], ext: &[u8]) -> Result<ReportRead, Err
     }
     if let Some(a) = ag.adjudicator.value() {
         side_of.insert(a.key_id.clone(), SIDE_ADJUDICATOR);
+    }
+    if let Some(offer) = &book.offer {
+        if adj {
+            return Err(bad("an adjudicator's copy carries no offer".into()));
+        }
+        let sent =
+            verify_sent(&to_bytes(offer)?, None).map_err(|e| bad(format!("the offer: {e}")))?;
+        let offerer = if ag.side == SIDE_OFFERER {
+            first.key_id.clone()
+        } else {
+            ag.counterparty_key.value().cloned().unwrap_or_default()
+        };
+        if sent.record.block.record_type != TYPE_PROPOSE {
+            return Err(bad(format!(
+                "the offer is a {} record, not a propose",
+                sent.record.block.record_type
+            )));
+        }
+        if sent.digest != ag.offer.digest {
+            return Err(bad(format!(
+                "the offer {} is not the offer {} the agreement cites",
+                sent.digest, ag.offer.digest
+            )));
+        }
+        if sent.key_id != offerer {
+            return Err(bad("the offer is not signed by the deal's offerer".into()));
+        }
     }
     let mut sides: BTreeMap<&str, &str> = BTreeMap::new();
     let mut counterpart_log = String::new();

@@ -298,7 +298,9 @@ def verify_sent(raw: bytes, offer: OfferContext | None = None) -> Sent:
     payload = agent_input.encode("utf-8")
     try:
         d = digest(payload)
-    except StageError as exc:
+    except (StageError, ValueError) as exc:
+        # Go refuses any digest error here, a float JCS will not take
+        # included (FloatInDigestError is a ValueError).
         raise _err(STAGE_SENT, f"agent_input: {exc}") from None
     if _agent_input_digest(capsule) != d:
         raise _err(STAGE_SENT, "agent_input is not the record the Capsule commits (agent_input_digest)")

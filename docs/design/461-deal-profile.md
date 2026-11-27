@@ -1575,15 +1575,23 @@ records by reading that leg, not a new report member.
   ```json
   {"sealed_report": "<the report Capsule's id>",
    "book": {"agreement": {"record": …, "header": …, "payload": …},
-            "relied_on": {"<record id>": {"record": …, "header": …, "payload": …}, …}}}
+            "relied_on": {"<record id>": {"record": …, "header": …, "payload": …}, …},
+            "offer": {"record": …, "agent_input": …}}}
   ```
 
   `agreement` is the book pair of the holder's deal book record at seq 1, which `VerifyReport` reads
   the report against. `relied_on` holds the book pair of every record the holder's rows rely on at
   the report's `as_of`, computed whatever the copy's `rows_state`, keyed by record id; it is `{}`
   when no row relies on a record. A bundle carries a Capsule and its disclosed header, not the
-  record payload, so the pairs are what lets a reader read the records. `StatusProvider.ReportWithBook`
-  returns the report and its book from one snapshot; the host builds and seals the bundle.
+  record payload, so the pairs are what lets a reader read the records. `offer` is the offer the
+  agreement cites, as its sent pair `{record, agent_input}` (sections 3.1 and 3.5), byte for byte as the
+  holder holds it: the pair it sent, else the one it received. It is the only form every holder
+  has, since a party never holds the other side's journal pair. It carries the item, quantity and
+  price a receipt shows (the receipt view-model note in capsule-viewer, section 4 item 1; Steven's
+  u561, 2026-11-27). A keep or counterparty copy carries it when the host gives the pair
+  (`StatusProvider.OfferPair`); an adjudicator's copy never does (evidencebook#1065).
+  `StatusProvider.ReportWithBook` returns the report and its book from one snapshot; the host
+  builds and seals the bundle.
 - **Who gets it**, by the four bundle levels (Steven, 2026-11-06, #403): the owner's copy (`keep`), the counterparty's
   and the adjudicator's carry the agreement and the same `relied_on` records, so the settle legs
   travel in each; an adjudicator's report still withholds its rows. A bundle for anyone else
@@ -1600,7 +1608,10 @@ records by reading that leg, not a new report member.
   seq no greater than its `counted`; a keep or counterparty copy that names none carries no
   counterparty record, and an adjudicator's copy, which names none, keeps the counterparty's in one
   log. An adjudicator's copy, and only it, names a referee. When the rows are listed, the keys are exactly the records the
-  rows name in `relied_on`, each named with the side of its pair's signer. A page shows each leg's
+  rows name in `relied_on`, each named with the side of its pair's signer. An `offer` appears only
+  on a keep or counterparty copy; it passes `VerifySent`, is a propose whose record digest is the
+  agreement's `offer.digest`, and is signed by the offerer (the agreement's own key when the
+  holder's `side` is `offerer`, else its `counterparty_key`). A page shows each leg's
   settlement member as recorded, found by its `relied_on` id; it picks no leg, and `check` stays
   the only verdict. In a copy whose rows are not listed (an adjudicator's, or a deal not
   started), nothing ties the keys to rows: a pass shows only that each record is of the deal,

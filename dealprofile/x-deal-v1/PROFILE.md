@@ -567,16 +567,21 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   `start.state` and, for a started deal, `settled`.
 - **The bundle extension.** A bundle that carries a v1 report carries the extension `x-deal-v1`:
   `{"sealed_report": "<the report Capsule's id>", "book": {"agreement": <pair>, "relied_on":
-  {"<record id>": <pair>, ...}}}`, each pair a book pair `{record, header, payload}`. `agreement`
+  {"<record id>": <pair>, ...}, "offer": <sent pair>}}`, each pair but the offer a book pair
+  `{record, header, payload}`. `agreement`
   is the holder's deal book record at seq 1; `relied_on` holds every record the holder's rows rely
   on at `as_of`, whatever the copy's `rows_state`, so the owner's (`keep`), counterparty's and
   adjudicator's copies carry the same records, and `{}` when no row relies on one. A bundle for
-  anyone else carries no report and no extension. The host builds and seals the bundle;
+  anyone else carries no report and no extension. `offer`, on a keep or counterparty copy and
+  never on an adjudicator's, is the offer the agreement cites as its sent pair `{record,
+  agent_input}` (section 7), as the holder holds it: it gives a receipt the item, quantity and
+  price (Steven's u561; evidencebook#1065). The host builds and seals the bundle;
   `xdealv1.StatusProvider.ReportWithBook` returns a report and its book from one snapshot.
   `xdealv1.VerifyReportBundle` reads a report with its extension (design note §9, "The payment
   legs and the bundle extension"): among its checks, each pair is signed by a party of the
   agreement, the holder's and the counterparty's sit in the book or counted prefix the report
-  says it rests on, and, when the rows are listed, the pairs are exactly the records they rely on.
+  says it rests on, when the rows are listed, the pairs are exactly the records they rely on, and
+  an offer passes `VerifySent`, is the propose the agreement cites and is signed by the offerer.
   An adjudicator's records have no log bound, and an adjudicator's copy, which names no
   counterparty prefix, binds the counterparty's records to one log only; in a copy that lists no
   rows, nothing ties the pairs to rows. Rust has `deal::v1::verify_report_bundle` and Python

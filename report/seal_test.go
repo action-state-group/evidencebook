@@ -265,7 +265,7 @@ func TestInspectPageReadsAPageSealedBeforeTheJSONElement(t *testing.T) {
 	end := m[1] + strings.Index(html[m[1]:], "</script>")
 	rest := bundleLoader.ReplaceAllString(html[end+len("</script>"):], "")
 	old := html[:m[0]] + "<script>window.__BUNDLE__ = " + strings.TrimSpace(html[m[1]:end]) + ";</script>" + rest
-	require.NotContains(t, old, "application/json")
+	require.Nil(t, jsonStartTag.FindStringIndex(old), "the old form carries no JSON element")
 	want, err := InspectPage([]byte(html))
 	require.NoError(t, err)
 	got, err := InspectPage([]byte(old))
