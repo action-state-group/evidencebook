@@ -85,6 +85,8 @@ jobs:
           go generate ./internal/deal
           git diff --exit-code -- internal/deal/confusables_table.go
       - name: The release build, dry run
+        # Linux only: it runs the linux-amd64 launchers; scripts/ci-local.sh (act on a Mac) skips it.
+        if: env.ACT != 'true'
         # release.yml's build, handshake check and core step for the one
         # release, on every change: the core step adds the published core
         # go.mod requires, so a defect in it shows here, not on a pushed tag.
@@ -329,11 +331,15 @@ jobs:
           EVIDENCEBOOK_CHROME: ${{ steps.chrome.outputs.chrome-path }}
         run: go test -count=1 -v -run '^(TestContractReportDrawsAClaimReason|TestTheBrowserOpensACarriedReceiptAndReadsAHeldOne)$' ./internal/book
       - name: Install the pinned fonts
+        # Linux only (apt-get, the fonts fonts.conf names); scripts/ci-local.sh skips it.
+        if: env.ACT != 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends fonts-dejavu-core fontconfig
           FONTCONFIG_FILE="$GITHUB_WORKSPACE/capsulectl/testdata/presentation/fonts.conf" fc-list : family | sort -u
       - name: Presentation goldens
+        # Pixel-exact in the pinned Linux fonts; scripts/ci-local.sh (act on a Mac) skips it.
+        if: env.ACT != 'true'
         env:
           CAPSULECTL_CHROME: ${{ steps.chrome.outputs.chrome-path }}
           CAPSULECTL_PRESENTATION_PINNED: "1"
@@ -407,10 +413,14 @@ jobs:
           chrome-version: 155.0.8059.39
           install-dependencies: true
       - name: Install the pinned fonts
+        # Linux only (apt-get, the fonts fonts.conf names); scripts/ci-local.sh skips it.
+        if: env.ACT != 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends fonts-dejavu-core fontconfig
       - name: Presentation pass
+        # Pixel-exact in the pinned Linux fonts; scripts/ci-local.sh (act on a Mac) skips it.
+        if: env.ACT != 'true'
         env:
           CAPSULECTL_CHROME: ${{ steps.chrome.outputs.chrome-path }}
           CAPSULECTL_PRESENTATION_PINNED: "1"

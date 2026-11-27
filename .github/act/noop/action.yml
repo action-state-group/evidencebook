@@ -1,0 +1,12 @@
+# Local stand-in for actions that only matter on GitHub (actions/upload-artifact).
+name: no-op (local)
+inputs:
+  name: {required: false}
+  path: {required: false}
+  if-no-files-found: {required: false}
+  retention-days: {required: false}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: echo "not run locally"
