@@ -240,7 +240,7 @@ func (s *dealSession) v0PageWitnessOf(ctx context.Context, dealID string, b map[
 	// command names: a shared copy given with --from-bundle is refused, so
 	// its page's verify report never holds the witness (u219).
 	if audience, _ := dealPageReport(b)["audience"].(string); audience != cli.DealAudienceKeep {
-		return nil, cli.InputError("--witness-directory puts your book's witness time on your own --html page; a shared copy carries none")
+		return nil, cli.InputError("--witness-directory needs --html on your own copy: it puts your book's witness time on your own page, and a shared copy carries none")
 	}
 	raw, err := os.ReadFile(dirPath)
 	if err != nil {

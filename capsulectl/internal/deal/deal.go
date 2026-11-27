@@ -2935,7 +2935,7 @@ func dealReportCommand() *cobra.Command {
 		witnessDir, _ := c.Flags().GetString("witness-directory")
 		// The witness time goes only on your own page (u219).
 		if witnessDir != "" && (htmlPath == "" || audience != cli.DealAudienceKeep) {
-			return cli.InputError("--witness-directory puts your book's witness time on your own --html page; a shared copy carries none")
+			return cli.InputError("--witness-directory needs --html on your own copy: it puts your book's witness time on your own page, and a shared copy carries none")
 		}
 		readOnly, _ := c.Flags().GetBool("read-only")
 		if readOnly && (htmlPath != "" || emailPath != "" || bundlePath != "" || fromBundle != "" || audience != cli.DealAudienceKeep) {

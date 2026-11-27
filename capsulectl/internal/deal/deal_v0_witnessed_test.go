@@ -207,6 +207,10 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 		"--share", cli.DealAudienceCounterparty, "--to", "the shop", "--witness-directory", f.directory)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "a shared copy carries none")
+	// Without --html there is no page to put it on.
+	_, err = invoke(t, "", "--profile", "deal", "deal", "report", "--deal", f.dealID, "--witness-directory", f.directory)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--witness-directory needs --html on your own copy")
 
 	// A shared copy given with --from-bundle is refused too, so its page's
 	// report never holds the time.
