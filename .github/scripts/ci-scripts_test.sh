@@ -127,6 +127,16 @@ local_has "local: go.mod races internal/deal" 0 ./internal/deal capsulectl capsu
 local_has "local: a book change does not race internal/deal" 1 ./internal/deal capsulectl capsulectl/internal/book/book.go
 local_has "local: a bookdemo change does not race internal/deal" 1 ./internal/deal capsulectl capsulectl/scripts/bookdemo/main.go
 
+# ci.yml's Unit tests job leaves the packages the Race tests job runs to it on a
+# pull request, which holds only while no root-module code changes under the
+# race detector: no race build constraint, race.Enabled or race sampling.
+race_aware=$(cd "$here/../.." && git ls-files '*.go' | grep -vE '^(capsulectl|report)/' |
+  xargs grep -lE '^//go:build.*race|race\.Enabled|raceDetector|raceSample|raceRounds|raceSkip' 2> /dev/null || true)
+if [[ -z "$race_aware" ]]; then printf 'ok   ci.yml unit/race split: no root-module code changes under the race detector\n'; else
+  printf 'FAIL ci.yml unit/race split: these files change under the race detector, so Unit tests must run them too:\n%s\n' "$race_aware"
+  fails=$((fails + 1))
+fi
+
 # scripts/pre-push.sh --plan: ci-local, and whether internal/deal's race pass runs.
 prepush_plan() { # description, want (lines joined by "|"), paths...
   local what=$1 want=$2 got ch

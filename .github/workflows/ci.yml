@@ -139,7 +139,24 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Test
-        run: go test ./...
+        # On a pull request the Race tests job runs the same tests, with the
+        # race detector, over the packages it plans; this job runs the rest
+        # (evidencebook#1038). No test in this module changes under the race
+        # detector (no race build tag or race sampling; .github/scripts/
+        # ci-scripts_test.sh checks that). Push to main and the nightly run all.
+        env:
+          EVENT: ${{ github.event_name }}
+          RACE_PACKAGES: ${{ needs.changes.outputs.race }}
+        run: |
+          if [[ "$EVENT" != pull_request ]]; then go test ./...; exit; fi
+          read -r -a planned <<<"$RACE_PACKAGES"
+          raced=""
+          if ((${#planned[@]})); then raced=$(go list "${planned[@]}"); fi
+          rest=$(comm -23 <(go list ./... | sort) <(printf '%s\n' "$raced" | sort))
+          if [[ -z "$rest" ]]; then echo "The Race tests job runs every package's tests."; exit 0; fi
+          echo "Race tests runs: ${raced:-none}" | tr '\n' ' '; echo
+          # shellcheck disable=SC2086 # import paths, one per line
+          go test $rest
 
   race:
     name: Race tests
