@@ -95,6 +95,9 @@ git clone -q --shared --no-checkout "$root" "$work/repo" || exit 2
   exit 2
 }
 git -C "$work/repo" diff --no-renames --name-only HEAD^1 HEAD > "$work/changed" || exit 2
+# act names the repository (github.repository, an actions/checkout default) after
+# origin's URL, which for this clone is a local path.
+git -C "$work/repo" remote set-url origin https://github.com/action-state-group/evidencebook.git || exit 2
 wfdir="$work/repo/.github/workflows"
 choose
 
@@ -176,12 +179,14 @@ if ((${#selected[@]})); then
  "repository": {"full_name": "action-state-group/evidencebook"}}
 EOF
   # The leak-lint term list never reaches a job: act imports this
-  # environment into every job it runs on the host.
+  # environment into every job it runs on the host. No pager either: a step's
+  # `git diff` would otherwise wait in one for input that never comes.
   (cd "$work/repo" && env -u LEAK_LINT_TERMS timeout --kill-after=30 "${CI_LOCAL_TIMEOUT:-40m}" \
     act pull_request -W "$work/workflows" -e "$work/event.json" \
     -P ubuntu-latest=-self-hosted -P ubuntu-24.04=-self-hosted --concurrent-jobs "$n" \
     "${locals[@]}" --env EB_CI_CHROME_SH="$work/repo/.github/act/chrome.sh" \
-    --env EB_CI_CACHE="${EB_CI_CACHE:-$HOME/Library/Caches/evidencebook-ci}") > "$work/act.log" 2>&1 || status=$?
+    --env EB_CI_CACHE="${EB_CI_CACHE:-$HOME/Library/Caches/evidencebook-ci}" \
+    --env GIT_PAGER=cat --env PAGER=cat) < /dev/null > "$work/act.log" 2>&1 || status=$?
   if ((status == 124 || status == 137)); then
     printf 'the act run passed CI_LOCAL_TIMEOUT (%s) and was stopped\n' "${CI_LOCAL_TIMEOUT:-40m}"
   fi
