@@ -59,10 +59,10 @@ jobs:
       attestations: write
     steps:
       - name: Refuse a full release re-run by someone else
-        # Prevent self-review stops whoever started a run from approving it,
-        # and a re-run is started by whoever re-ran it. The tag's pusher could
-        # then approve their own full release, so that run stops here, before
-        # anything is built (capsulectl/RELEASING.md).
+        # Only the tag's pusher re-runs a full release. This guarded the
+        # environment's prevent self-review, which evidencebook#1049 turned off
+        # (the maintainers approve their own runs); it is kept, so a re-run is
+        # still started by the pusher (capsulectl/RELEASING.md).
         if: ${{ !contains(github.ref_name, '-') }}
         # Before the checkout, so not in capsulectl/.
         working-directory: ${{ github.workspace }}
