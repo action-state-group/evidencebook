@@ -1010,6 +1010,14 @@ func ReadShelfWindow(ctx context.Context, path string) (*WindowPolicy, error) {
 		return nil, err
 	}
 	defer db.Close()
+	return ReadShelfWindowFrom(ctx, db)
+}
+
+// ReadShelfWindowFrom is ReadShelfWindow on a handle the host already has
+// open on the shelf's file, so reading the policy opens no connection of
+// its own (evidencebook#1040). Like ReadShelfWindow, it reads only and
+// takes no lock.
+func ReadShelfWindowFrom(ctx context.Context, db *sql.DB) (*WindowPolicy, error) {
 	var tables int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'shelf_window'`).Scan(&tables); err != nil {
 		return nil, err
