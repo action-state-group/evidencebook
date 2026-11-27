@@ -275,7 +275,7 @@ func TestReceiptsOnAResultWithNoDealsAreRefused(t *testing.T) {
 	view := View{Card: "outcome", ContractReport: true, Receipts: &Receipts{Modules: []emitter.Module{receiptModule(t, receiptModuleIDs[0])}}}
 	_, err := Build(bundle, view)
 	assert.ErrorIs(t, err, ErrRefused)
-	assert.ErrorContains(t, err, "no claim of the Result names a deal")
+	assert.ErrorContains(t, err, "no claim of the Result has a deal")
 }
 
 var optionsCall = regexp.MustCompile(`renderEvidenceGraph\(window\.__BUNDLE__, document\.getElementById\("app"\), undefined, (\{.*\})\);`)

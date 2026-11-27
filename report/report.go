@@ -383,7 +383,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 		// checked; a bundle it refuses picks no receipt by a prefix instead.
 		book, err := evidencebook.VerifyBundle(bundle)
 		if err != nil {
-			return nil, refusal("receipts: the bundle's records do not verify as an evidence bundle, so no claim's deal can be read: " + err.Error())
+			return nil, refusal("receipts: the bundle's records do not verify as an evidence bundle, so the subjects its claims cite cannot be read, and no receipt is filed by a claim id's prefix instead: " + err.Error())
 		}
 		if receipts, err = checkReceipts(view.Receipts, checked.Claims, book.Records); err != nil {
 			return nil, err

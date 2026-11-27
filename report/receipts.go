@@ -42,14 +42,15 @@ var receiptModuleIDs = []string{
 // "Receipt not carried with this page", which is true of it: nothing was
 // handed over.
 //
-// A claim's deal is its subject (the subject convention v0's readers,
-// evidencebook#116 design note section 4): the subject_id of a subject_root
-// that a record the claim cites is a member of, read from the bundle's
-// verified headers (evidencebook.SubjectsOfRecord), else the part of its id
-// before "::". A Result none of whose claims has a deal carries none, and
-// Receipts on it is refused; so is one whose claim cites members of two
-// subjects. The page files each claim's receipt line by the deal this package decides
-// (capsule-viewer's receiptDeals), so this package owns the rule.
+// A claim's deal is its subject (subject convention v0, evidencebook#116
+// design note section 4). When a record the claim cites is a member of a
+// subject_root, the deal is that root's subject_id, read from the headers
+// the bundle's verifier checked (evidencebook.SubjectsOfRecord). Otherwise
+// it is the part of the claim id before "::". Receipts are refused on a
+// Result none of whose claims has a deal, and on one whose claim cites
+// members of two subjects. The page files each receipt line under the deal
+// this package decides (capsule-viewer's receiptDeals), so this package owns
+// the rule.
 type Receipts struct {
 	// Modules are the receipt modules the page carries, each a script and
 	// its pins (capsule-viewer go/receipt's Module). Each manifest names one
@@ -193,7 +194,7 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim, records []evide
 		}
 	}
 	if len(deals) == 0 {
-		return checkedReceipts{}, refusef("receipts: no claim of the Result names a deal (cites a member of a subject, or has an id of the form <deal>::<requirement>), so there is nothing to carry")
+		return checkedReceipts{}, refusef("receipts: no claim of the Result has a deal (cites a member of a subject, or has an id of the form <deal>::<requirement>), so there is nothing to carry")
 	}
 	out := checkedReceipts{texts: make(map[string]string), deals: deals}
 	seen := make(map[string]string)
