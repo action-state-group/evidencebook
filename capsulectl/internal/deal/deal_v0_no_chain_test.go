@@ -166,6 +166,12 @@ func TestNoBundleBuilderWritesACadenceChain(t *testing.T) {
 			continue
 		}
 		assert.Empty(t, write.FindAllIndex(mustRead(t, f), -1), f)
+		// deal_v0_witnessed.go writes the holder's chain to the proof file
+		// beside a copy (`deal checkpoint proof`), never into a bundle: the
+		// one place the chain leaves the holder's store, and only to them.
+		if f == "deal_v0_witnessed.go" {
+			continue
+		}
 		assert.NotContains(t, string(mustRead(t, f)), "cadenceExtensionEntry(", f)
 	}
 }

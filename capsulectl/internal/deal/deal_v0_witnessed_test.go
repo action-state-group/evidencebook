@@ -188,6 +188,13 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 	dealRun(t, "report", "--deal", f.dealID, "--html", page, "--witness-directory", f.directory)
 	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt},
 		v0Entry(t, pageVerifyReport(t, mustRead(t, page)))["witnessed"], "capsulectl's report on the page, to the second")
+	// The chain itself never reaches the page: neither its bundle nor its
+	// bootstrap data carries it (u219).
+	bundleData, err := json.Marshal(embeddedBundle(t, string(mustRead(t, page))))
+	require.NoError(t, err)
+	assert.NotContains(t, string(bundleData), DealParentWitnessExtension)
+	assert.NotContains(t, string(pageBootstrapData(t, mustRead(t, page))), DealParentWitnessExtension)
+	assert.NotContains(t, string(pageBootstrapData(t, mustRead(t, page))), "inclusion_proof")
 	with := readV0Page(t, chrome, page)
 	require.Empty(t, with.Errors)
 	require.Len(t, with.Rungs["witness"], 1)
@@ -196,7 +203,7 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 	without := reportV0Page(t, chrome, f.dealID, "")
 	assert.Equal(t, []string{"No witness result was reported to this page."}, without.Rungs["witness"])
 
-	_, err := invoke(t, "", "--profile", "deal", "deal", "report", "--deal", f.dealID, "--html", filepath.Join(t.TempDir(), "s.html"),
+	_, err = invoke(t, "", "--profile", "deal", "deal", "report", "--deal", f.dealID, "--html", filepath.Join(t.TempDir(), "s.html"),
 		"--share", cli.DealAudienceCounterparty, "--to", "the shop", "--witness-directory", f.directory)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "a shared copy carries none")
