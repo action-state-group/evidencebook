@@ -59,6 +59,11 @@ func gateElementAt(page []byte, p int, noClose *[2]bool, noGT *bool) []int {
 		if after < len(page) && asciiWordByte(page[after]) {
 			continue // no \b
 		}
+		// Checked before the start tag's '>' is searched for, so a run of
+		// unclosed start tags costs one search, not one each.
+		if noClose[k] {
+			continue
+		}
 		if *noGT {
 			return nil
 		}
@@ -68,9 +73,6 @@ func gateElementAt(page []byte, p int, noClose *[2]bool, noGT *bool) []int {
 			return nil
 		}
 		body := after + gt + 1
-		if noClose[k] {
-			continue
-		}
 		end, closeAt := gateClosing(page, body, name)
 		if end < 0 {
 			noClose[k] = true

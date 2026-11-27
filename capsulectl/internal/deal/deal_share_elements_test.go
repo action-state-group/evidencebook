@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -55,6 +56,24 @@ func TestGateElementsMatchTheExpression(t *testing.T) {
 		}))
 	}
 	require.Positive(t, files)
+}
+
+// gateElements stays linear where the expression is: a run of start tags
+// with no closing tag, or with no '>', costs one search, not one per tag.
+// Quadratic, the first page is about 6e11 byte comparisons; linear, it takes
+// milliseconds.
+func TestGateElementsAreLinearOnUnclosedRuns(t *testing.T) {
+	for _, page := range [][]byte{
+		[]byte(strings.Repeat("<script ", 400000) + ">"),
+		[]byte(strings.Repeat("<style ", 400000) + ">"),
+		[]byte(strings.Repeat("<script>", 200000) + strings.Repeat("</scriptx", 200000)),
+		[]byte(strings.Repeat("<script ", 400000)),
+	} {
+		start := time.Now()
+		got := gateElements(page)
+		require.Less(t, time.Since(start), 2*time.Second, "%d bytes", len(page))
+		require.Empty(t, got, "none of them holds an element")
+	}
 }
 
 func FuzzGateElements(f *testing.F) {
