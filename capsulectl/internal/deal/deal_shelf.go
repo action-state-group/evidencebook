@@ -83,9 +83,11 @@ func (s *dealSession) openShelf(ctx context.Context, dbPath string, originals ev
 		receive = evidencebook.ReceiveConfig{Profile: s.v1Profile}
 	}
 	// A store created with a window (deal init --window, evidencebook#797)
-	// opens with the policy it stored; any other store has none.
-	window, err := evidencebook.ReadShelfWindow(ctx, dbPath)
-	if err != nil && !errors.Is(err, evidencebook.ErrNotFound) {
+	// opens with the policy it stored; any other store has none. It is read
+	// on the session's handle, which is open on the store already
+	// (evidencebook#1040).
+	window, err := evidencebook.ReadShelfWindowFrom(ctx, s.db)
+	if err != nil {
 		return err
 	}
 	shelf, err := evidencebook.OpenSQLiteShelf(ctx, evidencebook.ShelfConfig{
