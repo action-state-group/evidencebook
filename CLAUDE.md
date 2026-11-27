@@ -4,23 +4,14 @@ Guidance for coding agents working on this repository.
 
 ## Commands
 
-**Before every push, run `scripts/pre-push.sh`** (evidencebook#925). Pull
-requests run only fast checks in CI; this runs every suite the branch's
-changes reach (`--all`: every suite), each suite's plain tests in full and the
-race detector over the packages the change reaches (evidencebook#973): the
-plan `.github/scripts/race-packages.sh` makes for a pull request, plus
-`capsulectl/internal/deal` in parallel shards when the change reaches it,
-which no pull request runs in CI. `--plan` prints what it would run. Push to
-main and the nightly race every package. It prints each suite's time and
-exits nonzero if any failed; push only when it passes. On the same machine
-(2026-11-26, under the heavy lock), a one-line change to an internal/deal test
-file took 746 seconds before evidencebook#973 and 650 after; the same change
-to an internal/book test file took 215 after. `--all` took 24 minutes on an Apple M5 Pro (18 cores, 2026-11-25, other
-work running): capsulectl 21 minutes in nine parallel shards per pass, the
-root module 8 minutes more when its test cache is cold. The jobs that need a pinned
-Chrome or capsule-engine (deal pages, presentation pass, the Goose loop) run
-on main and the nightly; run them as listed below when you change what they
-cover.
+**Before every push, run `scripts/pre-push.sh`** (evidencebook#925, #1038),
+through `asg-local-check --heavy --cpus 8` where that gate is installed. It runs what a
+pull request runs in CI, here, with `scripts/ci-local.sh` (below), plus the one
+check no pull request runs: `capsulectl/internal/deal`'s race pass when the
+change reaches that package (`.github/scripts/race-packages.sh` with
+`RACE_PACKAGES_LOCAL=1`, evidencebook#973; push to main and the nightly race
+every package). `--plan` prints what it would run. It prints each step's time
+and exits nonzero if any failed; push only when it passes.
 
 **`scripts/ci-local.sh` runs a pull request's CI on this machine**
 (evidencebook#1038): every job of every workflow a pull request triggers, read

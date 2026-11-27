@@ -110,6 +110,20 @@ while IFS= read -r path; do
   done
 done
 
+# Every test binary's dependencies from one go list: a package's own entry,
+# replaced by its test binary's (`<pkg>.test`) when it has tests, plus itself;
+# the Deps of a binary are what `go list -test -deps <pkg>` lists. One call
+# instead of one per package, which cost about a second each.
+graph=$(go list -test -f '{{.ImportPath}}|{{join .Deps " "}}' ./...)
+declare -A depsof=()
+while IFS='|' read -r name deps; do
+  case "$name" in
+    *" ["*) ;;
+    *.test) depsof["${name%.test}"]="$deps ${name%.test}" ;;
+    *) [[ -n "${depsof[$name]+x}" ]] || depsof["$name"]="$deps $name" ;;
+  esac
+done <<<"$graph"
+
 raced=()
 for pkg in "${!known[@]}"; do
   if [[ "$pkg" == "$module" ]]; then rel=.; else rel="./${pkg#"$module"/}"; fi
@@ -120,14 +134,12 @@ for pkg in "${!known[@]}"; do
     raced+=("$rel")
     continue
   fi
-  deps=$(go list -test -deps -f '{{.ImportPath}}' "$rel")
-  while IFS= read -r dep; do
-    dep=${dep%% \[*}
-    dep=${dep%.test}
+  # Words of a dependency list; a test variant's "[x.test]" word never matches.
+  for dep in ${depsof[$pkg]-}; do
     if [[ -n "${changed[$dep]+x}" ]]; then
       raced+=("$rel")
       break
     fi
-  done <<<"$deps"
+  done
 done
 ((${#raced[@]} == 0)) || printf '%s\n' "${raced[@]}" | sort
