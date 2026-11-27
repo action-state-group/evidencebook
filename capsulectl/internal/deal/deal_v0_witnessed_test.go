@@ -108,23 +108,35 @@ func TestV0WitnessedFromTheHoldersChain(t *testing.T) {
 	for k, v := range good {
 		bad[k] = v
 	}
-	bad["receipt_b64"] = strings.Repeat("A", 40)
-	inner["witnesses"] = []any{bad, good}
-	mixed := filepath.Join(f.dir, "mixed.proof.json")
-	data, err := json.Marshal(proof)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(mixed, data, 0o600))
-	m, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", mixed, "--witness-directory", f.directory)
-	assert.Equal(t, "verified", m["status"], "a malformed receipt beside a verified one")
-
-	// A malformed receipt alone fails, never reads as no receipt.
-	inner["witnesses"] = []any{bad}
-	malformed := filepath.Join(f.dir, "malformed.proof.json")
-	data, err = json.Marshal(proof)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(malformed, data, 0o600))
-	alone, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", malformed, "--witness-directory", f.directory)
-	assert.Equal(t, "failed", alone["status"], "%v", alone)
+	bad["receipt_b64"] = strings.Repeat("A", 40) // decodes, and does not verify
+	malformedEntry := map[string]any{}
+	for k, v := range good {
+		malformedEntry[k] = v
+	}
+	malformedEntry["receipt_b64"] = "not base64!" // no receipt at all
+	unknownEntry := map[string]any{}
+	for k, v := range good {
+		unknownEntry[k] = v
+	}
+	unknownEntry["ts_url"] = "https://unlisted.example"
+	write := func(name string, entries ...any) string {
+		inner["witnesses"] = entries
+		path := filepath.Join(f.dir, name+".proof.json")
+		data, err := json.Marshal(proof)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, data, 0o600))
+		return path
+	}
+	statusOf := func(path string) string {
+		w, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", path, "--witness-directory", f.directory)
+		return w["status"].(string)
+	}
+	assert.Equal(t, "verified", statusOf(write("bad-good", bad, good)), "a receipt that does not verify beside one that does")
+	assert.Equal(t, "failed", statusOf(write("bad", bad)), "a receipt that does not verify, alone")
+	assert.Equal(t, "verified", statusOf(write("malformed-good", malformedEntry, good)), "a malformed receipt beside a verified one")
+	assert.Equal(t, "failed", statusOf(write("malformed", malformedEntry)), "a malformed receipt alone fails, never reads as no receipt")
+	assert.Equal(t, "withheld", statusOf(write("unknown", unknownEntry)), "a witness the directory does not list")
+	assert.Equal(t, "failed", statusOf(write("malformed-unknown", malformedEntry, unknownEntry)), "nothing verified, and a receipt is malformed")
 }
 
 // A receipt that verifies but states no time gives no time.

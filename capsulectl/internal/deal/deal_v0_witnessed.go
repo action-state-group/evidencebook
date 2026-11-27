@@ -147,7 +147,7 @@ func v0Witnessed(value map[string]interface{}, proof *v0ChainProof, dealStatemen
 	switch {
 	case verified:
 		return map[string]any{"status": "verified", "witness": name, "at": at.Format(time.RFC3339)}
-	case bad, status == witness.StatusFail && !anyWithheld(results):
+	case bad, status == witness.StatusFail:
 		return failed("a witness receipt does not verify under the witness directory")
 	}
 	return withheld("no receipt verifies under the witness directory")
@@ -260,13 +260,3 @@ func (s *dealSession) v0PageWitnessOf(ctx context.Context, dealID string, b map[
 	return &v0PageWitness{proof: proof, directory: abs}, nil
 }
 
-// anyWithheld says whether a receipt result was withheld (an unknown
-// witness, or one not checkable under the directory).
-func anyWithheld(results []witness.ReceiptResult) bool {
-	for _, r := range results {
-		if r.Status == witness.StatusWithheld {
-			return true
-		}
-	}
-	return false
-}
