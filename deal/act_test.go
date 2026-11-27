@@ -285,7 +285,7 @@ func TestPerformFirstActGate(t *testing.T) {
 func TestPerformUnderABoundStandingIntent(t *testing.T) {
 	ctx := t.Context()
 	_, seller, dealID := agreedFull(t)
-	intent := seller.journal(dealID, false, &dealprofile.IntentBody{VerbatimCommitment: nonceOf("verbatim"), Allowed: []string{"commit"}})
+	intent := seller.journal(dealID, false, &xdealv1.IntentBody{IntentBody: dealprofile.IntentBody{VerbatimCommitment: nonceOf("verbatim"), Allowed: []string{"commit"}}})
 	check := seller.approvedCheck(dealID, "commit", "standing_intent", "standing")
 	in := PerformIn{Check: check, Act: "deliver", Observed: "scan"}
 

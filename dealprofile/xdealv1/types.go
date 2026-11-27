@@ -392,6 +392,27 @@ type ReceivedHistoryDigests struct {
 	AloneDeny     bool     `json:"alone_deny,omitzero"`
 }
 
+// IntentBody is the journal overlay's intent: v0's body and, on a buyer's
+// intent, Seller (evidencebook#1031). Seller is v1's own member
+// beside v0's closed body_intent, as a verdict's received_history is.
+type IntentBody struct {
+	dealprofile.IntentBody
+	Seller *Seller `json:"seller,omitzero"`
+}
+
+// Seller is the seller a buyer's book names, by commitment only (PROFILE
+// §5): Key is the seller's record key as the agreement that cites the
+// intent names it in counterparty_key (null for a seller with no layer),
+// NameCommitment the sha256-jcs-nonce256 commitment of the seller's name,
+// DomainCommitment of its domain when the buyer gave one. The name and the
+// nonce stay in the buyer's local store; only an opening {nonce, text}
+// tells the name to whoever holds it.
+type Seller struct {
+	Key              Null[string] `json:"key"`
+	NameCommitment   string       `json:"name_commitment"`
+	DomainCommitment string       `json:"domain_commitment,omitzero"`
+}
+
 // ApprovalBody is the journal overlay's approval: v0's body and a nonce,
 // for the reason VerdictBody carries one.
 type ApprovalBody struct {

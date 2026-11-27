@@ -238,7 +238,7 @@ func buildAppendixA(t *testing.T) *appendixA {
 	// 1 Nov, the buyer's side starts (lines 6 to 9g).
 	intent := a.add(fixture{Path: bj + "/01-intent.json", Line: "6", Story: "The owner's words, committed; the limit of 60 dollars; the one allowed act, pay.",
 		Record: Record{Block: journalBlock(TypeIntent, "2026-11-01T09:00:00Z", false),
-			Body: &dealprofile.IntentBody{VerbatimCommitment: label("buy this, not over 60 dollars"), PartyRole: RoleBuyer, MaxTotalMinor: amount(6000), Allowed: []string{"pay"}}}})
+			Body: &IntentBody{IntentBody: dealprofile.IntentBody{VerbatimCommitment: label("buy this, not over 60 dollars"), PartyRole: RoleBuyer, MaxTotalMinor: amount(6000), Allowed: []string{"pay"}}}}})
 	a.add(fixture{Path: bj + "/02-admit-ask.json", Line: "9", Story: "The first admission decision: ASK, for selected records of the 10 to 100 dollar band with their proofs.",
 		Record: Record{Block: journalBlock(TypeAdmit, "2026-11-01T09:05:00Z", false),
 			Body: &AdmitBody{Outcome: "ASK", Tier: "first_deal_10_100", Rows: []string{"selected_records_in_band"}, Asks: []Ref{requestDoc}, PackDigest: packDigest, CardDigest: cardDigest, Answers: []Ref{}, Nonce: label("seller admit ask nonce")}}})
@@ -387,6 +387,19 @@ func buildAppendixA(t *testing.T) *appendixA {
 				Findings: []dealprofile.VerdictBodyRulesFindingsItem{{ID: "known-counterparty", Check: &check, Verdict: "fail"}}}},
 			ReceivedHistory: &ReceivedHistoryDigests{HistorySHA256: []string{label("seller's History")}, InputSHA256: label("received_history input of " + rcheck2.Digest), AloneDeny: true},
 			Nonce:           label("VerdictBody nonce 2 " + rh)}}})
+
+	// Outside Appendix A: a buyer's opening intent that names the seller by
+	// commitment, under the key its agreement names (evidencebook#1031), and
+	// one whose seller keeps no signed records (key null).
+	const sn = "seller-name/buyer-journal"
+	sellerIntent := func(key Null[string], domain string) *IntentBody {
+		return &IntentBody{IntentBody: dealprofile.IntentBody{VerbatimCommitment: label("verbatim " + sn + domain), PartyRole: RoleBuyer, MaxTotalMinor: amount(6000), Allowed: []string{"pay"}},
+			Seller: &Seller{Key: key, NameCommitment: label("seller name " + sn + domain), DomainCommitment: domain}}
+	}
+	a.add(fixture{Path: sn + "/01-intent-seller.json", Line: "none (evidencebook#1031)", Story: "The buyer's opening intent names the seller: its record key, and commitments of its name and domain; the name stays in the buyer's local store.",
+		Record: Record{Block: journalBlock(TypeIntent, "2026-11-01T09:00:00Z", false), Body: sellerIntent(Some(fxSellerKey), label("seller domain "+sn))}})
+	a.add(fixture{Path: sn + "/02-intent-seller-no-layer.json", Line: "none (evidencebook#1031)", Story: "The same for a seller that keeps no signed records: its key is null, as the agreement's counterparty_key is.",
+		Record: Record{Block: journalBlock(TypeIntent, "2026-11-01T09:01:00Z", false), Body: sellerIntent(NullOf[string](), "")}})
 	return a
 }
 

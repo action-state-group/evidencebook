@@ -477,6 +477,7 @@ fn check_body(r: &Record) -> Result<(), Error> {
             }
             Ok(())
         }
+        Body::Intent(body) => check_v0_body(&serde_json::to_value(&body.v0)?, "body_intent"),
         Body::Check(body) => check_v0_body(&serde_json::to_value(&body.v0)?, "body_check"),
         Body::Verdict(body) => check_v0_body(&serde_json::to_value(&body.v0)?, "body_verdict"),
         Body::Approval(body) => check_v0_body(&serde_json::to_value(&body.v0)?, "body_approval"),
@@ -764,7 +765,7 @@ const V0_SCHEMA: &[u8] = include_bytes!("../../../schemas/vendor/x-deal-v0/x-dea
 const V0_SCHEMA_ID: &str = "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json";
 const V1_SCHEMA: &[u8] = include_bytes!("../../../schemas/vendor/x-deal-v1/x-deal-v1.schema.json");
 const V1_SCHEMA_ID: &str = "https://agentactioncapsule.org/profiles/x-deal-v1/record.schema.json";
-const V0_BODIES: &[&str] = &["body_check", "body_verdict", "body_approval"];
+const V0_BODIES: &[&str] = &["body_intent", "body_check", "body_verdict", "body_approval"];
 
 /// The raw x-deal-v1 record schema.
 pub fn profile_schema() -> &'static [u8] {

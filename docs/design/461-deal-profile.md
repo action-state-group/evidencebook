@@ -277,7 +277,8 @@ its passing check (design §4.2, "Checks before an act"), so v1 cannot leave the
 **Proposed:** an **x-deal-v1 journal overlay** of four types, sealed in the journal only and
 never sent, each with v0's body:
 
-- `intent` (v0 `IntentBody`, `types.go:79-92`, unchanged);
+- `intent` (v0 `IntentBody`, `types.go:79-92`; a buyer's intent may add `seller`, the seller's
+  key and commitments of its name and domain, evidencebook#1031 and PROFILE §5);
 - `check` (v0 `CheckBody`, `types.go:262-299`, plus `payment_ref`, the reference the payment will
   be made under, design §4.2): what is about to happen;
 - `verdict` (v0 `VerdictBody`, `types.go:354-366`, unchanged): the answer to **one check**,

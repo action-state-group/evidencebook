@@ -59,7 +59,7 @@ func newBody(recordType string) Body {
 	case TypeCheck:
 		return &CheckBody{}
 	case TypeIntent:
-		return &dealprofile.IntentBody{}
+		return &IntentBody{}
 	case TypeVerdict:
 		return &VerdictBody{}
 	case TypeApproval:

@@ -119,7 +119,7 @@ func validRecords(t *testing.T) map[string]Record {
 		"ask/book":             record(inBook(TypeAsk, 7), &AskBody{Request: *ref('7'), To: "adjudicator"}),
 		"answer/journal":       record(noDeal(TypeAnswer), &AnswerBody{Request: *ref('7'), Outcome: "absence", Answer: *ref('8')}),
 		"admit":                record(noDeal(TypeAdmit), &AdmitBody{Outcome: "GO", Tier: "t1", Rows: []string{}, Asks: []Ref{}, PackDigest: hx('a'), CardDigest: hx('9'), Answers: []Ref{}, Nonce: hx('8')}),
-		"intent":               record(noDeal(TypeIntent), &dealprofile.IntentBody{VerbatimCommitment: hx('a')}),
+		"intent":               record(noDeal(TypeIntent), &IntentBody{IntentBody: dealprofile.IntentBody{VerbatimCommitment: hx('a')}}),
 		"check":                record(blk(TypeCheck), checkBody),
 		"verdict":              record(blk(TypeVerdict), &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}}, Nonce: hx('5')}),
 		"approval/proceed":     record(blk(TypeApproval), approval("proceed")),

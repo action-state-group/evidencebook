@@ -148,7 +148,7 @@ def _validators():
                 yield ValidationError(f"{instance!r} does not match {patrn!r}")
         Strict = validators.extend(Draft202012Validator, {"pattern": pattern})
         _VALIDATORS["record"] = Strict(v1s, registry=registry)
-        for d in ("body_check", "body_verdict", "body_approval"):
+        for d in ("body_intent", "body_check", "body_verdict", "body_approval"):
             _VALIDATORS[d] = Strict({"$ref": v0s["$id"] + "#/$defs/" + d}, registry=registry)
         SCHEMA_MODE = "jsonschema (Draft 2020-12)"
     return _VALIDATORS
@@ -274,14 +274,15 @@ def check_body(rec):
                 raise bad("record", "an agreement with a counterparty that runs the layer names its record key in counterparty_key")
             if body["side"] == "acceptor" and blk.get("seen") is not None:
                 raise bad("record", "the acceptor's agreement comes first: its seen is null")
-    elif t in ("check", "verdict", "approval"):
+    elif t in ("intent", "check", "verdict", "approval"):
         # v0's overlay bodies are closed, so the body without v1's own members
-        # (a check's payment_ref and nonce, a verdict's received_history and nonce, an
-        # approval's nonce) is
-        # checked against v0's, as Go's checkV0Body.
+        # (an intent's seller, a check's payment_ref and nonce, a verdict's
+        # received_history and nonce, an approval's nonce) is checked against
+        # v0's, as Go's checkV0Body.
         v = _validators().get("body_" + t)
         if v is not None:
-            own = {"check": ("payment_ref", "nonce"), "verdict": ("received_history", "nonce")}.get(t, ("nonce",))
+            own = {"intent": ("seller",), "check": ("payment_ref", "nonce"),
+                   "verdict": ("received_history", "nonce")}.get(t, ("nonce",))
             errs = list(v.iter_errors({k: x for k, x in body.items() if k not in own}))
             if errs:
                 raise bad("schema", f"the {t} body is not v0's body_{t}: {errs[0].message}")

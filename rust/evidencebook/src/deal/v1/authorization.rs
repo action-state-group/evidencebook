@@ -231,7 +231,7 @@ struct JournalWalk {
 
 fn intent_of(r: &Record) -> Option<&IntentBody> {
     match &r.body {
-        Body::Intent(b) => Some(b),
+        Body::Intent(b) => Some(&b.v0),
         _ => None,
     }
 }
@@ -404,6 +404,7 @@ fn changes_details(r: &Record) -> bool {
         Body::Message(_) => r.block.counterparty.is_some(),
         Body::Evidence(b) => r.block.counterparty.is_some() || b.counterparty_facts.is_some(),
         Body::Intent(b) => {
+            let b = &b.v0;
             r.block.counterparty.is_some()
                 || (b.r#move.as_deref().is_some_and(|m| !m.is_empty())
                     && b.asked
@@ -587,7 +588,7 @@ fn same_json(a: &LimitSet, b: &LimitSet) -> bool {
 /// verbatim_commitment; empty for a type that carries none (Go `nonceOf`).
 fn nonce_of(r: &Record) -> &str {
     match &r.body {
-        Body::Intent(b) => &b.verbatim_commitment,
+        Body::Intent(b) => &b.v0.verbatim_commitment,
         Body::Admit(b) => &b.nonce,
         Body::Check(b) => &b.nonce,
         Body::Verdict(b) => &b.nonce,

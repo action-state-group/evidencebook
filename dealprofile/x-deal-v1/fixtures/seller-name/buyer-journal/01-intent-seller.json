@@ -1,0 +1,29 @@
+{
+  "fixture": "seller-name/buyer-journal/01-intent-seller.json",
+  "expect": "valid",
+  "appendix_a_line": "none (evidencebook#1031)",
+  "story": "The buyer's opening intent names the seller: its record key, and commitments of its name and domain; the name stays in the buyer's local store.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "record_type": "intent",
+      "at": "2026-11-01T09:00:00Z"
+    },
+    "body": {
+      "verbatim_commitment": "fe2d4246dbecf1f5c911ebdecaedfb97becdcaee9590f030f50af9c57fc27cc8",
+      "party_role": "buyer",
+      "max_total_minor": 6000,
+      "allowed": [
+        "pay"
+      ],
+      "seller": {
+        "key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+        "name_commitment": "a0068e063f9c94e4c5eacd4592f2a1abff4de2aa1e96340572a92201a1d1b2df",
+        "domain_commitment": "41a6491d8ae09ea09aa32ac18eef904c4f2e151345140f78d2c0c35204cd0cab"
+      }
+    }
+  },
+  "expected_digest": "77a27e2abddd9f16b9d122c5ae0378fe2a577e41d7c69b9c5af5ab23f3337f2e"
+}

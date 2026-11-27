@@ -43,7 +43,7 @@
    "struct": "dealprofile.EvidenceBody"
   },
   "intent": {
-   "struct": "dealprofile.IntentBody"
+   "struct": "dealprofile/xdealv1.IntentBody"
   },
   "message": {
    "struct": "dealprofile.MessageBody"
@@ -1830,6 +1830,90 @@
     "omitzero": true
    }
   ],
+  "dealprofile/xdealv1.IntentBody": [
+   {
+    "name": "verbatim_commitment",
+    "type": "string"
+   },
+   {
+    "name": "party_role",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "asked",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Terms"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "max_total_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "bounds_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "allowed",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "ordered_representations",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "delegated",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "delegated_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "move",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "proposed",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "why_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "seller",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.Seller"
+     }
+    },
+    "omitzero": true
+   }
+  ],
   "dealprofile/xdealv1.Named": [
    {
     "name": "side",
@@ -2634,6 +2718,23 @@
     "type": {
      "struct": "dealprofile/xdealv1.SellerSources"
     }
+   }
+  ],
+  "dealprofile/xdealv1.Seller": [
+   {
+    "name": "key",
+    "type": {
+     "null": "string"
+    }
+   },
+   {
+    "name": "name_commitment",
+    "type": "string"
+   },
+   {
+    "name": "domain_commitment",
+    "type": "string",
+    "omitzero": true
    }
   ],
   "dealprofile/xdealv1.SellerSources": [

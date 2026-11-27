@@ -112,8 +112,8 @@ offer exists and whether the ask is of an admission. `xdealv1.CheckSealed` takes
 | `ask`, `answer` | an evidence request and its outcome, wrapping the library's documents | the journal, or the deal book when between the two parties (it then has a `seq`) |
 | `admit` | an admission decision | journal |
 
-**The journal overlay**, sealed in the journal only and never sent, with v0's bodies: `intent`,
-`check` (v0's body plus `payment_ref`, the reference a payment will be made under), `verdict`
+**The journal overlay**, sealed in the journal only and never sent, with v0's bodies: `intent`
+(v0's body plus, on a buyer's intent, `seller`), `check` (v0's body plus `payment_ref`, the reference a payment will be made under), `verdict`
 (the answer to one check, with exactly one `checks` ref) and `approval` (its `approves` ref names
 the verdict, or on `confirm_limits` the intent).
 
@@ -329,6 +329,25 @@ the digest could try each likely content against it.
   reader that predates the member refuses a verdict that carries it: Go, Rust and Python read it
   from the same release (evidencebook#666).
 - An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment.
+- A buyer's intent MAY carry `seller` (evidencebook#1031): `key`, the seller's record key as the
+  agreement that cites the intent names it in `counterparty_key`, or `null` for a seller with no
+  layer; `name_commitment`, the `sha256-jcs-nonce256` commitment of the seller's name; and
+  `domain_commitment`, of its domain, when the buyer has one. Only an intent whose `party_role` is
+  `buyer` carries it, and the body without it MUST be valid under v0's closed `body_intent`. The
+  record never holds the name or domain in the clear (x-deal-v0 PROFILE section 4): they and
+  their nonces stay in the buyer's local store, and only an opening `{nonce, text}` tells the
+  name to whoever holds it. The name is the buyer's record of the name the seller gave; it is not
+  evidence of the seller's identity, and a reader draws it as the buyer recorded it.
+- An agreement that cites an intent carrying `seller` MUST be the buyer's and MUST name the same
+  counterparty: its `counterparty_key` equals `seller.key` (`deal.Store.Agree` refuses
+  otherwise). With no layer both are `null`, so the key binds nothing and the seller is bound
+  only by the agreement citing the intent.
+- The agreement's citation of the intent is a digest and travels with the agreement. The intent
+  record itself is a journal record, never sent, and also holds the buyer's limits in the clear
+  (`max_total_minor`, `allowed`). It and the seller's openings travel only in the holder's own
+  keep copy (u561 item 3). A counterparty copy and an adjudicator copy never carry either (u499,
+  extended to x-deal-v1 by u561 item 5), and a copy for anyone else follows the no-PII preset
+  (evidencebook#1058).
 - `xdealv1.CheckAuthorizations` refuses a journal in which two records share a nonce or a
   `verbatim_commitment`.
 - A record sent whole (an offer, a decline, a cancellation; section 7) is exempt. Its content

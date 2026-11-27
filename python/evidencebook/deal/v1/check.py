@@ -452,6 +452,8 @@ def _check_body(r: Record) -> None:
                                          "in counterparty_key")
             if body["side"] == SIDE_ACCEPTOR and not seen_null:
                 raise _err(STAGE_RECORD, "the acceptor's agreement comes first: its seen is null")
+    elif t == TYPE_INTENT:
+        _check_v0_body(r, ("seller",), "body_intent")
     elif t == TYPE_CHECK:
         _check_v0_body(r, ("payment_ref", "nonce"), "body_check")
     elif t == TYPE_VERDICT:
