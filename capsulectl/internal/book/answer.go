@@ -40,7 +40,7 @@ type rebuttalStatement struct {
 }
 
 func acknowledgeCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "acknowledge", Short: "Acknowledge the counterparty's Close for one period: this book has seen it and agrees, which makes it AGREED (signs; a repeat adds nothing)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "acknowledge", Short: "Acknowledge the counterparty's Close for one period: this book has seen it and agrees, which makes it AGREED (the person's decision; it checks no exchanges; refused after this book's rebuttal; signs; a repeat adds nothing)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		return answerPeerClose(c, evidencebook.RecordTypeAcknowledgement, nil)
 	}}
 	periodFlags(cmd)
