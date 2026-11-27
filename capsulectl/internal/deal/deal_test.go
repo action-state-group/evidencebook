@@ -596,10 +596,12 @@ func TestDealCallTheNumberThenCheckAgain(t *testing.T) {
 	assert.Contains(t, report["trail"], "your answer: verify_contact")
 	assert.Contains(t, report["trail"], "evidence (phone_call_to_the_number_found_at_first_contact), checked: they have 2 jet skis for Saturday")
 
-	skill, err := os.ReadFile("../../skills/deal/SKILL.md")
-	require.NoError(t, err)
-	assert.Contains(t, string(skill), "--choice verify_contact")
-	assert.Contains(t, string(skill), "--kind evidence")
+	// The branch is in the Evidence procedure, and Purchase step 8 sends the
+	// agent there when the user picks it.
+	evidence := readSkillText(t, "references/evidence.md")
+	assert.Contains(t, evidence, "--choice verify_contact")
+	assert.Contains(t, evidence, "--kind evidence")
+	assert.Contains(t, skillSection(t, "Purchase"), `When the user picks "Call the number I found" on the card, follow [Evidence that arrives later](evidence.md)`)
 }
 
 const otterFixture = "testdata/deal/otter"
@@ -729,11 +731,11 @@ func TestDealPurchaseProcedureSealsThePickBeforeTheCheck(t *testing.T) {
 	note, check := strings.Index(review, "`deal note --kind intent`"), strings.Index(review, "`deal check`")
 	require.GreaterOrEqual(t, note, 0, "the final review seals the pick")
 	assert.Less(t, note, check, "the pick is sealed before the check")
-	for _, file := range []string{skillFile, legacyFile} {
-		raw, err := os.ReadFile(file)
-		require.NoError(t, err)
-		skill := strings.Join(strings.Fields(string(raw)), " ")
-		assert.Contains(t, skill, "#### The user picked from options", file)
+	// The x-deal-v1 form is a subsection of Purchase in its reference file;
+	// the legacy file keeps its own.
+	for file, heading := range map[string]string{"references/purchase.md": "### The user picked from options", "LEGACY-X-DEAL-V0.md": "#### The user picked from options"} {
+		skill := strings.Join(strings.Fields(readSkillText(t, file)), " ")
+		assert.Contains(t, skill, heading, file)
 		assert.Contains(t, skill, "What you picked yourself (a size, a colour or a delivery option the user never mentioned) stays out of `asked`", file)
 	}
 	// On x-deal-v1 the pick is an intent note sealed before the check.

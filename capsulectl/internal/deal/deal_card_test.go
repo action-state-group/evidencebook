@@ -348,8 +348,9 @@ func TestTheDealSkillPresentsTheCardAsRuled(t *testing.T) {
 		assert.Contains(t, text, rule)
 	}
 	assert.Equal(t, 1, strings.Count(text, "exactly as returned"), "one show-it-verbatim rule")
+	all := dealSkillProcedureText(t)
 	for _, product := range []string{"Muse", "Buzz", "Action State", "Checkup"} {
-		assert.NotContains(t, text, product, "a public skill names no product")
+		assert.NotContains(t, all, product, "a public skill names no product")
 	}
 }
 

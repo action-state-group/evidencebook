@@ -53,8 +53,8 @@ On x-deal-v0, these rules on receipts and "show my receipts" also apply
 Some procedures have no x-deal-v1 form, so they exist here only: Cancel-by
 date (`deal deadlines` reads x-deal-v0 obligations only), the party's own
 rules verdict, the TEMPORARY section and the sale threads (`deal sale ...`).
-Booking and Signature here are their x-deal-v0 forms; SKILL.md teaches them on
-x-deal-v1. The legacy demo is `demo/jet-ski` and
+Booking and Signature here are their x-deal-v0 forms;
+[references/purchase.md](references/purchase.md) teaches them on x-deal-v1. The legacy demo is `demo/jet-ski` and
 `scripts/run-demo-x-deal-v0.sh`.
 
 ## Procedures

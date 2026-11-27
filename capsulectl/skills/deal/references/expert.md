@@ -10,8 +10,8 @@ The setup commands are in [setup.md](setup.md), the book's own expert commands
 
 ## Reading at the last checkpoint
 
-This one is yours to run when [SKILL.md](../SKILL.md) Purchase step 11
-sends you here.
+This one is yours to run when Purchase step 11
+([references/purchase.md](purchase.md#purchase)) sends you here.
 
 `deal settlement --deal ID` and `deal report --deal ID` read your book only
 up to its last checkpoint, and refuse a book with records after it. Run

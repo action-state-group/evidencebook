@@ -19,12 +19,10 @@ const retailDemo = "../../skills/deal/demo/retail-checkout"
 
 var procedureStep = regexp.MustCompile(`^\d+\. (.+)$`)
 
-// The skill's two procedure files: SKILL.md teaches x-deal-v1, and the
-// legacy file keeps the x-deal-v0 procedures (evidencebook#626 B6).
-const (
-	skillFile  = "../../skills/deal/SKILL.md"
-	legacyFile = "../../skills/deal/LEGACY-X-DEAL-V0.md"
-)
+// The legacy file keeps the x-deal-v0 procedures (evidencebook#626 B6); the
+// x-deal-v1 procedures are in the reference files SKILL.md points to
+// (dealProcedures, evidencebook#1025).
+const legacyFile = "../../skills/deal/LEGACY-X-DEAL-V0.md"
 
 // procedureSteps returns the numbered steps of one procedure in file.
 func procedureSteps(t *testing.T, file, name string) []string {
@@ -87,18 +85,24 @@ func TestDealProceduresEndInTheFinalReview(t *testing.T) {
 	}
 }
 
-// skillSection is one procedure of SKILL.md as flat text, up to the next
-// heading of its level or above.
+// skillSection is one x-deal-v1 procedure as flat text, read from the
+// reference file SKILL.md points to for it (evidencebook#1025): a file that
+// holds one procedure is that procedure; otherwise the "## name" section, up
+// to the next heading of its level or above.
 func skillSection(t *testing.T, name string) string {
 	t.Helper()
-	raw, err := os.ReadFile(skillFile)
-	require.NoError(t, err)
-	text := string(raw)
-	i := strings.Index(text, "\n### "+name+"\n")
+	target, ok := dealProcedures[name]
+	require.True(t, ok, "%s is not an x-deal-v1 procedure", name)
+	file, _, _ := strings.Cut(target, "#")
+	text := readSkillText(t, file)
+	if title, _, _ := strings.Cut(text, "\n"); title == "# "+name {
+		return strings.Join(strings.Fields(text), " ")
+	}
+	i := strings.Index(text, "\n## "+name+"\n")
 	require.GreaterOrEqual(t, i, 0, name)
 	rest := text[i+1:]
-	if j := strings.Index(rest[4:], "\n### "); j >= 0 {
-		rest = rest[:j+4]
+	if j := strings.Index(rest[3:], "\n## "); j >= 0 {
+		rest = rest[:j+3]
 	}
 	return strings.Join(strings.Fields(rest), " ")
 }
@@ -135,11 +139,13 @@ func TestDealV1ProceduresEndInTheFinalReview(t *testing.T) {
 		require.GreaterOrEqual(t, act, 0, "%s acts", c.name)
 		assert.Less(t, proceed, act, "%s acts only after the answer", c.name)
 	}
-	// No x-deal-v0 verb is taught as a step of the x-deal-v1 procedures.
-	raw, err := os.ReadFile(skillFile)
-	require.NoError(t, err)
-	procs := string(raw)
-	procs = procs[strings.Index(procs, "## Procedures"):strings.Index(procs, "### Older deals")]
+	// No x-deal-v0 verb is taught as a step of the x-deal-v1 procedures:
+	// SKILL.md's pointers and the procedure files they open.
+	skill := readSkillText(t, "SKILL.md")
+	procs := section(t, skill, "Procedures")
+	for _, file := range dealProcedureFiles() {
+		procs += readSkillText(t, file)
+	}
 	for _, v0 := range []string{"`deal open", "`deal close", "`deal note --kind act", "--html"} {
 		assert.NotContains(t, procs, v0)
 	}

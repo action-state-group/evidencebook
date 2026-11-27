@@ -261,10 +261,11 @@ func TestDealCardIsEvidenceNotInstruction(t *testing.T) {
 // audiences are for disputes, run by a person (Steven, 2026-10-11): the
 // flag stays and --help still documents it, but the skill never names one.
 func TestDealSkillOffersOnlyTheCounterpartyShare(t *testing.T) {
-	raw, err := os.ReadFile("../../skills/deal/SKILL.md")
-	require.NoError(t, err)
-	text := strings.Join(strings.Fields(string(raw)), " ")
-	assert.Contains(t, text, "It is the only copy to make for someone else: other audiences are for disputes, run by a person, not the agent.")
+	// The rule stays in SKILL.md (evidencebook#1025), and neither SKILL.md
+	// nor a procedure file it points to names another audience.
+	assert.Contains(t, strings.Join(strings.Fields(section(t, readSkillText(t, "SKILL.md"), "What you say: `voice` and `say`")), " "),
+		"It is the only copy to make for someone else: other audiences are for disputes, run by a person, not the agent.")
+	text := strings.Join(strings.Fields(dealSkillProcedureText(t)), " ")
 	assert.NotContains(t, strings.ToLower(text), cli.DealAudienceAdjudicator)
 	for _, m := range regexp.MustCompile(`--share[ =]+(\S+)`).FindAllStringSubmatch(text, -1) {
 		assert.Equal(t, cli.DealAudienceCounterparty, strings.Trim(m[1], "`\"'"), m[0])
