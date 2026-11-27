@@ -37,6 +37,7 @@
   - fix(deal): a witness that timed out reads as slow, never as a consent ask (#965)
   - fix(deal): a standing intent never authorizes an act whose rules could not evaluate a measured cap (#982) (#989)
   - fix(deal): the withheld bundle shows a payment record's settlement leg (#998) (#1004)
+  - fix(capsulectl): a claim with no source note names whose it is; a seller's agent claims are not the buyer's unverified claims (#680) (#1034)
 - Changed:
   - docs(capsulectl): witness vs countersign for a deal, and the default witness stated once (#862) (#864)
   - docs(capsulectl): install a release of the two launchers, at the core's version (#895) (#912)
