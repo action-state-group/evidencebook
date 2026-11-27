@@ -14,6 +14,7 @@ import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/capsule-viewer/go/receipt"
+	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -212,20 +213,20 @@ func TestTheCallersGateChecksEachCarriedReceipt(t *testing.T) {
 	good := carried(t).Bundle
 	var seen []string
 	pass := func(b []byte) error { seen = append(seen, string(b)); return nil }
-	_, err := checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims)
+	_, err := checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{good}, seen, "only the carried bundle is checked, not the held one")
 	seen = nil
-	_, err = checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex2", NotClosed: true}}}, claims)
+	_, err = checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex2", NotClosed: true}}}, claims, nil)
 	require.NoError(t, err)
 	assert.Empty(t, seen, "a not-closed receipt is not checked")
 	// A bundle the page gate refuses never reaches the caller's gate.
 	tampered := strings.Replace(good, `"root":"`, `"root":"0`, 1)
-	_, err = checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: tampered}}}, claims)
+	_, err = checkReceipts(&Receipts{Modules: module, Gate: pass, Deals: []Receipt{{Exchange: "ex1", Bundle: tampered}}}, claims, nil)
 	assert.ErrorContains(t, err, "does not pass the page gate")
 	assert.Empty(t, seen)
 	refuse := func([]byte) error { return cli.InputError("the deal section does not verify") }
-	_, err = checkReceipts(&Receipts{Modules: module, Gate: refuse, Deals: []Receipt{{Exchange: "ex1", Bundle: good}}}, claims)
+	_, err = checkReceipts(&Receipts{Modules: module, Gate: refuse, Deals: []Receipt{{Exchange: "ex1", Bundle: good}}}, claims, nil)
 	assert.ErrorContains(t, err, "does not pass the caller's check")
 	assert.ErrorContains(t, err, "the deal section does not verify")
 }
@@ -239,18 +240,18 @@ func TestAMultiDealResultMapsEachReceiptToItsOwnDeal(t *testing.T) {
 	module := []emitter.Module{receiptModule(t, receiptModuleIDs[0])}
 	good := string(mustRead(t, settlementReceipt))
 	// The stand-in's bundle is used for both: the mapping is what is tested.
-	got, err := checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims)
+	got, err := checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex1", Bundle: good}, {Exchange: "ex2", Held: true}}}, claims, nil)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"d1": good}, got.texts)
 	assert.Equal(t, []string{"d2"}, got.withheld, "d3 has no receipt and is neither")
-	got, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex3", NotClosed: true}, {Exchange: "ex2", NotClosed: true}}}, claims)
+	got, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex3", NotClosed: true}, {Exchange: "ex2", NotClosed: true}}}, claims, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"d2", "d3"}, got.notClosed)
 	assert.Empty(t, got.withheld)
-	got, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex4", Held: true}}}, claims)
+	got, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex4", Held: true}}}, claims, nil)
 	require.NoError(t, err, "a claim with no deal cites no exchange capsule, so the receipt is ignored")
 	assert.Empty(t, got.withheld)
-	_, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex1", Held: true}, {Exchange: "leg1", Held: true}}}, claims)
+	_, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "ex1", Held: true}, {Exchange: "leg1", Held: true}}}, claims, nil)
 	assert.ErrorContains(t, err, `deal "d1" has more than one receipt`, "two capsules of one deal name one deal twice")
 }
 
@@ -274,7 +275,7 @@ func TestReceiptsOnAResultWithNoDealsAreRefused(t *testing.T) {
 	view := View{Card: "outcome", ContractReport: true, Receipts: &Receipts{Modules: []emitter.Module{receiptModule(t, receiptModuleIDs[0])}}}
 	_, err := Build(bundle, view)
 	assert.ErrorIs(t, err, ErrRefused)
-	assert.ErrorContains(t, err, "no claim of the Result names a deal")
+	assert.ErrorContains(t, err, "no claim of the Result has a deal")
 }
 
 var optionsCall = regexp.MustCompile(`renderEvidenceGraph\(window\.__BUNDLE__, document\.getElementById\("app"\), undefined, (\{.*\})\);`)
@@ -327,4 +328,113 @@ func TestAModuleManifestRequiresItsBundleKind(t *testing.T) {
 	assert.True(t, m.accepts("evidence-bundle/v2", nil, nil))
 	assert.False(t, m.accepts("evidence-bundle/v1", nil, nil))
 	assert.False(t, m.accepts("", nil, nil))
+}
+
+// subjectRecords are verified bundle records of two books, each rooting one
+// field subject (deal-A, deal-B) with one member, and a supporting record
+// of neither.
+func subjectRecords(t *testing.T) []evidencebook.PeerRecord {
+	t.Helper()
+	root := func(id, book, subject string) evidencebook.PeerRecord {
+		statement, err := json.Marshal(evidencebook.SubjectRootStatement{SubjectKind: "deal", SubjectID: subject, Membership: evidencebook.MembershipExchangeID})
+		require.NoError(t, err)
+		return evidencebook.PeerRecord{RecordID: id, HeaderVerified: true, Header: &evidencebook.Header{BookID: book, Seq: 1, RecordType: evidencebook.RecordTypeSubjectRoot, Links: []evidencebook.Link{}, Statement: statement}}
+	}
+	member := func(id, book, rootID, subject string) evidencebook.PeerRecord {
+		return evidencebook.PeerRecord{RecordID: id, HeaderVerified: true, Header: &evidencebook.Header{BookID: book, Seq: 2, RecordType: "exchange",
+			Correlation: &evidencebook.Correlation{ExchangeID: subject}, Links: []evidencebook.Link{{Type: evidencebook.Cites, Target: rootID}}}}
+	}
+	return []evidencebook.PeerRecord{
+		root("rt-a", "a", "deal-A"), member("m-a", "a", "rt-a", "deal-A"),
+		root("rt-b", "b", "deal-B"), member("m-b", "b", "rt-b", "deal-B"),
+		root("rt-p", "p", "__proto__"), member("m-p", "p", "rt-p", "__proto__"),
+		{RecordID: "shared", HeaderVerified: true, Header: &evidencebook.Header{BookID: "c", Seq: 1, RecordType: "policy", Links: []evidencebook.Link{}}},
+	}
+}
+
+// evidencebook#116 PR 6: a claim's deal is the subject of the member it
+// cites, over its id's prefix, and two subjects whose claims share a
+// supporting record keep their own receipts.
+func TestAClaimsDealIsTheSubjectOfTheMemberItCites(t *testing.T) {
+	records := subjectRecords(t)
+	claims := []cli.ResultClaim{
+		{ID: "conv-1::paid", Evidence: []string{"m-a", "shared"}},
+		{ID: "conv-2::paid", Evidence: []string{"shared", "m-b"}},
+		{ID: "d9::paid", Evidence: []string{"ex9"}},
+	}
+	module := []emitter.Module{receiptModule(t, receiptModuleIDs[0])}
+	got, err := checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "m-a", Held: true}, {Exchange: "m-b", NotClosed: true}, {Exchange: "ex9", Held: true}}}, claims, records)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"deal-A", "d9"}, got.withheld, "deal-A by its member; d9 by its id's prefix")
+	assert.Equal(t, map[string]string{"conv-1::paid": "deal-A", "conv-2::paid": "deal-B", "d9::paid": "d9"}, got.deals, "the page files each claim by these")
+	assert.Equal(t, []string{"deal-B"}, got.notClosed)
+
+	// The receipt refusal stays for the exchange a receipt names when the
+	// claims of two deals cite it.
+	_, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "shared", Held: true}}}, claims, records)
+	assert.ErrorContains(t, err, `the claims of more than one deal cite "shared"`)
+
+	// Without the subjects' records, the claims are deals conv-1 and conv-2.
+	got, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "m-a", Held: true}}}, claims, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"conv-1"}, got.withheld)
+}
+
+func TestAClaimCitingMembersOfTwoSubjectsIsRefused(t *testing.T) {
+	records := subjectRecords(t)
+	module := []emitter.Module{receiptModule(t, receiptModuleIDs[0])}
+	claims := []cli.ResultClaim{{ID: "conv-1::paid", Evidence: []string{"m-b", "m-a"}}}
+	_, err := checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "m-a", Held: true}}}, claims, records)
+	assert.ErrorIs(t, err, ErrRefused)
+	assert.ErrorContains(t, err, `claim "conv-1::paid" cites members of more than one subject (deal-A, deal-B)`)
+
+	claims = []cli.ResultClaim{{ID: "conv-1::paid", Evidence: []string{"m-p"}}}
+	_, err = checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "m-p", Held: true}}}, claims, records)
+	assert.ErrorContains(t, err, `belongs to the deal "__proto__"`)
+}
+
+// Receipts read each claim's deal from the headers evidencebook's verifier
+// checked; a payload-form bundle it refuses (keys differing only by case,
+// which the page's own verifier does not check) is refused, never read by
+// its claim ids' prefixes instead.
+func TestReceiptsOnABundleTheBookVerifierRefusesAreRefused(t *testing.T) {
+	var value map[string]any
+	require.NoError(t, json.Unmarshal(mustRead(t, incompleteBundle), &value))
+	extensions, _ := value["extensions"].(map[string]any)
+	if extensions == nil {
+		extensions = map[string]any{}
+		value["extensions"] = extensions
+	}
+	extensions["x-note"] = map[string]any{"note": 1, "Note": 2}
+	bundle, err := json.Marshal(value)
+	require.NoError(t, err)
+	page, err := Build(bundle, View{Card: "outcome"})
+	require.ErrorIs(t, err, cli.ErrPartial, "without receipts the page gate decides, as before")
+	assert.Equal(t, "payload", page.Form)
+	view := settlementView(t, carried(t))
+	view.Card = "outcome"
+	page, err = Build(bundle, view)
+	assert.Nil(t, page)
+	assert.ErrorIs(t, err, ErrRefused)
+	assert.ErrorContains(t, err, "receipts: the bundle's records do not verify as an evidence bundle")
+}
+
+// evidencebook#116 PR 6, end to end: a sealed book-form Result whose claim
+// conv-1::has-observation cites a member of the subject deal-S (and the
+// shared response record). Build reads the claim's deal from the bundle's
+// verified headers, files the receipt under deal-S, and tells the page so
+// in receiptDeals; the claim id's prefix, conv-1, is not a deal.
+func TestBuildFilesAClaimUnderTheSubjectOfTheMemberItCites(t *testing.T) {
+	bundle := mustRead(t, "testdata/settlement-receipts/subject-bundle.json")
+	member := strings.TrimSpace(string(mustRead(t, "testdata/settlement-receipts/subject-member.txt")))
+	page, err := Build(bundle, settlementView(t, Receipt{Exchange: member, Held: true}))
+	require.NoError(t, err)
+	options := optionsOf(t, string(page.HTML))
+	assert.Equal(t, map[string]any{"deal-S": nil}, options["receipts"])
+	assert.Equal(t, map[string]any{"conv-1::has-observation": "deal-S"}, options["receiptDeals"])
+
+	// The claim's other cited record, the response, belongs to the same deal.
+	page, err = Build(bundle, settlementView(t, Receipt{Exchange: exchange(t), NotClosed: true}))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"deal-S": map[string]any{"state": "not-closed"}}, optionsOf(t, string(page.HTML))["receipts"])
 }

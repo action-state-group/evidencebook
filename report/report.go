@@ -379,7 +379,13 @@ func Build(bundle []byte, view View) (*Page, error) {
 		if view.Diagnostic {
 			return nil, refusal("receipts: a diagnostic page carries none")
 		}
-		if receipts, err = checkReceipts(view.Receipts, checked.Claims); err != nil {
+		// A claim's deal is read from the headers the book's verifier
+		// checked; a bundle it refuses picks no receipt by a prefix instead.
+		book, err := evidencebook.VerifyBundle(bundle)
+		if err != nil {
+			return nil, refusal("receipts: the bundle's records do not verify as an evidence bundle, so the subjects its claims cite cannot be read, and no receipt is filed by a claim id's prefix instead: " + err.Error())
+		}
+		if receipts, err = checkReceipts(view.Receipts, checked.Claims, book.Records); err != nil {
 			return nil, err
 		}
 	}
@@ -536,6 +542,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if view.Receipts != nil {
 		options.Modules = append([]emitter.Module(nil), view.Receipts.Modules...)
 		options.Receipts, options.ReceiptsWithheld, options.ReceiptsNotClosed = receipts.texts, receipts.withheld, receipts.notClosed
+		options.ReceiptDeals = receipts.deals
 		if options.ReceiptsWithheld == nil {
 			options.ReceiptsWithheld = []string{}
 		}

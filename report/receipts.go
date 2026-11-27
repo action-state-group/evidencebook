@@ -4,6 +4,7 @@ package report
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 
@@ -41,8 +42,15 @@ var receiptModuleIDs = []string{
 // "Receipt not carried with this page", which is true of it: nothing was
 // handed over.
 //
-// A deal is the part of a claim id before "::" (a Result whose claim ids have
-// none carries no deal, and Receipts on it is refused).
+// A claim's deal is its subject (subject convention v0, evidencebook#116
+// design note section 4). When a record the claim cites is a member of a
+// subject_root, the deal is that root's subject_id, read from the headers
+// the bundle's verifier checked (evidencebook.SubjectsOfRecord). Otherwise
+// it is the part of the claim id before "::". Receipts are refused on a
+// Result none of whose claims has a deal, and on one whose claim cites
+// members of two subjects. The page files each receipt line under the deal
+// this package decides (capsule-viewer's receiptDeals), so this package owns
+// the rule.
 type Receipts struct {
 	// Modules are the receipt modules the page carries, each a script and
 	// its pins (capsule-viewer go/receipt's Module). Each manifest names one
@@ -97,7 +105,11 @@ type Receipt struct {
 // checkedReceipts are Receipts that passed checkReceipts, in the emitter's
 // terms.
 type checkedReceipts struct {
-	texts    map[string]string
+	texts map[string]string
+	// deals are each claim's deal by claim id, for every claim that has one:
+	// the page files a claim's receipt line by it (capsule-viewer's
+	// receiptDeals), so the page keeps no copy of dealOf's rule.
+	deals    map[string]string
 	withheld []string
 	// notClosed are the deal ids that had not closed, sorted.
 	notClosed []string
@@ -106,13 +118,37 @@ type checkedReceipts struct {
 	ignored []string
 }
 
-// dealOf is a claim id's deal: the part before "::", as the viewer reads it.
-func dealOf(claimID string) (string, bool) {
-	at := strings.Index(claimID, "::")
-	if at <= 0 {
-		return "", false
+// dealOf is a claim's deal, as Receipts describes it: the one subject the
+// records it cites are members of, by the bundle's verified records, else
+// its id's part before "::". A claim citing members of two subjects is
+// refused, and so is a deal the page could not look up ("__proto__").
+func dealOf(claim cli.ResultClaim, records []evidencebook.PeerRecord) (string, bool, error) {
+	var subjects []string
+	for _, id := range claim.Evidence {
+		for _, subject := range evidencebook.SubjectsOfRecord(records, id) {
+			if !slices.Contains(subjects, subject) {
+				subjects = append(subjects, subject)
+			}
+		}
 	}
-	return claimID[:at], true
+	deal := ""
+	switch len(subjects) {
+	case 0:
+		at := strings.Index(claim.ID, "::")
+		if at <= 0 {
+			return "", false, nil
+		}
+		deal = claim.ID[:at]
+	case 1:
+		deal = subjects[0]
+	default:
+		sort.Strings(subjects)
+		return "", false, refusef("receipts: claim %q cites members of more than one subject (%s), so its deal is ambiguous", claim.ID, strings.Join(subjects, ", "))
+	}
+	if deal == "__proto__" {
+		return "", false, refusef("receipts: claim %q belongs to the deal %q, which a page cannot carry a receipt for", claim.ID, deal)
+	}
+	return deal, true, nil
 }
 
 // checkReceipts judges receipts against the Result's claims before anything
@@ -120,7 +156,8 @@ func dealOf(claimID string) (string, bool) {
 // cited by the claims of at most one deal (one no deal cites is ignored), a
 // deal has at most one receipt, and each carried bundle of a deal on the page
 // passes the page gate and is one that one of the page's receipt modules takes.
-func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipts, error) {
+// records are the bundle's records as evidencebook.VerifyBundle read them.
+func checkReceipts(receipts *Receipts, claims []cli.ResultClaim, records []evidencebook.PeerRecord) (checkedReceipts, error) {
 	var manifests []moduleManifest
 	for _, module := range receipts.Modules {
 		var manifest moduleManifest
@@ -139,13 +176,16 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 	}
 	// The deals that cite each capsule.
 	citedBy := make(map[string]map[string]bool)
-	named := false
+	deals := make(map[string]string)
 	for _, claim := range claims {
-		deal, ok := dealOf(claim.ID)
+		deal, ok, err := dealOf(claim, records)
+		if err != nil {
+			return checkedReceipts{}, err
+		}
 		if !ok {
 			continue
 		}
-		named = true
+		deals[claim.ID] = deal
 		for _, id := range claim.Evidence {
 			if citedBy[id] == nil {
 				citedBy[id] = make(map[string]bool)
@@ -153,10 +193,10 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim) (checkedReceipt
 			citedBy[id][deal] = true
 		}
 	}
-	if !named {
-		return checkedReceipts{}, refusef("receipts: no claim of the Result names a deal (an id of the form <deal>::<requirement>), so there is nothing to carry")
+	if len(deals) == 0 {
+		return checkedReceipts{}, refusef("receipts: no claim of the Result has a deal (cites a member of a subject, or has an id of the form <deal>::<requirement>), so there is nothing to carry")
 	}
-	out := checkedReceipts{texts: make(map[string]string)}
+	out := checkedReceipts{texts: make(map[string]string), deals: deals}
 	seen := make(map[string]string)
 	for _, r := range receipts.Deals {
 		dealsOf := citedBy[r.Exchange]

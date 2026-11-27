@@ -14,12 +14,12 @@ github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af1
 github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b/go.mod h1:TKXiVniDy7RlksGjEAF6k9rj5NcwvwdQ6EGajzhghuo=
 github.com/action-state-group/capsule-engine/go v0.3.0 h1:nrRT2GOj+zPLF5lohWlYVR9sJ6fQJWUJuvHXIUap0go=
 github.com/action-state-group/capsule-engine/go v0.3.0/go.mod h1:RUUfr+8kEmYFT3Qelv7aZynN49rtaRkx7HhkWmu6AVw=
-github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261126232803-9239b7dd63db h1:/0xx0SItj5ftKtkYGzTPb1V6P2gJffPqMQATBrar0jc=
-github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261126232803-9239b7dd63db/go.mod h1:D6U6Q9b4cEFb8McPyqInxANbVPCaoDFCM0KJk3CTwG4=
+github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261127020937-b142f3d2594d h1:pe2Zv0Age+T1BnSXdfYcF827+Jo0Q54pVxtFQQTQC/Q=
+github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261127020937-b142f3d2594d/go.mod h1:D6U6Q9b4cEFb8McPyqInxANbVPCaoDFCM0KJk3CTwG4=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0 h1:AcIdYJq6vkhzBMQGsXm/AmfAqGLNAVLaNHXfambPVf0=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
-github.com/action-state-group/evidencebook v0.26.1-0.20261125142613-9ae622860d26 h1:lX0hOrkEH8vgPxvT8Vzoy+VqC/vqNNxz3j4g9Tv4V3E=
-github.com/action-state-group/evidencebook v0.26.1-0.20261125142613-9ae622860d26/go.mod h1:HVnvMUEWl+Ot6Bnfzq4WtsdN0JC8w0AwM8rLTj5fsgs=
+github.com/action-state-group/evidencebook v0.26.1-0.20261127020945-c201d503da3d h1:qydTbm3wL/gx7fhgck9tPaAf/Jpg+HPOHqs/GvoRnp8=
+github.com/action-state-group/evidencebook v0.26.1-0.20261127020945-c201d503da3d/go.mod h1:HVnvMUEWl+Ot6Bnfzq4WtsdN0JC8w0AwM8rLTj5fsgs=
 github.com/btcsuite/btcd/btcec/v2 v2.5.1 h1:zDnj4h0PTlFz69xIhoGGXYkkkYxPgTv/AfjBxQQLlnE=
 github.com/btcsuite/btcd/btcec/v2 v2.5.1/go.mod h1:jCw+V1Y+1y1AruEuF21h2wkWXiPBlAPE78UJHxwqdDk=
 github.com/btcsuite/btcd/chainhash/v2 v2.0.0 h1:PMLlSloHJuEeB80XG9EjpXWNEKAZAMLl6YHZ6YsEuoA=
