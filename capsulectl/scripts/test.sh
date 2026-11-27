@@ -81,6 +81,16 @@ if ((shard_count > 1)); then
   run=(-run "^($(printf '%s\n' "$names" | paste -sd '|' -))\$")
 fi
 
+# The race pass's flags. modernc.org/sqlite and the modernc.org packages it
+# needs are a pure-Go translation of SQLite's C code; under the race detector
+# their instrumented code was about a third of the pass's time (evidencebook#1038:
+# a 41-test sample of internal/deal took 106 s and 77 s raced, 73 s and 47 s
+# with them left out). They are built without race instrumentation, so races
+# inside SQLite's own code go unchecked; every package of this module and of
+# its other dependencies stays instrumented, and a race in our code is still
+# reported (.github/scripts/ci-scripts_test.sh plants one).
+race_flags=(-race '-gcflags=modernc.org/...=-race=false')
+
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 
@@ -116,7 +126,7 @@ queued() { # label, race|plain, go test -timeout value
 run_queue() { # work dir, label, race|plain, go test -timeout value
   local dir=$1 label=$2 kind=$3 timeout=$4 status=0 pkg pdir bin n=0 b total listing pkgs
   local build=(go test -c) flags=()
-  [[ "$kind" == race ]] && flags=(-race)
+  [[ "$kind" == race ]] && flags=("${race_flags[@]}")
   build+=(${flags[@]+"${flags[@]}"})
   # Every package builds with the pass's flags, those without tests too, as
   # go test builds them.
@@ -220,7 +230,7 @@ if [[ -n "$queue" ]]; then
 fi
 for m in "${modules[@]}"; do
   if [[ "$pass" != plain ]]; then
-    (cd "$m" && timed "race $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -race -count=1 -timeout="$race_timeout" "${packages[@]}") || status=$?
+    (cd "$m" && timed "race $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} "${race_flags[@]}" -count=1 -timeout="$race_timeout" "${packages[@]}") || status=$?
   fi
   if [[ "$pass" != race ]]; then
     (cd "$m" && timed "plain $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -count=1 -timeout=10m "${packages[@]}") || status=$?
