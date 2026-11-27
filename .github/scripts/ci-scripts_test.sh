@@ -127,14 +127,13 @@ local_has "local: go.mod races internal/deal" 0 ./internal/deal capsulectl capsu
 local_has "local: a book change does not race internal/deal" 1 ./internal/deal capsulectl capsulectl/internal/book/book.go
 local_has "local: a bookdemo change does not race internal/deal" 1 ./internal/deal capsulectl capsulectl/scripts/bookdemo/main.go
 
-# scripts/pre-push.sh --plan: which suites run and what each races.
-prepush_plan() { # description, want (lines joined by "|"), paths... ("--all" alone: no paths, --all)
+# scripts/pre-push.sh --plan: ci-local, and whether internal/deal's race pass runs.
+prepush_plan() { # description, want (lines joined by "|"), paths...
   local what=$1 want=$2 got ch
   shift 2
   ch=$(mktemp)
-  local args=(--plan)
-  if [[ "${1:-}" == --all ]]; then args+=(--all); else printf '%s\n' "$@" > "$ch"; fi
-  if ! got=$(PRE_PUSH_CHANGED=$ch bash "$here/../../scripts/pre-push.sh" "${args[@]}"); then
+  printf '%s\n' "$@" > "$ch"
+  if ! got=$(PRE_PUSH_CHANGED=$ch bash "$here/../../scripts/pre-push.sh" --plan); then
     printf 'FAIL %s: pre-push.sh --plan exited nonzero\n' "$what"
     fails=$((fails + 1))
     rm -f "$ch"
@@ -147,23 +146,39 @@ prepush_plan() { # description, want (lines joined by "|"), paths... ("--all" al
     fails=$((fails + 1))
   fi
 }
-prepush_plan "pre-push: a bookdemo change races only bookdemo" \
-  "suites: capsulectl|root race: none|capsulectl race: ./scripts/bookdemo" capsulectl/scripts/bookdemo/main.go
-prepush_plan "pre-push: a book change races book and its launchers, not internal/deal" \
-  "suites: capsulectl|root race: none|capsulectl race: ./cmd ./cmd/capsulectl-book ./internal/book" capsulectl/internal/book/book.go
-prepush_plan "pre-push: a doc change runs the root suite and races nothing" \
-  "suites: root|root race: none|capsulectl race: none" docs/GUIDE.md
-prepush_plan "pre-push: capsulectl's go.mod races every capsulectl package" \
-  "suites: capsulectl|root race: none|capsulectl race: $(pkgs_of capsulectl)" capsulectl/go.mod
-prepush_plan "pre-push: --all races everything" \
-  "suites: root capsulectl report rust python|root race: ./...|capsulectl race: ./..." --all
+prepush_plan "pre-push: a deal change runs ci-local and internal/deal's race pass" \
+  "ci-local: scripts/ci-local.sh|internal/deal race: yes" capsulectl/internal/deal/deal.go
+prepush_plan "pre-push: a packfile change reaches internal/deal (its tests import it)" \
+  "ci-local: scripts/ci-local.sh|internal/deal race: yes" capsulectl/internal/packfile/packfile.go
+prepush_plan "pre-push: capsulectl's go.mod reaches internal/deal" \
+  "ci-local: scripts/ci-local.sh|internal/deal race: yes" capsulectl/go.mod
+prepush_plan "pre-push: a book change runs ci-local only" \
+  "ci-local: scripts/ci-local.sh|internal/deal race: no" capsulectl/internal/book/book.go
+prepush_plan "pre-push: a doc change runs ci-local only" \
+  "ci-local: scripts/ci-local.sh|internal/deal race: no" docs/GUIDE.md
 if PRE_PUSH_CHANGED=/dev/null bash "$here/../../scripts/pre-push.sh" --bogus > /dev/null 2>&1; then
   printf 'FAIL pre-push: an unknown flag exited 0\n'
   fails=$((fails + 1))
 else printf 'ok   pre-push: an unknown flag fails\n'; fi
+# A dirty checkout is refused before anything runs: ci-local tests committed HEAD.
+dirty=$(mktemp -d)
+git clone -q --shared "$here/../.." "$dirty/repo" 2> /dev/null
+printf 'x\n' > "$dirty/repo/uncommitted.txt"
+if (cd "$dirty/repo" && bash "$here/../../scripts/pre-push.sh") > "$dirty/out" 2>&1; then
+  printf 'FAIL pre-push: a checkout with uncommitted changes passed\n'
+  fails=$((fails + 1))
+elif grep -q 'uncommitted changes' "$dirty/out"; then printf 'ok   pre-push: a checkout with uncommitted changes is refused\n'; else
+  printf 'FAIL pre-push: a dirty checkout failed for another reason: %s\n' "$(tail -3 "$dirty/out")"
+  fails=$((fails + 1))
+fi
+rm -rf "$dirty"
+if PRE_PUSH_CHANGED=/dev/null bash "$here/../../scripts/pre-push.sh" --all > /dev/null 2>&1; then
+  printf 'FAIL pre-push: --all (gone with the suites) exited 0\n'
+  fails=$((fails + 1))
+else printf 'ok   pre-push: --all is refused\n'; fi
 
-# scripts/pre-push.sh's capsulectl suite, run against a fake go that logs its
-# calls. `go test -c` writes a fake test binary that answers -test.list with
+# scripts/pre-push.sh's run, against a fake ci-local and a fake go that log
+# their calls. `go test -c` writes a fake test binary that answers -test.list with
 # $TEST_NAMES (FAIL_LIST fails it) and, for -test.run, logs "ran <race|plain>
 # <package dir> <name>" and prints its PASS line for each name, and fails a race run when FAIL_RACE is
 # set. go list fails when FAIL_PLAN is set and is real otherwise, so the
@@ -210,66 +225,65 @@ test_dirs_of() { # packages (space-separated, ./x form)
   # shellcheck disable=SC2086 # a space-separated package list
   (cd "$here/../../capsulectl" && go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.Dir}}{{end}}' $1 | sed "s#^$PWD##" | sort)
 }
-# prepush_run description, want_exit, race packages ("" none), changed path, env...
-# Each pass must run every name of $TEST_NAMES once in every test package it
-# covers (race: the planned packages; plain: all) and nothing else.
+cat > "$gofake/ci-local" <<'FAKE'
+echo "ci-local ran" >> "$GO_LOG"
+exit "${FAKE_CI_LOCAL_EXIT:-0}"
+FAKE
+# prepush_run description, want_exit, want_deal (1: internal/deal's race pass
+# runs), changed path, env... ci-local must run once; the race pass, when it
+# runs, must run every name of $TEST_NAMES once in internal/deal and nothing else.
 prepush_run() {
-  local what=$1 want_exit=$2 race_pkgs=$3 path=$4 st=0 bad="" kind pkgs want got d n
+  local what=$1 want_exit=$2 want_deal=$3 path=$4 st=0 bad="" want got n names
   shift 4
   printf '%s\n' "$path" > "$gofake/changed"
   : > "$gofake/log"
-  env PATH="$gofake:$PATH" GO_LOG="$gofake/log" PRE_PUSH_CHANGED="$gofake/changed" PRE_PUSH_NESTED=1 PRE_PUSH_SHARDS=4 "$@" \
-    bash "$here/../../scripts/pre-push.sh" > "$gofake/out" 2>&1 || st=$?
+  env PATH="$gofake:$PATH" GO_LOG="$gofake/log" PRE_PUSH_CHANGED="$gofake/changed" PRE_PUSH_SHARDS=4 \
+    PRE_PUSH_CI_LOCAL="bash $gofake/ci-local" "$@" bash "$here/../../scripts/pre-push.sh" > "$gofake/out" 2>&1 || st=$?
   ((st == want_exit)) || bad+=" exit $st (want $want_exit)"
-  local names
+  [[ "$(grep -c '^ci-local ran$' "$gofake/log")" == 1 ]] || bad+=" ci-local did not run once"
   # shellcheck disable=SC2016 # expanded by the inner shell, under the run's env
   names=$(env "$@" bash -c 'printf "%s\n" ${TEST_NAMES:-}')
-  for kind in race plain; do
-    pkgs=$race_pkgs
-    [[ $kind == plain ]] && pkgs=./...
-    want=""
-    if [[ -n "$pkgs" && -n "$names" ]]; then
-      want=$(for d in $(test_dirs_of "$pkgs"); do for n in $names; do echo "ran $kind $d $n"; done; done | sort)
-    fi
-    got=$(grep "^ran $kind " "$gofake/log" | sort || true)
-    [[ "$got" == "$want" ]] || bad+=" $kind runs differ: $(diff <(echo "$want") <(echo "$got") | grep '^[<>]' | head -3 | tr '\n' ';')"
-  done
+  want=""
+  if ((want_deal)) && [[ -n "$names" ]]; then
+    want=$(for n in $names; do echo "ran race /internal/deal $n"; done | sort)
+  fi
+  got=$(grep '^ran ' "$gofake/log" | sort || true)
+  [[ "$got" == "$want" ]] || bad+=" runs differ: $(diff <(echo "$want") <(echo "$got") | grep '^[<>]' | head -3 | tr '\n' ';')"
   if [[ -z "$bad" ]]; then printf 'ok   %s\n' "$what"; else
     printf 'FAIL %s:%s\n' "$what" "$bad"
     sed 's/^/    /' "$gofake/out" | tail -15
     fails=$((fails + 1))
   fi
 }
-prepush_run "pre-push run: each pass runs every test once, the race pass over the planned package" \
-  0 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC"
-prepush_run "pre-push run: a book change races its planned packages" \
-  0 "./cmd ./cmd/capsulectl-book ./internal/book" capsulectl/internal/book/book.go TEST_NAMES="TestA TestB TestC TestD TestE TestF"
-prepush_run "pre-push run: packages with no tests still build under race, and nothing runs" \
-  0 ./scripts/genconfusables capsulectl/scripts/genconfusables/main.go TEST_NAMES=
-if grep -q '^build -race .*scripts/genconfusables' "$gofake/log"; then
-  printf 'ok   pre-push run: the race pass builds a package without tests under race\n'
-else
-  printf 'FAIL pre-push run: genconfusables was not built under race\n'
-  fails=$((fails + 1))
-fi
-prepush_run "pre-push run: an empty race plan runs only the plain pass" \
-  0 "" capsulectl/README.md TEST_NAMES="TestA TestB TestC"
-prepush_run "pre-push run: a failed race run fails the push check" \
-  1 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC" FAIL_RACE=1
+prepush_run "pre-push run: a deal change runs ci-local and every internal/deal test once under race" \
+  0 1 capsulectl/internal/deal/deal.go TEST_NAMES="TestA TestB TestC"
+prepush_run "pre-push run: a book change runs ci-local only" \
+  0 0 capsulectl/internal/book/book.go TEST_NAMES="TestA TestB TestC"
+prepush_run "pre-push run: a failed ci-local fails the push check, and the race pass still runs" \
+  1 1 capsulectl/internal/deal/deal.go TEST_NAMES="TestA TestB" FAKE_CI_LOCAL_EXIT=1
+prepush_run "pre-push run: a failed race pass fails the push check" \
+  1 1 capsulectl/internal/deal/deal.go TEST_NAMES="TestA TestB TestC" FAIL_RACE=1
 if grep -q -- '--- FAIL: TestInjected' "$gofake/out" && grep -q 'the injected reason' "$gofake/out"; then
-  printf 'ok   pre-push run: a failed race run prints the failing test and its reason\n'
+  printf 'ok   pre-push run: a failed race pass prints the failing test and its reason\n'
 else
   printf 'FAIL pre-push run: the failing test is not printed\n'
   fails=$((fails + 1))
 fi
-prepush_run "pre-push run: a shard in the caller's environment does not narrow the check" \
-  0 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC TestD" CAPSULE_TEST_SHARD=1/2
+prepush_run "pre-push run: a shard in the caller's environment does not narrow the race pass" \
+  0 1 capsulectl/internal/deal/deal.go TEST_NAMES="TestA TestB TestC TestD" CAPSULE_TEST_SHARD=1/2
 prepush_run "pre-push run: a bound of one process runs every test" \
-  0 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC" PRE_PUSH_SHARDS=1
+  0 1 capsulectl/internal/deal/deal.go TEST_NAMES="TestA TestB TestC" PRE_PUSH_SHARDS=1
 prepush_run "pre-push run: a failed test listing fails the push check" \
-  1 "" capsulectl/scripts/bookdemo/main.go FAIL_LIST=1
-prepush_run "pre-push run: a failed race plan stops the script" \
-  2 "" capsulectl/scripts/bookdemo/main.go FAIL_PLAN=1
+  1 0 capsulectl/internal/deal/deal.go FAIL_LIST=1
+: > "$gofake/log"
+if PATH="$gofake:$PATH" GO_LOG="$gofake/log" PRE_PUSH_CHANGED="$gofake/changed" FAIL_PLAN=1 PRE_PUSH_CI_LOCAL="bash $gofake/ci-local" \
+  bash "$here/../../scripts/pre-push.sh" > "$gofake/out" 2>&1; then
+  printf 'FAIL pre-push run: a failed race plan did not stop the script\n'
+  fails=$((fails + 1))
+elif grep -q '^ci-local ran$' "$gofake/log"; then
+  printf 'FAIL pre-push run: a failed race plan still ran ci-local\n'
+  fails=$((fails + 1))
+else printf 'ok   pre-push run: a failed race plan stops the script before anything runs\n'; fi
 rm -rf "$gofake"
 
 # A go list error fails the planner instead of yielding an empty plan.
@@ -570,6 +584,8 @@ done
 [[ -z "${FAKE_ACT_SLEEP:-}" ]] || sleep "$FAKE_ACT_SLEEP"
 for f in "$dir"/*.yml; do
   if [[ -n "${FAKE_ACT_FAIL:-}" ]]; then echo "[${f##*/}/build]   ❌  Failure - Main step"; echo "[${f##*/}/build] 🏁  Job failed"; exit 1; fi
+  echo "[${f##*/}/build]   ✅  Success - Main step [1m2.5s]"
+  echo "[${f##*/}/build]   ✅  Success - Post step [500ms]"
   echo "[${f##*/}/build] 🏁  Job succeeded"
 done
 FAKE
@@ -607,6 +623,7 @@ if cl_run "ci-local: a change outside docs/" 0 README.md LEAK_LINT_TERMS='{"x":[
   check "ci-local: the summary names the Linux-only step" grep -q 'step always.yml/build: Linux only' "$cl/out"
   check "ci-local: the summary names the job on another runner" grep -q 'runner always.yml/win (windows-latest)' "$cl/out"
   check "ci-local: the base revision's scanner ran with the given terms" grep -qx 'leak-lint: ok' "$cl/out"
+  check "ci-local: the summary gives each job's time, the sum of its steps" grep -qE '^ok +63s  always\.yml/build$' "$cl/out"
   check "ci-local: the stand-ins come from the merged tree, not the checkout" standins_from_clone
 fi
 if cl_run "ci-local: a docs/ change" 0 docs/a.md; then
@@ -620,6 +637,7 @@ cl_run "ci-local: leak-lint finds a term in a tracked file" 1 README.md LEAK_LIN
   check "ci-local: leak-lint finds a term in a tracked file and fails" grep -qx 'leak-lint: FAIL' "$cl/out"
 cl_run "ci-local: a failing job fails the run" 1 README.md FAKE_ACT_FAIL=1 &&
   check "ci-local: a failing job's step is printed" grep -q 'Failure - Main step' "$cl/out"
+check "ci-local: a failed job with no step time still has its summary line" grep -qE '^FAIL +0s  always\.yml/build$' "$cl/out"
 cl_run "ci-local: a hung act run is stopped at CI_LOCAL_TIMEOUT" 1 README.md FAKE_ACT_SLEEP=30 CI_LOCAL_TIMEOUT=2s &&
   check "ci-local: the timeout is reported" grep -q 'passed CI_LOCAL_TIMEOUT' "$cl/out"
 # A workflow main gained after the branch left it runs: the merged tree's

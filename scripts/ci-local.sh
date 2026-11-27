@@ -191,9 +191,21 @@ EOF
     printf 'the act run passed CI_LOCAL_TIMEOUT (%s) and was stopped\n' "${CI_LOCAL_TIMEOUT:-40m}"
   fi
   ((status == 0)) || status=1
-  # Each job's verdict: act prints "[<workflow>/<job>] 🏁  Job succeeded|failed".
+  # Each job's verdict and time: act prints "[<workflow>/<job>] 🏁  Job
+  # succeeded|failed" and each step's duration in brackets; a job's time is
+  # the sum of its steps' (act prints no job time).
+  perl -ne '
+    next unless /^\[(.+?)\s*\]\s+(?:✅  Success|❌  Failure) - .*\[(\S+)\]\s*$/;
+    my ($j, $d) = ($1, $2); my $s = 0;
+    while ($d =~ /([\d.]+)(h|ms|µs|us|ns|m|s)/g) {
+      $s += $1 * { h => 3600, m => 60, s => 1, ms => 1e-3, "µs" => 1e-6, us => 1e-6, ns => 1e-9 }->{$2};
+    }
+    $t{$j} += $s;
+    END { printf "%s\t%d\n", $_, $t{$_} for keys %t }' "$work/act.log" > "$work/times"
   grep -E '🏁  Job (succeeded|failed)' "$work/act.log" |
-    sed -E 's/^\[([^]]*)\] *🏁  Job (succeeded|failed)$/\2  \1/; s/ +$//' | sort -k2 > "$work/jobs"
+    sed -E 's/^\[([^]]*)\] *🏁  Job (succeeded|failed)$/\2  \1/; s/ +$//' |
+    awk -F'  ' 'FILENAME == ARGV[1] { split($0, a, "\t"); t[a[1]] = a[2]; next } { printf "%s  %5ss  %s\n", $1, t[$2] + 0, $2 }' "$work/times" - |
+    sort -k2,2nr > "$work/jobs"
   if ((status)) || grep -q '^failed' "$work/jobs"; then
     status=1
     printf '== failing steps ==\n'
@@ -218,7 +230,7 @@ if [[ -n "${LEAK_LINT_TERMS:-}" ]]; then
 fi
 
 printf '\n== jobs (%ds) ==\n' $((SECONDS - start))
-sed 's/^succeeded/ok  /; s/^failed/FAIL/' "$work/jobs"
+sed 's/^succeeded/ok  /; s/^failed/FAIL/' "$work/jobs"   # slowest first
 printf 'leak-lint: %s\n' "$leak"
 printf 'not run here (a job with a step listed passed only in part):\n'
 exclusions | sed 's/^/  /'
