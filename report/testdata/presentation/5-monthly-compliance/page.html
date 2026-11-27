@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-74e1JN61iYtLr5ZQ340TGMFAZKDUuWLeVl55cDRiOdE=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-zpwy4068Y9scM1bTDNrSJGth8TPCV6oVS12xGSJ1vMQ='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-SsnAehS3H+8i1AHrhqUidzn1raO8bxrnKjvZ4vnPTBQ=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-zpwy4068Y9scM1bTDNrSJGth8TPCV6oVS12xGSJ1vMQ='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Evidence Graph</title>
     <style>
@@ -18669,7 +18669,7 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
   }
   function builtCommit() {
     if (false) return void 0;
-    return commitPrefix("f06e4e639456f9f407b135e6f7a3bdf8e4984e9a");
+    return commitPrefix("37c42da09f947951f1e8857e40c73c8a187ed249");
   }
   var commit = builtCommit();
   var unreleased = true;
@@ -25469,8 +25469,12 @@ ${key}`);
     const at = claimId.indexOf("::");
     return at > 0 ? claimId.slice(0, at) : void 0;
   }
+  function dealOf(claim, receipts3) {
+    if (receipts3.deals === void 0) return dealIdOf(claim.id);
+    return Object.prototype.hasOwnProperty.call(receipts3.deals, claim.id) ? receipts3.deals[claim.id] : void 0;
+  }
   function receiptLine(claim, w, receipts3) {
-    const deal = dealIdOf(claim.id);
+    const deal = dealOf(claim, receipts3);
     if (deal === void 0) return [];
     const line = el10("div", "rcpt");
     line.dataset.receiptDeal = deal;
@@ -30040,7 +30044,8 @@ ${pad.repeat(depth)}`;
         ...options.receipts === void 0 ? {} : {
           receipts: {
             texts: options.receipts,
-            open: (text2, panel) => openReceipt(text2, panel, options)
+            open: (text2, panel) => openReceipt(text2, panel, options),
+            ...options.receiptDeals === void 0 ? {} : { deals: options.receiptDeals }
           }
         },
         setChromeClass(name) {
