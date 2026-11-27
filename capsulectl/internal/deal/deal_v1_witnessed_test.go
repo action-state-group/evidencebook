@@ -3,7 +3,13 @@
 package deal
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/action-state-group/evidencebook"
 	"os"
@@ -213,6 +219,52 @@ func TestV1WitnessedFailedNamesTheFirstFailingRow(t *testing.T) {
 		w := v1EntryOf(t, pluginVerify(t, "--bundle", keep, "--stamp-proof", failing(c.urls...), "--witness-directory", dir))["witnessed"].(map[string]any)
 		assert.Equal(t, []any{"failed", c.name, c.list}, []any{w["status"], w["witness"], w["independent_of"]}, "%v", c.urls)
 	}
+}
+
+// Among distinct listed witnesses with distinct lists, a verified member
+// names the row of the earliest time's receipt wherever it stands, and a
+// withheld one (receipts that verify with no time) the first listed
+// receipt's row (evidencebook#1073). The receipts are minted over the
+// vector receipt's entry hash under generated keys.
+func TestV1WitnessedNamesTheEarliestReceiptsRow(t *testing.T) {
+	keep := filepath.Join(witnessedVectors, "keep.json")
+	raw, err := os.ReadFile(filepath.Join(witnessedVectors, "proof.json"))
+	require.NoError(t, err)
+	var vector map[string]any
+	require.NoError(t, json.Unmarshal(raw, &vector))
+	entry, err := hex.DecodeString(vector["witness_receipts"].([]any)[0].(map[string]any)["entry_hash"].(string))
+	require.NoError(t, err)
+	type signer struct {
+		url, name, list string
+		public          ed25519.PublicKey
+		key             ed25519.PrivateKey
+	}
+	var signers []signer
+	var rows []string
+	for i, url := range []string{"https://first.example", "https://second.example"} {
+		public, key, err := ed25519.GenerateKey(rand.Reader)
+		require.NoError(t, err)
+		s := signer{url: url, name: fmt.Sprintf("witness %d", i+1), list: strings.Repeat(fmt.Sprintf("%d%d", i+1, i+1), 32), public: public, key: key}
+		signers = append(signers, s)
+		rows = append(rows, `{"name":"`+s.name+`","endpoint":"`+url+`","key_ids":["`+hex.EncodeToString(public)+`"],"independent_of":["`+s.list+`"]}`)
+	}
+	dir := writeJSON(t, `{"witnesses":[`+strings.Join(rows, ",")+`]}`)
+	receipt := func(s signer, iat time.Time) map[string]any {
+		return map[string]any{"ts_url": s.url, "entry_hash": hex.EncodeToString(entry),
+			"receipt": base64.StdEncoding.EncodeToString(mintReceiptAt(t, entry, s.key, iat)), "leaf_index": 0, "tree_size": 1}
+	}
+	witnessed := func(receipts ...any) map[string]any {
+		proof := editedProof(t, func(p map[string]any) { p["witness_receipts"] = receipts })
+		return v1EntryOf(t, pluginVerify(t, "--bundle", keep, "--stamp-proof", proof, "--witness-directory", dir))["witnessed"].(map[string]any)
+	}
+	early, late := time.Date(2026, 11, 25, 14, 0, 0, 0, time.UTC), time.Date(2026, 11, 25, 15, 0, 0, 0, time.UTC)
+	want := map[string]any{"status": "verified", "witness": "witness 2", "at": "2026-11-25T14:00:00Z", "independent_of": []any{signers[1].list}}
+	assert.Equal(t, want, witnessed(receipt(signers[0], late), receipt(signers[1], early)), "the earlier receipt second")
+	assert.Equal(t, want, witnessed(receipt(signers[1], early), receipt(signers[0], late)), "the earlier receipt first")
+
+	w := witnessed(receipt(signers[1], time.Time{}), receipt(signers[0], time.Time{}))
+	assert.Equal(t, []any{"withheld", "witness 2", []any{signers[1].list}}, []any{w["status"], w["witness"], w["independent_of"]}, "no time: the first listed receipt")
+	assert.NotContains(t, w, "at")
 }
 
 // --stamp-proof goes with --bundle, and reads only a proof file.
