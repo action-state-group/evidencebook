@@ -50,6 +50,12 @@ func dealTexts(ev dealEvent) map[string]string {
 		t["verbatim"] = ev.Intent.Verbatim
 		boundsText(t, *ev.Intent)
 		intentTexts(t, *ev.Intent)
+		if ev.Seller != nil {
+			t["seller_name"] = ev.Seller.Name
+			if ev.Seller.Domain != "" {
+				t["seller_domain"] = ev.Seller.Domain
+			}
+		}
 	case ev.AgentMove != nil:
 		agentMoveTexts(t, *ev.AgentMove)
 	case ev.Message != nil:

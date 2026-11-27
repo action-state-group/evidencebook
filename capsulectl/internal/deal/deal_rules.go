@@ -39,6 +39,14 @@ var dealPointsOfNoReturn = map[string][]string{
 // offer supersedes it. Only a deal whose party_role is seller makes one.
 const offerAction = "offer"
 
+// dealSeller is the seller a buyer's opening intent names: Key is nil for
+// a seller with no layer (the agreement's counterparty_key null).
+type dealSeller struct {
+	Key    *string `json:"key"`
+	Name   string  `json:"name"`
+	Domain string  `json:"domain,omitempty"`
+}
+
 // dealWho identifies the counterparty. Every field is optional; each one that
 // was sealed at first contact is compared on every check.
 type dealWho struct {
@@ -769,6 +777,13 @@ type dealEvent struct {
 	// commits to the close record's digest.
 	Confirms string            `json:"confirms,omitempty"`
 	Nonces   map[string]string `json:"nonces,omitempty"`
+	// Seller is, on an x-deal-v1 buyer's opening intent, the seller the
+	// intent's record names by commitment (evidencebook#1031): its record
+	// key as the agreement will name it, and the name and domain the
+	// opening's who gave. Raw values stay here, in the local event; the
+	// record carries their commitments under the nonces seller_name and
+	// seller_domain.
+	Seller *dealSeller `json:"seller,omitempty"`
 	// Producer is the capsulectl build that sealed the step, kept with the
 	// step so that a later build re-derives the same record.
 	Producer *dealProducer `json:"producer,omitempty"`

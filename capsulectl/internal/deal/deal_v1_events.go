@@ -292,6 +292,15 @@ func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) (*dealapi.Jou
 	if rtype == "verdict" && ev.Check != nil && ev.Check.Rules != nil && ev.Check.Rules.ReceivedHistory != nil {
 		nb["received_history"] = ev.Check.Rules.ReceivedHistory
 	}
+	// The seller a buyer's opening intent names, by commitment only: v1's
+	// own member beside v0's closed body_intent (evidencebook#1031).
+	if rtype == "intent" && ev.Seller != nil {
+		seller, err := sellerMember(ev)
+		if err != nil {
+			return nil, err
+		}
+		nb["seller"] = seller
+	}
 	out := &dealapi.JournalRecord{RecordType: rtype, Block: b, Body: nb}
 	// The record's nonce, drawn here, where it always was, so a step's draws
 	// keep their order.
@@ -303,6 +312,53 @@ func (s *dealSession) v1Record(events []sealedEvent, ev dealEvent) (*dealapi.Jou
 		out.Nonce = nonce
 	}
 	return out, nil
+}
+
+// sellerMember is an opening intent's seller member: the key, and the
+// commitments of the name and the domain under the step's nonces.
+func sellerMember(ev dealEvent) (map[string]any, error) {
+	commit := func(name, text string) (string, error) {
+		nonce := ev.Nonces[name]
+		if nonce == "" {
+			return "", cli.InputError("missing commitment nonce for " + name)
+		}
+		return dealprofile.CommitText(nonce, text)
+	}
+	name, err := commit("seller_name", ev.Seller.Name)
+	if err != nil {
+		return nil, err
+	}
+	var key any
+	if ev.Seller.Key != nil {
+		key = *ev.Seller.Key
+	}
+	m := map[string]any{"key": key, "name_commitment": name}
+	if ev.Seller.Domain != "" {
+		if m["domain_commitment"], err = commit("seller_domain", ev.Seller.Domain); err != nil {
+			return nil, err
+		}
+	}
+	return m, nil
+}
+
+// v1OpeningSeller is the seller a buyer's opening intent names, from the
+// opening's who: nil when the holder is the seller, or when who gives no
+// name. The key is the one the buyer's agreement will name in
+// counterparty_key: the offer's signer when the buyer was offered the deal,
+// the offer's to when the buyer made it (nil, with no layer, for to null).
+func v1OpeningSeller(role string, offer *offerHeld, prop *xdealv1.ProposeBody, who dealWho) *dealSeller {
+	if role != xdealv1.RoleBuyer || who.Name == "" {
+		return nil
+	}
+	s := &dealSeller{Name: who.Name, Domain: who.Domain}
+	if !offer.Own {
+		key := offer.Signer
+		s.Key = &key
+	} else if prop.To.V != nil {
+		key := *prop.To.V
+		s.Key = &key
+	}
+	return s
 }
 
 // v1OpeningInput is the first intent note's --opening on a v1 deal: the parts
@@ -365,6 +421,7 @@ func (s *dealSession) openV1(ctx context.Context, dealID string, raw, opening []
 		return nil, err
 	}
 	open.Materiality = predicate.Ref()
+	seller := v1OpeningSeller(role, offer, prop, open.Who)
 	// The opening and its intent are prepared first and stored together, so
 	// a deal never holds an opening without its journal intent.
 	opened := s.v1Step(dealID, nil, dealEvent{Kind: "open", Open: &open}, false)
@@ -379,7 +436,7 @@ func (s *dealSession) openV1(ctx context.Context, dealID string, raw, opening []
 			return dealapi.StepParts{}, err
 		}
 		afterOpening = []sealedEvent{{CapsuleID: v1EventID(dealID, opened.ev.N), Digest: digestBytesHex(local), Sequence: uint64(opened.ev.N), Event: *opened.ev}}
-		p := s.v1Step(dealID, afterOpening, dealEvent{Kind: "intent", Intent: &intent}, true)
+		p := s.v1Step(dealID, afterOpening, dealEvent{Kind: "intent", Intent: &intent, Seller: seller}, true)
 		parts, err := p.step.Build(f)
 		*first.ev = *p.ev
 		return parts, err
