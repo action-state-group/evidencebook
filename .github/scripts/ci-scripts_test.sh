@@ -136,6 +136,14 @@ if [[ -z "$race_aware" ]]; then printf 'ok   ci.yml unit/race split: no root-mod
   printf 'FAIL ci.yml unit/race split: these files change under the race detector, so Unit tests must run them too:\n%s\n' "$race_aware"
   fails=$((fails + 1))
 fi
+# capsulectl.yml's plain shards likewise leave the race job's packages to it:
+# only internal/deal (never raced on a pull request) may change under race.
+race_aware=$(cd "$here/../.." && git ls-files 'capsulectl/*.go' | grep -v '^capsulectl/internal/deal/' |
+  xargs grep -lE '^//go:build.*race|race\.Enabled|raceDetector|raceSample|raceRounds|raceSkip' 2> /dev/null || true)
+if [[ -z "$race_aware" ]]; then printf 'ok   capsulectl.yml plain/race split: only internal/deal changes under the race detector\n'; else
+  printf 'FAIL capsulectl.yml plain/race split: these files change under the race detector, so the plain shards must run them too:\n%s\n' "$race_aware"
+  fails=$((fails + 1))
+fi
 
 # scripts/pre-push.sh --plan: ci-local, and whether internal/deal's race pass runs.
 prepush_plan() { # description, want (lines joined by "|"), paths...
