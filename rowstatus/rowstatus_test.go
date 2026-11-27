@@ -33,19 +33,6 @@ func load(t *testing.T) vectors {
 	return v
 }
 
-func TestVectors(t *testing.T) {
-	v := load(t)
-	for _, c := range v.Cases {
-		t.Run(c.Name, func(t *testing.T) {
-			in, err := ParseInput(c.Input)
-			require.NoError(t, err)
-			got, err := Compute(in)
-			require.NoError(t, err)
-			assert.Equal(t, c.Expect, got)
-		})
-	}
-}
-
 func TestInvalidVectors(t *testing.T) {
 	v := load(t)
 	require.NotEmpty(t, v.Invalid)

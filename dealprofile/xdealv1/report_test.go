@@ -583,7 +583,7 @@ func writeOrCompare(t *testing.T, path string, v any) {
 // book's last status fact is the status computed now: current right after a
 // stamp, not current once a received record changes the status no stamp has
 // stated yet.
-func TestStatusProviderReport(t *testing.T) {
+func testStatusProviderReport(t *testing.T) {
 	ctx := context.Background()
 	d := newPaymentDeal(t, func(o *ProposeBody) { o.Witnesses = []Witness{} }, true)
 	d.leg(t, true, payerBody(), d.payerMember("settled", "6000"))

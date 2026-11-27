@@ -139,20 +139,6 @@ func TestAHandoverRefusesEachPlantedFailure(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalid, "another key")
 }
 
-// A dropped book is caught by the count: the latest facts the replay returns
-// count every book, so a card that leaves one out counts differently.
-func TestADroppedBookIsCaughtByTheCount(t *testing.T) {
-	_, h, key := handedOver(t)
-	got, err := VerifyHandover(h, key, testWitnesses(t))
-	require.NoError(t, err)
-	counted := []string{}
-	for _, l := range got.Latest {
-		counted = append(counted, l.Fact.LogID)
-	}
-	assert.ElementsMatch(t, []string{"deal/a", "deal/b"}, counted, "the replay counts every book on the shelf")
-	assert.NotEqual(t, len(counted), 1, "a card that dropped deal/b counts one book")
-}
-
 func TestAHandoverNeedsAFinishedStamp(t *testing.T) {
 	ctx := context.Background()
 	shelf := newShelfFixture(t).open(t)

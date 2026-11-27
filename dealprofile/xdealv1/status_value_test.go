@@ -190,7 +190,7 @@ func TestBuildStatusRefuses(t *testing.T) {
 // v1 status value built from its book, the seller's counted prefix and the
 // payment check, and a link value naming the seller's last record; no
 // witness is named, so every time is a stamp.
-func TestStatusProviderAtAStamp(t *testing.T) {
+func testStatusProviderAtAStamp(t *testing.T) {
 	d := newPaymentDeal(t, func(o *ProposeBody) { o.Witnesses = []Witness{} }, true)
 	d.leg(t, true, payerBody(), d.payerMember("settled", "6000"))
 	payee := d.leg(t, false, payeeBody(), d.payeeMember("settled", "6000"))

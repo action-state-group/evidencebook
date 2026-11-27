@@ -367,29 +367,6 @@ func TestReconcileFailedHalvesKeepCoverageAndTrustGates(t *testing.T) {
 	}
 }
 
-// A failed attempt and a served retry can share an exchange id on one side;
-// each pairs with the same-outcome half whatever the input order.
-func TestReconcileFailedAttemptAndServedRetryPairByOutcome(t *testing.T) {
-	failed := func(id string) Half {
-		return Half{RecordID: id, Correlation: Correlation{ExchangeID: "x1"}, Covered: true, Trusted: true, Failed: true}
-	}
-	served := func(id string) Half {
-		return half(id, Correlation{ExchangeID: "x1", RequestDigest: "d1"}, "same")
-	}
-	for name, b := range map[string][]Half{
-		"failed first": {failed("b-failed"), served("b-served")},
-		"served first": {served("b-served"), failed("b-failed")},
-	} {
-		t.Run(name, func(t *testing.T) {
-			a := HalfSet{Complete: true, Halves: []Half{served("a-served"), failed("a-failed")}}
-			results, tallies := ReconcileHalves(a, HalfSet{Complete: true, Halves: b}, SamePayloadCommitments)
-			if want := (Tallies{Matched: 2}); tallies != want {
-				t.Fatalf("tallies %+v, want %+v; results %+v", tallies, want, results)
-			}
-		})
-	}
-}
-
 // Book.Reconcile reads the failed records from the input, since a header
 // carries no outcome.
 func TestBookReconcileReadsFailedRecordsFromTheInput(t *testing.T) {

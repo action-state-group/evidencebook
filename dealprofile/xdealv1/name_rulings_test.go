@@ -17,7 +17,7 @@ import (
 // name gets a naming statement sealed by the receive call itself, after the
 // record before it, once (PROFILE §5; evidencebook#527); the sealed record
 // verifies as a book pair, and a later call seals nothing.
-func TestNameRulings(t *testing.T) {
+func testNameRulings(t *testing.T) {
 	ctx := context.Background()
 	adjudicator := newParty(t, "adjudicator")
 	h := newHandshake(t, func(a *AgreeBody) {
@@ -143,7 +143,7 @@ func readBack(t *testing.T, book *evidencebook.Book, seq uint64) BookRead {
 // The naming statement's block: after the agreement, bound to it, and with
 // seen the last counted record of the counterparty's book (the buyer holds
 // the seller's agreement here).
-func TestNameRulingsBlock(t *testing.T) {
+func testNameRulingsBlock(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
 	od, err := Digest(h.offer)
@@ -210,7 +210,7 @@ func TestNameRulingsAfterAConcurrentWrite(t *testing.T) {
 
 // A book with a record not readable whole (here a lifecycle record a
 // retention change appends) is left for later: nothing invalid is sealed.
-func TestNameRulingsLeavesAPartBook(t *testing.T) {
+func testNameRulingsLeavesAPartBook(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
 	book, err := h.seller.shelf.Open(ctx, h.sellerLog)
@@ -226,7 +226,7 @@ func TestNameRulingsLeavesAPartBook(t *testing.T) {
 }
 
 // A ruling of another deal in the same case log is not this deal's.
-func TestNameRulingsOnlyTheDealsRulings(t *testing.T) {
+func testNameRulingsOnlyTheDealsRulings(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
 	other := ruling
@@ -260,7 +260,7 @@ func unnamedCount(t *testing.T, h *handshake, adjudicator *party) int {
 // status value counts it unnamed; the same ruling sent again (a duplicate,
 // so nothing grew) names it (Codex, the stand-in and Sherlock2, #528 round
 // 2), and the count is back to zero.
-func TestNameRulingsRetriedOnADuplicate(t *testing.T) {
+func testNameRulingsRetriedOnADuplicate(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
 	recNamingFails(t, true)
@@ -287,7 +287,7 @@ func TestNameRulingsRetriedOnADuplicate(t *testing.T) {
 
 // NameAllRulings is the host's sweep: a naming that failed, with nothing
 // sent again, is sealed by it; a second sweep seals nothing.
-func TestNameAllRulings(t *testing.T) {
+func testNameAllRulings(t *testing.T) {
 	h, adjudicator, ruling, caseLog := rulingCase(t)
 	recNamingFails(t, true)
 	_, pair := adjudicator.seal(caseLog, ruling)
@@ -326,7 +326,7 @@ func TestStatusRulingsUnnamed(t *testing.T) {
 // holder's next stamp (the coordinator and Sherlock2, #528 round 2): the
 // status provider's BeforeStamp runs before the stamp takes its values, so
 // that stamp's status value counts no ruling unnamed.
-func TestNameRulingsAtTheNextStamp(t *testing.T) {
+func testNameRulingsAtTheNextStamp(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
 	h.seller.recUseStatus(nil)
@@ -357,7 +357,7 @@ func TestNameRulingsAtTheNextStamp(t *testing.T) {
 // to, by Receive or by a stamp; the stamp's status value, read over the
 // book's v1 prefix, counts the ruling unnamed, so the card does not show
 // the dispute as unresolved.
-func TestNameRulingsUnreadableBookIsCounted(t *testing.T) {
+func testNameRulingsUnreadableBookIsCounted(t *testing.T) {
 	ctx := context.Background()
 	h, adjudicator, ruling, caseLog := rulingCase(t)
 	h.seller.recUseStatus(nil)

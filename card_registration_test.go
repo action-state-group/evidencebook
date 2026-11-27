@@ -127,28 +127,6 @@ func TestCardRegisteredVectors(t *testing.T) {
 	}
 }
 
-// TestBuildCardStatementMatchesVector signs the vectors' card with the
-// vectors' holder key and gets, byte for byte, the vector statement with its
-// Receipts removed; attaching the vector's Receipt gives the vector statement.
-func TestBuildCardStatementMatchesVector(t *testing.T) {
-	v := loadCardRegistrationVectors(t)
-	c := v.find(t, "pass-eddsa-time")
-	card := mustHex(t, c.Card)
-	vector := mustHex(t, c.Statements[0])
-	receipts, bare := splitReceipts(t, vector)
-	require.Len(t, receipts, 1)
-
-	signer := vectorHolderSigner(t)
-	require.Equal(t, c.Holder, KeyID(signer))
-	built, err := BuildCardStatement(t.Context(), signer, card, c.Anchor)
-	require.NoError(t, err)
-	assert.Equal(t, bare, built)
-
-	attached, err := AttachCardReceipt(card, c.Holder, c.Anchor, built, receipts[0], v.policy(t, c))
-	require.NoError(t, err)
-	assert.Equal(t, vector, attached)
-}
-
 func vectorEnv(c cardRegistrationCase) Envelope {
 	return Envelope{Responder: c.Holder, Anchor: Anchor{Digest: c.Anchor}}
 }

@@ -33,7 +33,7 @@ repository the set was taken from or written in.
 |---|---|---|---|---|
 | `report/testdata/presentation/` | report pages `capsulectl book report build` writes, with their bundles | presentation contract v0 | capsule-cli `cli/testdata/presentation/`, last changed at `62d569d79b23b56a874c8db9ad8f9c1e159095de` | `report/example_test.go` (`ExampleBuild`), `report/report_test.go` |
 | `report/testdata/book-form-bundle.json` | a book-form Result-root bundle as `disclose` writes it | Evidence Bundle v2; Evidence Result v0 | this repository's `capsulectl/scripts/bookdemo/testdata/own-capsule-bundle.json`, byte for byte | `ExampleSealPage` |
-| `report/testdata/incomplete-payload-bundle.json` | a payload-form bundle with no checkpoint or producer signatures | Evidence Bundle v2 | this repository's `capsulectl/internal/book/testdata/result/result-root-bundle.sealed.json`, byte for byte | `ExampleBuild_incomplete` |
+| `report/testdata/incomplete-payload-bundle.json` | a payload-form bundle with no checkpoint or producer signatures | Evidence Bundle v2 | this repository's `capsulectl/internal/book/testdata/result/result-root-bundle.sealed.json`, byte for byte | `report/report_test.go` (`TestBuildRendersNothingForAnIncompleteBundle`) |
 
 ## Checked in CI from other repositories
 
