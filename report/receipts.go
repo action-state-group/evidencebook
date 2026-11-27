@@ -48,7 +48,8 @@ var receiptModuleIDs = []string{
 // verified headers (evidencebook.SubjectsOfRecord), else the part of its id
 // before "::". A Result none of whose claims has a deal carries none, and
 // Receipts on it is refused; so is one whose claim cites members of two
-// subjects. capsule-viewer's page picks the same deal (ts/src/claim-subject.ts).
+// subjects. The page files each claim's receipt line by the deal this package decides
+// (capsule-viewer's receiptDeals), so this package owns the rule.
 type Receipts struct {
 	// Modules are the receipt modules the page carries, each a script and
 	// its pins (capsule-viewer go/receipt's Module). Each manifest names one
@@ -103,7 +104,11 @@ type Receipt struct {
 // checkedReceipts are Receipts that passed checkReceipts, in the emitter's
 // terms.
 type checkedReceipts struct {
-	texts    map[string]string
+	texts map[string]string
+	// deals are each claim's deal by claim id, for every claim that has one:
+	// the page files a claim's receipt line by it (capsule-viewer's
+	// receiptDeals), so the page keeps no copy of dealOf's rule.
+	deals    map[string]string
 	withheld []string
 	// notClosed are the deal ids that had not closed, sorted.
 	notClosed []string
@@ -170,7 +175,7 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim, records []evide
 	}
 	// The deals that cite each capsule.
 	citedBy := make(map[string]map[string]bool)
-	named := false
+	deals := make(map[string]string)
 	for _, claim := range claims {
 		deal, ok, err := dealOf(claim, records)
 		if err != nil {
@@ -179,7 +184,7 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim, records []evide
 		if !ok {
 			continue
 		}
-		named = true
+		deals[claim.ID] = deal
 		for _, id := range claim.Evidence {
 			if citedBy[id] == nil {
 				citedBy[id] = make(map[string]bool)
@@ -187,10 +192,10 @@ func checkReceipts(receipts *Receipts, claims []cli.ResultClaim, records []evide
 			citedBy[id][deal] = true
 		}
 	}
-	if !named {
+	if len(deals) == 0 {
 		return checkedReceipts{}, refusef("receipts: no claim of the Result names a deal (cites a member of a subject, or has an id of the form <deal>::<requirement>), so there is nothing to carry")
 	}
-	out := checkedReceipts{texts: make(map[string]string)}
+	out := checkedReceipts{texts: make(map[string]string), deals: deals}
 	seen := make(map[string]string)
 	for _, r := range receipts.Deals {
 		dealsOf := citedBy[r.Exchange]

@@ -366,6 +366,7 @@ func TestAClaimsDealIsTheSubjectOfTheMemberItCites(t *testing.T) {
 	got, err := checkReceipts(&Receipts{Modules: module, Deals: []Receipt{{Exchange: "m-a", Held: true}, {Exchange: "m-b", NotClosed: true}, {Exchange: "ex9", Held: true}}}, claims, records)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"deal-A", "d9"}, got.withheld, "deal-A by its member; d9 by its id's prefix")
+	assert.Equal(t, map[string]string{"conv-1::paid": "deal-A", "conv-2::paid": "deal-B", "d9::paid": "d9"}, got.deals, "the page files each claim by these")
 	assert.Equal(t, []string{"deal-B"}, got.notClosed)
 
 	// The receipt refusal stays for the exchange a receipt names when the
@@ -416,4 +417,24 @@ func TestReceiptsOnABundleTheBookVerifierRefusesAreRefused(t *testing.T) {
 	assert.Nil(t, page)
 	assert.ErrorIs(t, err, ErrRefused)
 	assert.ErrorContains(t, err, "receipts: the bundle's records do not verify as an evidence bundle")
+}
+
+// evidencebook#116 PR 6, end to end: a sealed book-form Result whose claim
+// conv-1::has-observation cites a member of the subject deal-S (and the
+// shared response record). Build reads the claim's deal from the bundle's
+// verified headers, files the receipt under deal-S, and tells the page so
+// in receiptDeals; the claim id's prefix, conv-1, is not a deal.
+func TestBuildFilesAClaimUnderTheSubjectOfTheMemberItCites(t *testing.T) {
+	bundle := mustRead(t, "testdata/settlement-receipts/subject-bundle.json")
+	member := strings.TrimSpace(string(mustRead(t, "testdata/settlement-receipts/subject-member.txt")))
+	page, err := Build(bundle, settlementView(t, Receipt{Exchange: member, Held: true}))
+	require.NoError(t, err)
+	options := optionsOf(t, string(page.HTML))
+	assert.Equal(t, map[string]any{"deal-S": nil}, options["receipts"])
+	assert.Equal(t, map[string]any{"conv-1::has-observation": "deal-S"}, options["receiptDeals"])
+
+	// The claim's other cited record, the response, belongs to the same deal.
+	page, err = Build(bundle, settlementView(t, Receipt{Exchange: exchange(t), NotClosed: true}))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"deal-S": map[string]any{"state": "not-closed"}}, optionsOf(t, string(page.HTML))["receipts"])
 }

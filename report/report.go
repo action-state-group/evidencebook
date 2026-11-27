@@ -542,6 +542,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if view.Receipts != nil {
 		options.Modules = append([]emitter.Module(nil), view.Receipts.Modules...)
 		options.Receipts, options.ReceiptsWithheld, options.ReceiptsNotClosed = receipts.texts, receipts.withheld, receipts.notClosed
+		options.ReceiptDeals = receipts.deals
 		if options.ReceiptsWithheld == nil {
 			options.ReceiptsWithheld = []string{}
 		}

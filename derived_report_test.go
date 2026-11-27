@@ -517,6 +517,33 @@ func TestSettlementReceiptsFixture(t *testing.T) {
 	receipt, err := f.requester.Bundle(ctx, BundleRequest{Root: inputs.Response})
 	require.NoError(t, err)
 	built["receipt.json"] = receipt.JSON
+	// A Result whose claim, conv-1::has-observation, cites a member of the
+	// subject deal-S as well as the response (evidencebook#116 PR 6): its
+	// deal is deal-S, not its id's prefix. Sealed after the others, so they
+	// are unchanged.
+	subjectRoot, err := f.requester.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "deal", SubjectID: "deal-S", Membership: MembershipExchangeID}, Entry{})
+	require.NoError(t, err)
+	member := mustAppend(t, f.requester, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Correlation: Correlation{ExchangeID: "deal-S"},
+		Links: []Link{{Type: Cites, Target: subjectRoot.RecordID}}, Payloads: [][]byte{[]byte("deal-S half")}})
+	evidence := []any{map[string]any{"digest": member.RecordID, "digest_alg": "SHA-256"}, map[string]any{"digest": inputs.Response, "digest_alg": "SHA-256"}}
+	claimID := "conv-1::has-observation"
+	result, err := json.Marshal(map[string]any{
+		"result_version": "evidence-result-v0", "generated_at": "2026-11-22T00:00:00Z",
+		"claims": []any{map[string]any{
+			"id": claimID, "contract_ref": packContract, "requirement_ref": "has-observation", "tier": "recomputed", "grade": "self-attested",
+			"sufficiency": "SATISFIED", "verdict": "met", "evidence": evidence, "proofs": []any{},
+			"presentation": map[string]any{"kind": "disclosure", "status": "SATISFIED", "evidence": evidence},
+		}},
+		"aggregate": map[string]any{"buckets": map[string]any{"met": []any{claimID}, "not_met": []any{}, "not_evaluable": []any{}}, "coverage": map[string]any{"evaluated_population": 1, "excluded_not_applicable": 0, "unknown_count": 0}},
+	})
+	require.NoError(t, err)
+	sealed, _, _, err := f.requester.SealResult(ctx, result, packContract, []Link{{Type: Cites, Target: member.RecordID}, {Type: Cites, Target: inputs.Response}},
+		func() (Record, bool, error) { return Record{}, false, nil }, func(entry Entry) (Record, error) { return f.requester.Append(ctx, entry) })
+	require.NoError(t, err)
+	three, err := f.requester.Bundle(ctx, BundleRequest{Root: sealed.RecordID, Payloads: PayloadsAll, Extensions: map[string]json.RawMessage{ExtensionContractReport: json.RawMessage(`{}`)}})
+	require.NoError(t, err)
+	built["subject-bundle.json"] = three.JSON
+	built["subject-member.txt"] = []byte(member.RecordID + "\n")
 	dir := filepath.Join("report", "testdata", "settlement-receipts")
 	if os.Getenv("EB_WRITE_SETTLEMENT_RECEIPTS_FIXTURE") != "" {
 		require.NoError(t, os.RemoveAll(dir))
