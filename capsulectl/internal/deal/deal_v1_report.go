@@ -277,7 +277,14 @@ func runV1Report(c *cobra.Command) (err error) {
 				if err != nil {
 					return err
 				}
-				page, err := v1ReportPage(ctx, bundle, dealVerifyCommand(out), proof, dirPath, v1CountersignedCopy(countersign))
+				// Only your own copy carries the countersigned copy: it holds
+				// your book's place, checkpoint and payment legs, which no
+				// shared copy shows (--html refuses --share today).
+				var countersigned *v1PageCountersignedCopy
+				if share == dealprofile.AudienceKeep {
+					countersigned = v1CountersignedCopy(countersign)
+				}
+				page, err := v1ReportPage(ctx, bundle, dealVerifyCommand(out), proof, dirPath, countersigned)
 				if err != nil {
 					return err
 				}

@@ -154,3 +154,54 @@ func TestPresentationV1ReceiptCountersigned(t *testing.T) {
 	assert.Equal(t, "filled", state)
 	assert.Regexp(t, `^Countersigned by Example Countersigner at .+, through record 1 of 2\. Its directory entry does not list it as independent of the parties\.$`, text)
 }
+
+// With more than one stored countersigned copy, the page carries the copy
+// behind the report's rung (the one reaching furthest, even when another was
+// stored later), with one row per signer resolved on that copy and none for
+// an unresolved signer or another copy's signer.
+func TestAV1ReportHTMLCarriesTheDecidingCopy(t *testing.T) {
+	usePluginVerify(t)
+	h := agreedBoth(t, offerTo)
+	h.buyer.act(t)
+	early := filepath.Join(t.TempDir(), "early.json")
+	dealRun(t, "report", "--deal", h.dealID, "--bundle", early, "--withheld")
+	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
+	clockAt(t, cli.DealClock().Add(72*time.Hour))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	later := filepath.Join(t.TempDir(), "later.json")
+	dealRun(t, "report", "--deal", h.dealID, "--bundle", later, "--withheld")
+
+	checks := []cli.CountersignCheck{{Name: "range membership", Result: "established"}}
+	laterDigest := mustDigest(t, readBundleFile(t, later))
+	first, firstKey := countersignerEntry(t, laterDigest, checks)
+	second, secondKey := countersignerEntry(t, laterDigest, checks)
+	unlisted, _ := countersignerEntry(t, laterDigest, checks)
+	earlyEntry, earlyKey := countersignerEntry(t, mustDigest(t, readBundleFile(t, early)), checks)
+	directory := filepath.Join(t.TempDir(), "countersigners.json")
+	require.NoError(t, os.WriteFile(directory, []byte(`[{"name":"First","key_ids":["`+firstKey+`"]},{"name":"Second","key_ids":["`+secondKey+`"]},{"name":"Early","key_ids":["`+earlyKey+`"]}]`), 0o600))
+	// The copy reaching furthest is stored first; the earlier one after it.
+	for _, e := range []cli.CountersignatureEntry{first, second, unlisted} {
+		attachInPlace(t, later, e)
+	}
+	dealRun(t, "countersign", "--deal", h.dealID, "--bundle", later, "--directory", directory)
+	attachInPlace(t, early, earlyEntry)
+	dealRun(t, "countersign", "--deal", h.dealID, "--bundle", early, "--directory", directory)
+	_, err := invoke(t, "", "profile", "update", "--profile", "deal", "--countersign-directory", directory)
+	require.NoError(t, err)
+
+	file := filepath.Join(t.TempDir(), "receipt.html")
+	out := dealRun(t, "report", "--deal", h.dealID, "--html", file)
+	stamp := asStamp(t, out["countersign"])
+	assert.Equal(t, stamp.Steps, stamp.ThroughStep, "the rung is the copy reaching furthest")
+	page, err := os.ReadFile(file)
+	require.NoError(t, err)
+	carried := pageCountersignedCopy(t, page)
+	require.NotNil(t, carried)
+	b, err := cli.DecodeBundleJSON(carried.Bundle)
+	require.NoError(t, err)
+	assert.Equal(t, laterDigest, mustDigest(t, b), "the copy behind the rung, not the one stored last")
+	assert.ElementsMatch(t, []v1PageCountersignerRow{
+		{Name: "First", KeyIDs: []string{firstKey}},
+		{Name: "Second", KeyIDs: []string{secondKey}},
+	}, carried.Countersigners, "one row per signer resolved on that copy")
+}
