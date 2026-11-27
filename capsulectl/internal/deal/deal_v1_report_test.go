@@ -400,6 +400,25 @@ func TestAV1ReportBundleAudiencesAndMarkers(t *testing.T) {
 		}
 		raw, err := os.ReadFile(path)
 		require.NoError(t, err)
+		// The offer the agreement cites (book.offer, evidencebook#1065):
+		// the keep and counterparty copies carry its sent pair as received;
+		// an adjudicator's carries none (unruled).
+		var carried struct {
+			Extensions map[string]struct {
+				Book struct {
+					Offer json.RawMessage `json:"offer"`
+				} `json:"book"`
+			} `json:"extensions"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &carried))
+		offer := carried.Extensions[xdealv1.Profile].Book.Offer
+		if audience == "adjudicator" {
+			assert.Nil(t, offer, "an adjudicator's copy carries no offer")
+		} else {
+			sent, err := xdealv1.VerifySent(offer, nil)
+			require.NoError(t, err, audience)
+			assert.Equal(t, h.offer, sent.Digest, "%s carries the offer the agreement cites", audience)
+		}
 		// The file's text, and every payload it carries decoded: the book's
 		// (evidencebook/payloads, base64url) and each relied-on pair's.
 		texts := []string{string(raw)}
@@ -443,6 +462,11 @@ func TestAV1ReportBundleAudiencesAndMarkers(t *testing.T) {
 		assert.Equal(t, "bundle", recs[i]["kind"])
 		assert.Equal(t, audience, recs[i]["audience"])
 		assert.ElementsMatch(t, reliedOn, recs[i]["relied_on"])
+		if audience == "counterparty" {
+			assert.Equal(t, h.offer, recs[i]["offer"], "the share names the offer it carries")
+		} else {
+			assert.NotContains(t, recs[i], "offer", "an adjudicator's copy carries no offer to name")
+		}
 		raw, err := os.ReadFile(paths[audience])
 		require.NoError(t, err)
 		sum := sha256.Sum256(raw)

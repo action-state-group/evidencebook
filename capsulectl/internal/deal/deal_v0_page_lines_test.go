@@ -165,7 +165,7 @@ func TestV0PageOfAChainedCopyDrawsNoWitnessTimeOfItsOwn(t *testing.T) {
 	require.Contains(t, string(mustRead(t, page)), "parent-log-witness/v1", "the page's bundle carries the chain as v1")
 	got := readV0Page(t, chrome, page)
 	require.Empty(t, got.Errors)
-	assert.Equal(t, []string{"No witness result was reported to this page."}, got.Rungs["witness"])
+	assert.NotContains(t, got.WitnessNotice, "book-witnessed", "no witness time of its own (capsule-viewer#489 draws it in the core)")
 }
 
 // editBootstrapReport rewrites the verify report a page's bootstrap carries

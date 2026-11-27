@@ -394,7 +394,16 @@ func TestPresentationV1ReceiptDesign(t *testing.T) {
 	assert.Contains(t, got.L1, "Profile checked against")
 	// Technical details: the ladder, and nowhere above it.
 	assert.Contains(t, got.L2, "Technical details")
-	assert.Equal(t, []string{"witness", "counterparty-half", "countersign"}, got.L2Rungs)
+	// The witness line is the page core's, not a rung of the module's ladder
+	// (capsule-viewer#489).
+	assert.Equal(t, []string{"counterparty-half", "countersign"}, got.L2Rungs)
 	assert.Zero(t, got.UpperRung)
 	assert.Empty(t, got.Errors)
+	// The item comes from the offer the copy itself carries (book.offer,
+	// evidencebook#1065), sourced into the sent pair's agent_input.
+	var item []string
+	page.eval(t, `(() => { const e = document.querySelector("[data-hero-item]"); return e ? [e.textContent, [...e.querySelectorAll("[data-ptr]")].map((n) => n.getAttribute("data-ptr")).join(",")] : []; })()`, &item)
+	require.Len(t, item, 2, "the page draws the item")
+	assert.Contains(t, item[0], "lamp")
+	assert.Contains(t, item[1], "/agent_input/body/terms/item")
 }
