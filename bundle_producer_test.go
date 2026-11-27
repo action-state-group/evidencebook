@@ -560,7 +560,12 @@ func TestBundleWithItsDisclosureRecordedElsewhereWritesNothing(t *testing.T) {
 		t.Fatal("a bundle that records its disclosure hands back no entry")
 	}
 	h := appended.Disclosure.Header
-	if h.EpistemicType != entry.EpistemicType || entry.EpistemicType != ProducerClaim || !bytes.Equal(h.Statement, entry.Statement) || !reflect.DeepEqual(h.Links, entry.Links) {
+	// A book holds a statement in its canonical form (evidencebook#1072).
+	statement, err := canonicalStatement(entry.Statement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.EpistemicType != entry.EpistemicType || entry.EpistemicType != ProducerClaim || !bytes.Equal(h.Statement, statement) || !reflect.DeepEqual(h.Links, entry.Links) {
 		t.Fatalf("appended %+v, entry %+v", h, entry)
 	}
 }

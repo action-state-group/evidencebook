@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -307,16 +308,15 @@ func ParsePolicyChange(data []byte) (PolicyChange, error) {
 	return c, nil
 }
 
+// decodeStrict decodes one JSON value into into, refusing a member name that
+// is not exactly a field's name (an unknown member or a case variant of one),
+// a member name repeated in any object, and trailing data. encoding/json v1
+// matches names without case and keeps the last of a repeated one, so a
+// statement such as {"subject_id":"b","SUBJECT_ID":"a"} read as "a" at
+// admission and as "b" from its canonical form after reopen, and other
+// implementations read it exactly (evidencebook#1072).
 func decodeStrict(data []byte, into any) error {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(into); err != nil {
-		return err
-	}
-	if dec.More() {
-		return errors.New("trailing data")
-	}
-	return nil
+	return jsonv2.Unmarshal(data, into, jsonv2.RejectUnknownMembers(true))
 }
 
 // PolicyStep is one field's change as it was sealed.

@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -331,9 +333,8 @@ func readAnswerFile(path, dealID string) (xdealv1.CaseAnswer, error) {
 		return xdealv1.CaseAnswer{}, cli.InputError("cannot read --answer " + path)
 	}
 	var a v1Answer
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&a); err != nil || a.Request == nil || a.Bundle == nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := jsonv2.UnmarshalDecode(dec, &a, jsonv2.RejectUnknownMembers(true)); err != nil || a.Request == nil || a.Bundle == nil {
 		return bad("is not an answer file `deal respond` wrote for an adjudicator's request")
 	}
 	check := evidencerequest.ParseRequest(evidencerequest.Message{Octets: a.Request, MediaType: evidencerequest.MediaTypeJSON})

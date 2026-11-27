@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -120,6 +121,29 @@ func readSubjectRoot(raw json.RawMessage) (SubjectRootStatement, error) {
 		return SubjectRootStatement{}, fmt.Errorf("%w: subject_root statement: %v", ErrInvalid, err)
 	}
 	return s, s.validate()
+}
+
+// refuseLegacySubjectRoot refuses a stored subject_root that an earlier
+// release admitted under encoding/json v1's case-folded member names (a
+// statement such as {"SUBJECT_ID":"a",...}) and that no longer reads as
+// one. Declaring no subject for it would silently drop its subject on
+// reopen, and with it the close that bounds its members, so the book does
+// not open (evidencebook#1072). A record that never read as a subject_root
+// (a caller's own record_type of that name) still opens as before.
+func refuseLegacySubjectRoot(record Record) error {
+	if record.Header.RecordType != RecordTypeSubjectRoot {
+		return nil
+	}
+	if _, err := readSubjectRoot(record.Header.Statement); err == nil {
+		return nil
+	}
+	var legacy SubjectRootStatement
+	dec := json.NewDecoder(bytes.NewReader(record.Header.Statement))
+	dec.DisallowUnknownFields()
+	if dec.Decode(&legacy) != nil || legacy.validate() != nil {
+		return nil
+	}
+	return fmt.Errorf("%w: subject_root %s at seq %d names a member in another case; it was admitted as subject %q, which this release reads only from exact member names (evidencebook#1072)", ErrCorrupt, record.RecordID, record.Seq, legacy.SubjectID)
 }
 
 // headerValueAt reads the string at a pointer into a header's JSON form;

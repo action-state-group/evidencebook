@@ -622,15 +622,14 @@ func (b *Book) anchorLocked(ctx context.Context, at *Checkpoint) (Checkpoint, er
 }
 
 // strictDecode decodes raw into T only if re-encoding the result reproduces
-// raw's canonical form exactly. Any key the struct would ignore, merge, or
-// match case-insensitively (an unknown field, a duplicate "seq"/"SEQ") makes
-// the two differ, so the value is refused rather than read differently from
-// other implementations.
+// raw's canonical form exactly. decodeStrict refuses an unknown or
+// differently cased member and a repeated one; the round trip also refuses
+// a value the type would not reproduce (a number past its range, say), so
+// the value is refused rather than read differently from other
+// implementations.
 func strictDecode[T any](raw json.RawMessage) (T, error) {
 	var zero, out T
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&out); err != nil {
+	if err := decodeStrict(raw, &out); err != nil {
 		return zero, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	disclosed, err := decodeJSON(raw)

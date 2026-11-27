@@ -329,6 +329,9 @@ func TestLoadCardServiceRefuses(t *testing.T) {
 		"fragment":        `{"name":"a","operator":"o","url":"https://a.example/#f",` + k + `}`,
 		"unknown member":  `{"name":"a","operator":"o","url":"https://a.example",` + k + `,"default":true}`,
 		"not an object":   `[]`,
+		// Member names are read exactly and once (evidencebook#1072).
+		"a case variant": `{"NAME":"a","operator":"o","url":"https://a.example",` + k + `}`,
+		"name twice":     `{"name":"a","name":"b","operator":"o","url":"https://a.example",` + k + `}`,
 	} {
 		_, err := loadCardService(writeJSON(t, body))
 		assert.ErrorIs(t, err, cli.ErrInput, name)

@@ -337,7 +337,7 @@
           "checkpoint_commits": true
         },
         {
-          "note": "a root whose member names differ in case only, as Go's decoder reads them",
+          "note": "a root whose member names differ in case only",
           "header": {
             "book_id": "subject-vectors/field",
             "committed_at": "2026-11-27T00:00:00Z",
@@ -353,11 +353,37 @@
             "v": 1
           },
           "record_id": "073e9e4ee89170f503c51a8a709fa335eca15f876b66b3acbd3045be4f43a451",
-          "expect": "ok",
+          "expect": "malformed_root",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "b9c0c710bd8877e0b9ef48dfaf289d68f7f24eb3d958ebb43923dda6deb35053",
-            "size": 2
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root naming subject_id twice, once in upper case",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "SUBJECT_ID": "a",
+              "membership": "field:/correlation/exchange_id",
+              "subject_id": "b",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "8a2cae1a12b375678aea454de1593259789e01576292168bed9e54dc2037dfe9",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
           },
           "checkpoint_commits": true
         },
@@ -377,15 +403,15 @@
               }
             ],
             "record_type": "exchange",
-            "seq": 4,
+            "seq": 3,
             "v": 1
           },
-          "record_id": "8a2cae1a12b375678aea454de1593259789e01576292168bed9e54dc2037dfe9",
+          "record_id": "f19b632861cf76a09aab967ccb5963847aefcf1aa06ba90be33d864216a49120",
           "expect": "cites_root_without_id",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "b9c0c710bd8877e0b9ef48dfaf289d68f7f24eb3d958ebb43923dda6deb35053",
-            "size": 2
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
           },
           "checkpoint_commits": true
         },
@@ -402,15 +428,15 @@
               }
             ],
             "record_type": "exchange",
-            "seq": 4,
+            "seq": 3,
             "v": 1
           },
-          "record_id": "f19b632861cf76a09aab967ccb5963847aefcf1aa06ba90be33d864216a49120",
+          "record_id": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
           "expect": "cites_root_without_id",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "b9c0c710bd8877e0b9ef48dfaf289d68f7f24eb3d958ebb43923dda6deb35053",
-            "size": 2
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
           },
           "checkpoint_commits": true
         },
@@ -430,15 +456,15 @@
               }
             ],
             "record_type": "exchange",
-            "seq": 4,
+            "seq": 3,
             "v": 1
           },
-          "record_id": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
+          "record_id": "12825020c82ffd11c98e9db63f48f2adc93ce135d4ee0f4969245097c1b2bfb0",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "f5496863c3948bbad8df533475226090aa5ad3c716fb4599b6efbbb6a1c3dd9b",
-            "size": 3
+            "root": "6ef59ae1d621d9d2fbf9d3faa5554a549b6eeae71963c0387de6ea90ebe48bed",
+            "size": 2
           },
           "checkpoint_commits": true
         },
@@ -453,15 +479,15 @@
             "epistemic_type": "observed_event",
             "links": [],
             "record_type": "exchange",
-            "seq": 5,
+            "seq": 4,
             "v": 1
           },
-          "record_id": "12825020c82ffd11c98e9db63f48f2adc93ce135d4ee0f4969245097c1b2bfb0",
+          "record_id": "8263a4d90bff121d78243235c911eba5abae41cf82bb85fc068976ef06cf1532",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "f5496863c3948bbad8df533475226090aa5ad3c716fb4599b6efbbb6a1c3dd9b",
-            "size": 3
+            "root": "6ef59ae1d621d9d2fbf9d3faa5554a549b6eeae71963c0387de6ea90ebe48bed",
+            "size": 2
           },
           "checkpoint_commits": true
         },
@@ -478,7 +504,7 @@
               }
             ],
             "record_type": "index_root",
-            "seq": 6,
+            "seq": 5,
             "statement": {
               "as_of_seq": 3,
               "index": "record_id",
@@ -487,12 +513,12 @@
             },
             "v": 1
           },
-          "record_id": "8263a4d90bff121d78243235c911eba5abae41cf82bb85fc068976ef06cf1532",
+          "record_id": "9f9503658563acafdc71676e6269a476e4778bce4367c1dd04cc755f672e4dc5",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "f5496863c3948bbad8df533475226090aa5ad3c716fb4599b6efbbb6a1c3dd9b",
-            "size": 3
+            "root": "6ef59ae1d621d9d2fbf9d3faa5554a549b6eeae71963c0387de6ea90ebe48bed",
+            "size": 2
           },
           "checkpoint_commits": true
         },
@@ -509,15 +535,15 @@
               }
             ],
             "record_type": "disclosure",
-            "seq": 7,
+            "seq": 6,
             "v": 1
           },
-          "record_id": "9f9503658563acafdc71676e6269a476e4778bce4367c1dd04cc755f672e4dc5",
+          "record_id": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "f5496863c3948bbad8df533475226090aa5ad3c716fb4599b6efbbb6a1c3dd9b",
-            "size": 3
+            "root": "6ef59ae1d621d9d2fbf9d3faa5554a549b6eeae71963c0387de6ea90ebe48bed",
+            "size": 2
           },
           "checkpoint_commits": true
         },
@@ -537,15 +563,15 @@
               }
             ],
             "record_type": "exchange",
-            "seq": 8,
+            "seq": 7,
             "v": 1
           },
-          "record_id": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+          "record_id": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
-            "size": 4
+            "root": "7062de735e2776374b9ab69f652be3eacdd5370d0f7986218830aaa96406fb93",
+            "size": 3
           },
           "checkpoint_commits": true
         },
@@ -562,19 +588,19 @@
               }
             ],
             "record_type": "subject_close",
-            "seq": 9,
+            "seq": 8,
             "statement": {
-              "last": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
+              "last": "12825020c82ffd11c98e9db63f48f2adc93ce135d4ee0f4969245097c1b2bfb0",
               "members": 1
             },
             "v": 1
           },
-          "record_id": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
+          "record_id": "78fce13f2a66411533be7bc53476cb65c3ea69b954ab979c8883793293365aad",
           "expect": "close_count",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
-            "size": 4
+            "root": "7062de735e2776374b9ab69f652be3eacdd5370d0f7986218830aaa96406fb93",
+            "size": 3
           },
           "checkpoint_commits": true
         },
@@ -591,19 +617,19 @@
               }
             ],
             "record_type": "subject_close",
-            "seq": 9,
+            "seq": 8,
             "statement": {
-              "last": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
+              "last": "12825020c82ffd11c98e9db63f48f2adc93ce135d4ee0f4969245097c1b2bfb0",
               "members": 2
             },
             "v": 1
           },
-          "record_id": "78fce13f2a66411533be7bc53476cb65c3ea69b954ab979c8883793293365aad",
+          "record_id": "18836e798316cd05c63946b52df09909baa67526e1c044308b56507976621bbb",
           "expect": "close_count",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
-            "size": 4
+            "root": "7062de735e2776374b9ab69f652be3eacdd5370d0f7986218830aaa96406fb93",
+            "size": 3
           },
           "checkpoint_commits": true
         },
@@ -620,19 +646,19 @@
               }
             ],
             "record_type": "subject_close",
-            "seq": 9,
+            "seq": 8,
             "statement": {
-              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "last": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
               "members": 2
             },
             "v": 1
           },
-          "record_id": "18836e798316cd05c63946b52df09909baa67526e1c044308b56507976621bbb",
+          "record_id": "300a013548585f3b4ef16817be68a7b3f68bd074da5a5efafa9f4a5429214c72",
           "expect": "close_unknown_root",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
-            "size": 4
+            "root": "7062de735e2776374b9ab69f652be3eacdd5370d0f7986218830aaa96406fb93",
+            "size": 3
           },
           "checkpoint_commits": true
         },
@@ -653,19 +679,19 @@
               }
             ],
             "record_type": "subject_close",
-            "seq": 9,
+            "seq": 8,
             "statement": {
-              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "last": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
               "members": 2
             },
             "v": 1
           },
-          "record_id": "300a013548585f3b4ef16817be68a7b3f68bd074da5a5efafa9f4a5429214c72",
+          "record_id": "cc5368e6317abf99750f148b85df899e4ae130813bae07a843fc76e2024e4855",
           "expect": "close_not_one",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
-            "size": 4
+            "root": "7062de735e2776374b9ab69f652be3eacdd5370d0f7986218830aaa96406fb93",
+            "size": 3
           },
           "checkpoint_commits": true
         },
@@ -677,19 +703,19 @@
             "epistemic_type": "producer_claim",
             "links": [],
             "record_type": "subject_close",
-            "seq": 9,
+            "seq": 8,
             "statement": {
               "last": "",
               "members": 0
             },
             "v": 1
           },
-          "record_id": "cc5368e6317abf99750f148b85df899e4ae130813bae07a843fc76e2024e4855",
+          "record_id": "b444b004375a04f5a3b0655942e37061e7240a415b2041b3369b55d856af700e",
           "expect": "close_not_one",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
-            "size": 4
+            "root": "7062de735e2776374b9ab69f652be3eacdd5370d0f7986218830aaa96406fb93",
+            "size": 3
           },
           "checkpoint_commits": true
         },
@@ -706,20 +732,20 @@
               }
             ],
             "record_type": "subject_close",
-            "seq": 9,
+            "seq": 8,
             "statement": {
               "extra": true,
-              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "last": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
               "members": 2
             },
             "v": 1
           },
-          "record_id": "b444b004375a04f5a3b0655942e37061e7240a415b2041b3369b55d856af700e",
+          "record_id": "440f3b1837e01de36fb332c1e42534ed17398e2820c2d613d6815953f51ba05c",
           "expect": "close_statement",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
-            "size": 4
+            "root": "7062de735e2776374b9ab69f652be3eacdd5370d0f7986218830aaa96406fb93",
+            "size": 3
           },
           "checkpoint_commits": true
         },
@@ -736,19 +762,19 @@
               }
             ],
             "record_type": "subject_close",
-            "seq": 9,
+            "seq": 8,
             "statement": {
-              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "last": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
               "members": -2
             },
             "v": 1
           },
-          "record_id": "440f3b1837e01de36fb332c1e42534ed17398e2820c2d613d6815953f51ba05c",
+          "record_id": "a8cbf6150f6940a95cd7dc8534e04023bc27b5e51b5bc0c9ccb3d81bccb464e5",
           "expect": "close_statement",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
-            "size": 4
+            "root": "7062de735e2776374b9ab69f652be3eacdd5370d0f7986218830aaa96406fb93",
+            "size": 3
           },
           "checkpoint_commits": true
         },
@@ -765,19 +791,19 @@
               }
             ],
             "record_type": "subject_close",
-            "seq": 9,
+            "seq": 8,
             "statement": {
-              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "last": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
               "members": 2
             },
             "v": 1
           },
-          "record_id": "a8cbf6150f6940a95cd7dc8534e04023bc27b5e51b5bc0c9ccb3d81bccb464e5",
+          "record_id": "41ba7965135ed0666fcf48baeee246632d56a888367f34cdf6c6b30b7a96983a",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
-            "size": 5
+            "root": "1abccf38ad70e08729548bf0e9a14c68fc990ea54ea28772717c84d212b7daa8",
+            "size": 4
           },
           "checkpoint_commits": true
         },
@@ -794,19 +820,19 @@
               }
             ],
             "record_type": "subject_close",
-            "seq": 10,
+            "seq": 9,
             "statement": {
-              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "last": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
               "members": 2
             },
             "v": 1
           },
-          "record_id": "41ba7965135ed0666fcf48baeee246632d56a888367f34cdf6c6b30b7a96983a",
+          "record_id": "7093b8c226649d4607c1908c8ba8fc53209bc542cd17ed1f5aa73b4bffe60b79",
           "expect": "close_again",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
-            "size": 5
+            "root": "1abccf38ad70e08729548bf0e9a14c68fc990ea54ea28772717c84d212b7daa8",
+            "size": 4
           },
           "checkpoint_commits": true
         },
@@ -826,15 +852,15 @@
               }
             ],
             "record_type": "exchange",
-            "seq": 10,
+            "seq": 9,
             "v": 1
           },
-          "record_id": "7093b8c226649d4607c1908c8ba8fc53209bc542cd17ed1f5aa73b4bffe60b79",
+          "record_id": "bc4f2711901c0aa282707549c3aa2e7cdf7017744c0c96cc6e8b893ce34c5370",
           "expect": "member_after_close",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
-            "size": 5
+            "root": "1abccf38ad70e08729548bf0e9a14c68fc990ea54ea28772717c84d212b7daa8",
+            "size": 4
           },
           "checkpoint_commits": true
         },
@@ -854,15 +880,15 @@
               }
             ],
             "record_type": "exchange",
-            "seq": 10,
+            "seq": 9,
             "v": 1
           },
-          "record_id": "bc4f2711901c0aa282707549c3aa2e7cdf7017744c0c96cc6e8b893ce34c5370",
+          "record_id": "d520cbfb0ad839c717c5bf45c55aa63ab8d48a4e8c854904c660649e7aec73c7",
           "expect": "cites_root_without_id",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
-            "size": 5
+            "root": "1abccf38ad70e08729548bf0e9a14c68fc990ea54ea28772717c84d212b7daa8",
+            "size": 4
           },
           "checkpoint_commits": true
         },
@@ -878,20 +904,20 @@
                 "type": "cites"
               },
               {
-                "target": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+                "target": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
                 "type": "cites"
               }
             ],
             "record_type": "disclosure",
-            "seq": 10,
+            "seq": 9,
             "v": 1
           },
-          "record_id": "d520cbfb0ad839c717c5bf45c55aa63ab8d48a4e8c854904c660649e7aec73c7",
+          "record_id": "1e076d7d23a064475c25f1cf9b3135543c7cdba69f37b9f2d02a96656150c4e1",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
-            "size": 5
+            "root": "1abccf38ad70e08729548bf0e9a14c68fc990ea54ea28772717c84d212b7daa8",
+            "size": 4
           },
           "checkpoint_commits": true
         },
@@ -903,7 +929,7 @@
             "epistemic_type": "producer_claim",
             "links": [],
             "record_type": "subject_root",
-            "seq": 11,
+            "seq": 10,
             "statement": {
               "membership": "field:/correlation/exchange_id",
               "subject_id": "exchange-3",
@@ -911,12 +937,12 @@
             },
             "v": 1
           },
-          "record_id": "1e076d7d23a064475c25f1cf9b3135543c7cdba69f37b9f2d02a96656150c4e1",
+          "record_id": "82526bd8d18675a5aefb365f0bd6297426ece6c83488a4cc62c913614edad513",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "6f220916b04bc8e5f9af69368c464fd1009137153f0136d887758807af4d7476",
-            "size": 6
+            "root": "4328f9857132981fa099dc2ca088d8e6e82cc7633bd3e486ffb66645a47d9d4d",
+            "size": 5
           },
           "checkpoint_commits": true
         }
@@ -929,14 +955,6 @@
         {
           "record_id": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
           "held_under": ""
-        },
-        {
-          "record_id": "073e9e4ee89170f503c51a8a709fa335eca15f876b66b3acbd3045be4f43a451",
-          "held_under": ""
-        },
-        {
-          "record_id": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
-          "held_under": "exchange-1"
         },
         {
           "record_id": "12825020c82ffd11c98e9db63f48f2adc93ce135d4ee0f4969245097c1b2bfb0",
@@ -955,15 +973,19 @@
           "held_under": "exchange-1"
         },
         {
-          "record_id": "a8cbf6150f6940a95cd7dc8534e04023bc27b5e51b5bc0c9ccb3d81bccb464e5",
-          "held_under": ""
-        },
-        {
-          "record_id": "d520cbfb0ad839c717c5bf45c55aa63ab8d48a4e8c854904c660649e7aec73c7",
+          "record_id": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
           "held_under": "exchange-1"
         },
         {
+          "record_id": "41ba7965135ed0666fcf48baeee246632d56a888367f34cdf6c6b30b7a96983a",
+          "held_under": ""
+        },
+        {
           "record_id": "1e076d7d23a064475c25f1cf9b3135543c7cdba69f37b9f2d02a96656150c4e1",
+          "held_under": "exchange-1"
+        },
+        {
+          "record_id": "82526bd8d18675a5aefb365f0bd6297426ece6c83488a4cc62c913614edad513",
           "held_under": ""
         }
       ]
@@ -1067,7 +1089,7 @@
           "checkpoint_commits": false
         },
         {
-          "note": "the log root, its members named in other cases",
+          "note": "a log root, its members named in other cases",
           "header": {
             "book_id": "subject-vectors/decoding",
             "committed_at": "2026-11-27T00:00:00Z",
@@ -1083,10 +1105,35 @@
             "v": 1
           },
           "record_id": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          },
+          "checkpoint_commits": false
+        },
+        {
+          "note": "the log root",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": {
+              "membership": "log",
+              "subject_id": "d",
+              "subject_kind": "deal"
+            },
+            "v": 1
+          },
+          "record_id": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "root": "919219e37c160f0cbb4c2db9bcf2d38beb91e92d332cfaf754c46550043afb13",
             "size": 1
           },
           "checkpoint_commits": true
@@ -1099,7 +1146,7 @@
             "epistemic_type": "producer_claim",
             "links": [
               {
-                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "target": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
                 "type": "closes"
               }
             ],
@@ -1111,11 +1158,11 @@
             },
             "v": 1
           },
-          "record_id": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
+          "record_id": "a25e47ecd18bc05d10f20b80225122ffc20c93f341f4a892d07dedb173924cdd",
           "expect": "close_statement",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "root": "919219e37c160f0cbb4c2db9bcf2d38beb91e92d332cfaf754c46550043afb13",
             "size": 1
           },
           "checkpoint_commits": true
@@ -1128,7 +1175,7 @@
             "epistemic_type": "producer_claim",
             "links": [
               {
-                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "target": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
                 "type": "closes"
               }
             ],
@@ -1140,11 +1187,11 @@
             },
             "v": 1
           },
-          "record_id": "a25e47ecd18bc05d10f20b80225122ffc20c93f341f4a892d07dedb173924cdd",
+          "record_id": "7ba5383a3690787d770a1e40d7347d74b27a05315cfcd7e01bde31a5edaee634",
           "expect": "close_statement",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "root": "919219e37c160f0cbb4c2db9bcf2d38beb91e92d332cfaf754c46550043afb13",
             "size": 1
           },
           "checkpoint_commits": true
@@ -1157,7 +1204,7 @@
             "epistemic_type": "producer_claim",
             "links": [
               {
-                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "target": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
                 "type": "closes"
               }
             ],
@@ -1169,11 +1216,11 @@
             },
             "v": 1
           },
-          "record_id": "7ba5383a3690787d770a1e40d7347d74b27a05315cfcd7e01bde31a5edaee634",
+          "record_id": "0d2741d14a3c8c43fb0bdbbd7c08b4861fad7eaa004be968bce050e1b14ed13e",
           "expect": "close_statement",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "root": "919219e37c160f0cbb4c2db9bcf2d38beb91e92d332cfaf754c46550043afb13",
             "size": 1
           },
           "checkpoint_commits": true
@@ -1186,7 +1233,7 @@
             "epistemic_type": "producer_claim",
             "links": [
               {
-                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "target": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
                 "type": "closes"
               }
             ],
@@ -1199,11 +1246,11 @@
             },
             "v": 1
           },
-          "record_id": "0d2741d14a3c8c43fb0bdbbd7c08b4861fad7eaa004be968bce050e1b14ed13e",
+          "record_id": "ea5b8eab50c76aeca64b63eeae89df77c605d73f789d071c0b35bab6f9e43a75",
           "expect": "close_statement",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "root": "919219e37c160f0cbb4c2db9bcf2d38beb91e92d332cfaf754c46550043afb13",
             "size": 1
           },
           "checkpoint_commits": true
@@ -1216,7 +1263,7 @@
             "epistemic_type": "producer_claim",
             "links": [
               {
-                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "target": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
                 "type": "closes"
               }
             ],
@@ -1225,11 +1272,11 @@
             "statement": {},
             "v": 1
           },
-          "record_id": "ea5b8eab50c76aeca64b63eeae89df77c605d73f789d071c0b35bab6f9e43a75",
+          "record_id": "addcc2067f0c97d9298a0481ce2e286c1b774308b00b7bfb756ed480245e3bb6",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "f01a2d0f0b50e6b4c2f37856f451caf1912bc5b7abd83a3db3caee5888599d8a",
+            "root": "581c7a9c9d23be522271544856aca55360a48a0d1a11aa00ac5f247696735c51",
             "size": 2
           },
           "checkpoint_commits": true
@@ -1237,11 +1284,11 @@
       ],
       "correlation": [
         {
-          "record_id": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+          "record_id": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
           "held_under": ""
         },
         {
-          "record_id": "ea5b8eab50c76aeca64b63eeae89df77c605d73f789d071c0b35bab6f9e43a75",
+          "record_id": "addcc2067f0c97d9298a0481ce2e286c1b774308b00b7bfb756ed480245e3bb6",
           "held_under": ""
         }
       ]
@@ -1276,7 +1323,7 @@
           "checkpoint_commits": true
         },
         {
-          "note": "an empty subject's close stating null members: admitted",
+          "note": "an empty subject's close naming its members in other cases",
           "header": {
             "book_id": "subject-vectors/close-decoding",
             "committed_at": "2026-11-27T00:00:00Z",
@@ -1296,10 +1343,39 @@
             "v": 1
           },
           "record_id": "b8100fb0db6e8e631afed1117c2064b8ea6cdefa30a78cb6ae94a7044603d57e",
+          "expect": "close_statement",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "556fb4ee781c5f5ac5fd5633f4de8e1d31a78111acab73c76e66ca186d1ab5a8",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an empty subject's close stating null members: admitted",
+          "header": {
+            "book_id": "subject-vectors/close-decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "606a500e9eb1be34ffcab0c2dbce51b22ca97c63191b9993e1522022935757ba",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 2,
+            "statement": {
+              "last": null,
+              "members": null
+            },
+            "v": 1
+          },
+          "record_id": "2f609ee2675ff15e1dac50b97e76b3e441d8b68afc0aeaa83195b144178465f6",
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "5e0d9b55ab13db79d21ed64a75b0e453cd589e739726aec567922c18e1cc1f55",
+            "root": "1bf7a7e6663b955ec88312faf355f8858eda98a0e161bd8a50118e01c085e2b1",
             "size": 2
           },
           "checkpoint_commits": true
@@ -1311,7 +1387,7 @@
           "held_under": ""
         },
         {
-          "record_id": "b8100fb0db6e8e631afed1117c2064b8ea6cdefa30a78cb6ae94a7044603d57e",
+          "record_id": "2f609ee2675ff15e1dac50b97e76b3e441d8b68afc0aeaa83195b144178465f6",
           "held_under": ""
         }
       ]
