@@ -467,6 +467,168 @@ fi
 rm -rf "$qtmp"
 rm -rf "$qmod"
 
+# scripts/ci-local.sh (evidencebook#1038) against a fake act, in a fixture
+# repository with its own origin: two synthetic workflows, one with a
+# pull_request paths list, a Linux-only step and a windows job.
+cl=$(mktemp -d)
+mkdir -p "$cl/bin"
+git init -q --bare "$cl/origin.git"
+git clone -q "$cl/origin.git" "$cl/repo" 2> /dev/null
+mkdir -p "$cl/repo/.github/workflows" "$cl/repo/scripts" "$cl/repo/docs"
+cp "$here/../../scripts/ci-local.sh" "$cl/repo/scripts/"
+cp -R "$here/../act" "$cl/repo/.github/act"
+cp "$here/../leak_lint.py" "$here/../leak_lint_allowlist.txt" "$cl/repo/.github/"
+cat > "$cl/repo/.github/workflows/always.yml" <<'WF'
+on:
+  pull_request:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Everywhere
+        run: true
+      - uses: actions/setup-go@0000000000000000000000000000000000000000
+      - name: Linux only
+        if: env.ACT != 'true'
+        run: true
+  win:
+    runs-on: windows-latest
+    steps:
+      - run: true
+WF
+cat > "$cl/repo/.github/workflows/docs.yml" <<'WF'
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+WF
+cat > "$cl/repo/.github/workflows/flow.yml" <<'WF'
+on:
+  pull_request:
+    paths: ['docs/**', "nowhere/**", 'odd/a,b.md']
+jobs:
+  flow:
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+WF
+printf 'leak me\n' > "$cl/repo/docs/a.md"
+printf 'readme\n' > "$cl/repo/README.md"
+(cd "$cl/repo" && git add .github scripts docs README.md && git -c user.name=t -c user.email=t@t commit -qm base &&
+  git push -q origin HEAD:main 2> /dev/null && git fetch -q origin)
+# The fake act logs whether it saw LEAK_LINT_TERMS, the workflows it was given
+# and the checkout's workflow files, then reports each given workflow's job.
+cat > "$cl/bin/act" <<'FAKE'
+#!/usr/bin/env bash
+dir=""
+locals=""
+while (($#)); do
+  [[ "$1" == -W ]] && dir=$2
+  [[ "$1" == --local-repository ]] && locals+="$2 "
+  shift
+done
+{
+  echo "locals=$locals"
+  echo "terms=${LEAK_LINT_TERMS:+seen}"
+  echo "given=$(cd "$dir" && ls | sort | paste -sd ' ' -)"
+  echo "checkout=$(ls .github/workflows | sort | paste -sd ' ' -)"
+} >> "$ACT_LOG"
+[[ -z "${FAKE_ACT_SLEEP:-}" ]] || sleep "$FAKE_ACT_SLEEP"
+for f in "$dir"/*.yml; do
+  if [[ -n "${FAKE_ACT_FAIL:-}" ]]; then echo "[${f##*/}/build]   ❌  Failure - Main step"; echo "[${f##*/}/build] 🏁  Job failed"; exit 1; fi
+  echo "[${f##*/}/build] 🏁  Job succeeded"
+done
+FAKE
+chmod +x "$cl/bin/act"
+cl_run() { # description, want exit, changed file on the branch, env...
+  local what=$1 want=$2 change=$3 st=0
+  shift 3
+  (cd "$cl/repo" && git checkout -q -B t origin/main && mkdir -p "$(dirname "$change")" && echo x >> "$change" && git add "$change" &&
+    git -c user.name=t -c user.email=t@t commit -qm change)
+  : > "$cl/act.log"
+  (cd "$cl/repo" && env PATH="$cl/bin:$PATH" ACT_LOG="$cl/act.log" "$@" bash scripts/ci-local.sh) > "$cl/out" 2>&1 || st=$?
+  if ((st != want)); then
+    printf 'FAIL %s: exit %d, want %d\n%s\n' "$what" "$st" "$want" "$(tail -15 "$cl/out")"
+    fails=$((fails + 1))
+    return 1
+  fi
+}
+check() { # description, command...
+  local what=$1
+  shift
+  if "$@"; then printf 'ok   %s\n' "$what"; else
+    printf 'FAIL %s\n%s\n' "$what" "$(tail -15 "$cl/out")"
+    fails=$((fails + 1))
+  fi
+}
+standins_from_clone() {
+  local l
+  l=$(grep '^locals=' "$cl/act.log")
+  [[ "$l" == *"actions/setup-go@0000000000000000000000000000000000000000="*"/.github/act/setup-go "* && "$l" != *"=$cl/repo/"* ]]
+}
+if cl_run "ci-local: a change outside docs/" 0 README.md LEAK_LINT_TERMS='{"x":["never-present-term"]}'; then
+  check "ci-local: a paths-filtered workflow does not run for a change outside its paths" grep -qx 'given=always.yml' "$cl/act.log"
+  check "ci-local: the leak-lint term list never reaches act" grep -qx 'terms=' "$cl/act.log"
+  check "ci-local: the checkout act runs in keeps every workflow file" grep -qx 'checkout=always.yml docs.yml flow.yml' "$cl/act.log"
+  check "ci-local: the summary names the Linux-only step" grep -q 'step always.yml/build: Linux only' "$cl/out"
+  check "ci-local: the summary names the job on another runner" grep -q 'runner always.yml/win (windows-latest)' "$cl/out"
+  check "ci-local: the base revision's scanner ran with the given terms" grep -qx 'leak-lint: ok' "$cl/out"
+  check "ci-local: the stand-ins come from the merged tree, not the checkout" standins_from_clone
+fi
+if cl_run "ci-local: a docs/ change" 0 docs/a.md; then
+  check "ci-local: a docs/ change runs the block-list and the quoted flow-list workflows too" \
+    grep -qx 'given=always.yml docs.yml flow.yml' "$cl/act.log"
+  check "ci-local: without a term list, leak-lint is reported skipped" grep -q '^leak-lint: skipped: no local term list' "$cl/out"
+fi
+cl_run "ci-local: a change to a quoted path holding a comma" 0 'odd/a,b.md' &&
+  check "ci-local: a quoted flow-list path holding a comma matches whole" grep -qx 'given=always.yml flow.yml' "$cl/act.log"
+cl_run "ci-local: leak-lint finds a term in a tracked file" 1 README.md LEAK_LINT_TERMS='{"x":["leak me"]}' &&
+  check "ci-local: leak-lint finds a term in a tracked file and fails" grep -qx 'leak-lint: FAIL' "$cl/out"
+cl_run "ci-local: a failing job fails the run" 1 README.md FAKE_ACT_FAIL=1 &&
+  check "ci-local: a failing job's step is printed" grep -q 'Failure - Main step' "$cl/out"
+cl_run "ci-local: a hung act run is stopped at CI_LOCAL_TIMEOUT" 1 README.md FAKE_ACT_SLEEP=30 CI_LOCAL_TIMEOUT=2s &&
+  check "ci-local: the timeout is reported" grep -q 'passed CI_LOCAL_TIMEOUT' "$cl/out"
+# A workflow main gained after the branch left it runs: the merged tree's
+# workflows are the ones GitHub would run.
+(cd "$cl/repo" && git checkout -q -B late origin/main && sed 's/docs:/late:/' .github/workflows/docs.yml |
+  sed 's/"docs\/\*\*"/"README.md"/' > .github/workflows/late.yml && git add .github/workflows/late.yml &&
+  git -c user.name=t -c user.email=t@t commit -qm late && git push -q origin HEAD:main 2> /dev/null && git fetch -q origin &&
+  git checkout -q -B t origin/main~1 && echo x >> README.md && git add README.md &&
+  git -c user.name=t -c user.email=t@t commit -qm change)
+: > "$cl/act.log"
+if (cd "$cl/repo" && env PATH="$cl/bin:$PATH" ACT_LOG="$cl/act.log" bash scripts/ci-local.sh) > "$cl/out" 2>&1; then
+  check "ci-local: a workflow main gained after the branch diverged runs" grep -qx 'given=always.yml late.yml' "$cl/act.log"
+else
+  printf 'FAIL ci-local: the run with a late base workflow exited nonzero\n%s\n' "$(tail -15 "$cl/out")"
+  fails=$((fails + 1))
+fi
+# chrome.sh leaves a lock another install holds, and its install, alone.
+if [[ "$(uname -s)" == Darwin ]]; then
+  mkdir -p "$cl/cache/chrome/0.0.0-mac-$(uname -m | sed 's/x86_64/x64/').lock"
+  if EB_CI_CACHE="$cl/cache" CHROME_LOCK_WAIT=1 bash "$cl/repo/.github/act/chrome.sh" 0.0.0 > /dev/null 2>&1; then
+    printf 'FAIL chrome.sh: ran while another install held the lock\n'
+    fails=$((fails + 1))
+  elif [[ -d "$cl/cache/chrome/0.0.0-mac-$(uname -m | sed 's/x86_64/x64/').lock" ]]; then
+    printf 'ok   chrome.sh: a held lock makes it stop and stays in place\n'
+  else
+    printf 'FAIL chrome.sh: removed a lock it did not take\n'
+    fails=$((fails + 1))
+  fi
+fi
+if (cd "$cl/repo" && bash scripts/ci-local.sh --list) > "$cl/out" 2>&1; then
+  check "ci-local --list: names what does not run here" grep -q 'runner always.yml/win (windows-latest)' "$cl/out"
+else
+  printf 'FAIL ci-local --list exited nonzero\n'
+  fails=$((fails + 1))
+fi
+rm -rf "$cl"
+
 if ((fails)); then
   printf '%d failed\n' "$fails"
   exit 1

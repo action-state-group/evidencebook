@@ -1,0 +1,25 @@
+# Local stand-in for dtolnay/rust-toolchain under scripts/ci-local.sh: the
+# asked toolchain through rustup for this job's later steps (RUSTUP_TOOLCHAIN,
+# so a directory or environment override cannot swap in another compiler),
+# with the asked components added to that toolchain. The machine's default
+# toolchain is left as it is.
+name: rust-toolchain (local)
+inputs:
+  toolchain: {required: false, default: stable}
+  components: {required: false, default: ""}
+  targets: {required: false, default: ""}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        TOOLCHAIN: ${{ inputs.toolchain }}
+        COMPONENTS: ${{ inputs.components }}
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        rustup toolchain install --profile minimal --no-self-update "$TOOLCHAIN"
+        for c in ${COMPONENTS//,/ }; do rustup component add --toolchain "$TOOLCHAIN" "$c"; done
+        for t in ${TARGETS//,/ }; do rustup target add --toolchain "$TOOLCHAIN" "$t"; done
+        echo "RUSTUP_TOOLCHAIN=$TOOLCHAIN" >> "$GITHUB_ENV"
+        RUSTUP_TOOLCHAIN=$TOOLCHAIN rustc --version
+        RUSTUP_TOOLCHAIN=$TOOLCHAIN cargo --version

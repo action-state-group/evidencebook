@@ -100,11 +100,11 @@ jobs:
       # runner's Chrome (contract_informational_test.go).
       - name: Tests and examples
         env:
-          EVIDENCEBOOK_CHROME: /usr/bin/google-chrome
+          EVIDENCEBOOK_CHROME: google-chrome
         run: go test -count=1 ./...
       - name: Tests under the race detector
         env:
-          EVIDENCEBOOK_CHROME: /usr/bin/google-chrome
+          EVIDENCEBOOK_CHROME: google-chrome
         run: go test -race -count=1 ./...
 
   result:

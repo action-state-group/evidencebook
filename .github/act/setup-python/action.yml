@@ -1,0 +1,18 @@
+# Local stand-in for actions/setup-python under scripts/ci-local.sh: a fresh
+# virtual environment of the asked version for this job alone (uv), first on
+# PATH, so jobs that pin different packages never share site-packages.
+name: setup-python (local)
+inputs:
+  python-version: {required: true}
+  cache: {required: false}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        VERSION: ${{ inputs.python-version }}
+      run: |
+        venv=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/py-$VERSION-XXXXXX")
+        uv venv -q --seed -p "$VERSION" "$venv"
+        echo "$venv/bin" >> "$GITHUB_PATH"
+        "$venv/bin/python" --version

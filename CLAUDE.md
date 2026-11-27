@@ -22,6 +22,16 @@ Chrome or capsule-engine (deal pages, presentation pass, the Goose loop) run
 on main and the nightly; run them as listed below when you change what they
 cover.
 
+**`scripts/ci-local.sh` runs a pull request's CI on this machine**
+(evidencebook#1038): every job of every workflow a pull request triggers, read
+from the workflow files of HEAD merged into `origin/main`, with
+[act](https://nektosact.com) (`brew install act`) on the host and the setup
+actions replaced by the stand-ins in `.github/act/` (a uv environment per job,
+Chrome for Testing at the pinned version). `--list` names what it cannot run
+here: the steps marked `if: env.ACT != 'true'` (Linux only), Rust's windows
+job, and leak-lint while this machine has no term list (CI-only until one
+exists, as decided on evidencebook#1038).
+
 ```bash
 # Go (repository root; the module github.com/action-state-group/evidencebook, Go 1.27)
 test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum

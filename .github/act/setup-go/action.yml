@@ -1,0 +1,19 @@
+# Local stand-in for actions/setup-go under scripts/ci-local.sh (act on this
+# machine): the go on PATH, which must be at least the go.mod's go line.
+name: setup-go (local)
+inputs:
+  go-version-file: {required: false, default: go.mod}
+  go-version: {required: false}
+  cache: {required: false}
+  cache-dependency-path: {required: false}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        FILE: ${{ inputs.go-version-file }}
+      run: |
+        want=$(awk '$1 == "go" {print $2; exit}' "$FILE")
+        have=$(go env GOVERSION); have=${have#go}
+        printf 'go %s (the module asks for %s)\n' "$have" "$want"
+        [[ "$(printf '%s\n%s\n' "$want" "$have" | sort -V | head -1)" == "$want" ]] || { echo "go $have is older than $want" >&2; exit 1; }

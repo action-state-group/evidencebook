@@ -1,0 +1,21 @@
+# Local stand-in for browser-actions/setup-chrome under scripts/ci-local.sh:
+# Chrome for Testing at the asked version, installed once by ../chrome.sh.
+name: setup-chrome (local)
+inputs:
+  chrome-version: {required: true}
+  install-dependencies: {required: false}
+outputs:
+  chrome-path:
+    value: ${{ steps.install.outputs.chrome-path }}
+  chrome-version:
+    value: ${{ inputs.chrome-version }}
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        VERSION: ${{ inputs.chrome-version }}
+      run: |
+        path=$("${EB_CI_CHROME_SH:?scripts/ci-local.sh sets it}" "$VERSION")
+        echo "chrome-path=$path" >> "$GITHUB_OUTPUT"
