@@ -35,12 +35,27 @@ func cadenceClaim(value map[string]interface{}, dealStatement []byte, directory 
 	if chain["state"] != "witnessed" {
 		return aacbundle.ClaimResult{}, nil, false
 	}
-	fail := func(finding string) (aacbundle.ClaimResult, []map[string]any, bool) {
-		return aacbundle.ClaimResult{Status: "fail", Findings: []string{finding}}, []map[string]any{}, true
-	}
 	if dealStatement == nil {
 		return aacbundle.ClaimResult{Status: "withheld", Findings: []string{"checkpoint_unverified"}}, []map[string]any{}, true
 	}
+	witnesses, statement, finding := cadenceChainChecked(chain, dealStatement)
+	if finding != "" {
+		return aacbundle.ClaimResult{Status: "fail", Findings: []string{finding}}, []map[string]any{}, true
+	}
+	result, receipts = receiptsClaim(witnesses, statement, directory, "cadence")
+	return result, receipts, true
+}
+
+// cadenceChainChecked checks a witnessed cadence chain's structure against
+// the deal checkpoint it is for (dealStatement, the bundle's signed
+// checkpoint): the leaf names that checkpoint (or, witnessed in part, an
+// earlier one it extends), the path folds to an entry the cadence log's
+// signed checkpoint includes, and that checkpoint is signed by the deal's
+// key. It returns the cadence entry's witness receipts and the cadence
+// checkpoint they are over, or the finding that failed. Receipts are not
+// checked here.
+func cadenceChainChecked(chain map[string]interface{}, dealStatement []byte) (witnesses interface{}, statement []byte, finding string) {
+	fail := func(f string) (interface{}, []byte, string) { return nil, nil, f }
 	deal, err := checkpoint.ParseRecord(dealStatement)
 	if err != nil {
 		return fail("cadence_deal_checkpoint_malformed")
@@ -108,7 +123,7 @@ func cadenceClaim(value map[string]interface{}, dealStatement []byte, directory 
 	inner, _ := chain["cadence"].(map[string]interface{})
 	cp, _ := inner["checkpoint"].(map[string]interface{})
 	encoded, _ := cp["cose"].(string)
-	statement, err := base64.RawURLEncoding.DecodeString(encoded)
+	statement, err = base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
 		return fail("cadence_checkpoint_malformed")
 	}
@@ -132,8 +147,7 @@ func cadenceClaim(value map[string]interface{}, dealStatement []byte, directory 
 		return fail("cadence_entry_not_included")
 	}
 
-	result, receipts = receiptsClaim(inner["witnesses"], statement, directory, "cadence")
-	return result, receipts, true
+	return inner["witnesses"], statement, ""
 }
 
 func JSONUint(v interface{}) (uint64, error) {

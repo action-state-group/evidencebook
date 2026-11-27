@@ -81,7 +81,13 @@ func retailDeal(t *testing.T) string {
 // signer, as a witness delivery would.
 func deliver(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey) {
 	t.Helper()
-	storeReceipt(t, p, size, signer)
+	deliverAt(t, p, size, signer, time.Time{})
+}
+
+// deliverAt is deliver with a receipt that states its registration time iat.
+func deliverAt(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey, iat time.Time) {
+	t.Helper()
+	storeReceiptAt(t, p, size, signer, iat)
 	// The cadence records the receipt as the next deal command does
 	// (witnessNativeTicks): the tick's leaves become witnessed.
 	s, err := openDealSession(t.Context(), p)
@@ -98,6 +104,13 @@ func deliver(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey
 // tells the cadence.
 func storeReceipt(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey) {
 	t.Helper()
+	storeReceiptAt(t, p, size, signer, time.Time{})
+}
+
+// storeReceiptAt is storeReceipt with a receipt that states its registration
+// time iat (none when iat is zero).
+func storeReceiptAt(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey, iat time.Time) {
+	t.Helper()
 	target, err := openOwnedTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, target.Close()) }()
@@ -110,7 +123,7 @@ func storeReceipt(t *testing.T, p cli.Profile, size uint64, signer ed25519.Priva
 	entry, err := record.EntryHash()
 	require.NoError(t, err)
 	next := state
-	next.Receipt = &cll.WitnessReceiptState{Bytes: mintReceipt(t, entry, signer), EntryHash: hex.EncodeToString(entry), EntryHashScheme: witness.EntryHashSchemeCheckpointDigest, LeafIndex: ptr(int64(0)), TreeSize: ptr(int64(1))}
+	next.Receipt = &cll.WitnessReceiptState{Bytes: mintReceiptAt(t, entry, signer, iat), EntryHash: hex.EncodeToString(entry), EntryHashScheme: witness.EntryHashSchemeCheckpointDigest, LeafIndex: ptr(int64(0)), TreeSize: ptr(int64(1))}
 	require.NoError(t, target.Log.CommitWitness(t.Context(), state.Attempts, next))
 }
 
