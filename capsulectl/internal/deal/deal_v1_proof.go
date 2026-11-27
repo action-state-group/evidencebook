@@ -43,7 +43,9 @@ deal tick once one is due, then this again.
 On an x-deal-v0 deal, the file is your book's witnessed cadence chain for that
 checkpoint: deal verify --bundle COPY --stamp-proof FILE --witness-directory W
 reads it and reports the copy's witness time, and deal report --html
---witness-directory W puts that time on your own page. A chain witnessed only
+--witness-directory W puts that time on your own page. Keep this file to
+yourself: it shows your book's position and cadence, which is why no copy you
+share carries it. A chain witnessed only
 for an earlier checkpoint gives no time for this copy.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
