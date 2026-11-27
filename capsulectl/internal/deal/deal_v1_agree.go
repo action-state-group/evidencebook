@@ -42,7 +42,10 @@ seals capsule-engine's decision for the deal, and with no --admit the
 agreement cites that one. --admit naming an admit ` + "`deal admit`" + ` sealed for
 another deal is refused, and so is one other than the deal's own when it has
 one. --intent is the
-digest of your journal's intent for the task, when you sealed one. The
+digest of your journal's intent for the task; with none, the agreement cites
+the deal's opening intent (deal note --kind intent --opening) when it is
+sealed, which on a buyer's deal names the seller by commitment, so seal the
+opening before you agree. The
 agreement takes the offer's rows, witnesses, adjudicator and forums as they
 are.
 
@@ -71,6 +74,11 @@ Needs the deal store in the new layout (deal set-version x-deal-v1
 				if err := s.ensureV1Tables(ctx); err != nil {
 					return err
 				}
+				if intent == "" {
+					if intent, err = s.openingIntent(ctx, offerDigest); err != nil {
+						return err
+					}
+				}
 				ag, err := s.store.Agree(ctx, cad, offerDigest, dealapi.AgreeOptions{Admit: admit, Intent: intent})
 				if err != nil {
 					return libErr(err)
@@ -80,9 +88,32 @@ Needs the deal store in the new layout (deal set-version x-deal-v1
 		},
 	}
 	cmd.Flags().String("admit", "", "The digest of your journal's admission decision for this deal (default: the one `deal admit` sealed for it)")
-	cmd.Flags().String("intent", "", "The digest of your journal's intent for the task, when you sealed one")
+	cmd.Flags().String("intent", "", "The digest of your journal's intent for the task (default: the deal's opening intent, when sealed)")
 	cmd.Flags().String("out", "", "Where to write the file to send (default: standard output)")
 	return cmd
+}
+
+// openingIntent is the record digest of the opening intent of the deal the
+// offer is of, "" when none is sealed yet: the intent an agreement cites by
+// default, which names the seller on a buyer's deal (evidencebook#1031). An
+// opening sealed after the agreement is not cited, since an agreement is
+// sealed once.
+func (s *dealSession) openingIntent(ctx context.Context, offerDigest string) (string, error) {
+	offer, err := s.offerByDigest(ctx, offerDigest)
+	if err != nil || offer == nil {
+		// Store.Agree names an offer it does not hold.
+		return "", err
+	}
+	// The recovering read: an opening a stopped run stored but did not
+	// append to the journal is appended here, so the digest cited is held.
+	events, err := s.v1Events(ctx, offer.Record.Block.DealID)
+	if err != nil {
+		return "", err
+	}
+	if len(events) < 2 || events[0].Event.Kind != "open" || events[1].Event.Kind != "intent" {
+		return "", nil
+	}
+	return events[1].Digest, nil
 }
 
 // writeAgreement writes the holder's agreement as the file to send, with its
