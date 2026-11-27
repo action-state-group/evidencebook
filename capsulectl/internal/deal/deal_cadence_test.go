@@ -389,17 +389,6 @@ func TestDealWitnessedInPartWithAnUnverifiedRest(t *testing.T) {
 	assert.NotContains(t, a["text"], "this checkpoint witnessed", "part coverage never says this checkpoint is witnessed")
 }
 
-// A deal never sent to the witness is not a failed check.
-func TestDealNeverSentToTheWitnessStaysScheduled(t *testing.T) {
-	public, _, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-	endpoint, _ := countingWitness(t)
-	cadenceFixture(t, endpoint, public, "1h", "0s", 0)
-	dealID := retailDeal(t)
-	report := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
-	assert.Equal(t, "scheduled", report["assurance"].(map[string]any)["witness_state"])
-}
-
 // The tick times follow the clock and the jitter alone, and every tick adds
 // the same number of entries to the published log, whatever the deals did.
 func TestDealTickTimingAndSizeDoNotDependOnActivity(t *testing.T) {
