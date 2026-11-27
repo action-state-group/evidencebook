@@ -56,8 +56,14 @@ const dealCopyAudience = cli.DealAudienceCounterparty
 const (
 	dealExchangeRequest  = "evidence_request"
 	dealExchangeResponse = "evidence_response"
-	dealExchangeAbsence  = "evidence_absence"
-	dealExchangeAnswered = "evidence_request_answered"
+	// dealExchangeAbsence is the library's name for a recorded absence, the
+	// one name the custody and record-kind profile v0 gives it
+	// (evidencebook#116). Absences recorded before it are typed
+	// dealExchangeAbsenceLegacy; sealed records are never rewritten, so every
+	// reader of the requests log accepts both names for good.
+	dealExchangeAbsence       = evidencebook.RecordTypeAbsence
+	dealExchangeAbsenceLegacy = "evidence_absence"
+	dealExchangeAnswered      = "evidence_request_answered"
 	// dealExchangeHeld is a request above the standard that the holder has
 	// not decided: pending, with no reply written.
 	dealExchangeHeld = "evidence_request_held"
@@ -238,7 +244,7 @@ func (s *dealSession) sentRequest(ctx context.Context, recordID string) (dealSen
 // outcomeOf is the one recorded outcome (a response or an absence) of a
 // request record, or nil while it is pending.
 func (s *dealSession) outcomeOf(ctx context.Context, recordID string) (*dealExchangeRow, error) {
-	rows, err := s.exchangeRows(ctx, `kind IN (?,?) AND cites=?`, dealExchangeResponse, dealExchangeAbsence, recordID)
+	rows, err := s.exchangeRows(ctx, `kind IN (?,?,?) AND cites=?`, dealExchangeResponse, dealExchangeAbsence, dealExchangeAbsenceLegacy, recordID)
 	if err != nil || len(rows) == 0 {
 		return nil, err
 	}
@@ -246,6 +252,12 @@ func (s *dealSession) outcomeOf(ctx context.Context, recordID string) (*dealExch
 		return nil, cli.ErrConflict
 	}
 	return &rows[0], nil
+}
+
+// isDealAbsence reports whether a requests-log kind is a recorded absence,
+// under its name or the one written before it.
+func isDealAbsence(kind string) bool {
+	return kind == dealExchangeAbsence || kind == dealExchangeAbsenceLegacy
 }
 
 // -- asking ----------------------------------------------------------------
@@ -1087,7 +1099,7 @@ func (s *dealSession) composeMember(ctx context.Context, dealID string, m compos
 		return nil, cli.InputError("member " + m.recordID + " has no recorded outcome: a pending request is not a member (record the answer with `request --response`, or its absence)")
 	}
 	member := map[string]interface{}{"id": m.recordID, "request_digest": sent.digest}
-	if outcome.kind == dealExchangeAbsence {
+	if isDealAbsence(outcome.kind) {
 		if m.responsePath != "" {
 			return nil, cli.InputError("member " + m.recordID + " is a recorded absence: nothing came back, so it takes no response file")
 		}
