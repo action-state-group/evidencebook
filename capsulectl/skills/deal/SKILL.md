@@ -125,8 +125,9 @@ every step in them.
   [references/purchase.md](references/purchase.md#one-errand-one-deal).
 - **Sale**: the user sells one item and buyers send offers:
   [references/sale.md](references/sale.md#sale).
-- **Where the user sells**: a payment the user received, or what the user
-  delivered:
+- **Where the user sells**: on a sale, the payment the user received for
+  it, or what the user delivered (a refund the user receives is under
+  Cancellation and refund):
   [references/sale.md](references/sale.md#where-the-user-sells-payment-received-and-what-was-delivered).
 - **Booking**: a hotel, flight, table, appointment, rental or ticket:
   [references/purchase.md](references/purchase.md#booking).
@@ -150,8 +151,9 @@ every step in them.
   [references/purchase.md](references/purchase.md#what-settled-means-and-the-persons-signature).
 - **Older deals**: an x-deal-v0 deal already open keeps its version: finish
   it with the procedures in [LEGACY-X-DEAL-V0.md](LEGACY-X-DEAL-V0.md). The
-  same file covers a counterparty that runs only x-deal-v0. Cancel-by date
-  and sale threads are there only.
+  same file covers a counterparty that runs only x-deal-v0. Cancel-by dates,
+  the party's own rules verdict and a sale's listing and buyer threads exist
+  only there, for x-deal-v0 deals; never use them on an x-deal-v1 deal.
 
 ## Sub-tasks
 
