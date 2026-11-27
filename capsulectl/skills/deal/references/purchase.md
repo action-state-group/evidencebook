@@ -136,7 +136,7 @@ A retail checkout is almost always the second shape.
    ```
 
    Only once that succeeds, make the payment (press the button, or tell the
-   sub-task to). When the user presses it themselves after a check that
+   sub-task to). When the button is the user's to press after a check that
    passed, ask them with the check's `approval_text`, as it is; after a
    pause, its card was shown in step 8, so just name the button. When the
    rail answers:
