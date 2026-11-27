@@ -595,6 +595,8 @@ while (($#)); do
 done
 {
   echo "locals=$locals"
+  echo "branch=$(git symbolic-ref --short HEAD 2> /dev/null)"
+  echo "xdg=${XDG_CACHE_HOME:-unset}"
   echo "terms=${LEAK_LINT_TERMS:+seen}"
   echo "given=$(cd "$dir" && ls | sort | paste -sd ' ' -)"
   echo "checkout=$(ls .github/workflows | sort | paste -sd ' ' -)"
@@ -643,6 +645,8 @@ if cl_run "ci-local: a change outside docs/" 0 README.md LEAK_LINT_TERMS='{"x":[
   check "ci-local: the base revision's scanner ran with the given terms" grep -qx 'leak-lint: ok' "$cl/out"
   check "ci-local: the summary gives each job's time, the sum of its steps" grep -qE '^ok +63s  always\.yml/build$' "$cl/out"
   check "ci-local: the stand-ins come from the merged tree, not the checkout" standins_from_clone
+  check "ci-local: act runs on a branch, so the checkout it copies keeps a refs/ directory" grep -qx 'branch=ci-local' "$cl/act.log"
+  check "ci-local: act keeps its per-job copies in the run's own directory" grep -qE '^xdg=/.+/xdg$' "$cl/act.log"
 fi
 if cl_run "ci-local: a docs/ change" 0 docs/a.md; then
   check "ci-local: a docs/ change runs the block-list and the quoted flow-list workflows too" \

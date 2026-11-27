@@ -88,7 +88,11 @@ git clone -q --shared --no-checkout "$root" "$work/repo" || exit 2
 (
   cd "$work/repo" &&
     git -c advice.detachedHead=false checkout -q "$base" &&
-    git -c user.name=ci-local -c user.email=ci-local@localhost merge -q --no-ff --no-edit "$head"
+    git -c user.name=ci-local -c user.email=ci-local@localhost merge -q --no-ff --no-edit "$head" &&
+    # A branch, so .git/refs is not empty: act copies the checkout without
+    # empty directories, and a .git without refs/ is no repository at all (a
+    # clone of a detached HEAD has no branch of its own).
+    git checkout -q -B ci-local
 ) > "$work/merge.log" 2>&1 || {
   echo "HEAD does not merge cleanly into origin/main; rebase first" >&2
   cat "$work/merge.log" >&2
@@ -181,12 +185,14 @@ EOF
   # The leak-lint term list never reaches a job: act imports this
   # environment into every job it runs on the host. No pager either: a step's
   # `git diff` would otherwise wait in one for input that never comes.
-  (cd "$work/repo" && env -u LEAK_LINT_TERMS timeout --kill-after=30 "${CI_LOCAL_TIMEOUT:-40m}" \
+  # act keeps a copy of the checkout per job under $XDG_CACHE_HOME/act and never
+  # removes it; this run's copies live in its work directory and go with it.
+  (cd "$work/repo" && env -u LEAK_LINT_TERMS XDG_CACHE_HOME="$work/xdg" timeout --kill-after=30 "${CI_LOCAL_TIMEOUT:-40m}" \
     act pull_request -W "$work/workflows" -e "$work/event.json" \
     -P ubuntu-latest=-self-hosted -P ubuntu-24.04=-self-hosted --concurrent-jobs "$n" \
     "${locals[@]}" --env EB_CI_CHROME_SH="$work/repo/.github/act/chrome.sh" \
     --env EB_CI_CACHE="${EB_CI_CACHE:-$HOME/Library/Caches/evidencebook-ci}" \
-    --env GIT_PAGER=cat --env PAGER=cat) < /dev/null > "$work/act.log" 2>&1 || status=$?
+    --env GIT_PAGER=cat --env PAGER=cat --env UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}") < /dev/null > "$work/act.log" 2>&1 || status=$?
   if ((status == 124 || status == 137)); then
     printf 'the act run passed CI_LOCAL_TIMEOUT (%s) and was stopped\n' "${CI_LOCAL_TIMEOUT:-40m}"
   fi
