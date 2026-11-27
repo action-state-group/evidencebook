@@ -455,6 +455,34 @@ if queued_run "queued: a failed package listing fails the pass" 1 "$qmod/rec6" C
   printf 'ok   queued: a failed package listing fails the pass\n'
 fi
 rm -rf "$qgo"
+# The race pass leaves only modernc.org packages uninstrumented: a race planted
+# in the module's own code still fails it, queued and as one go test run.
+cat > "$qmod/a/race_test.go" <<'GO'
+package a
+
+import "testing"
+
+func TestPlantedRace(t *testing.T) {
+	n := 0
+	done := make(chan bool)
+	go func() { n++; done <- true }()
+	n++
+	<-done
+	_ = n
+}
+GO
+for jobs in 2 ""; do
+  if queued_run "race pass with CAPSULE_TEST_JOBS=${jobs:-unset}" 1 "$qmod/rec-race" CAPSULE_TEST_PASS=race CAPSULE_TEST_JOBS="$jobs" \
+    CAPSULE_TEST_PKGS=./a; then
+    if grep -q 'WARNING: DATA RACE' "$qmod/rec-race.out"; then
+      printf 'ok   race pass (CAPSULE_TEST_JOBS=%s): a race in the module'"'"'s own code is reported\n' "${jobs:-unset}"
+    else
+      printf 'FAIL race pass (CAPSULE_TEST_JOBS=%s): failed without a DATA RACE report\n' "${jobs:-unset}"
+      fails=$((fails + 1))
+    fi
+  fi
+done
+rm "$qmod/a/race_test.go"
 qtmp=$(mktemp -d)
 printf 'package c\n\nfunc C() { undefined() }\n' > "$qmod/c/c.go"
 if queued_run "queued: a package without tests still builds" 1 "$qmod/rec4" CAPSULE_TEST_JOBS=2 TMPDIR="$qtmp"; then
