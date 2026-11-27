@@ -17,16 +17,16 @@ from dataclasses import dataclass, field
 from ..check import StageError, _go_quote
 from . import exact, rawjson
 from ..names import AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP
-from .names import ROLE_BUYER, ROLE_SELLER
+from .names import ROLE_BUYER, ROLE_SELLER, SIDE_OFFERER, TYPE_PROPOSE
 from .report import ROWS_LISTED, ROWS_NOT_STARTED, ROWS_WITHHELD, SIDE_ADJUDICATOR
 from .report_verify import STAGE_REPORT, ReportRead, verify_report
-from .sent import _compact, _err, _raw_message, verify_book
+from .sent import _compact, _err, _raw_message, verify_book, verify_sent
 from .start import STATE_STARTED
 
 __all__ = ["ReportBook", "ReportBundle", "verify_report_bundle"]
 
 _EXTENSION = {"sealed_report": None, "book": None}
-_BOOK = {"agreement": None, "relied_on": None}
+_BOOK = {"agreement": None, "relied_on": None, "offer": None}
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,9 @@ class ReportBook:
 
     agreement: bytes
     relied_on: dict[str, bytes] = field(default_factory=dict)
+    # The offer the agreement cites, as its sent pair {record, agent_input}
+    # (Go ``ReportBook.Offer``), on a keep or counterparty copy; None for none.
+    offer: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -67,8 +70,9 @@ class ReportBundle:
 
         relied = ",".join(f"{key(k)}:{text(self.book.relied_on[k])}"
                           for k in sorted(self.book.relied_on, key=lambda k: k.encode("utf-8")))
+        offer = "" if self.book.offer is None else f',"offer":{text(self.book.offer)}'
         out = (f'{{"sealed_report":{key(self.sealed_report)},"book":{{"agreement":{text(self.book.agreement)},'
-               f'"relied_on":{{{relied}}}}}}}')
+               f'"relied_on":{{{relied}}}{offer}}}}}')
         return out.encode("utf-8", "surrogateescape")
 
 
@@ -76,18 +80,19 @@ def _bad(detail: str) -> StageError:
     return _err(STAGE_REPORT, f"the x-deal-v1 extension: {detail}")
 
 
-def _read(ext: bytes) -> tuple[str, str | None, dict[str, str] | None]:
+def _read(ext: bytes) -> tuple[str, str | None, dict[str, str] | None, str | None]:
     """The extension as Go's ``strictUnmarshal`` into ``ReportBundle`` and
     ``exactObject`` read it: the sealed report id, the agreement's text (a
     null kept as the text ``null``, as ``json.RawMessage`` keeps it) and the
-    relied_on pairs' texts (``None`` for a missing member or a null)."""
+    relied_on pairs' texts (``None`` for a missing member or a null), and the
+    offer's text (``None`` when it is left out, ``null`` kept as text)."""
     text = rawjson.text_check(bytes(ext))
     try:
         top = rawjson.strict_struct(text, {"sealed_report": "raw", "book": "raw"})
         sealed = "" if top["sealed_report"] is None else rawjson.string_value(top["sealed_report"])
         book = top["book"]
-        book_members = rawjson.strict_struct(book, {"agreement": "raw", "relied_on": "map"}) \
-            if book is not None else {"agreement": None, "relied_on": None}
+        book_members = rawjson.strict_struct(book, {"agreement": "raw", "relied_on": "map", "offer": "raw"}) \
+            if book is not None else {"agreement": None, "relied_on": None, "offer": None}
         # Go's exactObject (evidencebook#559): the reader above also takes a
         # member in another case.
         why = exact.exact_object(rawjson.unmarshal_map(text) or {}, _EXTENSION, False, "the extension")
@@ -97,7 +102,7 @@ def _read(ext: bytes) -> tuple[str, str | None, dict[str, str] | None]:
         raise _bad(str(exc)) from None
     if why:
         raise _bad(why)
-    return sealed, book_members["agreement"], book_members["relied_on"]
+    return sealed, book_members["agreement"], book_members["relied_on"], book_members["offer"]
 
 
 def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
@@ -105,7 +110,8 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
     reads it) with the x-deal-v1 bundle extension that carries it, ``ext`` (Go
     ``VerifyReportBundle``), so every host and page applies one rule. ``ext``
     is exactly ``{sealed_report, book: {agreement, relied_on}}``, relied_on an
-    object (empty when no row relies on a record). It is refused unless:
+    object (empty when no row relies on a record), its book optionally also
+    carrying ``offer``. It is refused unless:
 
     - the report passes ``verify_report`` against ``book.agreement``, and
       ``sealed_report`` is the report Capsule's id;
@@ -124,7 +130,12 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
       one log;
     - an adjudicator's copy, and only it, names a referee;
     - when the rows are listed, the keys are exactly the records the rows name
-      in relied_on, each named with the side of its pair's signer.
+      in relied_on, each named with the side of its pair's signer;
+    - an offer, on any copy (the producer leaves it off an adjudicator's,
+      unruled), passes
+      ``verify_sent``, is a propose whose record digest is the offer the
+      agreement cites, and is signed by the offerer: the agreement's own key
+      when the holder made the offer, else its counterparty_key.
 
     A bundle that passes shows the records the holder says its rows rest on,
     signed by the deal's parties; like the report, it is not a recomputation.
@@ -132,7 +143,7 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
     adjudicator's records have no log bound, and in an adjudicator's copy,
     which names no counterparty prefix, the counterparty's records are bound
     only to one log. Raises :class:`StageError` where Go refuses."""
-    sealed, agreement, relied_on = _read(ext)
+    sealed, agreement, relied_on, offer = _read(ext)
     if agreement is None or relied_on is None:
         raise _bad("the book carries an agreement and a relied_on object")
     first_bytes = rawjson._b(agreement)
@@ -165,6 +176,20 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
         side_of[ag["counterparty_key"]] = other
     if isinstance(ag.get("adjudicator"), dict):
         side_of[ag["adjudicator"]["key_id"]] = SIDE_ADJUDICATOR
+    if offer is not None:
+        try:
+            sent = verify_sent(rawjson._b(offer))
+        except StageError as exc:
+            raise _bad(f"the offer: {exc}") from None
+        offerer = first.key_id if ag["side"] == SIDE_OFFERER else ag.get("counterparty_key") or ""
+        if sent.record.record_type != TYPE_PROPOSE:
+            raise _bad(f"the offer is a {sent.record.record_type} record, not a propose")
+        if sent.record.block["deal_id"] != r["deal_id"]:
+            raise _bad(f"the offer is of deal {_go_quote(sent.record.block['deal_id'])}, not the report's")
+        if sent.digest != ag["offer"]["digest"]:
+            raise _bad(f"the offer {sent.digest} is not the offer {ag['offer']['digest']} the agreement cites")
+        if sent.key_id != offerer:
+            raise _bad("the offer is not signed by the deal's offerer")
     own, cp = r["rests_on"]["own"], r["rests_on"].get("counterparty")
     sides: dict[str, str] = {}
     counterpart_log = ""

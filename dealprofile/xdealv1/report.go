@@ -581,7 +581,8 @@ func (p *StatusProvider) Report(ctx context.Context, logID string, c ReportCopy)
 // ReportWithBook is Report with the book pairs the report rests on, read in
 // the same snapshot (design §9, "The bundle extension"): the holder's
 // agreement at seq 1 and every record the report's rows rely on, whether
-// the copy lists its rows or not. The host carries them as the x-deal-v1
+// the copy lists its rows or not, and, on a keep or counterparty copy, the
+// offer's sent pair when OfferPair gives one. The host carries them as the x-deal-v1
 // bundle extension's book (ReportBundle) beside the sealed report.
 func (p *StatusProvider) ReportWithBook(ctx context.Context, logID string, c ReportCopy) (Report, ReportBook, error) {
 	s, err := p.ReportSnapshot(ctx, logID, c)
@@ -668,6 +669,18 @@ func (p *StatusProvider) ReportSnapshot(ctx context.Context, logID string, c Rep
 					if in.proofs, err = p.Shelf.HeldProofs(ctx, *ag.CounterpartyKey.V, in.logID); err != nil {
 						return ReportSnapshot{}, err
 					}
+				}
+			}
+			// The offer the agreement cites, as the holder holds its sent
+			// pair, for a keep or counterparty copy (u561): none when the
+			// host gives no pair.
+			if p.OfferPair != nil && c.Audience != dealprofile.AudienceAdjudicator {
+				od, err := Digest(rb.Books.Offer)
+				if err != nil {
+					return ReportSnapshot{}, err
+				}
+				if in.offer, err = p.OfferPair(ctx, od); err != nil {
+					return ReportSnapshot{}, err
 				}
 			}
 			r, b, err := reportWithBook(rb, c, pairs, in)

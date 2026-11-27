@@ -31,9 +31,18 @@ import (
 // Records, every record of the holder's deal book by record id, and
 // Received, the copy of the other side's book it holds (absent when it holds
 // none).
+//
+// Offer is the offer the agreement cites, as its sent pair {record,
+// agent_input} (Pair), byte for byte as the holder holds it: the pair it
+// sent, else the one it received (the receipt view-model note, section 4
+// item 1; Steven's u561). A keep or counterparty copy carries it when the
+// holder holds the pair. An adjudicator's copy does not carry it: no ruling
+// says whether it should (unruled), so the producer leaves it off, and a
+// verifier refuses no copy for carrying it.
 type ReportBook struct {
 	Agreement json.RawMessage            `json:"agreement"`
 	ReliedOn  map[string]json.RawMessage `json:"relied_on"`
+	Offer     json.RawMessage            `json:"offer,omitempty"`
 	Records   map[string]json.RawMessage `json:"records,omitempty"`
 	Received  *ReportReceived            `json:"received,omitempty"`
 }
@@ -71,6 +80,9 @@ func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte, in fu
 			}
 		}
 	}
+	if in.offer != nil && c.Audience != dealprofile.AudienceAdjudicator {
+		book.Offer = in.offer
+	}
 	if c.Full {
 		if c.Audience != dealprofile.AudienceAdjudicator {
 			return Report{}, ReportBook{}, fmt.Errorf("xdealv1: report: only an adjudicator's copy is full")
@@ -82,10 +94,12 @@ func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte, in fu
 	return r, book, nil
 }
 
-// fullInputs is what a full adjudicator copy reads beyond the snapshot's
-// book pairs: every record the holder holds for the deal, and the stamp
+// fullInputs is what a copy's book reads beyond the snapshot's book pairs:
+// the offer's sent pair (nil when the holder holds none), and, for a full
+// adjudicator copy, every record the holder holds for the deal and the stamp
 // proofs held from the counterparty for its log.
 type fullInputs struct {
+	offer  []byte
 	logID  string
 	held   []evidencebook.HeldRecord
 	proofs []evidencebook.HeldProof
@@ -95,7 +109,8 @@ type fullInputs struct {
 // reads it) with the x-deal-v1 bundle extension that carries it, ext, so
 // every host and page applies one rule. ext is exactly {sealed_report,
 // book: {agreement, relied_on}}, relied_on an object (empty when no row
-// relies on a record). It is refused unless:
+// relies on a record), its book optionally also carrying offer (and, in a
+// full adjudicator copy, records and received). It is refused unless:
 //
 //   - the report passes VerifyReport against book.agreement, and
 //     sealed_report is the report Capsule's id;
@@ -114,7 +129,13 @@ type fullInputs struct {
 //     counterparty's records sit in one log;
 //   - an adjudicator's copy, and only it, names a referee;
 //   - when the rows are listed, the keys are exactly the records the rows
-//     name in relied_on, each named with the side of its pair's signer.
+//     name in relied_on, each named with the side of its pair's signer;
+//   - an offer, on any copy (the producer leaves it off an adjudicator's,
+//     unruled), passes
+//     VerifySent, is a propose of the report's deal whose record digest is
+//     the offer the agreement cites, and is signed by the offerer: the
+//     agreement's own key when the holder made the offer, else its
+//     counterparty_key.
 //
 // A bundle that passes shows the records the holder says its rows rest on,
 // signed by the deal's parties; like the report, it is not a recomputation.
@@ -204,6 +225,31 @@ func verifyReportBundle(report, ext []byte) (ReportRead, *FullCopy, error) {
 	}
 	if a := ag.Adjudicator.V; a != nil {
 		sideOf[a.KeyID] = SideAdjudicator
+	}
+	if x.Book.Offer != nil {
+		sent, err := VerifySent(x.Book.Offer, nil)
+		if err != nil {
+			return bad("the offer: %v", err)
+		}
+		offerer := first.KeyID
+		if ag.Side != SideOfferer {
+			offerer = ""
+			if ag.CounterpartyKey.V != nil {
+				offerer = *ag.CounterpartyKey.V
+			}
+		}
+		switch {
+		case sent.Record.Block.RecordType != TypePropose:
+			return bad("the offer is a %s record, not a propose", sent.Record.Block.RecordType)
+		case sent.Record.Block.DealID != r.DealID:
+			// The digest binds the offer to the agreement only once both
+			// name one deal: VerifyReport never reads the offer.
+			return bad("the offer is of deal %q, not the report's", sent.Record.Block.DealID)
+		case sent.Digest != ag.Offer.Digest:
+			return bad("the offer %s is not the offer %s the agreement cites", sent.Digest, ag.Offer.Digest)
+		case sent.KeyID != offerer:
+			return bad("the offer is not signed by the deal's offerer")
+		}
 	}
 	sides := map[string]string{}
 	counterpartLog := ""

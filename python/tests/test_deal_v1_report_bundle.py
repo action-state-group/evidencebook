@@ -39,7 +39,8 @@ def test_a_bundle_is_written_as_go_writes_it():
     ext = case["extension"]
     book = v1.ReportBook(
         agreement=json.dumps(ext["book"]["agreement"], separators=(",", ":")).encode(),
-        relied_on={k: json.dumps(p, separators=(",", ":")).encode() for k, p in ext["book"]["relied_on"].items()})
+        relied_on={k: json.dumps(p, separators=(",", ":")).encode() for k, p in ext["book"]["relied_on"].items()},
+        offer=json.dumps(ext["book"]["offer"], separators=(",", ":")).encode() if "offer" in ext["book"] else None)
     text = v1.ReportBundle(ext["sealed_report"], book).json()
     assert json.loads(text) == ext
     assert text.startswith(b'{"sealed_report":"') and b'"book":{"agreement":{' in text
@@ -61,7 +62,10 @@ def test_report_with_book_from_a_shelf(tmp_path):
     adj = dict(copy, audience="adjudicator", referee="Lamp Court")
     withheld, wbook = buyer.status.report_with_book(log, adj)
     assert withheld["rows_state"] == v1.ROWS_WITHHELD and withheld["rows"] == []
-    assert wbook == book, "a withheld copy carries the keep copy's book"
+    assert book.offer is not None and v1.verify_sent(book.offer).key_id, "the keep copy carries the offer's sent pair (u561)"
+    assert wbook.offer is None, "the producer leaves the offer off an adjudicator's copy (unruled)"
+    assert (wbook.agreement, wbook.relied_on) == (book.agreement, book.relied_on), \
+        "a withheld copy carries the keep copy's records"
 
 
 def test_shapes_go_refuses():

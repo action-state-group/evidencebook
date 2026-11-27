@@ -381,12 +381,15 @@ func TestPresentationV1ReceiptDesign(t *testing.T) {
 	assert.Equal(t, "settled", got.TopLine)
 	assert.Equal(t, []string{"done"}, got.Seals)
 	assert.Equal(t, []string{"paid", "status", "other"}, got.Cards)
-	assert.Equal(t, []string{"agree", "settle"}, got.Steps, "one step per record the copy carries")
+	// The copy carries the agreement and the buyer's payer leg in its book,
+	// and the seller's payee leg in book.relied_on: the receipt model draws
+	// each once (the receipt view-model note, section 2, steps[]).
+	assert.Equal(t, []string{"agree", "settle", "settle"}, got.Steps, "one step per record the copy carries")
 	assert.Equal(t, "passed", got.Proof)
 	assert.Contains(t, got.NotProven, "What this does not prove")
 	// For checkers: every sealed record once, and the producer's lines.
 	assert.Contains(t, got.L1, "For checkers: every sealed record")
-	assert.Equal(t, 2, got.Records)
+	assert.Equal(t, 3, got.Records)
 	assert.Contains(t, got.L1, "Producer version")
 	assert.Contains(t, got.L1, "Profile checked against")
 	// Technical details: the ladder, and nowhere above it.

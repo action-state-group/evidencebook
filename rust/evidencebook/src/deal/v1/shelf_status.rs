@@ -900,7 +900,8 @@ impl DealStatus {
     /// in the same snapshot (Go `StatusProvider.ReportWithBook`; design §9,
     /// "The bundle extension"): the holder's agreement at seq 1 and every
     /// record the report's rows rely on, whether the copy lists its rows or
-    /// not. The host carries them as the x-deal-v1 bundle extension's book
+    /// not, and, on a keep or counterparty copy, the offer's sent pair when
+    /// the offer pair gives one. The host carries them as the x-deal-v1 bundle extension's book
     /// ([`ReportBook`](super::ReportBook)) beside the sealed report.
     pub fn report_with_book(
         &self,
@@ -927,7 +928,21 @@ impl DealStatus {
             if let Some((rb, pairs)) =
                 self.report_books(&shelf, log_id, &book_id, &book, &journal)?
             {
-                return report_with_book(&rb, copy, &pairs);
+                // The offer the agreement cites, as the holder holds its
+                // sent pair, for a keep or counterparty copy (u561): none
+                // when the host gives no pair.
+                let mut offer = None;
+                if let Some(offer_pair) = &self.offer_pair {
+                    if copy.audience != crate::deal::AUDIENCE_ADJUDICATOR {
+                        let od = record_digest(&rb.books.offer).map_err(deal_err)?;
+                        if let Some(p) = offer_pair(&od).map_err(ShelfError::Profile)? {
+                            offer = Some(serde_json::from_slice(&p).map_err(|e| {
+                                invalid(format!("xdealv1: report: the offer's sent pair: {e}"))
+                            })?);
+                        }
+                    }
+                }
+                return report_with_book(&rb, copy, &pairs, offer);
             }
         }
         Err(ShelfError::Busy(format!(
@@ -1064,11 +1079,13 @@ impl BookStatus for DealStatus {
 }
 
 /// The report and its book from `pairs`, the book pair of each record the
-/// snapshot read, by record id (Go `reportWithBook`).
+/// snapshot read, by record id, and `offer`, the offer's sent pair a keep or
+/// counterparty copy carries (Go `reportWithBook`).
 fn report_with_book(
     rb: &ReportBooks,
     copy: &ReportCopy,
     pairs: &BTreeMap<String, Vec<u8>>,
+    offer: Option<Value>,
 ) -> Result<(Report, ReportBook), ShelfError> {
     let (r, rows) = build_report_rows(rb, copy).map_err(deal_err)?;
     let pair = |id: &str| -> Result<Value, ShelfError> {
@@ -1090,6 +1107,7 @@ fn report_with_book(
     let book = ReportBook {
         agreement: Some(agreement),
         relied_on: Some(relied_on),
+        offer,
     };
     Ok((r, book))
 }

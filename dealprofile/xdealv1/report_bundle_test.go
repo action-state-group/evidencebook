@@ -99,6 +99,9 @@ func TestReportWithBook(t *testing.T) {
 	keys := func(x ReportBundle) []string { return slices.Sorted(maps.Keys(x.Book.ReliedOn)) }
 	assert.Equal(t, keys(keepX), keys(ccX), "the counterparty's copy carries the keep copy's records")
 	assert.Equal(t, keys(keepX), keys(adjX), "so does the adjudicator's, whose rows are withheld")
+	assert.Equal(t, string(d.offerPair), string(keepX.Book.Offer), "the keep copy carries the offer's sent pair as held (u561)")
+	assert.Equal(t, string(d.offerPair), string(ccX.Book.Offer), "so does the counterparty's copy (u499, u561)")
+	assert.Nil(t, adjX.Book.Offer, "the producer leaves the offer off an adjudicator's copy (unruled)")
 
 	for name, c := range map[string]struct {
 		pair []byte
@@ -263,6 +266,55 @@ func TestReportBundleVectors(t *testing.T) {
 	refuse("a null relied_on", []byte(`{"sealed_report":"`+x.SealedReport+`","book":{"agreement":`+string(x.Book.Agreement)+`,"relied_on":null}}`), nil, "a relied_on object")
 	refuse("no book", []byte(`{"sealed_report":"`+x.SealedReport+`"}`), nil, "a relied_on object")
 
+	// The offer the copy carries (book.offer): the sent pair of the offer the
+	// agreement cites, signed by the offerer. The producer leaves it off an
+	// adjudicator's copy (unruled), and a verifier refuses no copy for it.
+	require.NotNil(t, x.Book.Offer, "the keep copy carries the offer")
+	c = clone()
+	c.Book.Offer = nil
+	_, err = VerifyReportBundle(pair, extJSON(t, c))
+	require.NoError(t, err, "a copy whose holder holds no offer pair carries none, and verifies")
+	otherOffer := d.offer
+	otherBody := *d.offer.Body.(*ProposeBody)
+	otherBody.AgreeBy = "2026-11-02T09:30:00Z"
+	otherOffer.Body = &otherBody
+	c = clone()
+	c.Book.Offer = d.buyer.sendOffer(otherOffer)
+	refuse("an offer the agreement does not cite", extJSON(t, c), nil, "is not the offer")
+	elsewhereOffer := d.offer
+	elsewhereBlock := d.offer.Block
+	elsewhereBlock.DealID = "deal-0123456789abcdef"
+	elsewhereOffer.Block = elsewhereBlock
+	c = clone()
+	c.Book.Offer = d.buyer.sendOffer(elsewhereOffer)
+	refuse("an offer of another deal", extJSON(t, c), nil, "not the report's")
+	c = clone()
+	c.Book.Offer = d.seller.sendOffer(d.offer)
+	refuse("the offer signed by the acceptor", extJSON(t, c), nil, "not signed by the deal's offerer")
+	c = clone()
+	c.Book.Offer = d.seller.sendOfferWith(Record{Block: journalBlock(TypeAgree, "2026-11-01T09:40:00Z", true),
+		Body: &AgreeBody{Kind: KindDecline, Offer: RefTo(d.offerDigest), Reason: ReasonOther}}, nil)
+	refuse("a decline as the offer", extJSON(t, c), nil, "not a propose")
+	var tampered map[string]any
+	require.NoError(t, json.Unmarshal(d.offerPair, &tampered))
+	tampered["agent_input"].(map[string]any)["body"].(map[string]any)["agree_by"] = "2026-11-03T09:30:00Z"
+	c = clone()
+	c.Book.Offer = extJSON(t, tampered)
+	refuse("an offer whose record is not the one its Capsule sealed", extJSON(t, c), nil, "the offer:")
+	tampered["agent_input"].(map[string]any)["body"].(map[string]any)["agree_by"] = 1.5
+	c = clone()
+	c.Book.Offer = extJSON(t, tampered)
+	refuse("an offer whose record holds a number JCS does not take", extJSON(t, c), nil, "the offer:")
+	ac := keepCopy(d.at)
+	ac.Audience, ac.Referee = dealprofile.AudienceAdjudicator, "Lamp Court"
+	_, adjPair, adjOffer := d.bundle(t, ac)
+	adjOffer.Book.Offer = d.offerPair
+	adjCase := bundleCase{Name: "adjudicator-copy-carrying-the-offer", Report: hex.EncodeToString(adjPair), Extension: extJSON(t, adjOffer)}
+	adjRead, err := VerifyReportBundle(adjPair, adjCase.Extension)
+	require.NoError(t, err, "an adjudicator's copy carrying the offer is not refused: no ruling says it may not")
+	adjCase.Want.KeyID = adjRead.KeyID
+	cases = append(cases, adjCase)
+
 	// Copies with a case book record a row relies on, and copies of a deal
 	// not started, which carry their computed rows' records.
 	valid := func(name string, p *party, signer, logID string, c ReportCopy) (Report, []byte, ReportBundle) {
@@ -282,6 +334,7 @@ func TestReportBundleVectors(t *testing.T) {
 	ns, _ := notStartedHolder(t)
 	nat := ns.seller.now.UTC().Truncate(time.Second).Format(time.RFC3339)
 	nsKeep, _, nsX := valid("not-started-keep-copy", ns.seller, "seller", ns.sellerLog, copyAt(nat, dealprofile.AudienceKeep))
+	assert.Equal(t, string(ns.offerPair), string(nsX.Book.Offer), "the acceptor's copy carries the offer it received, signed by the offerer")
 	valid("not-started-adjudicator-copy", ns.seller, "seller", ns.sellerLog, copyAt(nat, dealprofile.AudienceAdjudicator))
 
 	// The not-started rules, on the not-started keep copy sealed again.
@@ -327,6 +380,7 @@ func TestReportBundleVectors(t *testing.T) {
 	adjCopy.Audience, adjCopy.Referee, adjCopy.RowsState, adjCopy.Rows = dealprofile.AudienceAdjudicator, "Lamp Court", RowsWithheld, []ReportRow{}
 	adjCopy.RestsOn.Counterparty, adjCopy.RestsOn.Witnesses, adjCopy.Disputes = nil, nil, nil
 	twoLogs := clone()
+	twoLogs.Book.Offer = nil
 	elsewhere := d.sellerAg
 	elsewhereID, elsewherePair := d.seller.seal("deal/"+strings.Repeat("8", 32), elsewhere)
 	twoLogs.Book.ReliedOn[elsewhereID] = elsewherePair

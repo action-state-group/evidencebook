@@ -3,6 +3,7 @@ package deal
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -284,8 +285,12 @@ func TestTheSharedCopyKeepsTheRulingAndWithholdsTheDispute(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "wrong one", "the buyer's words never leave")
 	assert.NotContains(t, string(raw), "demo-referee")
-	assert.Contains(t, string(raw), "ruling_for_buyer", "the ruling record is shared")
-	assert.NotContains(t, string(raw), `"dispute"`, "the dispute record is withheld")
+	// The records are read from the page's bundle element: the receipt
+	// module's own code names "dispute" as a step kind.
+	bundle := regexp.MustCompile(`(?s)<script type="application/json">(.*?)</script>`).FindStringSubmatch(string(raw))
+	require.NotNil(t, bundle, "the page carries its bundle")
+	assert.Contains(t, bundle[1], "ruling_for_buyer", "the ruling record is shared")
+	assert.NotContains(t, bundle[1], `"dispute"`, "the dispute record is withheld")
 }
 
 // The second store's ruling must come out as the first one's: --ruling-digest refuses a flag that differs.

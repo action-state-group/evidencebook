@@ -18,6 +18,7 @@ from typing import Any, Callable
 from agent_action_capsule.canonical import jcs
 
 from ...errors import BusyError, CorruptError
+from ..names import AUDIENCE_ADJUDICATOR
 from .check import Record, StageError, digest, encode
 from .names import KIND_AGREEMENT, PROFILE, TYPE_AGREE, TYPE_PROPOSE, TYPE_RULING, TYPE_STATEMENT
 from .naming import counted, counted_with, logs_of, name_all_rulings
@@ -260,10 +261,16 @@ class StatusProvider:
         if journal is None:
             raise ValueError("xdealv1: report: the shelf has no journal, which holds the deal's offer")
         book_id = first[0].record_id
+        # The offer the agreement cites, as the holder holds its sent pair,
+        # for a keep or counterparty copy (u561): none when the host gives
+        # no pair.
+        offer = None
+        if self.offer_pair is not None and copy["audience"] != AUDIENCE_ADJUDICATOR:
+            offer = self.offer_pair(rec.body["offer"]["digest"])
         for _ in range(3):
             got = self._report_books(log_id, book_id, book, journal)
             if got is not None:
-                return _report_with_book(*got, copy)
+                return _report_with_book(*got, copy, offer)
         raise BusyError(f"report: book {log_id} kept changing while it was read")
 
     def _report_books(self, log_id: str, book_id: str, book: Any, journal: Any) -> tuple[dict, dict[str, bytes]] | None:
@@ -310,9 +317,11 @@ class StatusProvider:
         return {"current": now == was}
 
 
-def _report_with_book(rb: dict, pairs: dict[str, bytes], copy: dict) -> tuple[dict, ReportBook]:
+def _report_with_book(rb: dict, pairs: dict[str, bytes], copy: dict,
+                      offer: bytes | None = None) -> tuple[dict, ReportBook]:
     """The report and its book from ``pairs``, the book pair of each record
-    the snapshot read, by record id (Go ``reportWithBook``)."""
+    the snapshot read, by record id, and ``offer``, the offer's sent pair a
+    keep or counterparty copy carries (Go ``reportWithBook``)."""
     r, rows = build_report_rows(rb, copy)
 
     def pair(rid: str) -> bytes:
@@ -322,7 +331,7 @@ def _report_with_book(rb: dict, pairs: dict[str, bytes], copy: dict) -> tuple[di
 
     agreement = pair(rb["Books"]["own"][0]["record_id"])
     relied = {src["record"]: pair(src["record"]) for row in rows for src in row["relied_on"]}
-    return r, ReportBook(agreement, relied)
+    return r, ReportBook(agreement, relied, offer)
 
 
 def _stamp(n: int) -> Any:
