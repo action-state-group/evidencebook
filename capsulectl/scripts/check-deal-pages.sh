@@ -148,7 +148,7 @@ check "deal-receipt-downgraded: the page carries the inline line" contains recei
 render receipt-downgraded.html
 check "deal-receipt-downgraded: the page says the text could not be checked" contains receipt-downgraded.html.dom '<div class="cv-tone--caution" data-cannot-check="true" data-cannot-check-reason="downgraded">'
 check "deal-receipt-downgraded: and why, in that block" contains receipt-downgraded.html.dom "data-cannot-check-reason=\"downgraded\"><p>⚠️ The receipt's text is not shown: this copy names no sealed report, so its text could not be checked.</p><p>"
-check "deal-receipt-downgraded: and what deal verify says of it" contains receipt-downgraded.html.dom "reports this copy as INVALID (sealed_report_not_named).</p></div>"
+check "deal-receipt-downgraded: and what deal verify says of it, the command as code" contains receipt-downgraded.html.dom '<p><code class="cv-mono">capsulectl deal verify --bundle &lt;file&gt;</code> reports this copy as INVALID (sealed_report_not_named).</p></div>'
 check "deal-receipt-downgraded: the page shows no inline line" lacks receipt-downgraded.html.dom '>A line nobody sealed.</p>'
 check "deal-receipt-downgraded: no \"not checked\" label" lacks receipt-downgraded.html.dom 'data-unchecked="x-deal-v0"'
 capsulectl deal verify --bundle receipt-downgraded.html >receipt-downgraded-verify.json 2>/dev/null && verdict=0 || verdict=$?

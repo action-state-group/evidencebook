@@ -31,13 +31,21 @@ func usePluginVerify(t *testing.T) {
 // ");", so the value is decoded, not cut by a pattern).
 func pageVerifyReport(t *testing.T, page []byte) map[string]any {
 	t.Helper()
-	_, rest, ok := bytes.Cut(page, []byte("globalThis.capsulectlDealPage = Object.freeze("))
-	require.True(t, ok, "the page carries capsulectl's report")
 	var boot struct {
 		Report map[string]any `json:"verifier_report"`
 	}
-	require.NoError(t, json.NewDecoder(bytes.NewReader(rest)).Decode(&boot))
+	require.NoError(t, json.Unmarshal(pageBootstrapData(t, page), &boot))
 	return boot.Report
+}
+
+// pageBootstrapData is the one JSON value after the page bootstrap's prefix.
+func pageBootstrapData(t *testing.T, page []byte) json.RawMessage {
+	t.Helper()
+	_, rest, ok := bytes.Cut(page, []byte("globalThis.capsulectlDealPage = Object.freeze("))
+	require.True(t, ok, "the page carries its bootstrap data")
+	var data json.RawMessage
+	require.NoError(t, json.NewDecoder(bytes.NewReader(rest)).Decode(&data))
+	return data
 }
 
 // `deal report --html` on an x-deal-v1 deal writes your own copy's receipt

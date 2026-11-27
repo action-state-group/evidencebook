@@ -23,8 +23,8 @@
     "217152bdb0dfc88058e4942d2f013df3ee762ae5588eb1898fe08c09718b916e",
     "2807de5bc0825a329a765af96abf62541ebe482acc63d7fc46d4bf5603d3e3ef",
     "3e2b19649d184b6100e91fbb1d252a0387f6248c66502b9df94acd4f164c92c1",
+    "4a38d785f347761e2527fe681a8a55a601e541e1091a99ebbef71ad83869ce39",
     "51b893d146a947670acd2cf1a08dfbb2f5c3df2292c16c2ff73bfe779e74229b",
-    "67b438186179b9f43d174a054c2fe42ea2ad4e5c4085d4b65be332c47dc94c70",
     "a3b2cb290725bf09ada6a8d1d2aaa97834ad9a24745a7c096d62ba7242c62ef6",
     "b9fe9c2c55817b165602542d25a17fd3a498868a9d81b07adac297835d7013f1",
     "dc195aaac9aabda686682bfb6d4f2a84c1544e48698721ede16d25d88c51d9e8"
@@ -363,6 +363,6 @@
     "Who sealed these records",
     "Produced by capsulectl 0.1.0-dev (unknown).",
     "Which skill instructions were present was not recorded (the deal was opened without --skill).",
-    "This page's words: wording pack capsuleviewer.receipt.wording.en/v1, sha256 67b438186179b9f43d174a054c2fe42ea2ad4e5c4085d4b65be332c47dc94c70."
+    "This page's words: wording pack capsuleviewer.receipt.wording.en/v1, sha256 4a38d785f347761e2527fe681a8a55a601e541e1091a99ebbef71ad83869ce39."
   ]
 }
