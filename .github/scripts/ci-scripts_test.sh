@@ -545,6 +545,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      max-parallel: ${{ github.event_name == 'pull_request' && 16 || 4 }}
+      matrix: {n: [1]}
     steps:
       - name: Everywhere
         run: true
@@ -596,6 +599,7 @@ done
 {
   echo "locals=$locals"
   echo "branch=$(git symbolic-ref --short HEAD 2> /dev/null)"
+  echo "max-parallel=$(grep -h 'max-parallel:' "$dir"/always.yml | sed 's/^ *//')"
   echo "xdg=${XDG_CACHE_HOME:-unset}"
   echo "terms=${LEAK_LINT_TERMS:+seen}"
   echo "given=$(cd "$dir" && ls | sort | paste -sd ' ' -)"
@@ -636,7 +640,7 @@ standins_from_clone() {
   l=$(grep '^locals=' "$cl/act.log")
   [[ "$l" == *"actions/setup-go@0000000000000000000000000000000000000000="*"/.github/act/setup-go "* && "$l" != *"=$cl/repo/"* ]]
 }
-if cl_run "ci-local: a change outside docs/" 0 README.md LEAK_LINT_TERMS='{"x":["never-present-term"]}'; then
+if cl_run "ci-local: a change outside docs/" 0 README.md CI_LOCAL_JOBS=3 LEAK_LINT_TERMS='{"x":["never-present-term"]}'; then
   check "ci-local: a paths-filtered workflow does not run for a change outside its paths" grep -qx 'given=always.yml' "$cl/act.log"
   check "ci-local: the leak-lint term list never reaches act" grep -qx 'terms=' "$cl/act.log"
   check "ci-local: the checkout act runs in keeps every workflow file" grep -qx 'checkout=always.yml docs.yml flow.yml' "$cl/act.log"
@@ -646,6 +650,7 @@ if cl_run "ci-local: a change outside docs/" 0 README.md LEAK_LINT_TERMS='{"x":[
   check "ci-local: the summary gives each job's time, the sum of its steps" grep -qE '^ok +63s  always\.yml/build$' "$cl/out"
   check "ci-local: the stand-ins come from the merged tree, not the checkout" standins_from_clone
   check "ci-local: act runs on a branch, so the checkout it copies keeps a refs/ directory" grep -qx 'branch=ci-local' "$cl/act.log"
+  check "ci-local: a max-parallel expression (act runs it as 1) becomes the local job bound" grep -qx 'max-parallel=max-parallel: 3' "$cl/act.log"
   check "ci-local: act keeps its per-job copies in the run's own directory" grep -qE '^xdg=/.+/xdg$' "$cl/act.log"
 fi
 if cl_run "ci-local: a docs/ change" 0 docs/a.md; then
@@ -659,9 +664,14 @@ cl_run "ci-local: leak-lint finds a term in a tracked file" 1 README.md LEAK_LIN
   check "ci-local: leak-lint finds a term in a tracked file and fails" grep -qx 'leak-lint: FAIL' "$cl/out"
 cl_run "ci-local: a failing job fails the run" 1 README.md FAKE_ACT_FAIL=1 &&
   check "ci-local: a failing job's step is printed" grep -q 'Failure - Main step' "$cl/out"
+kept=$(sed -n 's/^the whole act log: //p' "$cl/out")
+check "ci-local: a failed run keeps the whole act log and names it" test -s "$kept"
+[[ -n "$kept" ]] && rm -f "$kept"
 check "ci-local: a failed job with no step time still has its summary line" grep -qE '^FAIL +0s  always\.yml/build$' "$cl/out"
 cl_run "ci-local: a hung act run is stopped at CI_LOCAL_TIMEOUT" 1 README.md FAKE_ACT_SLEEP=30 CI_LOCAL_TIMEOUT=2s &&
   check "ci-local: the timeout is reported" grep -q 'passed CI_LOCAL_TIMEOUT' "$cl/out"
+kept=$(sed -n 's/^the whole act log: //p' "$cl/out")
+[[ -z "$kept" ]] || rm -f "$kept"
 # A workflow main gained after the branch left it runs: the merged tree's
 # workflows are the ones GitHub would run.
 (cd "$cl/repo" && git checkout -q -B late origin/main && sed 's/docs:/late:/' .github/workflows/docs.yml |
