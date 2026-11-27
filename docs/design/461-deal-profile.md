@@ -1589,7 +1589,9 @@ records by reading that leg, not a new report member.
   has, since a party never holds the other side's journal pair. It carries the item, quantity and
   price a receipt shows (the receipt view-model note in capsule-viewer, section 4 item 1; Steven's
   u561, 2026-11-27). A keep or counterparty copy carries it when the host gives the pair
-  (`StatusProvider.OfferPair`); an adjudicator's copy never does (evidencebook#1065).
+  (`StatusProvider.OfferPair`). An adjudicator's copy does not carry it: no ruling says whether it
+  should (unruled; Sherlock2 asked Steven on evidencebook#1066's review thread), so the producer
+  leaves it off and no verifier refuses a copy for carrying it (evidencebook#1065).
   `StatusProvider.ReportWithBook` returns the report and its book from one snapshot; the host
   builds and seals the bundle.
 - **Who gets it**, by the four bundle levels (Steven, 2026-11-06, #403): the owner's copy (`keep`), the counterparty's
@@ -1608,8 +1610,8 @@ records by reading that leg, not a new report member.
   seq no greater than its `counted`; a keep or counterparty copy that names none carries no
   counterparty record, and an adjudicator's copy, which names none, keeps the counterparty's in one
   log. An adjudicator's copy, and only it, names a referee. When the rows are listed, the keys are exactly the records the
-  rows name in `relied_on`, each named with the side of its pair's signer. An `offer` appears only
-  on a keep or counterparty copy; it passes `VerifySent`, is a propose whose record digest is the
+  rows name in `relied_on`, each named with the side of its pair's signer. An `offer`, on any copy,
+  passes `VerifySent`, is a propose whose record digest is the
   agreement's `offer.digest`, and is signed by the offerer (the agreement's own key when the
   holder's `side` is `offerer`, else its `counterparty_key`). A page shows each leg's
   settlement member as recorded, found by its `relied_on` id; it picks no leg, and `check` stays

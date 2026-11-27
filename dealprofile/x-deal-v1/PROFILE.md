@@ -572,8 +572,8 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   is the holder's deal book record at seq 1; `relied_on` holds every record the holder's rows rely
   on at `as_of`, whatever the copy's `rows_state`, so the owner's (`keep`), counterparty's and
   adjudicator's copies carry the same records, and `{}` when no row relies on one. A bundle for
-  anyone else carries no report and no extension. `offer`, on a keep or counterparty copy and
-  never on an adjudicator's, is the offer the agreement cites as its sent pair `{record,
+  anyone else carries no report and no extension. `offer`, on a keep or counterparty copy, and
+  not carried on an adjudicator's copy (unruled), is the offer the agreement cites as its sent pair `{record,
   agent_input}` (section 7), as the holder holds it: it gives a receipt the item, quantity and
   price (Steven's u561; evidencebook#1065). The host builds and seals the bundle;
   `xdealv1.StatusProvider.ReportWithBook` returns a report and its book from one snapshot.

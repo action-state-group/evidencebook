@@ -36,7 +36,9 @@ import (
 // agent_input} (Pair), byte for byte as the holder holds it: the pair it
 // sent, else the one it received (the receipt view-model note, section 4
 // item 1; Steven's u561). A keep or counterparty copy carries it when the
-// holder holds the pair; an adjudicator's copy never does.
+// holder holds the pair. An adjudicator's copy does not carry it: no ruling
+// says whether it should (unruled), so the producer leaves it off, and a
+// verifier refuses no copy for carrying it.
 type ReportBook struct {
 	Agreement json.RawMessage            `json:"agreement"`
 	ReliedOn  map[string]json.RawMessage `json:"relied_on"`
@@ -128,7 +130,8 @@ type fullInputs struct {
 //   - an adjudicator's copy, and only it, names a referee;
 //   - when the rows are listed, the keys are exactly the records the rows
 //     name in relied_on, each named with the side of its pair's signer;
-//   - an offer, carried only in a keep or counterparty copy, passes
+//   - an offer, on any copy (the producer leaves it off an adjudicator's,
+//     unruled), passes
 //     VerifySent, is a propose of the report's deal whose record digest is
 //     the offer the agreement cites, and is signed by the offerer: the
 //     agreement's own key when the holder made the offer, else its
@@ -224,9 +227,6 @@ func verifyReportBundle(report, ext []byte) (ReportRead, *FullCopy, error) {
 		sideOf[a.KeyID] = SideAdjudicator
 	}
 	if x.Book.Offer != nil {
-		if adj {
-			return bad("an adjudicator's copy carries no offer")
-		}
 		sent, err := VerifySent(x.Book.Offer, nil)
 		if err != nil {
 			return bad("the offer: %v", err)

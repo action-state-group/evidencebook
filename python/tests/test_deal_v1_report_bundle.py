@@ -63,7 +63,7 @@ def test_report_with_book_from_a_shelf(tmp_path):
     withheld, wbook = buyer.status.report_with_book(log, adj)
     assert withheld["rows_state"] == v1.ROWS_WITHHELD and withheld["rows"] == []
     assert book.offer is not None and v1.verify_sent(book.offer).key_id, "the keep copy carries the offer's sent pair (u561)"
-    assert wbook.offer is None, "an adjudicator's copy carries no offer"
+    assert wbook.offer is None, "the producer leaves the offer off an adjudicator's copy (unruled)"
     assert (wbook.agreement, wbook.relied_on) == (book.agreement, book.relied_on), \
         "a withheld copy carries the keep copy's records"
 

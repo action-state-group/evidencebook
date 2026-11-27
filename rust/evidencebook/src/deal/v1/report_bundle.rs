@@ -105,7 +105,8 @@ fn bad(m: String) -> Error {
 /// - an adjudicator's copy, and only it, names a referee;
 /// - when the rows are listed, the keys are exactly the records the rows name
 ///   in relied_on, each named with the side of its pair's signer;
-/// - an offer, carried only in a keep or counterparty copy, passes
+/// - an offer, on any copy (the producer leaves it off an adjudicator's,
+///   unruled), passes
 ///   [`verify_sent`], is a propose whose record digest is the offer the
 ///   agreement cites, and is signed by the offerer: the agreement's own key
 ///   when the holder made the offer, else its counterparty_key.
@@ -197,9 +198,6 @@ pub fn verify_report_bundle(report: &[u8], ext: &[u8]) -> Result<ReportRead, Err
         side_of.insert(a.key_id.clone(), SIDE_ADJUDICATOR);
     }
     if let Some(offer) = &book.offer {
-        if adj {
-            return Err(bad("an adjudicator's copy carries no offer".into()));
-        }
         let sent =
             verify_sent(&to_bytes(offer)?, None).map_err(|e| bad(format!("the offer: {e}")))?;
         let offerer = if ag.side == SIDE_OFFERER {

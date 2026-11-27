@@ -131,7 +131,8 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
     - an adjudicator's copy, and only it, names a referee;
     - when the rows are listed, the keys are exactly the records the rows name
       in relied_on, each named with the side of its pair's signer;
-    - an offer, carried only in a keep or counterparty copy, passes
+    - an offer, on any copy (the producer leaves it off an adjudicator's,
+      unruled), passes
       ``verify_sent``, is a propose whose record digest is the offer the
       agreement cites, and is signed by the offerer: the agreement's own key
       when the holder made the offer, else its counterparty_key.
@@ -176,8 +177,6 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
     if isinstance(ag.get("adjudicator"), dict):
         side_of[ag["adjudicator"]["key_id"]] = SIDE_ADJUDICATOR
     if offer is not None:
-        if adj:
-            raise _bad("an adjudicator's copy carries no offer")
         try:
             sent = verify_sent(rawjson._b(offer))
         except StageError as exc:
