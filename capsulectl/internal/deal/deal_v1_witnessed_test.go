@@ -69,29 +69,39 @@ func TestV1WitnessedFromAProofBeside(t *testing.T) {
 	got := pluginVerify(t, "--bundle", keep, "--stamp-proof", proof, "--witness-directory", dir)
 	assert.Equal(t, "VALID", got["verdict"])
 	entry := v1EntryOf(t, got)
-	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z"}, entry["witnessed"])
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z", "independent_of": []any{}}, entry["witnessed"],
+		"the row states no independent_of: [] (evidencebook#1073)")
 	assert.Equal(t, "verified", entry["counterparty_half"].(map[string]any)["status"])
 
 	plain := pluginVerify(t, "--bundle", keep)
 	assert.Equal(t, "VALID", plain["verdict"])
 	assert.NotContains(t, v1EntryOf(t, plain), "witnessed", "no proof given, no member")
 
+	// What the member names besides its status: the W row of the witness it
+	// reports on, when W lists one (evidencebook#1073).
+	asWitness := func(name string, list []any) map[string]any {
+		return map[string]any{"witness": name, "independent_of": list}
+	}
 	cases := map[string]struct {
 		args   []string
 		status string
+		row    map[string]any
 	}{
-		"no directory": {[]string{"--stamp-proof", proof}, "withheld"},
+		"no directory": {[]string{"--stamp-proof", proof}, "withheld", nil},
 		"another witness's directory": {[]string{"--stamp-proof", proof, "--witness-directory", writeJSON(t,
-			`{"witnesses":[{"name":"Someone else","endpoint":"https://witness.agentactioncapsule.org","key_ids":["`+strings.Repeat("ab", 32)+`"]}]}`)}, "failed"},
-		"no receipt": {[]string{"--stamp-proof", editedProof(t, func(p map[string]any) { delete(p, "witness_receipts") }), "--witness-directory", dir}, "withheld"},
+			`{"witnesses":[{"name":"Someone else","endpoint":"https://witness.agentactioncapsule.org","key_ids":["`+strings.Repeat("ab", 32)+`"],"independent_of":["`+strings.Repeat("cd", 32)+`"]}]}`)},
+			"failed", asWitness("Someone else", []any{strings.Repeat("cd", 32)})},
+		"a directory that lists another witness only": {[]string{"--stamp-proof", proof, "--witness-directory", writeJSON(t,
+			`{"witnesses":[{"name":"Someone else","endpoint":"https://other.example","key_ids":["`+strings.Repeat("ab", 32)+`"]}]}`)}, "withheld", nil},
+		"no receipt": {[]string{"--stamp-proof", editedProof(t, func(p map[string]any) { delete(p, "witness_receipts") }), "--witness-directory", dir}, "withheld", nil},
 		"a receipt that does not verify": {[]string{"--stamp-proof", editedProof(t, func(p map[string]any) {
 			rc := p["witness_receipts"].([]any)[0].(map[string]any)
 			rc["entry_hash"] = strings.Repeat("0", len(rc["entry_hash"].(string)))
-		}), "--witness-directory", dir}, "failed"},
+		}), "--witness-directory", dir}, "failed", asWitness("Action State's witness", []any{})},
 		"a stamp proof that does not verify": {[]string{"--stamp-proof", editedProof(t, func(p map[string]any) {
 			sp := p["stamp_proof"].(map[string]any)
 			sp["shelf_checkpoint"] = "AAAA"
-		}), "--witness-directory", dir}, "failed"},
+		}), "--witness-directory", dir}, "failed", nil},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -100,9 +110,70 @@ func TestV1WitnessedFromAProofBeside(t *testing.T) {
 			w := v1EntryOf(t, got)["witnessed"].(map[string]any)
 			assert.NotEqual(t, "verified", w["status"])
 			assert.Equal(t, c.status, w["status"], "%v", w)
-			assert.NotContains(t, w, "witness", "no witness is named unless it verified")
+			assert.NotContains(t, w, "at", "no time unless it verified")
+			for _, k := range []string{"witness", "independent_of"} {
+				if c.row == nil {
+					assert.NotContains(t, w, k, "no row is named when W lists no witness of a receipt")
+				} else {
+					assert.Equal(t, c.row[k], w[k], k)
+				}
+			}
 		})
 	}
+}
+
+// The member's independent_of is the W row's list as W states it, whatever
+// it says; a list that is not a list of strings is left out, never guessed
+// (evidencebook#1073). With a receipt of a witness W does not list before
+// the verified one, the verified receipt's row is named.
+func TestV1WitnessedNamesTheRowsIndependentOf(t *testing.T) {
+	keep := filepath.Join(witnessedVectors, "keep.json")
+	proof := filepath.Join(witnessedVectors, "proof.json")
+	key := "39bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5"
+	row := func(independentOf string) string {
+		r := `{"name":"Action State's witness","endpoint":"https://witness.agentactioncapsule.org","key_ids":["` + key + `"]`
+		if independentOf != "" {
+			r += `,"independent_of":` + independentOf
+		}
+		return r + `}`
+	}
+	a, b := strings.Repeat("a1", 32), strings.Repeat("b2", 32)
+	cases := map[string]struct {
+		directory string
+		want      any // nil: no member
+	}{
+		"a list":                 {`{"witnesses":[` + row(`["`+a+`","`+b+`"]`) + `]}`, []any{a, b}},
+		"an empty list":          {`{"witnesses":[` + row(`[]`) + `]}`, []any{}},
+		"no list":                {`{"witnesses":[` + row(``) + `]}`, []any{}},
+		"a bare row list":        {`[` + row(`["`+a+`"]`) + `]`, []any{a}},
+		"not a list":             {`{"witnesses":[` + row(`"`+a+`"`) + `]}`, nil},
+		"a list of non-strings":  {`{"witnesses":[` + row(`[1]`) + `]}`, nil},
+		"the first matching row": {`{"witnesses":[` + row(`["`+a+`"]`) + `,` + row(`["`+b+`"]`) + `]}`, []any{a}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			w := v1EntryOf(t, pluginVerify(t, "--bundle", keep, "--stamp-proof", proof, "--witness-directory", writeJSON(t, c.directory)))["witnessed"].(map[string]any)
+			assert.Equal(t, "verified", w["status"])
+			assert.Equal(t, "Action State's witness", w["witness"])
+			if c.want == nil {
+				assert.NotContains(t, w, "independent_of")
+			} else {
+				assert.Equal(t, c.want, w["independent_of"])
+			}
+		})
+	}
+
+	unlistedFirst := editedProof(t, func(p map[string]any) {
+		good := p["witness_receipts"].([]any)[0].(map[string]any)
+		other := map[string]any{}
+		for k, v := range good {
+			other[k] = v
+		}
+		other["ts_url"] = "https://unlisted.example"
+		p["witness_receipts"] = []any{other, good}
+	})
+	w := v1EntryOf(t, pluginVerify(t, "--bundle", keep, "--stamp-proof", unlistedFirst, "--witness-directory", writeJSON(t, `{"witnesses":[`+row(`["`+a+`"]`)+`]}`)))["witnessed"].(map[string]any)
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z", "independent_of": []any{a}}, w)
 }
 
 // --stamp-proof goes with --bundle, and reads only a proof file.

@@ -33,6 +33,8 @@ import (
 //   - withheld: no directory, no receipt, none checkable (an unknown witness,
 //     a verified receipt with no time), or a chain that covers only an earlier
 //     checkpoint of the deal (extent part: its time is not this copy's).
+// Each names the W row of the witness it reports on, as v1Witnessed does
+// (witness and independent_of, evidencebook#1073).
 // It is never a claim: the copy's verdict and witness claim are unchanged.
 
 // v0ChainProofKind names the proof file `deal checkpoint proof` writes for an
@@ -91,7 +93,7 @@ func readVerifyProof(path string) (*entryProof, *v0ChainProof, error) {
 // v0Witnessed is the witnessed member for an x-deal-v0 copy value, given the
 // holder's chain for it. dealStatement is the copy's signed checkpoint, nil
 // when it did not verify.
-func v0Witnessed(value map[string]interface{}, proof *v0ChainProof, dealStatement []byte, dir *witness.Directory) map[string]any {
+func v0Witnessed(value map[string]interface{}, proof *v0ChainProof, dealStatement []byte, dir *witness.Directory, rows witnessRows) map[string]any {
 	withheld := func(reason string) map[string]any { return map[string]any{"status": "withheld", "reason": reason} }
 	failed := func(reason string) map[string]any { return map[string]any{"status": "failed", "reason": reason} }
 	if dir == nil {
@@ -125,32 +127,34 @@ func v0Witnessed(value map[string]interface{}, proof *v0ChainProof, dealStatemen
 		return withheld("no witness receipt is held for this checkpoint yet")
 	}
 	var (
-		name     string
-		at       time.Time
-		verified bool
-		bad      bool
+		at            time.Time
+		verified, bad bool
+		// The receipts whose rows the member names, as in v1Witnessed.
+		best, badRow, listed string
 	)
 	for _, r := range results {
 		switch {
 		case r.Status == witness.StatusPass && r.RegistrationTime != nil:
 			when := time.Unix(*r.RegistrationTime, 0).UTC()
 			if !verified || when.Before(at) {
-				row, _ := dir.RowFor(r.TSURL)
-				name, at, verified = row.Name, when, true
+				best, at, verified = r.TSURL, when, true
 			}
 		case r.Status == witness.StatusPass:
 			// A receipt that verifies but carries no time: no time is guessed.
 		case r.Status == witness.StatusFail:
-			bad = true
+			bad, badRow = true, firstListed(badRow, r.TSURL, dir)
 		}
+		listed = firstListed(listed, r.TSURL, dir)
 	}
 	switch {
 	case verified:
-		return map[string]any{"status": "verified", "witness": name, "at": at.Format(time.RFC3339)}
+		member := rows.withRow(map[string]any{"status": "verified"}, dir, best)
+		member["at"] = at.Format(time.RFC3339)
+		return member
 	case bad, status == witness.StatusFail:
-		return failed("a witness receipt does not verify under the witness directory")
+		return rows.withRow(failed("a witness receipt does not verify under the witness directory"), dir, badRow)
 	}
-	return withheld("no receipt verifies under the witness directory")
+	return rows.withRow(withheld("no receipt verifies under the witness directory"), dir, listed)
 }
 
 // v0ChainProofOf is the proof file's value for an x-deal-v0 copy b: the

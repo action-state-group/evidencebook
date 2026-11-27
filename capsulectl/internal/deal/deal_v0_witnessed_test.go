@@ -77,7 +77,17 @@ func TestV0WitnessedFromTheHoldersChain(t *testing.T) {
 	_, plain := v0WitnessedOf(t, copyPath)
 	w, verdict := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", f.directory)
 	assert.Equal(t, plain, verdict, "the witness time never changes the verdict")
-	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt}, w)
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt, "independent_of": []any{}}, w,
+		"the row states no independent_of: [] (evidencebook#1073)")
+	listedRow := rawKeyRow(f.endpoint, f.public)
+	listedRow["independent_of"] = []string{strings.Repeat("a1", 32)}
+	listed, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", writeDirectory(t, listedRow))
+	assert.Equal(t, []any{strings.Repeat("a1", 32)}, listed["independent_of"], "the row's list as W states it")
+	badRow := rawKeyRow(f.endpoint, f.public)
+	badRow["independent_of"] = "everyone"
+	malformedList, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", writeDirectory(t, badRow))
+	assert.Equal(t, "test witness", malformedList["witness"])
+	assert.NotContains(t, malformedList, "independent_of", "a list that is not a list of strings is never guessed")
 
 	// The member has the viewer contract's shape (capsule-viewer
 	// tests/testdata/deal-v0-report, main-standalone-keep.verify.json).
@@ -94,10 +104,15 @@ func TestV0WitnessedFromTheHoldersChain(t *testing.T) {
 	assert.Equal(t, "withheld", none["status"], "no directory")
 	unknown, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", writeDirectory(t, rawKeyRow("https://other.example", f.public)))
 	assert.Equal(t, "withheld", unknown["status"], "a witness the directory does not list")
+	assert.NotContains(t, unknown, "witness", "no row is known")
+	assert.NotContains(t, unknown, "independent_of", "no row is known")
+	assert.NotContains(t, none, "witness", "no directory, no row")
 	other, _, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	wrongKey, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", writeDirectory(t, rawKeyRow(f.endpoint, other)))
 	assert.Equal(t, "failed", wrongKey["status"], "a receipt that does not verify, and none that does")
+	assert.Equal(t, "test witness", wrongKey["witness"], "the row of the receipt that does not verify")
+	assert.Equal(t, []any{}, wrongKey["independent_of"])
 
 	// A failing receipt beside one that verifies: the verified one counts.
 	var proof v0ChainProof
@@ -127,14 +142,19 @@ func TestV0WitnessedFromTheHoldersChain(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, data, 0o600))
 		return path
 	}
+	// statusOf is the member's status, and the row it names ("" for none).
 	statusOf := func(path string) string {
 		w, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", path, "--witness-directory", f.directory)
+		if name, named := w["witness"].(string); named {
+			return w["status"].(string) + " " + name
+		}
 		return w["status"].(string)
 	}
-	assert.Equal(t, "verified", statusOf(write("bad-good", bad, good)), "a receipt that does not verify beside one that does")
-	assert.Equal(t, "failed", statusOf(write("bad", bad)), "a receipt that does not verify, alone")
-	assert.Equal(t, "verified", statusOf(write("malformed-good", malformedEntry, good)), "a malformed receipt beside a verified one")
-	assert.Equal(t, "failed", statusOf(write("malformed", malformedEntry)), "a malformed receipt alone fails, never reads as no receipt")
+	assert.Equal(t, "verified test witness", statusOf(write("bad-good", bad, good)), "a receipt that does not verify beside one that does")
+	assert.Equal(t, "failed test witness", statusOf(write("bad", bad)), "a receipt that does not verify, alone")
+	assert.Equal(t, "failed test witness", statusOf(write("unknown-bad", unknownEntry, bad)), "the row of the receipt that does not verify, not an unlisted one")
+	assert.Equal(t, "verified test witness", statusOf(write("malformed-good", malformedEntry, good)), "a malformed receipt beside a verified one")
+	assert.Equal(t, "failed", statusOf(write("malformed", malformedEntry)), "a malformed receipt alone fails, never reads as no receipt; it gives no result, so no row")
 	assert.Equal(t, "withheld", statusOf(write("unknown", unknownEntry)), "a witness the directory does not list")
 	assert.Equal(t, "failed", statusOf(write("malformed-unknown", malformedEntry, unknownEntry)), "nothing verified, and a receipt is malformed")
 }
@@ -145,6 +165,9 @@ func TestV0WitnessedWithNoTimeIsWithheld(t *testing.T) {
 	copyPath, proofPath, _ := f.copyAndProof(t, "all")
 	w, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", f.directory)
 	assert.Equal(t, "withheld", w["status"])
+	assert.Equal(t, "test witness", w["witness"], "the row of the receipt that verified without a time")
+	assert.Equal(t, []any{}, w["independent_of"])
+	assert.NotContains(t, w, "at")
 }
 
 // A chain witnessed for an earlier checkpoint, after a later step: its time
@@ -160,6 +183,7 @@ func TestV0WitnessedOnlyForTheCopysOwnCheckpoint(t *testing.T) {
 	w, _ := v0WitnessedOf(t, partCopy, "--stamp-proof", partProof, "--witness-directory", f.directory)
 	assert.Equal(t, "withheld", w["status"])
 	assert.Contains(t, w["reason"], "earlier checkpoint")
+	assert.NotContains(t, w, "witness", "an earlier checkpoint's chain names no row")
 	// The chain of the earlier copy beside the later one names another
 	// checkpoint.
 	stale, _ := v0WitnessedOf(t, partCopy, "--stamp-proof", allProof, "--witness-directory", f.directory)
@@ -186,7 +210,7 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 	f := newV0WitnessFixture(t, time.Date(2026, 10, 4, 9, 5, 0, 0, time.UTC))
 	page := filepath.Join(t.TempDir(), "keep.html")
 	dealRun(t, "report", "--deal", f.dealID, "--html", page, "--witness-directory", f.directory)
-	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt},
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt, "independent_of": []any{}},
 		v0Entry(t, pageVerifyReport(t, mustRead(t, page)))["witnessed"], "capsulectl's report on the page, to the second")
 	// The chain itself never reaches the page: neither its bundle nor its
 	// bootstrap data carries it (u219).

@@ -27,6 +27,11 @@ import (
 //     not verify, or a receipt fails and none verifies;
 //   - withheld: no directory, no receipt held, or no receipt that could be
 //     checked under the directory.
+// Each also names the W row of the witness it reports on, when W lists one
+// (deal_witnessed_row.go): witness, the row's name, and independent_of, its
+// list as W states it ([] when the row has none); on failed the row of the
+// first receipt that does not verify, on withheld the first receipt's whose
+// witness W lists (evidencebook#1073).
 // It is never a claim: a witness result leaves the copy's verdict as it was.
 
 // stampProofFlag is verify's flag for the proof file.
@@ -46,7 +51,7 @@ func readStampProof(path string) (*entryProof, error) {
 }
 
 // v1Witnessed is the witnessed member for the copy value, given its proof.
-func v1Witnessed(value map[string]interface{}, proof *entryProof, dir *witness.Directory) map[string]any {
+func v1Witnessed(value map[string]interface{}, proof *entryProof, dir *witness.Directory, rows witnessRows) map[string]any {
 	withheld := func(reason string) map[string]any { return map[string]any{"status": "withheld", "reason": reason} }
 	failed := func(reason string) map[string]any { return map[string]any{"status": "failed", "reason": reason} }
 	if dir == nil {
@@ -71,10 +76,12 @@ func v1Witnessed(value map[string]interface{}, proof *entryProof, dir *witness.D
 		return withheld("no witness receipt is held for this checkpoint yet")
 	}
 	var (
-		name     string
-		at       time.Time
-		verified bool
-		bad      bool
+		at            time.Time
+		verified, bad bool
+		// The receipts whose rows the member names: the one that verified
+		// with the earliest time, else the first that does not verify, else
+		// the first of a witness dir lists.
+		best, badRow, listed string
 	)
 	for _, rc := range proof.WitnessReceipts {
 		check, _, when, ok, err := evidencebook.VerifyWitnessReceiptTime(proof.StampProof.ShelfCheckpoint, rc, *dir)
@@ -83,22 +90,24 @@ func v1Witnessed(value map[string]interface{}, proof *entryProof, dir *witness.D
 			return failed("the stamp proof's shelf checkpoint does not verify")
 		case check.State == evidencebook.WitnessVerified && ok:
 			if !verified || when.Before(at) {
-				row, _ := dir.RowFor(rc.TSURL)
-				name, at, verified = row.Name, when, true
+				best, at, verified = rc.TSURL, when, true
 			}
 		case check.State == evidencebook.WitnessVerified:
 			// A receipt that verifies but carries no time: no time is guessed.
 		case check.State == evidencebook.WitnessInvalid:
-			bad = true
+			bad, badRow = true, firstListed(badRow, rc.TSURL, dir)
 		}
+		listed = firstListed(listed, rc.TSURL, dir)
 	}
 	switch {
 	case verified:
-		return map[string]any{"status": "verified", "witness": name, "at": at.Format(time.RFC3339)}
+		member := rows.withRow(map[string]any{"status": "verified"}, dir, best)
+		member["at"] = at.Format(time.RFC3339)
+		return member
 	case bad:
-		return failed("a witness receipt does not verify under the witness directory")
+		return rows.withRow(failed("a witness receipt does not verify under the witness directory"), dir, badRow)
 	}
-	return withheld("no receipt verifies under the witness directory")
+	return rows.withRow(withheld("no receipt verifies under the witness directory"), dir, listed)
 }
 
 // v1PageWitness is what `deal report --html --witness-directory W` gives the

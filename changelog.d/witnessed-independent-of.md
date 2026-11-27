@@ -1,0 +1,4 @@
+<!-- changelog: capsulectl/CHANGELOG-deal.md -->
+### Changed: the `witnessed` member names the witness row's `independent_of` (#1073)
+
+- `capsulectl-deal verify --bundle F --stamp-proof P --witness-directory W` now reports, in an x-deal-v1 or x-deal-v0 copy's `witnessed` member, the `independent_of` list of the W row that names the witness, as W states it (`[]` when the row has none; left out when it is not a list of strings). On `failed` and `withheld` the member also names that row (`witness` and `independent_of`) when W lists the witness of a receipt: the first receipt that does not verify, or else the first receipt W lists. `deal report --html` carries the member to the page unchanged; the page decides from the list whether to say the witness is not listed as independent of the parties (capsule-viewer#508). verify reads W once and checks the receipts against that same copy.

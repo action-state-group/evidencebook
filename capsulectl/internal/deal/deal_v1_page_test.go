@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -285,7 +286,14 @@ func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
 		}
 	}
 	require.NotNil(t, entry)
-	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z"}, entry["witnessed"])
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z", "independent_of": []any{}}, entry["witnessed"])
+	// The row's independent_of reaches the page as verify reported it
+	// (evidencebook#1073).
+	listed := filepath.Join(t.TempDir(), "witnesses.json")
+	require.NoError(t, os.WriteFile(listed, []byte(`{"witnesses":[{"name":"Action State's witness","endpoint":"https://witness.agentactioncapsule.org","key_ids":["39bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5"],"independent_of":["`+strings.Repeat("a1", 32)+`"]}]}`), 0o600))
+	listedPage, err := v1ReportPage(t.Context(), keep, "capsulectl deal verify --bundle receipt.html", proof, listed, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []any{strings.Repeat("a1", 32)}, v1EntryOf(t, pageVerifyReport(t, listedPage))["witnessed"].(map[string]any)["independent_of"])
 	m := regexp.MustCompile(`<script type="application/json">([\s\S]*?)</script>`).FindSubmatch(page)
 	require.NotNil(t, m)
 	assert.Empty(t, holderWitnessEvidence(t, m[1]), "the page's bundle carries no proof of the holder's")
