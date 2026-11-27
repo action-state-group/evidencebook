@@ -273,14 +273,3 @@ func TestV0PageDrawsCapsulectlsCountersignatures(t *testing.T) {
 	})))
 	assert.Empty(t, invalid.Module, "a bound invalid entry refuses the copy: no receipt is drawn")
 }
-
-// --witness-directory is an x-deal-v1 page's: on an x-deal-v0 deal it is
-// refused, saying the page shows no witness time yet (u219 reaches x-deal-v0
-// pages in a later change of #869).
-func TestV0ReportRefusesAWitnessDirectory(t *testing.T) {
-	dealFixture(t)
-	id := retailDeal(t)
-	_, err := invoke(t, "", "--profile", "deal", "deal", "report", "--deal", id, "--html", filepath.Join(t.TempDir(), "p.html"), "--witness-directory", "w.json")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "an x-deal-v0 page shows no witness time yet")
-}

@@ -38,7 +38,13 @@ changes nothing: the entry stays "entered, not witnessed", and the output says
 so; run this again once the witness's receipt has come back, and it replaces
 the file. It carries no record content, only checkpoints, proofs and witness
 receipts. It stamps nothing: when no stamp covers that checkpoint yet, run
-deal tick once one is due, then this again.`,
+deal tick once one is due, then this again.
+
+On an x-deal-v0 deal, the file is your book's witnessed cadence chain for that
+checkpoint: deal verify --bundle COPY --stamp-proof FILE --witness-directory W
+reads it and reports the copy's witness time, and deal report --html
+--witness-directory W puts that time on your own page. A chain witnessed only
+for an earlier checkpoint gives no time for this copy.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			str := func(name string) string { v, _ := c.Flags().GetString(name); return strings.TrimSpace(v) }
@@ -55,12 +61,21 @@ deal tick once one is due, then this again.`,
 			if err != nil {
 				return cli.InputError("cannot read --copy " + copyPath)
 			}
+			// An x-deal-v0 deal's proof is the holder's cadence chain
+			// (deal_v0_witnessed.go).
+			if v1, err := v1DealOfFlag(c); err != nil {
+				return err
+			} else if !v1 {
+				return runDeal(c, true, func(ctx context.Context, s *dealSession, _ string, events []sealedEvent) error {
+					return s.v0CheckpointProof(ctx, c, dealID, bundle, out, events)
+				})
+			}
 			return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
 				return s.checkpointProof(ctx, c, dealID, bundle, out)
 			})
 		},
 	}
-	cmd.Flags().String("deal", "", "The x-deal-v1 deal (required)")
+	cmd.Flags().String("deal", "", "The deal (required)")
 	cmd.Flags().String("copy", "", "Your copy, as deal report --share ... --bundle wrote it (required)")
 	cmd.Flags().String("out", "", "Where to write the proof file (required)")
 	return cmd
@@ -173,7 +188,11 @@ func isProofFile(path string) bool {
 		return false
 	}
 	var p entryProof
-	return json.Unmarshal(raw, &p) == nil && p.StampProof != nil && len(p.StampProof.ShelfCheckpoint) > 0
+	if json.Unmarshal(raw, &p) == nil && p.StampProof != nil && len(p.StampProof.ShelfCheckpoint) > 0 {
+		return true
+	}
+	var v0 v0ChainProof
+	return json.Unmarshal(raw, &v0) == nil && v0.Kind == v0ChainProofKind
 }
 
 // stampCandidate is a stamp proof of the deal book with the witness receipts

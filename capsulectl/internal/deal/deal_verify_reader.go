@@ -49,6 +49,10 @@ type dealReader struct {
 	// proof is verify's --stamp-proof, for an x-deal-v1 copy's witnessed
 	// member (deal_v1_witnessed.go); nil when none was given.
 	proof *entryProof
+	// v0Chain is verify's --stamp-proof for an x-deal-v0 copy: the holder's
+	// cadence chain for its checkpoint (deal_v0_witnessed.go); nil when none
+	// was given.
+	v0Chain *v0ChainProof
 	// countersign is verify's --countersign-directory and --producer-key,
 	// for an x-deal-v0 copy's countersign member
 	// (deal_v0_countersign_report.go); nil when no directory was given.
@@ -95,6 +99,11 @@ func (r *dealReader) Read(ctx *cli.ExtensionContext, kind string) (map[string]an
 		// reported only, never a claim, so the verdict is unchanged.
 		if r.proof != nil && kind == DealProfileV1 && entry["report"] == "standalone" {
 			entry["witnessed"] = v1Witnessed(ctx.Value, r.proof, ctx.Directory)
+		}
+		// The witness time of an x-deal-v0 copy's own book, from the chain
+		// beside it, in any report form: reported only, never a claim.
+		if r.v0Chain != nil && kind == DealProfile {
+			entry["witnessed"] = v0Witnessed(ctx.Value, r.v0Chain, ctx.Statement, ctx.Directory)
 		}
 		// capsulectl's check of an x-deal-v0 copy's countersignatures:
 		// reported only, never a claim.
@@ -181,7 +190,7 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 		c.Long = strings.TrimSpace(c.Long + "\n\n" + cardAnchorVerifyHelp)
 		c.Flags().String(countersignDirectoryFlag, "", "With --bundle on an x-deal-v0 copy that carries countersignatures: the countersigner directory (HTTPS URL or file) that resolves who countersigned; the copy's x-deal-v0 entry reports countersign (each countersignature's state, as capsulectl countersign verify reports it), which never changes the verdict")
 		c.Flags().StringArray(producerKeyFlag, nil, "With --"+countersignDirectoryFlag+": a key of the copy's producer, as 64 lowercase hex characters (repeat for each); a countersignature by it is reported not independent")
-		c.Flags().String(stampProofFlag, "", "With --bundle on your own x-deal-v1 copy: the proof file deal checkpoint proof wrote for it; the copy's x-deal-v1 entry reports witnessed (verified, failed, or withheld when no --witness-directory is given), which never changes the verdict")
+		c.Flags().String(stampProofFlag, "", "With --bundle on your own copy: the proof file deal checkpoint proof wrote for it; the copy's x-deal-v1 or x-deal-v0 entry reports witnessed (verified, failed, or withheld when no --witness-directory is given), which never changes the verdict")
 		c.RunE = func(c *cobra.Command, args []string) error {
 			bundle, _ := c.Flags().GetString("bundle")
 			proofPath, _ := c.Flags().GetString(stampProofFlag)
@@ -200,9 +209,10 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 				return cli.InputError("--" + producerKeyFlag + " goes with --" + countersignDirectoryFlag)
 			}
 			var proof *entryProof
+			var v0Chain *v0ChainProof
 			if proofPath != "" {
 				var err error
-				if proof, err = readStampProof(proofPath); err != nil {
+				if proof, v0Chain, err = readVerifyProof(proofPath); err != nil {
 					return err
 				}
 			}
@@ -218,7 +228,7 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 				}
 				cs = &countersignInput{ctx: ctx, directory: csDir, producerKeys: keys}
 			}
-			reader := func() cli.ExtensionReader { return &dealReader{proof: proof, countersign: cs} }
+			reader := func() cli.ExtensionReader { return &dealReader{proof: proof, v0Chain: v0Chain, countersign: cs} }
 			return cli.VerifyBundleFileWith(c, bundle, reader)
 		}
 	}

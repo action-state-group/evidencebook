@@ -1067,7 +1067,9 @@ show the same one; never say a deal was witnessed when it happened. A copy
 written since u225 carries no cadence chain (it would show the user's shelf
 position and cadence), so a deal witnessed only through the cadence is not
 shown as witnessed in it; the report's `assurance` tells the user in
-attributed voice. A receipt on the deal's own checkpoint, when one is held,
+attributed voice, and `deal report --html --witness-directory DIRECTORY.json`
+puts on the user's own page the witness time capsulectl checked from the
+user's book (never on a shared copy's page). A receipt on the deal's own checkpoint, when one is held,
 rides in `bundle.json`, where `capsulectl deal verify --bundle bundle.json
 --witness-directory DIRECTORY.json` checks it against a witness directory
 the reader chooses. The email copy cannot check itself; the attached page and

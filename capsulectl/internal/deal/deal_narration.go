@@ -450,7 +450,7 @@ func (s *dealSession) writeReceiptPage(ctx context.Context, events []sealedEvent
 	if err != nil {
 		return err
 	}
-	page, err := dealReportHTML(ctx, b, nil, dealVerifyCommand(htmlPath))
+	page, err := dealReportHTML(ctx, b, nil, nil, dealVerifyCommand(htmlPath))
 	if err != nil {
 		return err
 	}

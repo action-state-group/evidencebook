@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -473,7 +475,7 @@ func journeyPageWords(w cli.Wording) map[string]string {
 // before (dealPageOpenings refuses an asked-words, card or statement opening
 // that does not recompute), and a countersignature capsulectl found invalid,
 // or could not check against the directory asked for, refuses the page.
-func dealReportHTML(ctx context.Context, b map[string]interface{}, countersign *v0PageCountersign, verifyCommand string) (string, error) {
+func dealReportHTML(ctx context.Context, b map[string]interface{}, countersign *v0PageCountersign, pageWitness *v0PageWitness, verifyCommand string) (string, error) {
 	if err := dealCopyPageGate(b); err != nil {
 		return "", err
 	}
@@ -491,6 +493,22 @@ func dealReportHTML(ctx context.Context, b map[string]interface{}, countersign *
 		for _, k := range countersign.producerKeys {
 			extra = append(extra, "--"+producerKeyFlag, k)
 		}
+	}
+	if pageWitness != nil {
+		dir, err := os.MkdirTemp("", "capsulectl-deal-witness-")
+		if err != nil {
+			return "", err
+		}
+		defer os.RemoveAll(dir)
+		raw, err := json.Marshal(pageWitness.proof)
+		if err != nil {
+			return "", err
+		}
+		proofPath := filepath.Join(dir, "proof.json")
+		if err := os.WriteFile(proofPath, raw, 0o600); err != nil {
+			return "", err
+		}
+		extra = append(extra, "--"+stampProofFlag, proofPath, "--witness-directory", pageWitness.directory)
 	}
 	report, err := selfVerifyReport(ctx, bundle, nil, "", extra)
 	if err != nil {
