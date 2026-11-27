@@ -115,8 +115,13 @@ func v0Witnessed(value map[string]interface{}, proof *v0ChainProof, dealStatemen
 	if err != nil {
 		return failed("the chain's cadence checkpoint does not verify")
 	}
-	_, _, results := witness.VerifyReceipts(inner["witnesses"], &signed, statement, *dir)
+	// A malformed receipt is no result but fails the whole: it counts as a
+	// receipt that does not verify.
+	status, _, results := witness.VerifyReceipts(inner["witnesses"], &signed, statement, *dir)
 	if len(results) == 0 {
+		if status == witness.StatusFail {
+			return failed("a witness receipt is malformed")
+		}
 		return withheld("no witness receipt is held for this checkpoint yet")
 	}
 	var (
@@ -142,7 +147,7 @@ func v0Witnessed(value map[string]interface{}, proof *v0ChainProof, dealStatemen
 	switch {
 	case verified:
 		return map[string]any{"status": "verified", "witness": name, "at": at.Format(time.RFC3339)}
-	case bad:
+	case bad, status == witness.StatusFail && !anyWithheld(results):
 		return failed("a witness receipt does not verify under the witness directory")
 	}
 	return withheld("no receipt verifies under the witness directory")
@@ -231,6 +236,12 @@ type v0PageWitness struct {
 // nil when no witnessed chain is held yet (the page then draws no time). W
 // must read as a witness directory.
 func (s *dealSession) v0PageWitnessOf(ctx context.Context, dealID string, b map[string]interface{}, dirPath string) (*v0PageWitness, error) {
+	// Only the holder's own copy carries the time, whatever audience the
+	// command names: a shared copy given with --from-bundle is refused, so
+	// its page's verify report never holds the witness (u219).
+	if audience, _ := dealPageReport(b)["audience"].(string); audience != cli.DealAudienceKeep {
+		return nil, cli.InputError("--witness-directory puts your book's witness time on your own --html page; a shared copy carries none")
+	}
 	raw, err := os.ReadFile(dirPath)
 	if err != nil {
 		return nil, cli.InputError("cannot read --witness-directory " + dirPath)
@@ -247,4 +258,15 @@ func (s *dealSession) v0PageWitnessOf(ctx context.Context, dealID string, b map[
 		return nil, err
 	}
 	return &v0PageWitness{proof: proof, directory: abs}, nil
+}
+
+// anyWithheld says whether a receipt result was withheld (an unknown
+// witness, or one not checkable under the directory).
+func anyWithheld(results []witness.ReceiptResult) bool {
+	for _, r := range results {
+		if r.Status == witness.StatusWithheld {
+			return true
+		}
+	}
+	return false
 }

@@ -115,7 +115,16 @@ func TestV0WitnessedFromTheHoldersChain(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(mixed, data, 0o600))
 	m, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", mixed, "--witness-directory", f.directory)
-	assert.Equal(t, "verified", m["status"])
+	assert.Equal(t, "verified", m["status"], "a malformed receipt beside a verified one")
+
+	// A malformed receipt alone fails, never reads as no receipt.
+	inner["witnesses"] = []any{bad}
+	malformed := filepath.Join(f.dir, "malformed.proof.json")
+	data, err = json.Marshal(proof)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(malformed, data, 0o600))
+	alone, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", malformed, "--witness-directory", f.directory)
+	assert.Equal(t, "failed", alone["status"], "%v", alone)
 }
 
 // A receipt that verifies but states no time gives no time.
@@ -163,7 +172,12 @@ func TestV0CheckpointProofRefusesAnotherDealsCopy(t *testing.T) {
 func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 	chrome := chromeOrSkip(t)
 	f := newV0WitnessFixture(t, time.Date(2026, 10, 4, 9, 5, 0, 0, time.UTC))
-	with := reportV0Page(t, chrome, f.dealID, "", "--witness-directory", f.directory)
+	page := filepath.Join(t.TempDir(), "keep.html")
+	dealRun(t, "report", "--deal", f.dealID, "--html", page, "--witness-directory", f.directory)
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt},
+		v0Entry(t, pageVerifyReport(t, mustRead(t, page)))["witnessed"], "capsulectl's report on the page, to the second")
+	with := readV0Page(t, chrome, page)
+	require.Empty(t, with.Errors)
 	require.Len(t, with.Rungs["witness"], 1)
 	assert.Contains(t, with.Rungs["witness"][0], "test witness")
 	assert.NotEqual(t, "No witness result was reported to this page.", with.Rungs["witness"][0])
@@ -174,6 +188,36 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 		"--share", cli.DealAudienceCounterparty, "--to", "the shop", "--witness-directory", f.directory)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "a shared copy carries none")
+
+	// A shared copy given with --from-bundle is refused too, so its page's
+	// report never holds the time.
+	for _, audience := range []string{cli.DealAudienceCounterparty, cli.DealAudienceAdjudicator} {
+		sharedPage := filepath.Join(t.TempDir(), audience+".html")
+		dealRun(t, "report", "--deal", f.dealID, "--share", audience, "--to", "the shop", "--html", sharedPage)
+		// The shared copy's bundle, as the other side holds it.
+		data, err := json.Marshal(embeddedBundle(t, string(mustRead(t, sharedPage))))
+		require.NoError(t, err)
+		shared := filepath.Join(t.TempDir(), audience+".json")
+		require.NoError(t, os.WriteFile(shared, data, 0o600))
+		out := filepath.Join(t.TempDir(), audience+".html")
+		_, err = invoke(t, "", "--profile", "deal", "deal", "report", "--deal", f.dealID, "--from-bundle", shared, "--html", out, "--witness-directory", f.directory)
+		require.Error(t, err, audience)
+		assert.Contains(t, err.Error(), "a shared copy carries none", audience)
+		assert.NoFileExists(t, out)
+	}
+
+	// After a later step, the page of the new copy draws no time: the
+	// held chain is witnessed for an earlier checkpoint.
+	*f.now = f.now.Add(10 * time.Minute)
+	dealRun(t, "note", "--deal", f.dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"counterparty","text":"Your order has shipped."}`))
+	later := filepath.Join(t.TempDir(), "later.html")
+	dealRun(t, "report", "--deal", f.dealID, "--html", later, "--witness-directory", f.directory)
+	w := v0Entry(t, pageVerifyReport(t, mustRead(t, later)))["witnessed"]
+	if w != nil {
+		assert.NotEqual(t, "verified", w.(map[string]any)["status"])
+	}
+	part := readV0Page(t, chrome, later)
+	assert.NotContains(t, strings.Join(part.Rungs["witness"], " "), "test witness", "no earlier witness time")
 }
 
 // A copy whose report is sealed in the deal's log reads its witness time the
