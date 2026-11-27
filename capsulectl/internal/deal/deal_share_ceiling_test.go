@@ -192,7 +192,7 @@ func TestRandomBase64urlIdsNeverStateTheLimit(t *testing.T) {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 	events := ceilingEvents(800)
 	r := rand.New(rand.NewSource(26))
-	for range 20000 {
+	for range raceRounds(20000) {
 		tok := make([]byte, 43)
 		for i := range tok {
 			tok[i] = alphabet[r.Intn(len(alphabet))]

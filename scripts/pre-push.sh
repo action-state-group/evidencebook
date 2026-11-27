@@ -25,8 +25,8 @@
 # need a pinned Chrome or capsule-engine (deal pages, presentation pass, the
 # Goose loop) run on main and the nightly, and here only as CLAUDE.md lists
 # them. Each suite reports its time; the script exits nonzero if any failed.
-# PRE_PUSH_SHARDS sets the parallel shards per capsulectl pass (default: half
-# the CPUs). --all took 24 minutes on an Apple M5 Pro (CLAUDE.md).
+# PRE_PUSH_SHARDS sets the processes per capsulectl pass (default: the gate's
+# CPU bound, else half the CPUs). --all took 24 minutes on an Apple M5 Pro (CLAUDE.md).
 set -uo pipefail
 
 root=$(git rev-parse --show-toplevel)
@@ -106,34 +106,28 @@ root_suite() {
   go test -race $root_race
 }
 
-# One pass of capsulectl's tests in parallel shards (scripts/test.sh) over the
-# given packages; a shard's failures are printed only when it fails. One
-# process per pass is too slow: internal/deal alone ran past the plain pass's
-# ten-minute timeout on a laptop. A pass over few tests gets at most one shard
-# per top-level test, since scripts/test.sh fails an empty shard; one over
-# packages with no tests (scripts/genconfusables) runs one unfiltered shard,
-# so they still build under the race detector.
+# One pass of capsulectl's tests over the given packages, in PRE_PUSH_SHARDS
+# processes at once (scripts/test.sh's CAPSULE_TEST_JOBS: each package's test
+# binary is built once and its tests run in batches that the processes take
+# from a queue, evidencebook#1038). One process per pass is too slow:
+# internal/deal alone ran past the plain pass's ten-minute timeout on a
+# laptop. The default is the gate's CPU bound (ASG_GATE_CPUS) when it set one,
+# else half the CPUs.
 capsulectl_pass() { # plain|race, packages (space-separated)
-  local pass=$1 pkgs=$2 n=${PRE_PUSH_SHARDS:-$(($(getconf _NPROCESSORS_ONLN) / 2))} i pids=() st=0 tests
+  local pass=$1 pkgs=$2 n=${PRE_PUSH_SHARDS:-${ASG_GATE_CPUS:-$(($(getconf _NPROCESSORS_ONLN) / 2))}} st=0
   ((n >= 1)) || n=1
-  # shellcheck disable=SC2086 # the plan is a space-separated package list
-  tests=$(cd capsulectl && go test -list '.*' $pkgs | awk '/^(Test|Example|Fuzz)/ && !seen[$0]++ { n++ } END { print n + 0 }') || return 1
-  ((tests >= 1)) || tests=1
-  ((n <= tests)) || n=$tests
-  for ((i = 1; i <= n; i++)); do
-    (cd capsulectl && CAPSULE_TEST_PASS=$pass CAPSULE_TEST_SHARD="$i/$n" CAPSULE_TEST_PKGS="$pkgs" CAPSULE_TEST_RACE_TIMEOUT=60m \
-      bash scripts/test.sh > "$log/capsulectl-$pass-$i.log" 2>&1) &
-    pids+=($!)
-  done
-  for i in "${!pids[@]}"; do
-    if ! wait "${pids[$i]}"; then
-      st=1
-      printf -- '-- %s shard %d/%d failed:\n' "$pass" $((i + 1)) "$n"
-      grep -E '^(--- FAIL|FAIL|WARNING: DATA RACE|panic:)' "$log/capsulectl-$pass-$((i + 1)).log" | head -40 ||
-        tail -20 "$log/capsulectl-$pass-$((i + 1)).log"
-    fi
-  done
-  printf '%s pass over %s: %d shards, %s\n' "$pass" "$pkgs" "$n" "$( ((st == 0)) && echo ok || echo FAIL)"
+  # Every test of the pass: no shard a caller's environment may carry.
+  (cd capsulectl && CAPSULE_TEST_PASS=$pass CAPSULE_TEST_SHARD=1/1 CAPSULE_TEST_JOBS=$n CAPSULE_TEST_PKGS="$pkgs" \
+    CAPSULE_TEST_RACE_TIMEOUT=60m bash scripts/test.sh > "$log/capsulectl-$pass.log" 2>&1) || st=1
+  # The queue prints only failing batches in full, so a failed pass prints all
+  # of its output: the assertions and stacks with the failures.
+  if ((st)); then
+    printf -- '-- %s pass failed:\n' "$pass"
+    cat "$log/capsulectl-$pass.log"
+  else
+    grep -E '^== .* over [0-9]+ processes' "$log/capsulectl-$pass.log" || true
+  fi
+  printf '%s pass over %s: %d processes, %s\n' "$pass" "$pkgs" "$n" "$( ((st == 0)) && echo ok || echo FAIL)"
   return "$st"
 }
 
