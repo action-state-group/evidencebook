@@ -15,7 +15,7 @@ and :func:`subjects_of_record`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Iterable, Optional, Sequence
 
 from . import _gostruct as _go
 from ._index import SortedMerkleIndex
@@ -32,9 +32,12 @@ __all__ = [
     "SUBJECT_ID_INDEX_NAME",
     "SubjectRootStatement",
     "SubjectCloseStatement",
+    "SubjectRefused",
+    "Subjects",
     "read_subject_root",
     "read_subject_close",
     "subjects_of_record",
+    "correlation_of",
     "new_subject_id_index",
 ]
 
@@ -175,7 +178,10 @@ def value_at(header_value: Any, tokens: Sequence[str]) -> Optional[str]:
                 return None
             value = value[token]
         elif isinstance(value, list):
-            if not token.isascii() or not token.isdigit() or str(int(token)) != token or int(token) >= len(value):
+            # strconv.Atoi, and the token is its own decimal form: no sign, no
+            # leading zero; too long a token overflows and matches nothing.
+            if not token.isascii() or not token.isdigit() or len(token) > 18 or str(int(token)) != token or \
+                    int(token) >= len(value):
                 return None
             value = value[int(token)]
         else:
@@ -203,6 +209,133 @@ class SubjectOf:
             return False
         found = value_at(header.value() if header_value is None else header_value, self.statement.pointer() or [])
         return found == self.statement.subject_id
+
+
+class SubjectRefused(InvalidError):
+    """A record the subject convention refuses; ``reason`` is its class, as
+    the shared admission vectors name it (testdata/subject/admission.json)."""
+
+    def __init__(self, reason: str, message: str):
+        super().__init__(message)
+        self.reason = reason
+
+
+def close_statement(s: SubjectOf, after: Iterable[Record]) -> SubjectCloseStatement:
+    """The statement a ``subject_close`` of ``s`` would carry now, over
+    ``after``, the book's records after the root in log order."""
+    members = [r for r in after if s.is_member(r.header)]
+    return SubjectCloseStatement(len(members), members[-1].record_id if members else "")
+
+
+class Subjects:
+    """The subjects a book holds, in the order of their roots, and the
+    convention's admission rule over them (Go ``trackSubjectLocked`` and
+    ``checkSubjectEntryLocked``)."""
+
+    def __init__(self) -> None:
+        self._subjects: list[SubjectOf] = []
+
+    def __iter__(self):
+        return iter(self._subjects)
+
+    def by_root(self, record_id: str) -> Optional[SubjectOf]:
+        return next((s for s in self._subjects if s.root.record_id == record_id), None)
+
+    def track(self, record: Record) -> None:
+        """Take in ``record`` as it joins the log. A subject_root whose
+        statement does not read as one, sealed before the convention,
+        declares no subject."""
+        h = record.header
+        if h.record_type == RECORD_TYPE_SUBJECT_ROOT:
+            statement = _try_root(h.statement)
+            if statement is not None:
+                self._subjects.append(SubjectOf(record, statement))
+        elif h.record_type == RECORD_TYPE_SUBJECT_CLOSE:
+            for s in self._subjects:
+                if s.close is None and s.root.record_id in h.links_to(CLOSES):
+                    s.close = record
+
+    def check(self, h: Header, after: Callable[[int], Iterable[Record]]) -> None:
+        """Refuse a header that breaks the convention (:class:`SubjectRefused`):
+        a malformed or second subject_root, any root in a per-subject book, a
+        log root that is not the book's first record, a subject_close that is
+        not the one the book computes, a record citing a field root without
+        carrying its id, a member after its subject's close, a member of two
+        subjects. ``after(seq)`` gives the book's records after seq ``seq``,
+        in log order."""
+        if h.record_type == RECORD_TYPE_SUBJECT_ROOT:
+            try:
+                statement = read_subject_root(h.statement)
+            except InvalidError as exc:
+                raise SubjectRefused("malformed_root", str(exc)) from None
+            for s in self._subjects:
+                if s.statement.subject_id == statement.subject_id:
+                    raise SubjectRefused("second_root", f"the book already holds subject_root {s.root.record_id} "
+                                                        f"for subject {statement.subject_id!r}")
+                if s.statement.membership == MEMBERSHIP_LOG:
+                    raise SubjectRefused("per_subject_book", f"the book is the per-subject book of "
+                                         f"{s.statement.subject_id!r} (its first record is a log subject_root); "
+                                         "it roots no other subject")
+            if statement.membership == MEMBERSHIP_LOG and h.seq != 1:
+                raise SubjectRefused("log_root_not_first", f"a log subject_root is the book's first record, not seq {h.seq}")
+            return
+        if h.record_type == RECORD_TYPE_SUBJECT_CLOSE:
+            targets = h.links_to(CLOSES)
+            if len(targets) != 1:
+                raise SubjectRefused("close_not_one", "a subject_close closes exactly one subject_root")
+            subject = None
+            for s in self._subjects:
+                if s.root.record_id == targets[0]:
+                    subject = s
+            if subject is None:
+                raise SubjectRefused("close_unknown_root", f"subject_close names {targets[0]}, which is not a "
+                                                           "subject_root of this book")
+            if subject.close is not None:
+                raise SubjectRefused("close_again", f"subject {subject.statement.subject_id!r} is already closed by "
+                                                    f"{subject.close.record_id}")
+            if h.statement is None:
+                # Go decodes the statement's json.RawMessage, and an absent one is no JSON.
+                raise SubjectRefused("close_statement", "subject_close statement: none")
+            try:
+                stated = read_subject_close(h.statement)
+            except InvalidError as exc:
+                raise SubjectRefused("close_statement", str(exc)) from None
+            want = close_statement(subject, after(subject.root.seq))
+            if stated != want:
+                raise SubjectRefused("close_count", f"subject_close states {stated.members} members ending "
+                                     f"{stated.last!r}; the book holds {want.members} ending {want.last!r}")
+            return
+        if subject_control(h.record_type):
+            return
+        member_of = []
+        value = h.value()
+        for s in self._subjects:
+            if s.statement.membership != MEMBERSHIP_LOG and s.root.record_id in h.links_to(CITES):
+                if value_at(value, s.statement.pointer() or []) != s.statement.subject_id:
+                    raise SubjectRefused("cites_root_without_id", f"a record citing subject_root {s.root.record_id} "
+                                         f"carries the subject id {s.statement.subject_id!r} at "
+                                         f"{s.statement.membership[len(MEMBERSHIP_FIELD_PREFIX):]}")
+            if not s.is_member(header=h, header_value=value):
+                continue
+            if s.close is not None:
+                raise SubjectRefused("member_after_close", f"subject {s.statement.subject_id!r} was closed by "
+                                     f"{s.close.record_id}; a member sealed after its close is refused")
+            member_of.append(s.statement.subject_id)
+        if len(member_of) > 1:
+            raise SubjectRefused("two_subjects", f"a record is a member of one subject, not of {member_of!r}")
+
+
+def correlation_of(h: Header, subject_roots: dict[str, str]) -> str:
+    """The correlation identifier a record is held under (Go
+    ``bookView.correlationOf``): the subject_id of the first subject_root it
+    cites (``subject_roots`` maps a root's record id to its id); else its
+    correlation.exchange_id; else its subject_ref."""
+    for target in h.links_to(CITES):
+        if target in subject_roots:
+            return subject_roots[target]
+    if h.correlation is not None and h.correlation.exchange_id:
+        return h.correlation.exchange_id
+    return h.subject_ref
 
 
 @dataclass(frozen=True)

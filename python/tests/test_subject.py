@@ -20,6 +20,11 @@ from evidencebook._index import SortedMerkleIndex, verify_key_range
 from evidencebook.book import _View
 from evidencebook.subject import (
     CLOSES,
+    UNINDEXED,
+    SubjectRefused,
+    Subjects,
+    correlation_of,
+    new_subject_id_index,
     MEMBERSHIP_EXCHANGE_ID,
     MEMBERSHIP_FIELD_PREFIX,
     MEMBERSHIP_LOG,
@@ -437,6 +442,10 @@ def test_a_projection_is_checked_for_its_shape():
         edit(bad)
         with pytest.raises(eb.InvalidError):
             verify_subject_bundle(jcs(bad))
+    # Go decodes the projection's own text: a fraction in a projected field is read.
+    fractional = copy.deepcopy(data)
+    fractional["root"]["statement"] = {"score": 1.5}
+    assert verify_subject_bundle(json.dumps(fractional).encode()).form == SUBJECT_BUNDLE_PROJECTION
     # Go's probe matches the form by case-insensitive name.
     folded = {("FORM" if k == "form" else k): v for k, v in data.items()}
     assert verify_subject_bundle(jcs(folded)).form == SUBJECT_BUNDLE_PROJECTION
@@ -473,3 +482,136 @@ def test_go_struct_decoding_of_nested_values():
                 {"b": "AAE"}, {"a": [1, -1]}, {"a": {}}):
         with pytest.raises(eb.InvalidError):
             _gostruct.decode(bad, spec, "v")
+
+
+# -- the admission vectors (testdata/subject/admission.json, Go-written) -------------------------------
+
+
+def _admission_cases():
+    return json.loads((VECTORS / "admission.json").read_text())["cases"]
+
+
+@pytest.mark.parametrize("case", _admission_cases(), ids=lambda c: c["name"])
+def test_admission_vectors(case):
+    subjects, log, index = Subjects(), [], new_subject_id_index()
+    for i, step in enumerate(case["steps"]):
+        header = eb.Header.from_value(step["header"])
+        record = eb.Record(step["record_id"], header.seq, header)
+        try:
+            subjects.check(header, lambda seq: log[seq:])
+        except SubjectRefused as exc:
+            got = exc.reason
+        else:
+            got = "ok"
+            subjects.track(record)
+            log.append(record)
+            if header.record_type != "index_root" and header.record_type not in UNINDEXED:
+                index.add(record)
+        assert got == step["expect"], f"step {i}: {step.get('note')}"
+        assert index.root() == step["subject_id_index"], f"step {i}: {step.get('note')}"
+        assert (index.root()["size"] > 0) == step["checkpoint_commits"], f"step {i}"
+    roots = {r.record_id: s.statement.subject_id for s in subjects for r in (s.root,)}
+    assert [{"record_id": r.record_id, "held_under": correlation_of(r.header, roots)} for r in log] == case["correlation"]
+
+
+# -- Go's decoding, case by case (review round 1) ---------------------------------------------------------
+
+
+def test_admission_reads_a_statement_in_the_order_given(b):
+    # Go decodes the entry's statement text in order: the later member wins.
+    with pytest.raises(eb.InvalidError, match="subject_id"):
+        b.append(eb.Entry(RECORD_TYPE_SUBJECT_ROOT, eb.PRODUCER_CLAIM, statement={
+            "subject_kind": "k", "subject_id": "s", "SUBJECT_ID": "", "membership": "log"}))
+    assert read_subject_root({"SUBJECT_ID": "", "subject_id": "s", "subject_kind": "k", "membership": "log"}).subject_id == "s"
+
+
+@pytest.mark.parametrize("name,ok", [("subject_\u0131d", False), ("subject_\u0130d", False), ("\u017fubject_id", True),
+                                     ("SUBJECT_ID", True), ("subject_\u212ad", False)])
+def test_struct_fields_fold_as_go_folds_them(name, ok):
+    statement = {"subject_kind": "k", json.loads(f'"{name}"'): "s", "membership": "log"}
+    if ok:
+        assert read_subject_root(statement).subject_id == "s"
+    else:
+        with pytest.raises(eb.InvalidError):
+            read_subject_root(statement)
+
+
+@pytest.mark.parametrize("pair,collide", [(("\u00b5", "\u03bc"), True), (("k", "\u212a"), True), (("s", "\u017f"), True),
+                                          (("A", "a"), True), (("\u01c4", "\u01c5"), True), (("\u0130", "i"), False),
+                                          (("\u0131", "I"), False)])
+def test_keys_folding_equal_under_go_simple_fold_are_refused(pair, collide):
+    # Go's foldKey: the least rune of each unicode.SimpleFold orbit.
+    bundle = _full()
+    a, c = pair
+    bundle["extensions"]["x/" + a], bundle["extensions"]["x/" + c] = 1, 2
+    if collide:
+        with pytest.raises(eb.InvalidError, match="differ only by case"):
+            verify_subject_bundle(jcs(bundle))
+    else:
+        verify_subject_bundle(jcs(bundle))
+
+
+@pytest.mark.parametrize("text,ok", [
+    ("2026-11-28T0:00:00Z", True), ("2026-11-28T00:00:00,5Z", True), ("2026-11-28T00:00:00+24:00", True),
+    ("2026-11-28T00:00:00-00:00", True), ("2026-11-28T00:00:00.1234567891234Z", True), ("0000-01-01T00:00:00Z", True),
+    ("2026-11-28T00:00:00.Z", False), ("2026-11-28T24:00:00Z", False), ("2026-11-28T00:00:60Z", False),
+    ("\uff12026-11-28T00:00:00Z", False), ("2026-11-28t00:00:00Z", False), ("2026-11-28T00:00:00z", False),
+    ("-026-11-28T00:00:00Z", False), ("2026-02-29T00:00:00Z", False), ("2026-11-28T00:00:00+0100", False),
+    ("2026-11-28T00:00:00+25:00", False), ("2026-11-28T00:00:00+01:61", False),
+])
+def test_anchor_times_are_read_as_go_reads_them(text, ok):
+    text = json.loads(f'"{text}"')
+    assert _gostruct.go_time(text) is ok
+    bundle = _full()
+    bundle["extensions"]["evidencebook/subject"]["key_range"]["anchor"]["issued_at"] = text
+    if ok:
+        verify_subject_bundle(jcs(bundle))
+    else:
+        with pytest.raises(eb.InvalidError):
+            verify_subject_bundle(jcs(bundle))
+
+
+def test_an_anchor_statement_may_be_an_array_of_bytes():
+    for statement, ok in (([0, 1], True), ([None, 255], True), ([256], False), ([True], False), ("AAE", False)):
+        bundle = _full()
+        bundle["extensions"]["evidencebook/subject"]["key_range"]["anchor"]["statement"] = statement
+        if ok:
+            verify_subject_bundle(jcs(bundle))
+        else:
+            with pytest.raises(eb.InvalidError):
+                verify_subject_bundle(jcs(bundle))
+
+
+def test_an_overlong_pointer_index_matches_nothing(b):
+    token = "1" * 5000
+    root = root_of(b, "deep", f"field:/statement/list/{token}", "session")
+    with pytest.raises(eb.InvalidError, match="carries the subject id"):
+        b.append(eb.Entry("turn", eb.OBSERVED_EVENT, statement={"list": ["deep"]}, links=(eb.Link(eb.CITES, root.record_id),)))
+
+
+def _projection() -> dict:
+    return json.loads((VECTORS / "projection.json").read_bytes())
+
+
+def test_a_projection_is_read_from_its_own_text():
+    text = json.dumps(_projection(), separators=(",", ":"))
+    # A duplicate map merges into the first, as Go decodes it: the position survives.
+    merged = text[:-1] + ',"root":{"x":1}}'
+    seq_first = text.replace('"root":{', '"root":{"seq":1},"root":{', 1)
+    with pytest.raises(eb.InvalidError, match="no position"):
+        verify_subject_bundle(seq_first.encode())
+    verify_subject_bundle(merged.encode())
+    # A later null empties the members; a later case-variant one replaces them.
+    with pytest.raises(eb.InvalidError):
+        verify_subject_bundle((text[:-1] + ',"Members":null}').encode())
+    assert verify_subject_bundle((text[:-1] + ',"Members":[]}').encode()).member_count == 0
+    # Nesting Go's decoder takes, and past it.
+    for depth, ok in ((1500, True), (10000 - 3, True), (10001, False)):
+        p = _projection()
+        p["root"]["deep"] = "@"
+        deep = json.dumps(p).replace('"@"', "[" * depth + "]" * depth)
+        if ok:
+            assert verify_subject_bundle(deep.encode()).form == SUBJECT_BUNDLE_PROJECTION
+        else:
+            with pytest.raises(eb.InvalidError):
+                verify_subject_bundle(deep.encode())

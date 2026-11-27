@@ -70,19 +70,15 @@ from ._cll import CLLSubstrate, Checkpoint, read_checkpoint
 from ._index import default_indexes
 from .subject import (
     CLOSES,
-    MEMBERSHIP_FIELD_PREFIX,
-    MEMBERSHIP_LOG,
     RECORD_TYPE_BOOK_CLOSE,
     RECORD_TYPE_SUBJECT_CLOSE,
     RECORD_TYPE_SUBJECT_ROOT,
     UNINDEXED,
-    SubjectOf,
-    SubjectCloseStatement,
+    Subjects,
     SubjectRootStatement,
-    read_subject_close,
+    close_statement,
+    correlation_of,
     read_subject_root,
-    subject_control,
-    value_at,
 )
 from ._time import from_nanos, nanos, parse_ns, profile_time, profile_time_ns, rfc3339_nano, utc
 from .errors import CorruptError, InvalidError, NotFoundError, ReleasedError, UnavailableError
@@ -598,7 +594,7 @@ class Book:
         self._indexes = default_indexes() if indexes is None else list(indexes)
         # The subjects the book holds, in the order of their roots (the
         # subject convention v0, :mod:`evidencebook.subject`).
-        self._subjects: list[SubjectOf] = []
+        self._subjects = Subjects()
         # A record stored whose log append failed: it keeps its seq and is
         # appended first, before anything new (Go's flushPendingLocked).
         self._pending: tuple[Record, StoredRecord] | None = None
@@ -698,7 +694,7 @@ class Book:
         self._stored[record.record_id] = stored
         self._stated[record.record_id] = "statement" in json.loads(stored.header)
         self._order.append(record.record_id)
-        self._track_subject(record)
+        self._subjects.track(record)
         # A root record is proven by the log, not by the index it commits; a
         # window's open and close and a book's close are found by position
         # (Go addAuthenticated).
@@ -708,84 +704,8 @@ class Book:
 
     # -- the subject convention v0 ------------------------------------------------------
 
-    def _track_subject(self, record: Record) -> None:
-        """Keep ``_subjects`` as ``record`` joins the log (Go
-        ``trackSubjectLocked``). A subject_root whose statement does not read
-        as one, sealed before the convention, declares no subject."""
-        h = record.header
-        if h.record_type == RECORD_TYPE_SUBJECT_ROOT:
-            try:
-                self._subjects.append(SubjectOf(record, read_subject_root(h.statement)))
-            except InvalidError:
-                pass
-        elif h.record_type == RECORD_TYPE_SUBJECT_CLOSE:
-            for s in self._subjects:
-                if s.close is None and s.root.record_id in h.links_to(CLOSES):
-                    s.close = record
-
-    def _members(self, s: SubjectOf) -> list[Record]:
-        """The records of ``s``'s members, in log order."""
-        return [r for r in (self._records[i] for i in self._order[s.root.seq:]) if s.is_member(r.header)]
-
-    def _close_statement(self, s: SubjectOf) -> SubjectCloseStatement:
-        members = self._members(s)
-        return SubjectCloseStatement(len(members), members[-1].record_id if members else "")
-
     def _check_subject_entry(self, h: Header) -> None:
-        """Refuse an entry that breaks the subject convention (Go
-        ``checkSubjectEntryLocked``), reading the header the book is about
-        to commit."""
-        if h.record_type == RECORD_TYPE_SUBJECT_ROOT:
-            statement = read_subject_root(h.statement)
-            for s in self._subjects:
-                if s.statement.subject_id == statement.subject_id:
-                    raise InvalidError(f"the book already holds subject_root {s.root.record_id} "
-                                       f"for subject {statement.subject_id!r}")
-                if s.statement.membership == MEMBERSHIP_LOG:
-                    raise InvalidError(f"book {self._id} is the per-subject book of {s.statement.subject_id!r} "
-                                       "(its first record is a log subject_root); it roots no other subject")
-            if statement.membership == MEMBERSHIP_LOG and h.seq != 1:
-                raise InvalidError(f"a log subject_root is the book's first record, not seq {h.seq}")
-            return
-        if h.record_type == RECORD_TYPE_SUBJECT_CLOSE:
-            targets = h.links_to(CLOSES)
-            if len(targets) != 1:
-                raise InvalidError("a subject_close closes exactly one subject_root")
-            subject = None
-            for s in self._subjects:
-                if s.root.record_id == targets[0]:
-                    subject = s
-            if subject is None:
-                raise InvalidError(f"subject_close names {targets[0]}, which is not a subject_root of this book")
-            if subject.close is not None:
-                raise InvalidError(f"subject {subject.statement.subject_id!r} is already closed by {subject.close.record_id}")
-            if h.statement is None:
-                # Go decodes the statement's json.RawMessage, and an absent one is no JSON.
-                raise InvalidError("subject_close statement: none")
-            stated = read_subject_close(h.statement)
-            want = self._close_statement(subject)
-            if stated != want:
-                raise InvalidError(f"subject_close states {stated.members} members ending {stated.last!r}; "
-                                   f"the book holds {want.members} ending {want.last!r}")
-            return
-        if subject_control(h.record_type):
-            return
-        member_of = []
-        value = h.value()
-        for s in self._subjects:
-            if s.statement.membership != MEMBERSHIP_LOG and s.root.record_id in h.links_to(CITES):
-                if value_at(value, s.statement.pointer() or []) != s.statement.subject_id:
-                    raise InvalidError(f"a record citing subject_root {s.root.record_id} carries the subject id "
-                                       f"{s.statement.subject_id!r} at "
-                                       f"{s.statement.membership[len(MEMBERSHIP_FIELD_PREFIX):]}")
-            if not s.is_member(h, value):
-                continue
-            if s.close is not None:
-                raise InvalidError(f"subject {s.statement.subject_id!r} was closed by {s.close.record_id}; "
-                                   "a member sealed after its close is refused")
-            member_of.append(s.statement.subject_id)
-        if len(member_of) > 1:
-            raise InvalidError(f"a record is a member of one subject, not of {member_of!r}")
+        self._subjects.check(h, lambda seq: (self._records[i] for i in self._order[seq:]))
 
     def seal_subject_root(self, statement: SubjectRootStatement, entry: Entry | None = None) -> Record:
         """Seal a ``subject_root`` record declaring a subject, with the further
@@ -808,11 +728,12 @@ class Book:
             # A record left pending joins the log first, so the count is the
             # one the close's admission computes.
             self._flush_pending()
-            subject = next((s for s in self._subjects if s.root.record_id == root), None)
+            subject = self._subjects.by_root(root)
             if subject is None:
                 raise NotFoundError(f"subject_root {root}")
+            after = (self._records[i] for i in self._order[subject.root.seq:])
             return self._append(Entry(RECORD_TYPE_SUBJECT_CLOSE, PRODUCER_CLAIM, links=(Link(CLOSES, root),),
-                                      statement=self._close_statement(subject).value()))
+                                      statement=close_statement(subject, after).value()))
 
     # -- the basic surface --------------------------------------------------------------
 
@@ -1486,12 +1407,7 @@ class _View:
         """The correlation identifier a record is held under (Go
         ``bookView.correlationOf``): the subject_id of a subject_root it
         cites; else its correlation.exchange_id; else its subject_ref."""
-        for target in h.links_to(CITES):
-            if target in self._subject_roots:
-                return self._subject_roots[target]
-        if h.correlation is not None and h.correlation.exchange_id:
-            return h.correlation.exchange_id
-        return h.subject_ref
+        return correlation_of(h, self._subject_roots)
 
     def correlated(self, correlation_id: str) -> list[int]:
         return self._matching(lambda h: self.correlation_of(h) == correlation_id)

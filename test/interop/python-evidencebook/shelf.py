@@ -11,6 +11,8 @@ repository's Python package, as test/interop/shelf (Go) runs it.
                                     test/interop/shelf plant-tick or
                                     plant-migration left (#461 §7)
     python shelf.py dump DIR        the file's dump on stdout (it reads a copy)
+    python shelf.py subject DIR     the subject phase on DIR/shelf.db, after continue;
+                                    every step's outcome must be testdata/shelf/subject.json's
     python shelf.py handover DIR    the handover of the shelf at its newest stamp on
                                     stdout (evidencebook#461 §2.7; it reads a copy)
     python shelf.py verify-handover FILE
@@ -48,7 +50,7 @@ from capsule_emit.artifact.sqlite import SqliteArtifactStore
 from cll.checkpoint.cose_wire import verify_checkpoint_cose_offline
 from cll.log import AppendInput
 
-from evidencebook import Entry, OBSERVED_EVENT
+from evidencebook import CITES, Correlation, Entry, Link, OBSERVED_EVENT
 from evidencebook._gojson import go_json_indent
 from evidencebook._random import deterministic_stream
 from evidencebook.cadence import CadenceConfig, WitnessReceipt, WITNESS_VERIFIED
@@ -56,9 +58,11 @@ from evidencebook.errors import InvalidError, NotFoundError
 from evidencebook.shelf import JOURNAL_LOG_ID, SHELF_VERSION_FACTS, Shelf
 from evidencebook.shelf_handover import Handover, verify_handover
 from evidencebook.signer import Ed25519Signer
+from evidencebook.subject import SubjectRootStatement
 
 SCRIPT = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "script.json").read_text())
 RECORD_TIME = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "record-time.json").read_text())
+SUBJECT = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "subject.json").read_text())
 HOST = SCRIPT["host_parameters"]
 CADENCE = HOST["cadence"]
 KEYS = SCRIPT["keys"]
@@ -394,6 +398,58 @@ def run_record_time(path: str, steps: list[dict]) -> list[dict]:
     return out
 
 
+def run_subject(path: str, steps: list[dict]) -> list[str | None]:
+    """The subject phase (testdata/shelf/subject.json, Go's
+    shelfscript.SubjectPhase) on the shelf at ``path`` after the continue
+    phase. Returns every step's outcome in its ``expect`` form: "ok", or
+    "invalid" when the book refuses the step (``None`` for open and release)."""
+    env, out, roots = None, [], {}
+    for i, step in enumerate(steps, start=1):
+        op = step["op"]
+        try:
+            if (env is None) != (op == "open"):
+                raise RuntimeError(f"{op} with the shelf {'released' if env is None else 'open'}")
+            if op == "open":
+                env = Env(path, step["stream"], START + timedelta(seconds=step.get("at", 0)))
+                out.append(None)
+                continue
+            if op == "release":
+                env, closing = None, env
+                closing.release()
+                out.append(None)
+                continue
+            book = env.shelf.open(step["book"])
+            try:
+                if op == "append":
+                    book.append(observation(step["subject"], step["payload"]))
+                elif op == "subject_root":
+                    root = book.seal_subject_root(SubjectRootStatement(step["subject_kind"], step["subject_id"],
+                                                                       step["membership"]))
+                    roots[step["subject_id"]] = root.record_id
+                elif op == "member":
+                    book.append(Entry("observation", OBSERVED_EVENT, payloads=(step["payload"].encode(),),
+                                      correlation=Correlation(exchange_id=step["exchange"]),
+                                      links=(Link(CITES, roots.get(step["subject_id"], "")),)))
+                elif op == "close":
+                    book.close_subject(roots.get(step["subject_id"], ""))
+                elif op == "checkpoint":
+                    book.checkpoint()
+                else:
+                    raise RuntimeError(f"unknown step {op!r}")
+            except InvalidError:
+                out.append("invalid")
+            else:
+                out.append("ok")
+        except BaseException as exc:
+            if env is not None:
+                env.release()
+            raise RuntimeError(f"subject step {i} ({op}): {exc}") from exc
+    if env is not None:
+        env.release()
+        raise RuntimeError("the phase left the shelf open")
+    return out
+
+
 def verify_handover_file(path: str) -> bytes:
     """Replay the handover in ``path`` under the script's checkpoint key and
     witness directory; its result in the dump's encoding."""
@@ -443,7 +499,7 @@ def derive(path: str) -> dict:
 
 def main(args: list[str]) -> int:
     if len(args) < 2:
-        print("usage: shelf.py write|continue|migrate|recover|dump|handover|record-time|hold|try DIR [ARG]\n"
+        print("usage: shelf.py write|continue|migrate|recover|dump|handover|record-time|subject|hold|try DIR [ARG]\n"
               "       shelf.py verify-handover FILE", file=sys.stderr)
         return 1
     command, directory = args[0], args[1]
@@ -468,6 +524,12 @@ def main(args: list[str]) -> int:
         for i, (step, got) in enumerate(zip(steps, run_record_time(path, steps)), start=1):
             if got != step.get("expect"):
                 print(f"record time step {i} ({step['op']}): got {got!r}, the vector expects {step.get('expect')!r}", file=sys.stderr)
+                return 1
+    elif command == "subject":
+        steps = SUBJECT["steps"]
+        for i, (step, got) in enumerate(zip(steps, run_subject(path, steps)), start=1):
+            if got != step.get("expect"):
+                print(f"subject step {i} ({step['op']}): got {got!r}, the vector expects {step.get('expect')!r}", file=sys.stderr)
                 return 1
     elif command == "verify-handover":
         sys.stdout.buffer.write(verify_handover_file(directory))

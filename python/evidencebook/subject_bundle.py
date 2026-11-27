@@ -29,6 +29,7 @@ from agent_action_capsule.bundle import MATCH, verify_bundle
 from agent_action_capsule.canonical import jcs
 
 from . import _gostruct as _go
+from ._gofold import fold_key
 from ._cll import read_checkpoint
 from ._index import verify_key_range
 from ._limits import MAX_REPLY_BYTES, MAX_REPLY_DEPTH, MAX_REPLY_ITEMS, MAX_REPLY_RECEIPTS, json_depth_over
@@ -242,27 +243,11 @@ def _decode_json(data: bytes) -> Any:
     return _go_strings(json.loads(data.decode("utf-8", errors="replace"), parse_constant=_reject_constant))
 
 
-def _fold_rune(c: str) -> str:
-    # The least member of c's simple case-fold orbit (Go foldKey), reached
-    # through its single-character lower and upper cases. Dotted and dotless
-    # i fold only to themselves in Go's tables.
-    if c in "İı":
-        return c
-    orbit, todo = {c}, [c]
-    while todo:
-        x = todo.pop()
-        for y in (x.lower(), x.upper()):
-            if len(y) == 1 and y not in orbit and y not in "İı":
-                orbit.add(y)
-                todo.append(y)
-    return min(orbit)
-
-
 def _reject_folded_keys(value: Any, path: str) -> None:
     if isinstance(value, dict):
         seen: dict[str, str] = {}
         for key in sorted(value, key=lambda k: k.encode("utf-8")):
-            folded = "".join(_fold_rune(c) for c in key)
+            folded = fold_key(key)
             if folded in seen:
                 raise InvalidError(f"{path} holds keys {seen[folded]!r} and {key!r} that differ only by case")
             seen[folded] = key
@@ -604,32 +589,24 @@ def _probe(data: bytes) -> Optional[dict]:
     """Go's ``json.Unmarshal`` of a bundle into ``{form, derivation}``: the
     whole text must be JSON; members matched by case-insensitive name in
     document order, the last winning; ``None`` when Unmarshal fails."""
-    def pairs(items: list) -> Any:
-        return _Doc(items)
-
     try:
-        tree = json.loads(data.decode("utf-8", errors="replace"), object_pairs_hook=pairs,
-                          parse_constant=_reject_constant)
+        tree = _go.read_text(data)
     except ValueError:
         return None
     out = {"form": "", "derivation": ""}
     if tree is None:
         return out
-    if not isinstance(tree, _Doc):
+    if not _go.is_object(tree):
         return None
-    folded = {_go._fold(name): name for name in out}
+    folded = {fold_key(name): name for name in out}
     for key, value in tree:
-        name = key if key in out else folded.get(_go._fold(key))
+        name = key if key in out else folded.get(fold_key(key))
         if name is None or value is None:
             continue
         if not isinstance(value, str):
             return None
         out[name] = _SURROGATE.sub("\ufffd", value)
     return out
-
-
-class _Doc(list):
-    """An object's members in document order."""
 
 
 def _read_index_root(r: PeerRecord) -> dict:
@@ -642,7 +619,7 @@ def _read_index_root(r: PeerRecord) -> dict:
     if isinstance(statement, dict):
         # json.Unmarshal ignores members the struct does not name.
         known = {"INDEX", "ROOT", "SIZE", "AS_OF_SEQ"}
-        statement = {k: v for k, v in statement.items() if _go._fold(k) in known}
+        statement = {k: v for k, v in statement.items() if fold_key(k) in known}
     return _go.decode(statement, spec, "index_root statement")
 
 
@@ -724,11 +701,9 @@ def _verify_held_by_digest(ext: dict, members: list[str], by_id: dict[str, PeerR
 def _verify_projection(data: bytes) -> VerifiedSubject:
     """A projection's shape: what it states of its members is the holder's
     assertion (Go ``verifySubjectProjection``)."""
-    try:
-        value = _decode_json(data)
-    except ValueError as exc:
-        raise InvalidError(f"subject bundle projection: {exc}") from None
-    p = _go.decode(value, _PROJECTION_SPEC, "subject bundle projection")
+    # Go decodes the projection's own bytes, not their canonical form, so
+    # member values JCS would refuse (a fraction) are read as Go reads them.
+    p = _go.decode_text(data, _PROJECTION_SPEC, "subject bundle projection")
     if p["completeness"] != SUBJECT_LEVEL_HOLDER_ASSERTION or not p["subject_id"] or p["root"] is None or \
             p["members"] is None:
         raise InvalidError("a subject bundle projection names its subject, its root and its members, "
