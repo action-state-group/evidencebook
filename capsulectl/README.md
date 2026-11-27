@@ -56,7 +56,7 @@ Each release has, for linux/amd64, linux/arm64 and darwin/arm64:
 Download the files, check them, then install:
 
 ```bash
-# V: the release actionstate.ai/install names, e.g. v0.1.0-rcNN. P: linux-amd64, linux-arm64 or darwin-arm64.
+# V: the release actionstate.ai/install names, e.g. v0.1.1. P: linux-amd64, linux-arm64 or darwin-arm64.
 REL=https://github.com/action-state-group/evidencebook/releases/download/capsulectl/$V
 curl -fsSLO "$REL/capsulectl-$V-$P"
 curl -fsSLO "$REL/capsulectl-book-$V-$P"

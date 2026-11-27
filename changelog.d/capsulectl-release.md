@@ -1,6 +1,6 @@
-### Changed: `capsulectl` VERSION-TBD pins capsule-cli VERSION-TBD (evidencebook#1049)
+### Changed: `capsulectl` v0.1.1 pins capsule-cli v0.1.1 (evidencebook#1049)
 
-- `capsulectl/go.mod` requires capsule-cli `VERSION-TBD` (was a commit pin, 8a857096, after rc54; rc53 before that), the `evidencebook` library at 0d182d04 (which carries `ReadShelfWindowFrom`, #1045) and `report` `v0.9.0`. The pull requests below reached `capsulectl/` or `report/` since `capsulectl/v0.1.0-rc53`, by merge title:
+- `capsulectl/go.mod` requires capsule-cli `v0.1.1` (was a commit pin, 8a857096, after rc54; rc53 before that), the `evidencebook` library at 0d182d04 (which carries `ReadShelfWindowFrom`, #1045) and `report` `v0.9.0`. The pull requests below reached `capsulectl/` or `report/` since `capsulectl/v0.1.0-rc53`, by merge title:
 - Added:
   - feat(report)!: open settlement receipts with capsule-viewer's receipt modules (#869) (#870)
   - feat(goose): the Goose loop reference node runs on capsulectl-deal, its deals on x-deal-v1 (#624) (#833)

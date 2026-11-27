@@ -10,8 +10,8 @@
 #
 # It sets:
 #   1. Two deployment environments, each approved by one of REVIEWERS:
-#      `capsulectl-release` for full releases, where whoever pushed the tag
-#      cannot approve the run, accepting only capsulectl/v* tags; and
+#      `capsulectl-release` for full releases, accepting only capsulectl/v*
+#      tags (whoever pushed the tag may approve the run, evidencebook#1049); and
 #      `capsulectl-release-candidate` for pre-releases, accepting only
 #      capsulectl/v*-* tags. Admins cannot bypass either.
 #   2. Two tag rulesets on refs/tags/capsulectl/v*: only the maintain and
@@ -133,7 +133,7 @@ ruleset() {
   fi
 }
 
-environment capsulectl-release true 'capsulectl/v*'
+environment capsulectl-release false 'capsulectl/v*'
 environment capsulectl-release-candidate false 'capsulectl/v*-*'
 
 # Repository role ids: 2 is maintain, 5 is admin.
@@ -151,7 +151,7 @@ fi
 
 if [ "$mode" = --apply ]; then
   show
-  check_environment capsulectl-release true 'capsulectl/v*'
+  check_environment capsulectl-release false 'capsulectl/v*'
   check_environment capsulectl-release-candidate false 'capsulectl/v*-*'
   if [ "$(gh api "repos/$REPO/immutable-releases" --jq .enabled)" != true ]; then
     echo "immutable releases are not enabled (see --show)" >&2
