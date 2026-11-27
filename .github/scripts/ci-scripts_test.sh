@@ -280,7 +280,7 @@ cat > "$fake/go" <<FAKE
 #!/usr/bin/env bash
 case "\$FAIL_ON \$*" in
   "all list -f"*) echo "go: injected failure" >&2; exit 1 ;;
-  "deps "*-deps*) echo "go: injected failure" >&2; exit 1 ;;
+  "deps "*-test*) echo "go: injected failure" >&2; exit 1 ;;
 esac
 exec "$real_go" "\$@"
 FAKE
