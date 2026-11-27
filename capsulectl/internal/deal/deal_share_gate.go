@@ -81,11 +81,6 @@ func removeAllowed(data []byte, allowed []string) []byte {
 	return data
 }
 
-// gateElement is one <script> or <style> element of a page, with its body.
-// The emitter refuses inline code that holds its closing tag, so the first
-// closing tag ends the element.
-var gateElement = regexp.MustCompile(`(?is)<script\b[^>]*>(.*?)</script\s*>|<style\b[^>]*>(.*?)</style\s*>`)
-
 // gateJSONElement is the start tag of a JSON data element, which carries the
 // bundle in a page built by capsule-viewer 0.4.0 or later.
 var gateJSONElement = regexp.MustCompile(`(?is)^<script\b[^>]*\btype\s*=\s*["']?application/json["']?[^>]*>$`)
@@ -126,7 +121,7 @@ func dealGateText(page []byte, jsonValue func([]byte) []byte) []byte {
 	}
 	var out []byte
 	last, bundle := 0, false
-	for _, m := range gateElement.FindAllSubmatchIndex(page, -1) {
+	for _, m := range gateElements(page) {
 		out = append(append(out, page[last:m[0]]...), ' ')
 		last = m[1]
 		if m[2] < 0 {
