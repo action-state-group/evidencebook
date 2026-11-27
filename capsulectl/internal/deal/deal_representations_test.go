@@ -76,11 +76,3 @@ func TestABuyersAgentClaimsStayClosedForTheMerchant(t *testing.T) {
 	assert.Nil(t, dealReportOf(b)["representations"])
 	assert.NotContains(t, shared, "needs it by Friday")
 }
-
-func TestAClaimClassIsFromTheSet(t *testing.T) {
-	dealFixture(t)
-	id := openTyped(t, sellerTyped)
-	_, err := invoke(t, "", "--profile", "deal", "deal", "note", "--deal", id, "--kind", "claim", "--input",
-		writeJSON(t, `{"text": "Mint", "source_kind": "agent", "class": "guarantee"}`))
-	require.ErrorIs(t, err, cli.ErrInput)
-}

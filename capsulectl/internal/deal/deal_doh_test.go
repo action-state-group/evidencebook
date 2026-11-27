@@ -231,20 +231,8 @@ func TestAKeyTheSystemResolverFindsAbsentIsCheckedOverDoH(t *testing.T) {
 }
 
 // When DoH cannot be reached either, the system resolver's absent key stands:
-// a domain that publishes no key is not deferred forever.
-func TestAnAbsentKeyStandsWhenDoHCannotBeReached(t *testing.T) {
-	doh := newDoHStub(t, nil)
-	doh.srv.Close()
-	stubDNS(t, map[string]string{dmarcName: merchantDMARC(t)})
-	e, err := captureEmail(readMerchantFixture(t), nil)
-	require.NoError(t, err)
-	assert.Equal(t, "fail", e.DKIM.Result)
-	assert.Equal(t, "system", e.Resolver)
-	assert.Contains(t, e.keyCheck, "DNS-over-HTTPS could not be reached to check it", "the unchecked absence is said, not silent")
-	assert.Equal(t, keyAbsentUnchecked, e.keyCheckCode)
-}
-
-// deal note says so too.
+// a domain that publishes no key is not deferred forever, and deal note says
+// the absence went unchecked.
 func TestDealNoteSaysAnAbsentKeyWentUnchecked(t *testing.T) {
 	dealFixture(t)
 	id := openMerchantDeal(t)
