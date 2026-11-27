@@ -341,7 +341,7 @@ func (s *Shelf) openLocked(ctx context.Context, logID string) (*Book, error) {
 	if kind == logKindJournal {
 		storeKind = logKindJournal
 	}
-	substrate, err := OpenCLLSQLite(s.cfg.Path, logID, s.cfg.CheckpointKey)
+	substrate, err := openCLLSQLiteOn(s.db, s.cfg.Path, logID, s.cfg.CheckpointKey, nil)
 	if err != nil {
 		return nil, err
 	}

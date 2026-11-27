@@ -96,6 +96,31 @@ func openCLLSQLite(path, logID string, checkpointKey ed25519.PrivateKey, witness
 	return newCLLSubstrateWith(log, logID, checkpointKey, witnessIDs)
 }
 
+// openCLLSQLiteOn is openCLLSQLite for a host with an open handle to the
+// file (a shelf's): it asks that handle first whether the log is absent, so
+// a new log costs no failed open and no read-only probe of its own, and an
+// existing one only its CLL store's open (evidencebook#1040). What it
+// provisions and refuses is openCLLSQLite's.
+func openCLLSQLiteOn(db *sql.DB, path, logID string, checkpointKey ed25519.PrivateKey, witnessIDs []string) (*CLLSubstrate, error) {
+	if err := cll.ValidateIdentifier(logID); err != nil {
+		return nil, fmt.Errorf("%w: log id: %v", ErrInvalid, err)
+	}
+	fresh, err := cllLogAbsentIn(db, logID)
+	if err != nil {
+		return nil, fmt.Errorf("open CLL log %s: %w", logID, err)
+	}
+	if fresh {
+		if err := cllsqlite.Init(path, logID); err != nil {
+			return nil, fmt.Errorf("init CLL log %s: %w", logID, err)
+		}
+	}
+	log, err := cllsqlite.Open(path, logID)
+	if err != nil {
+		return nil, fmt.Errorf("open CLL log %s: %w", logID, err)
+	}
+	return newCLLSubstrateWith(log, logID, checkpointKey, witnessIDs)
+}
+
 // cllSQLiteLogAbsent reports, reading the file only, whether it holds no
 // state at all for logID: no file, or no meta row, entry or node of that log.
 func cllSQLiteLogAbsent(path, logID string) (bool, error) {
@@ -111,6 +136,11 @@ func cllSQLiteLogAbsent(path, logID string) (bool, error) {
 		return false, err
 	}
 	defer db.Close()
+	return cllLogAbsentIn(db, logID)
+}
+
+// cllLogAbsentIn is cllSQLiteLogAbsent on an open handle to an existing file.
+func cllLogAbsentIn(db *sql.DB, logID string) (bool, error) {
 	for _, table := range []string{"cll_meta", "cll_entries", "cll_nodes"} {
 		var exists int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&exists); err != nil {

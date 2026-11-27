@@ -260,7 +260,7 @@ func (s *Shelf) Cadence(ctx context.Context, cfg CadenceConfig) (*Cadence, error
 	if err := c.backfillReceiptsLocked(ctx); err != nil {
 		return nil, err
 	}
-	log, err := openCLLSQLite(s.cfg.Path, cfg.LogID, s.cfg.CheckpointKey, cfg.WitnessIDs)
+	log, err := openCLLSQLiteOn(s.db, s.cfg.Path, cfg.LogID, s.cfg.CheckpointKey, cfg.WitnessIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +397,7 @@ func (s *Shelf) hostLocked(ctx context.Context, logID string, inCadence, provisi
 	}
 	var log *CLLSubstrate
 	if provision {
-		log, err = OpenCLLSQLite(s.cfg.Path, logID, s.cfg.CheckpointKey)
+		log, err = openCLLSQLiteOn(s.db, s.cfg.Path, logID, s.cfg.CheckpointKey, nil)
 	} else {
 		var backend cll.Backend
 		if backend, err = cllsqlite.Open(s.cfg.Path, logID); err != nil {
