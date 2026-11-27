@@ -223,6 +223,9 @@ EOF
     printf '== failing steps ==\n'
     grep -B60 -E '❌  Failure - ' "$work/act.log" | grep -vE 'level=(warning|info)' | tail -150
     grep -q '❌' "$work/act.log" || tail -40 "$work/act.log"
+    # The whole log outlives the run's directory, so a failure can be read in full.
+    kept=$(mktemp "${TMPDIR:-/tmp}/ci-local-act-XXXXXX") && cp "$work/act.log" "$kept" &&
+      printf 'the whole act log: %s\n' "$kept"
   fi
 fi
 

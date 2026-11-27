@@ -664,9 +664,14 @@ cl_run "ci-local: leak-lint finds a term in a tracked file" 1 README.md LEAK_LIN
   check "ci-local: leak-lint finds a term in a tracked file and fails" grep -qx 'leak-lint: FAIL' "$cl/out"
 cl_run "ci-local: a failing job fails the run" 1 README.md FAKE_ACT_FAIL=1 &&
   check "ci-local: a failing job's step is printed" grep -q 'Failure - Main step' "$cl/out"
+kept=$(sed -n 's/^the whole act log: //p' "$cl/out")
+check "ci-local: a failed run keeps the whole act log and names it" test -s "$kept"
+[[ -n "$kept" ]] && rm -f "$kept"
 check "ci-local: a failed job with no step time still has its summary line" grep -qE '^FAIL +0s  always\.yml/build$' "$cl/out"
 cl_run "ci-local: a hung act run is stopped at CI_LOCAL_TIMEOUT" 1 README.md FAKE_ACT_SLEEP=30 CI_LOCAL_TIMEOUT=2s &&
   check "ci-local: the timeout is reported" grep -q 'passed CI_LOCAL_TIMEOUT' "$cl/out"
+kept=$(sed -n 's/^the whole act log: //p' "$cl/out")
+[[ -z "$kept" ]] || rm -f "$kept"
 # A workflow main gained after the branch left it runs: the merged tree's
 # workflows are the ones GitHub would run.
 (cd "$cl/repo" && git checkout -q -B late origin/main && sed 's/docs:/late:/' .github/workflows/docs.yml |
