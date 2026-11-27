@@ -185,6 +185,8 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
         offerer = first.key_id if ag["side"] == SIDE_OFFERER else ag.get("counterparty_key") or ""
         if sent.record.record_type != TYPE_PROPOSE:
             raise _bad(f"the offer is a {sent.record.record_type} record, not a propose")
+        if sent.record.block["deal_id"] != r["deal_id"]:
+            raise _bad(f"the offer is of deal {_go_quote(sent.record.block['deal_id'])}, not the report's")
         if sent.digest != ag["offer"]["digest"]:
             raise _bad(f"the offer {sent.digest} is not the offer {ag['offer']['digest']} the agreement cites")
         if sent.key_id != offerer:

@@ -213,6 +213,12 @@ pub fn verify_report_bundle(report: &[u8], ext: &[u8]) -> Result<ReportRead, Err
                 sent.record.block.record_type
             )));
         }
+        if sent.record.block.deal_id != r.deal_id {
+            return Err(bad(format!(
+                "the offer is of deal {:?}, not the report's",
+                sent.record.block.deal_id
+            )));
+        }
         if sent.digest != ag.offer.digest {
             return Err(bad(format!(
                 "the offer {} is not the offer {} the agreement cites",

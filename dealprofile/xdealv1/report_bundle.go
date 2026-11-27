@@ -241,6 +241,10 @@ func verifyReportBundle(report, ext []byte) (ReportRead, *FullCopy, error) {
 		switch {
 		case sent.Record.Block.RecordType != TypePropose:
 			return bad("the offer is a %s record, not a propose", sent.Record.Block.RecordType)
+		case sent.Record.Block.DealID != r.DealID:
+			// The digest binds the offer to the agreement only once both
+			// name one deal: VerifyReport never reads the offer.
+			return bad("the offer is of deal %q, not the report's", sent.Record.Block.DealID)
 		case sent.Digest != ag.Offer.Digest:
 			return bad("the offer %s is not the offer %s the agreement cites", sent.Digest, ag.Offer.Digest)
 		case sent.KeyID != offerer:

@@ -280,6 +280,13 @@ func TestReportBundleVectors(t *testing.T) {
 	c = clone()
 	c.Book.Offer = d.buyer.sendOffer(otherOffer)
 	refuse("an offer the agreement does not cite", extJSON(t, c), nil, "is not the offer")
+	elsewhereOffer := d.offer
+	elsewhereBlock := d.offer.Block
+	elsewhereBlock.DealID = "deal-0123456789abcdef"
+	elsewhereOffer.Block = elsewhereBlock
+	c = clone()
+	c.Book.Offer = d.buyer.sendOffer(elsewhereOffer)
+	refuse("an offer of another deal", extJSON(t, c), nil, "not the report's")
 	c = clone()
 	c.Book.Offer = d.seller.sendOffer(d.offer)
 	refuse("the offer signed by the acceptor", extJSON(t, c), nil, "not signed by the deal's offerer")
