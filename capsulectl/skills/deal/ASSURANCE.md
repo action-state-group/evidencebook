@@ -55,8 +55,15 @@ the report resolves signers against that directory only. The report's
 `countersign` says how far the signature reaches (`through_step` of `steps`
 records of your deal book) and, in `covers`, that it covers neither the report
 nor the other side's records. The receipt page `deal report --html` writes for
-an x-deal-v1 deal is a fresh copy, so it carries no countersignature, and a
-History card does not yet say countersigned. [COUNTERSIGN.md](COUNTERSIGN.md) says what
+an x-deal-v1 deal is a fresh copy; when the report states a rung, the page file
+also carries the stored countersigned copy behind it and the countersigner
+directory rows capsulectl resolved its signer against (name and keys). The page
+checks the signature against those rows; it does not read the directory itself.
+It fills COUNTERSIGNED only from its own check of that copy (the signature, and
+the copy's records 1 to k against the records the page shows). The rows do not
+carry `independent_of` yet (#1019), so the page always says the entry does not
+list the countersigner as independent. A History card does not yet say
+countersigned. [COUNTERSIGN.md](COUNTERSIGN.md) says what
 each rung and finding means.
 
 ## Other implementations

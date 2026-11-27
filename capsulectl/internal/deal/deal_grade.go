@@ -82,6 +82,13 @@ type dealGradeCountersign struct {
 	Finding   string                       `json:"finding,omitempty"`
 	Directory string                       `json:"directory,omitempty"`
 	Entries   []dealStoredCountersignature `json:"entries,omitempty"`
+
+	// copy and copyDigest are, with a rung, the stored countersigned bundle
+	// of the entry that decides it, as stored, and its digest: what an
+	// x-deal-v1 receipt page carries for its own check (v1CountersignedCopy).
+	// Never printed.
+	copy       []byte
+	copyDigest string
 }
 
 // dealStoredCountersignature is one stored countersignature, verified
@@ -257,12 +264,14 @@ func (s *dealSession) storedCountersignOf(ctx context.Context, dealID string, to
 		raw    []byte
 	}
 	var held []stored
+	rawOf := map[string][]byte{}
 	for rows.Next() {
 		var r stored
 		if err = rows.Scan(&r.digest, &r.raw); err != nil {
 			return out, errors.Join(err, rows.Close())
 		}
 		held = append(held, r)
+		rawOf[r.digest] = r.raw
 	}
 	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
 		return out, err
@@ -336,6 +345,7 @@ func (s *dealSession) storedCountersignOf(ctx context.Context, dealID string, to
 			out.Rung = "countersigned_in_part"
 		}
 		out.Signer, out.RecomputedAt, out.ThroughStep, out.Steps = decides.Signer, decides.RecomputedAt, decides.ThroughStep, decides.Steps
+		out.copy, out.copyDigest = rawOf[decides.BundleDigest], decides.BundleDigest
 	default:
 		out.Finding = finding[best]
 	}

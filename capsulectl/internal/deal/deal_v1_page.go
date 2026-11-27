@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/action-state-group/capsule-viewer/go/emitter"
@@ -37,7 +38,12 @@ const v1PageVerifyTimeout = 2 * time.Minute
 // the stamp proof and the directory, and its x-deal-v1 entry reports the
 // book's witness time (witnessed); the proof stays beside the copy, never in
 // it or on the page (Sherlock2).
-func v1ReportPage(ctx context.Context, bundle []byte, verifyCommand string, proof *entryProof, dirPath string) ([]byte, error) {
+//
+// With countersigned (v1CountersignedCopy), the page also carries the stored
+// countersigned copy behind the report's countersign rung and the directory
+// rows that named its signers; the page fills its COUNTERSIGNED stamp only
+// from its own check of that copy (capsule-viewer#456, evidencebook#1015).
+func v1ReportPage(ctx context.Context, bundle []byte, verifyCommand string, proof *entryProof, dirPath string, countersigned *v1PageCountersignedCopy) ([]byte, error) {
 	report, err := selfVerifyReport(ctx, bundle, proof, dirPath)
 	if err != nil {
 		return nil, err
@@ -54,13 +60,16 @@ func v1ReportPage(ctx context.Context, bundle []byte, verifyCommand string, proo
 		return nil, err
 	}
 	boot := map[string]any{"verifier_report": json.RawMessage(report), "verify_command": verifyCommand}
+	if countersigned != nil {
+		boot["countersigned_copy"] = countersigned
+	}
 	// json.Marshal escapes <, > and &, so the data cannot close its element.
 	data, err := json.Marshal(boot)
 	if err != nil {
 		return nil, err
 	}
 	bootstrap := `globalThis.capsulectlDealPage = Object.freeze(` + string(data) + `);
-renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifierReport: capsulectlDealPage.verifier_report, verifyCommand: capsulectlDealPage.verify_command });`
+renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifierReport: capsulectlDealPage.verifier_report, verifyCommand: capsulectlDealPage.verify_command, countersignedCopy: capsulectlDealPage.countersigned_copy });`
 	page, err := emitter.EmitEvidenceGraphHTMLWithOptions(b, pageruntime.IIFE, emitter.Options{
 		Title:             "Deal report",
 		CoreRuntimeSHA256: pageruntime.SHA256,
@@ -71,6 +80,48 @@ renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined
 		return nil, err
 	}
 	return []byte(page), nil
+}
+
+// v1PageCountersignedCopy is what a v1 receipt page carries for its own
+// check of the deal's countersign rung: the stored countersigned bundle, as
+// stored, and the countersigner rows ({name, key_ids}, the shape of
+// capsule-cli's directory rows and of agent-action-capsule's
+// CountersignerSource) that named its signers.
+type v1PageCountersignedCopy struct {
+	Bundle         json.RawMessage          `json:"bundle"`
+	Countersigners []v1PageCountersignerRow `json:"countersigners"`
+}
+
+type v1PageCountersignerRow struct {
+	Name   string   `json:"name"`
+	KeyIDs []string `json:"key_ids"`
+}
+
+// v1CountersignedCopy is the copy a page carries for stamp, or nil when it
+// has no rung: the stored bundle of the entry that decides the rung
+// (storedCountersignOf), with a row for each signer resolved on that bundle,
+// named as the profile's countersigner directory names it.
+func v1CountersignedCopy(stamp dealGradeCountersign) *v1PageCountersignedCopy {
+	if stamp.Rung == "" || stamp.copy == nil {
+		return nil
+	}
+	var rows []v1PageCountersignerRow
+	at := map[string]int{}
+	for _, e := range stamp.Entries {
+		if e.State != "resolved" || e.BundleDigest != stamp.copyDigest {
+			continue
+		}
+		i, ok := at[e.Signer]
+		if !ok {
+			i = len(rows)
+			at[e.Signer] = i
+			rows = append(rows, v1PageCountersignerRow{Name: e.Signer})
+		}
+		if !slices.Contains(rows[i].KeyIDs, e.KeyID) {
+			rows[i].KeyIDs = append(rows[i].KeyIDs, e.KeyID)
+		}
+	}
+	return &v1PageCountersignedCopy{Bundle: stamp.copy, Countersigners: rows}
 }
 
 // selfVerifyReport runs this binary's `verify --bundle` on bundle and returns

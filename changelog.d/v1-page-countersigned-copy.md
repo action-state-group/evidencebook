@@ -1,0 +1,3 @@
+### Changed: an x-deal-v1 receipt page carries its countersigned copy (#1015)
+
+- `capsulectl deal report --html` on an x-deal-v1 deal whose report states a countersign rung now writes a page whose file also carries the stored countersigned copy behind that rung (the entry `deal report` already picks: the most records, then the later time) and the countersigner directory rows that named its signer. The page (capsule-viewer#456) fills COUNTERSIGNED only from its own check of that copy: "Countersigned by <name> at <time>, through record <k> of <n>." A deal with no rung writes the page as before. capsule-viewer is repinned to that change.
