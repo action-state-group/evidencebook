@@ -342,10 +342,12 @@ the digest could try each likely content against it.
   counterparty: its `counterparty_key` equals `seller.key` (`deal.Store.Agree` refuses
   otherwise). With no layer both are `null`, so the key binds nothing and the seller is bound
   only by the agreement citing the intent.
-- The intent record, which holds only commitments, may travel wherever the agreement's citations
-  do. The seller's openings travel only in the holder's own keep copy (u561 item 3). A
-  counterparty copy and an adjudicator copy never carry them (u499, extended to x-deal-v1 by
-  u561 item 5), and a copy for anyone else follows the no-PII preset (evidencebook#1058).
+- The agreement's citation of the intent is a digest and travels with the agreement. The intent
+  record itself is a journal record, never sent, and also holds the buyer's limits in the clear
+  (`max_total_minor`, `allowed`). It and the seller's openings travel only in the holder's own
+  keep copy (u561 item 3). A counterparty copy and an adjudicator copy never carry either (u499,
+  extended to x-deal-v1 by u561 item 5), and a copy for anyone else follows the no-PII preset
+  (evidencebook#1058).
 - `xdealv1.CheckAuthorizations` refuses a journal in which two records share a nonce or a
   `verbatim_commitment`.
 - A record sent whole (an offer, a decline, a cancellation; section 7) is exempt. Its content
