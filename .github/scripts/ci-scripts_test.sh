@@ -163,9 +163,11 @@ if PRE_PUSH_CHANGED=/dev/null bash "$here/../../scripts/pre-push.sh" --bogus > /
 else printf 'ok   pre-push: an unknown flag fails\n'; fi
 
 # scripts/pre-push.sh's capsulectl suite, run against a fake go that logs its
-# calls: go test answers -list with $TEST_NAMES and fails a race run when
-# FAIL_RACE is set (FAIL_LIST fails -list); go list fails when FAIL_PLAN is
-# set and is real otherwise, so the planner sees this checkout's graph.
+# calls. `go test -c` writes a fake test binary that answers -test.list with
+# $TEST_NAMES (FAIL_LIST fails it) and, for -test.run, logs "ran <race|plain>
+# <package dir> <name>" and prints its PASS line for each name, and fails a race run when FAIL_RACE is
+# set. go list fails when FAIL_PLAN is set and is real otherwise, so the
+# planner and the queue see this checkout's graph.
 gofake=$(mktemp -d)
 real_go_exec=$(command -v go)
 cat > "$gofake/go" <<FAKE
@@ -173,56 +175,101 @@ cat > "$gofake/go" <<FAKE
 echo "\$*" >> "\$GO_LOG"
 case "\$1" in
   test)
-    if [[ " \$* " == *" -list "* ]]; then
-      [[ -z "\${FAIL_LIST:-}" ]] || exit 1
-      [[ -z "\${TEST_NAMES:-}" ]] || printf '%s\n' \$TEST_NAMES
+    if [[ "\$2" == -c ]]; then
+      kind=plain out=""
+      shift 2
+      while ((\$#)); do
+        case "\$1" in -race) kind=race ;; -o) out=\$2; shift ;; esac
+        shift
+      done
+      mkdir -p "\$(dirname "\$out")"
+      cat > "\$out" <<BIN
+#!/usr/bin/env bash
+for a in "\\\$@"; do
+  case "\\\$a" in
+    -test.list) [[ -z "\\\${FAIL_LIST:-}" ]] || exit 1; [[ -z "\\\${TEST_NAMES:-}" ]] || printf '%s\n' \\\$TEST_NAMES; exit 0 ;;
+  esac
+done
+re=\\\${@: -1}; re=\\\${re#^(}; re=\\\${re%)\\\$}
+for n in \\\${re//|/ }; do echo "ran \$kind \\\${PWD##*/capsulectl} \\\$n" >> "\\\$GO_LOG"; echo "--- PASS: \\\$n (0.00s)"; done
+if [[ \$kind == race && -n "\\\${FAIL_RACE:-}" ]]; then printf -- '--- FAIL: TestInjected (0.00s)\\n    x_test.go:9: the injected reason\\n'; exit 1; fi
+exit 0
+BIN
+      chmod +x "\$out"
       exit 0
     fi
-    if [[ " \$* " == *" -race "* && -n "\${FAIL_RACE:-}" ]]; then echo "--- FAIL: TestInjected (0.00s)"; exit 1; fi
     exit 0 ;;
-  vet | mod | generate) exit 0 ;;
+  vet | mod | generate | build) exit 0 ;;
   list) [[ -z "\${FAIL_PLAN:-}" ]] || { echo "go: injected failure" >&2; exit 1; } ;;
 esac
 exec "$real_go_exec" "\$@"
 FAKE
 chmod +x "$gofake/go"
-# prepush_run description, want_exit, want_race_runs, want_plain_runs, race package ("" none), changed path, env...
+# The capsulectl packages that have test files, as the package dirs the fake logs.
+test_dirs_of() { # packages (space-separated, ./x form)
+  # shellcheck disable=SC2086 # a space-separated package list
+  (cd "$here/../../capsulectl" && go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.Dir}}{{end}}' $1 | sed "s#^$PWD##" | sort)
+}
+# prepush_run description, want_exit, race packages ("" none), changed path, env...
+# Each pass must run every name of $TEST_NAMES once in every test package it
+# covers (race: the planned packages; plain: all) and nothing else.
 prepush_run() {
-  local what=$1 want_exit=$2 want_race=$3 want_plain=$4 pkg=$5 path=$6 st=0 race plain
-  shift 6
+  local what=$1 want_exit=$2 race_pkgs=$3 path=$4 st=0 bad="" kind pkgs want got d n
+  shift 4
   printf '%s\n' "$path" > "$gofake/changed"
   : > "$gofake/log"
   env PATH="$gofake:$PATH" GO_LOG="$gofake/log" PRE_PUSH_CHANGED="$gofake/changed" PRE_PUSH_NESTED=1 PRE_PUSH_SHARDS=4 "$@" \
     bash "$here/../../scripts/pre-push.sh" > "$gofake/out" 2>&1 || st=$?
-  race=$(grep -E '^test -v .*-race' "$gofake/log" || true)
-  plain=$(grep -E '^test -v ' "$gofake/log" | grep -v -- -race || true)
-  local nrace nplain bad=""
-  nrace=$(grep -c . <<<"$race" || true)
-  nplain=$(grep -c . <<<"$plain" || true)
   ((st == want_exit)) || bad+=" exit $st (want $want_exit)"
-  ((nrace == want_race)) || bad+=" race runs $nrace (want $want_race)"
-  ((nplain == want_plain)) || bad+=" plain runs $nplain (want $want_plain)"
-  if [[ -n "$pkg" ]] && grep -v -- " $pkg\$" <<<"$race" | grep -q .; then bad+=" a race run not over $pkg"; fi
+  local names
+  # shellcheck disable=SC2016 # expanded by the inner shell, under the run's env
+  names=$(env "$@" bash -c 'printf "%s\n" ${TEST_NAMES:-}')
+  for kind in race plain; do
+    pkgs=$race_pkgs
+    [[ $kind == plain ]] && pkgs=./...
+    want=""
+    if [[ -n "$pkgs" && -n "$names" ]]; then
+      want=$(for d in $(test_dirs_of "$pkgs"); do for n in $names; do echo "ran $kind $d $n"; done; done | sort)
+    fi
+    got=$(grep "^ran $kind " "$gofake/log" | sort || true)
+    [[ "$got" == "$want" ]] || bad+=" $kind runs differ: $(diff <(echo "$want") <(echo "$got") | grep '^[<>]' | head -3 | tr '\n' ';')"
+  done
   if [[ -z "$bad" ]]; then printf 'ok   %s\n' "$what"; else
     printf 'FAIL %s:%s\n' "$what" "$bad"
     sed 's/^/    /' "$gofake/out" | tail -15
     fails=$((fails + 1))
   fi
 }
-prepush_run "pre-push run: three tests get three shards, each over the planned package" \
-  0 3 3 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC"
-prepush_run "pre-push run: several tests run in the configured shards" \
-  0 4 4 "./cmd ./cmd/capsulectl-book ./internal/book" capsulectl/internal/book/book.go TEST_NAMES="TestA TestB TestC TestD TestE TestF"
-prepush_run "pre-push run: packages with no tests still build under race, in one unfiltered shard" \
-  0 1 1 ./scripts/genconfusables capsulectl/scripts/genconfusables/main.go TEST_NAMES=
+prepush_run "pre-push run: each pass runs every test once, the race pass over the planned package" \
+  0 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC"
+prepush_run "pre-push run: a book change races its planned packages" \
+  0 "./cmd ./cmd/capsulectl-book ./internal/book" capsulectl/internal/book/book.go TEST_NAMES="TestA TestB TestC TestD TestE TestF"
+prepush_run "pre-push run: packages with no tests still build under race, and nothing runs" \
+  0 ./scripts/genconfusables capsulectl/scripts/genconfusables/main.go TEST_NAMES=
+if grep -q '^build -race .*scripts/genconfusables' "$gofake/log"; then
+  printf 'ok   pre-push run: the race pass builds a package without tests under race\n'
+else
+  printf 'FAIL pre-push run: genconfusables was not built under race\n'
+  fails=$((fails + 1))
+fi
 prepush_run "pre-push run: an empty race plan runs only the plain pass" \
-  0 0 3 "" capsulectl/README.md TEST_NAMES="TestA TestB TestC"
+  0 "" capsulectl/README.md TEST_NAMES="TestA TestB TestC"
 prepush_run "pre-push run: a failed race run fails the push check" \
-  1 3 3 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC" FAIL_RACE=1
+  1 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC" FAIL_RACE=1
+if grep -q -- '--- FAIL: TestInjected' "$gofake/out" && grep -q 'the injected reason' "$gofake/out"; then
+  printf 'ok   pre-push run: a failed race run prints the failing test and its reason\n'
+else
+  printf 'FAIL pre-push run: the failing test is not printed\n'
+  fails=$((fails + 1))
+fi
+prepush_run "pre-push run: a shard in the caller's environment does not narrow the check" \
+  0 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC TestD" CAPSULE_TEST_SHARD=1/2
+prepush_run "pre-push run: a bound of one process runs every test" \
+  0 ./scripts/bookdemo capsulectl/scripts/bookdemo/main.go TEST_NAMES="TestA TestB TestC" PRE_PUSH_SHARDS=1
 prepush_run "pre-push run: a failed test listing fails the push check" \
-  1 0 0 "" capsulectl/scripts/bookdemo/main.go FAIL_LIST=1
+  1 "" capsulectl/scripts/bookdemo/main.go FAIL_LIST=1
 prepush_run "pre-push run: a failed race plan stops the script" \
-  2 0 0 "" capsulectl/scripts/bookdemo/main.go FAIL_PLAN=1
+  2 "" capsulectl/scripts/bookdemo/main.go FAIL_PLAN=1
 rm -rf "$gofake"
 
 # A go list error fails the planner instead of yielding an empty plan.
@@ -324,6 +371,101 @@ for wf in ci capsulectl rust report; do
     fi
   done
 done
+
+# capsulectl/scripts/test.sh's queued mode (CAPSULE_TEST_JOBS, evidencebook#1038),
+# on a fixture module that holds its own copy of the script: two packages share
+# a test name, one has an Example, one has no tests, and FAIL_TEST names a
+# test that fails. Every test must run exactly once, in its package's directory.
+qmod=$(mktemp -d)
+mkdir -p "$qmod/scripts" "$qmod/a" "$qmod/b" "$qmod/c"
+cp "$here/../../capsulectl/scripts/test.sh" "$qmod/scripts/test.sh"
+printf 'module example.com/q\n\ngo 1.21\n' > "$qmod/go.mod"
+qtest() { # package, test names...
+  local pkg=$1 name
+  shift
+  printf 'package %s\n\nimport (\n\t"fmt"\n\t"os"\n\t"path/filepath"\n\t"testing"\n)\n\n' "$pkg"
+  printf 'func record(t *testing.T) {\n\twd, _ := os.Getwd()\n\tf, err := os.OpenFile(os.Getenv("RECORD"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)\n'
+  printf '\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tdefer f.Close()\n\tfmt.Fprintf(f, "%%s %%s\\n", filepath.Base(wd), t.Name())\n'
+  printf '\tif os.Getenv("FAIL_TEST") == filepath.Base(wd)+"."+t.Name() {\n\t\tt.Fatal("asked to fail")\n\t}\n}\n\n'
+  for name in "$@"; do printf 'func %s(t *testing.T) { record(t) }\n' "$name"; done
+}
+qtest a TestShared TestA1 TestA2 TestA3 TestA4 TestA5 > "$qmod/a/a_test.go"
+qtest b TestShared TestB1 TestB2 > "$qmod/b/b_test.go"
+printf 'package b\n\nimport "fmt"\n\nfunc ExampleHello() {\n\tfmt.Println("hello")\n\t// Output: hello\n}\n' > "$qmod/b/example_test.go"
+printf 'package a\n' > "$qmod/a/a.go"
+printf 'package b\n\nfunc Hello() {}\n' > "$qmod/b/b.go"
+printf 'package c\n\nfunc C() {}\n' > "$qmod/c/c.go"
+mkdir -p "$qmod/cmdx"
+printf 'package main\n\nfunc main() {}\n' > "$qmod/cmdx/main.go"
+want_q=$(printf '%s\n' "a TestA1" "a TestA2" "a TestA3" "a TestA4" "a TestA5" "a TestShared" "b TestB1" "b TestB2" "b TestShared" | sort)
+queued_run() { # description, want exit (0|1), record file, env...
+  local what=$1 want=$2 rec=$3 st=0
+  shift 3
+  (cd "$qmod" && env RECORD="$rec" CAPSULE_TEST_PASS=plain "$@" bash scripts/test.sh > "$rec.out" 2>&1) || st=1
+  if ((st != want)); then
+    printf 'FAIL %s: exit %d, want %d\n%s\n' "$what" "$st" "$want" "$(tail -20 "$rec.out")"
+    fails=$((fails + 1))
+    return 1
+  fi
+}
+rec="$qmod/rec1"
+if queued_run "queued: every test once" 0 "$rec" CAPSULE_TEST_JOBS=3; then
+  if [[ "$(sort "$rec")" == "$want_q" ]] && grep -q '10 of 10 tests reported a result' "$rec.out"; then
+    printf 'ok   queued: every test and example runs once, in its package directory\n'
+  else
+    printf 'FAIL queued: tests run:\n%s\n' "$(diff <(echo "$want_q") <(sort "$rec"))"
+    fails=$((fails + 1))
+  fi
+fi
+rec="$qmod/rec2"
+if queued_run "queued: one failing test fails the pass" 1 "$rec" CAPSULE_TEST_JOBS=2 FAIL_TEST=b.TestShared; then
+  if grep -q -- '--- FAIL: TestShared' "$rec.out" && grep -q 'asked to fail' "$rec.out" && [[ "$(sort "$rec")" == "$want_q" ]]; then
+    printf 'ok   queued: a failing test fails the pass, prints its output, and every other test still runs\n'
+  else
+    printf 'FAIL queued: the failure is not reported, or tests were skipped\n%s\n' "$(tail -20 "$rec.out")"
+    fails=$((fails + 1))
+  fi
+fi
+rec="$qmod/rec3"
+for shard in 1/2 2/2; do
+  queued_run "queued: shard $shard" 0 "$rec" CAPSULE_TEST_JOBS=2 CAPSULE_TEST_SHARD=$shard || true
+done
+if [[ "$(sort "$rec")" == "$want_q" ]]; then printf 'ok   queued: two shards together run every test once\n'; else
+  printf 'FAIL queued: shards ran:\n%s\n' "$(diff <(echo "$want_q") <(sort "$rec"))"
+  fails=$((fails + 1))
+fi
+before=$(cd "$qmod" && find . -path ./rec\* -prune -o -print | sort)
+queued_run "queued: a lone command package" 0 "$qmod/rec5" CAPSULE_TEST_JOBS=1 CAPSULE_TEST_PKGS=./cmdx || true
+if [[ "$(cd "$qmod" && find . -path ./rec\* -prune -o -print | sort)" == "$before" ]]; then
+  printf 'ok   queued: building a lone command package leaves no binary in the module\n'
+else
+  printf 'FAIL queued: the run left files in the module: %s\n' "$(diff <(echo "$before") <(cd "$qmod" && find . -path ./rec\* -prune -o -print | sort) | grep '^>')"
+  fails=$((fails + 1))
+fi
+# A go whose test-package listing fails: the pass fails rather than running nothing.
+qgo=$(mktemp -d)
+real_go_q=$(command -v go)
+cat > "$qgo/go" <<FAKE
+#!/usr/bin/env bash
+[[ "\$1 \$2" == "list -f" && "\$3" == *TestGoFiles* ]] && { echo "go: injected failure" >&2; exit 1; }
+exec "$real_go_q" "\$@"
+FAKE
+chmod +x "$qgo/go"
+if queued_run "queued: a failed package listing fails the pass" 1 "$qmod/rec6" CAPSULE_TEST_JOBS=2 PATH="$qgo:$PATH"; then
+  printf 'ok   queued: a failed package listing fails the pass\n'
+fi
+rm -rf "$qgo"
+qtmp=$(mktemp -d)
+printf 'package c\n\nfunc C() { undefined() }\n' > "$qmod/c/c.go"
+if queued_run "queued: a package without tests still builds" 1 "$qmod/rec4" CAPSULE_TEST_JOBS=2 TMPDIR="$qtmp"; then
+  printf 'ok   queued: a package without tests that does not build fails the pass\n'
+fi
+if [[ -z "$(find "$qtmp" -mindepth 1 -maxdepth 1)" ]]; then printf 'ok   queued: a failed build leaves no temporary files\n'; else
+  printf 'FAIL queued: a failed build left %s\n' "$(find "$qtmp" -mindepth 1 -maxdepth 1 | head -3 | tr '\n' ' ')"
+  fails=$((fails + 1))
+fi
+rm -rf "$qtmp"
+rm -rf "$qmod"
 
 if ((fails)); then
   printf '%d failed\n' "$fails"
