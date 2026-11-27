@@ -9,7 +9,15 @@
       "level": "holder_commitment",
       "subject_id": "exchange-1",
       "member_count": 2,
-      "closed": true
+      "closed": true,
+      "subjects_of": {
+        "12f6d565183d2b8509735cd63f791763514f50cceb0b10c66cf327a889ab130b": [
+          "exchange-1"
+        ],
+        "f69187650d8e961d99ca54c9baf365544725456d4042929254b89e109a629182": [
+          "exchange-1"
+        ]
+      }
     },
     {
       "file": "full-field-omits-member.json",
@@ -24,7 +32,15 @@
       "level": "log_prefix",
       "subject_id": "exchange-1",
       "member_count": 2,
-      "closed": true
+      "closed": true,
+      "subjects_of": {
+        "12f6d565183d2b8509735cd63f791763514f50cceb0b10c66cf327a889ab130b": [
+          "exchange-1"
+        ],
+        "f69187650d8e961d99ca54c9baf365544725456d4042929254b89e109a629182": [
+          "exchange-1"
+        ]
+      }
     },
     {
       "file": "dishonest-first-level.json",
@@ -33,7 +49,12 @@
       "form": "full",
       "level": "holder_commitment",
       "subject_id": "exchange-1",
-      "member_count": 1
+      "member_count": 1,
+      "subjects_of": {
+        "b9430e33b85598ee49468e3542903015e29a634a6bd5b702438fba99b0800dd2": [
+          "exchange-1"
+        ]
+      }
     },
     {
       "file": "dishonest-log-prefix.json",
@@ -57,7 +78,79 @@
       "level": "log_prefix",
       "subject_id": "deal-1",
       "member_count": 2,
-      "closed": true
+      "closed": true,
+      "subjects_of": {
+        "03ab36c1f1a500d720d3b88a373c41f7d9599b8d8289082ad3c330e34aaf1ced": [
+          "deal-1"
+        ],
+        "efc75e99147fbe73a9cbdba8b373fd323fd9f6fa4e69d31e1b323b3198219b17": [
+          "deal-1"
+        ]
+      }
+    },
+    {
+      "file": "forged-log-root-late.json",
+      "case": "a forged per-subject book, its log root at seq 2: refused",
+      "valid": false
+    },
+    {
+      "file": "forged-second-log-root.json",
+      "case": "a forged per-subject book holding a second log root: refused",
+      "valid": false
+    },
+    {
+      "file": "member-after-close.json",
+      "case": "(iv) a forged book holding a member after the close: refused",
+      "valid": false
+    },
+    {
+      "file": "stale-proof.json",
+      "case": "the current bundle carrying an older, honest key range proof and its one member: refused",
+      "valid": false
+    },
+    {
+      "file": "held-foreign.json",
+      "case": "a member citing a record the book does not hold: holder_commitment, listed in held_by_digest",
+      "valid": true,
+      "form": "full",
+      "level": "holder_commitment",
+      "subject_id": "exchange-1",
+      "member_count": 1,
+      "held_by_digest": [
+        "be370cd7388072a1c00eff40e213069d5a4c6030b0dd911079dff77994d5816b"
+      ],
+      "subjects_of": {
+        "eae981d46318124452b5af422b643151dbd45798124f8f6174534f924c9768f7": [
+          "exchange-1"
+        ]
+      }
+    },
+    {
+      "file": "held-dropped.json",
+      "case": "the same with held_by_digest emptied: refused",
+      "valid": false
+    },
+    {
+      "file": "held-added.json",
+      "case": "the same with an unrelated digest added to held_by_digest: refused",
+      "valid": false
+    },
+    {
+      "file": "held-deep.json",
+      "case": "the same with an enormous closure depth: valid, the walk ends with the closure",
+      "valid": true,
+      "form": "full",
+      "level": "holder_commitment",
+      "subject_id": "exchange-1",
+      "member_count": 1,
+      "held_by_digest": [
+        "be370cd7388072a1c00eff40e213069d5a4c6030b0dd911079dff77994d5816b"
+      ],
+      "subjects_of": {
+        "eae981d46318124452b5af422b643151dbd45798124f8f6174534f924c9768f7": [
+          "exchange-1"
+        ]
+      }
     }
   ]
 }

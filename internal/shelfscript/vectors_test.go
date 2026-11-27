@@ -49,6 +49,15 @@ func TestShelfVectors(t *testing.T) {
 	earliestReceipt, err := EarliestReceiptJSON(ctx, dir)
 	require.NoError(t, err)
 	files[filepath.Join("handover", "earliest-receipt-not-anchor.json")] = earliestReceipt
+	// The subject phase runs on a shelf after ContinuePhase.
+	subjectDir := t.TempDir()
+	require.NoError(t, Write(ctx, subjectDir))
+	require.NoError(t, Continue(ctx, subjectDir))
+	subject, err := SubjectJSON(ctx, subjectDir)
+	require.NoError(t, err)
+	afterSubject, err := Dump(ctx, subjectDir)
+	require.NoError(t, err)
+	files["subject.json"], files["after-subject.json"] = subject, afterSubject
 	// The recovery scenarios: Go plants a crash on the shelf after
 	// ContinuePhase, and RecoverPhase finishes it (evidencebook#461 §7).
 	for name, plant := range map[string]func(context.Context, string) error{

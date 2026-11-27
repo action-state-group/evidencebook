@@ -1,0 +1,172 @@
+{
+  "description": "The subject vectors (evidencebook#116 design note section 4; #1012, #1013), written by internal/shelfscript (EB_WRITE_SHELF_VECTORS=1 go test ./internal/shelfscript). Run the steps on the scripted shelf after continue_phase (script.json); every step's expect must match (invalid: the book refuses the step and writes nothing), and the dump afterwards is after-subject.json. subject_root seals a subject_root record declaring {subject_kind, subject_id, membership}; member appends an observation (epistemic_type observed_event) with the one payload, correlation.exchange_id the step's exchange, and one cites link to the subject_root this phase sealed for subject_id; close closes that subject; checkpoint checkpoints the book, committing each changed index root first.",
+  "steps": [
+    {
+      "op": "open",
+      "stream": "evidencebook shelf vectors/subject",
+      "at": 9000
+    },
+    {
+      "op": "append",
+      "book": "deal/s",
+      "subject": "s",
+      "payload": "s1",
+      "expect": "ok"
+    },
+    {
+      "op": "subject_root",
+      "book": "deal/s",
+      "subject_kind": "exchange",
+      "subject_id": "x-1",
+      "membership": "field:/correlation/exchange_id",
+      "expect": "ok"
+    },
+    {
+      "op": "member",
+      "book": "deal/s",
+      "payload": "m1",
+      "subject_id": "x-1",
+      "exchange": "x-1",
+      "expect": "ok"
+    },
+    {
+      "op": "member",
+      "book": "deal/s",
+      "payload": "bad",
+      "subject_id": "x-1",
+      "exchange": "x-2",
+      "expect": "invalid"
+    },
+    {
+      "op": "checkpoint",
+      "book": "deal/s",
+      "expect": "ok"
+    },
+    {
+      "op": "member",
+      "book": "deal/s",
+      "payload": "m2",
+      "subject_id": "x-1",
+      "exchange": "x-1",
+      "expect": "ok"
+    },
+    {
+      "op": "subject_root",
+      "book": "deal/s",
+      "subject_kind": "exchange",
+      "subject_id": "x-1",
+      "membership": "field:/correlation/exchange_id",
+      "expect": "invalid"
+    },
+    {
+      "op": "subject_root",
+      "book": "deal/s",
+      "subject_kind": "deal",
+      "subject_id": "l-2",
+      "membership": "log",
+      "expect": "invalid"
+    },
+    {
+      "op": "close",
+      "book": "deal/s",
+      "subject_id": "x-1",
+      "expect": "ok"
+    },
+    {
+      "op": "member",
+      "book": "deal/s",
+      "payload": "late",
+      "subject_id": "x-1",
+      "exchange": "x-1",
+      "expect": "invalid"
+    },
+    {
+      "op": "close",
+      "book": "deal/s",
+      "subject_id": "x-1",
+      "expect": "invalid"
+    },
+    {
+      "op": "checkpoint",
+      "book": "deal/s",
+      "expect": "ok"
+    },
+    {
+      "op": "subject_root",
+      "book": "deal/l",
+      "subject_kind": "deal",
+      "subject_id": "l-1",
+      "membership": "log",
+      "expect": "ok"
+    },
+    {
+      "op": "append",
+      "book": "deal/l",
+      "subject": "l",
+      "payload": "l1",
+      "expect": "ok"
+    },
+    {
+      "op": "subject_root",
+      "book": "deal/l",
+      "subject_kind": "exchange",
+      "subject_id": "x-3",
+      "membership": "field:/correlation/exchange_id",
+      "expect": "invalid"
+    },
+    {
+      "op": "close",
+      "book": "deal/l",
+      "subject_id": "l-1",
+      "expect": "ok"
+    },
+    {
+      "op": "append",
+      "book": "deal/l",
+      "subject": "l",
+      "payload": "l2",
+      "expect": "invalid"
+    },
+    {
+      "op": "checkpoint",
+      "book": "deal/l",
+      "expect": "ok"
+    },
+    {
+      "op": "checkpoint",
+      "book": "deal/a",
+      "expect": "ok"
+    },
+    {
+      "op": "release"
+    },
+    {
+      "op": "open",
+      "stream": "evidencebook shelf vectors/subject/reopen",
+      "at": 9600
+    },
+    {
+      "op": "member",
+      "book": "deal/s",
+      "payload": "after reopen",
+      "subject_id": "x-1",
+      "exchange": "x-1",
+      "expect": "invalid"
+    },
+    {
+      "op": "append",
+      "book": "deal/s",
+      "subject": "s",
+      "payload": "s2",
+      "expect": "ok"
+    },
+    {
+      "op": "checkpoint",
+      "book": "deal/s",
+      "expect": "ok"
+    },
+    {
+      "op": "release"
+    }
+  ]
+}
