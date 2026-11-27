@@ -104,7 +104,9 @@ func (s *dealSession) openingIntent(ctx context.Context, offerDigest string) (st
 		// Store.Agree names an offer it does not hold.
 		return "", err
 	}
-	events, err := s.v1StoredEvents(ctx, offer.Record.Block.DealID)
+	// The recovering read: an opening a stopped run stored but did not
+	// append to the journal is appended here, so the digest cited is held.
+	events, err := s.v1Events(ctx, offer.Record.Block.DealID)
 	if err != nil {
 		return "", err
 	}

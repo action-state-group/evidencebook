@@ -68,8 +68,8 @@ A retail checkout is almost always the second shape.
    only when they handed you the whole deal; left out, nothing is
    restricted. `max_total_minor` is their limit. Then the journey, as notes
    (see "The user picked from options"), and the intent for the user's pick.
-   The first intent's output prints `intent`, its journal digest: `deal agree
-   --intent DIGEST` cites it.
+   The first intent's output prints `intent`, its journal digest: `deal agree`
+   cites it by default, and on the buyer's side it names the seller.
 6. **The agreement exchange.** The side the offer was sent to agrees first:
    1. the seller runs `deal agree OFFER --out seller-agreement.json`, and the
       user sends the file;
