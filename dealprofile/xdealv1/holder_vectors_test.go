@@ -238,8 +238,10 @@ func (p *party) recGateAct(in ActGateInput) (ActGate, error) {
 }
 
 // TestHolderTranscripts writes and checks testdata/deal-v1/holder
-// (EB_WRITE_DEAL_V1_VECTORS=1): each scenario run again with its steps
-// recorded. TestBookPairWithTwoPayloads, which appends a book record by
+// (EB_WRITE_DEAL_V1_VECTORS=1): each scenario run with its steps recorded.
+// The scenarios are unexported (testX), so `go test` runs each once, here
+// (evidencebook#1056); run one alone with -run 'TestHolderTranscripts/<name>'.
+// TestBookPairWithTwoPayloads, which appends a book record by
 // hand, and TestOursResultIsACopy, which reads the profile's cache, are Go's
 // alone; Python tests both of those on its own. So is
 // TestNameRulingsAfterAConcurrentWrite, whose write lands from inside the
@@ -249,39 +251,70 @@ func TestHolderTranscripts(t *testing.T) {
 		name string
 		run  func(*testing.T)
 	}{
-		{"handshake-from-offer", TestHandshakeFromOffer}, {"no-proof-no-act", TestNoProofNoAct},
-		{"proof-under-another-shelf-log", TestProofUnderAnotherShelfLog},
-		{"proof-by-another-checkpoint-key", TestProofByAnotherCheckpointKey},
-		{"genesis-fork-after-proof", TestGenesisForkAfterProof}, {"proof-sender-both-sides", TestProofSenderBothSides},
-		{"answered", TestAnswered}, {"admit-refuses-strangers", TestAdmitRefusesStrangers}, {"later-records", TestLaterRecords},
-		{"agreement-on-a-counter-offer", TestAgreementOnACounterOffer}, {"cancellation", TestCancellation},
-		{"ruling-from-the-adjudicator", TestRulingFromTheAdjudicator}, {"shared-log-id", TestSharedLogID},
-		{"proof-the-records-do-not-recompute", TestProofTheRecordsDoNotRecompute},
-		{"gate-holds-the-first-act", TestGateActHoldsTheFirstAct}, {"gate-without-a-layer", TestGateActWithoutALayerIsUnguarded},
-		{"gate-refuses-a-proof-of-another-shelf", TestGateActRefusesAProofOfAnotherShelf},
-		{"gate-refuses-another-book", TestGateActRefusesAnotherBook}, {"gate-holds-the-acceptor", TestGateActHoldsTheAcceptor},
-		{"gate-without-witnesses-and-an-agreement", TestGateActWithoutWitnessesAndWithoutAnAgreement},
-		{"gate-refuses-the-counterpartys-agreement", TestGateActRefusesTheCounterpartysAgreement},
-		{"withheld-offer-read-again", TestWithheldOfferReadAgain}, {"can-act-without-a-layer", TestCanActWithoutALayerIsFalse},
-		{"name-rulings", TestNameRulings}, {"name-rulings-block", TestNameRulingsBlock},
-		{"name-rulings-leaves-a-part-book", TestNameRulingsLeavesAPartBook},
-		{"name-rulings-only-the-deals-rulings", TestNameRulingsOnlyTheDealsRulings},
-		{"name-rulings-retried-on-a-duplicate", TestNameRulingsRetriedOnADuplicate}, {"name-all-rulings", TestNameAllRulings},
-		{"status-provider-at-a-stamp", TestStatusProviderAtAStamp}, {"status-provider-report", TestStatusProviderReport},
-		{"name-rulings-at-the-next-stamp", TestNameRulingsAtTheNextStamp},
-		{"name-rulings-unreadable-book-is-counted", TestNameRulingsUnreadableBookIsCounted},
+		{"handshake-from-offer", testHandshakeFromOffer}, {"no-proof-no-act", testNoProofNoAct},
+		{"proof-under-another-shelf-log", testProofUnderAnotherShelfLog},
+		{"proof-by-another-checkpoint-key", testProofByAnotherCheckpointKey},
+		{"genesis-fork-after-proof", testGenesisForkAfterProof}, {"proof-sender-both-sides", testProofSenderBothSides},
+		{"answered", testAnswered}, {"admit-refuses-strangers", testAdmitRefusesStrangers}, {"later-records", testLaterRecords},
+		{"agreement-on-a-counter-offer", testAgreementOnACounterOffer}, {"cancellation", testCancellation},
+		{"ruling-from-the-adjudicator", testRulingFromTheAdjudicator}, {"shared-log-id", testSharedLogID},
+		{"proof-the-records-do-not-recompute", testProofTheRecordsDoNotRecompute},
+		{"gate-holds-the-first-act", testGateActHoldsTheFirstAct}, {"gate-without-a-layer", testGateActWithoutALayerIsUnguarded},
+		{"gate-refuses-a-proof-of-another-shelf", testGateActRefusesAProofOfAnotherShelf},
+		{"gate-refuses-another-book", testGateActRefusesAnotherBook}, {"gate-holds-the-acceptor", testGateActHoldsTheAcceptor},
+		{"gate-without-witnesses-and-an-agreement", testGateActWithoutWitnessesAndWithoutAnAgreement},
+		{"gate-refuses-the-counterpartys-agreement", testGateActRefusesTheCounterpartysAgreement},
+		{"withheld-offer-read-again", testWithheldOfferReadAgain}, {"can-act-without-a-layer", testCanActWithoutALayerIsFalse},
+		{"name-rulings", testNameRulings}, {"name-rulings-block", testNameRulingsBlock},
+		{"name-rulings-leaves-a-part-book", testNameRulingsLeavesAPartBook},
+		{"name-rulings-only-the-deals-rulings", testNameRulingsOnlyTheDealsRulings},
+		{"name-rulings-retried-on-a-duplicate", testNameRulingsRetriedOnADuplicate}, {"name-all-rulings", testNameAllRulings},
+		{"status-provider-at-a-stamp", testStatusProviderAtAStamp}, {"status-provider-report", testStatusProviderReport},
+		{"name-rulings-at-the-next-stamp", testNameRulingsAtTheNextStamp},
+		{"name-rulings-unreadable-book-is-counted", testNameRulingsUnreadableBookIsCounted},
 	}
 	type transcript struct {
 		Name  string `json:"name"`
 		Steps []txOp `json:"steps"`
 	}
 	var out []transcript
+	ran := map[string]bool{}
 	for _, sc := range scenarios {
 		var steps []txOp
 		holderTx = &steps
-		t.Run(sc.name, sc.run)
+		t.Run(sc.name, func(t *testing.T) { ran[sc.name] = true; sc.run(t) })
 		holderTx = nil
 		out = append(out, transcript{Name: sc.name, Steps: steps})
+	}
+	if len(ran) < len(scenarios) {
+		// A -run filter ran only some scenarios: check each against its
+		// transcript in the file, which only a full run writes.
+		require.NotEqual(t, "1", os.Getenv("EB_WRITE_DEAL_V1_VECTORS"), "writing the transcripts needs every scenario")
+		raw, err := os.ReadFile(holderTranscripts)
+		require.NoError(t, err)
+		var file struct {
+			Transcripts []struct {
+				Name  string `json:"name"`
+				Steps any    `json:"steps"`
+			} `json:"transcripts"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &file))
+		want := map[string]any{}
+		for _, tr := range file.Transcripts {
+			want[tr.Name] = tr.Steps
+		}
+		for _, tr := range out {
+			if !ran[tr.Name] {
+				continue
+			}
+			b, err := json.Marshal(tr.Steps)
+			require.NoError(t, err)
+			var got any
+			require.NoError(t, json.Unmarshal(b, &got))
+			require.Contains(t, want, tr.Name)
+			require.Equal(t, want[tr.Name], got, "%s: transcript %s differs", holderTranscripts, tr.Name)
+		}
+		return
 	}
 	b, err := json.MarshalIndent(map[string]any{
 		"description": "The x-deal-v1 receive profile and act gate as transcripts (evidencebook#461): each scenario of dealprofile/xdealv1's receive_test.go and gate_test.go, step by step, with what Go gave. A party's shelf has the record key, checkpoint key and operator of its name, the clock at 2026-11-01T09:00:00Z advancing a minute at each tick, and a migrated cadence on deal-cadence/0123456789abcdef; reopen_as reopens it on a new file with another party's record key. Written by TestHolderTranscripts (EB_WRITE_DEAL_V1_VECTORS=1).",

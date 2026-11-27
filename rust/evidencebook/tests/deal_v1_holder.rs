@@ -1148,7 +1148,7 @@ impl Drop for BlockAppends {
 
 /// A counted ruling the holder's book does not name is named by the
 /// receive call itself, after the record before it, once (PROFILE §5;
-/// evidencebook#527; Go `TestNameRulings`).
+/// evidencebook#527; Go `testNameRulings`).
 #[test]
 fn name_rulings_on_receive() {
     let (h, adjudicator, ruling, case_log) = ruling_case(Party::new("buyer"), Party::new("seller"));
@@ -1217,7 +1217,7 @@ fn book_entry_is_the_deal_book_entry() {
     );
 }
 
-/// The naming statement's block (Go `TestNameRulingsBlock`): prev and
+/// The naming statement's block (Go `testNameRulingsBlock`): prev and
 /// agreement_ref the buyer's agreement, seen the seller's agreement, the
 /// last of its counted prefix.
 #[test]
@@ -1257,7 +1257,7 @@ fn withhold(book: &evidencebook::shelf::ShelfBook, record_id: &str) {
 }
 
 /// A book with a record not readable whole is left alone (Go
-/// `TestNameRulingsLeavesAPartBook`).
+/// `testNameRulingsLeavesAPartBook`).
 #[test]
 fn name_rulings_leaves_a_part_book() {
     let (h, adjudicator, ruling, case_log) = ruling_case(Party::new("buyer"), Party::new("seller"));
@@ -1287,7 +1287,7 @@ fn name_rulings_only_the_deals_rulings() {
 /// A naming that fails is the receive call's error and the ruling stays
 /// held; the same ruling sent again (a duplicate) names it; and
 /// name_all_rulings seals a naming left behind, once (Go
-/// `TestNameRulingsRetriedOnADuplicate`, `TestNameAllRulings`).
+/// `testNameRulingsRetriedOnADuplicate`, `testNameAllRulings`).
 #[test]
 fn a_failed_naming_is_retried() {
     let (h, adjudicator, ruling, case_log) = ruling_case(Party::new("buyer"), Party::new("seller"));
@@ -1334,7 +1334,7 @@ fn last_status(p: &Party, book_id: &str) -> Value {
 
 /// A naming that failed, with nothing received after it, is sealed by the
 /// holder's next stamp: DealStatus's before_stamp runs before the stamp
-/// takes its values (Go `TestNameRulingsAtTheNextStamp`).
+/// takes its values (Go `testNameRulingsAtTheNextStamp`).
 #[test]
 fn name_rulings_at_the_next_stamp() {
     let (h, adjudicator, ruling, case_log) =
@@ -1357,7 +1357,7 @@ fn name_rulings_at_the_next_stamp() {
 
 /// A book not readable whole is never written to, and the stamp's status
 /// value counts the ruling unnamed (Go
-/// `TestNameRulingsUnreadableBookIsCounted`).
+/// `testNameRulingsUnreadableBookIsCounted`).
 #[test]
 fn an_unreadable_book_counts_its_ruling_unnamed() {
     let (h, adjudicator, ruling, case_log) =
@@ -1385,7 +1385,7 @@ fn an_unreadable_book_counts_its_ruling_unnamed() {
     );
 }
 
-/// A v1 deal book's status at a stamp (Go `TestStatusProviderAtAStamp`,
+/// A v1 deal book's status at a stamp (Go `testStatusProviderAtAStamp`,
 /// without the payment check, which `testdata/deal-v1/payment` holds):
 /// the fact's profile, the value's role and proof, the stamp a record not
 /// timed yet is read at, and the link value naming the counterparty's last
@@ -1424,7 +1424,7 @@ fn deal_status_at_a_stamp() {
     );
 }
 
-/// The report of a deal book from the shelf (Go `TestStatusProviderReport`):
+/// The report of a deal book from the shelf (Go `testStatusProviderReport`):
 /// refused before a stamp checkpoints the book; then resting on the
 /// checkpoint, current until a record arrives that no stamp has stated;
 /// refused for no such book, and for a book holding a record not readable

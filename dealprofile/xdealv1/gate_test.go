@@ -52,7 +52,7 @@ func gate(t *testing.T, h *handshake, own []Record, act Record) ActGate {
 
 // Design 461 §7.2: the first perform or payer settle waits for the counterparty's stamp
 // proof; a payee leg, a statement and any later act never wait.
-func TestGateActHoldsTheFirstAct(t *testing.T) {
+func testGateActHoldsTheFirstAct(t *testing.T) {
 	h := newHandshake(t, nil)
 	h.buyer.receive(h.agreementPair, nil) // the agreement, no proof yet
 	ag, _, _ := gateBook(t, h, true)
@@ -78,7 +78,7 @@ func TestGateActHoldsTheFirstAct(t *testing.T) {
 
 // A counterparty without the layer: the first act runs unguarded, and says
 // so (Steven, design 461 §7.2).
-func TestGateActWithoutALayerIsUnguarded(t *testing.T) {
+func testGateActWithoutALayerIsUnguarded(t *testing.T) {
 	h := newHandshake(t, nil)
 	ag, _, _ := gateBook(t, h, false)
 	own := []Record{ag}
@@ -89,14 +89,14 @@ func TestGateActWithoutALayerIsUnguarded(t *testing.T) {
 
 // A proof the gate does not accept leaves the act refused: one under
 // another shelf log than the agreement names.
-func TestGateActRefusesAProofOfAnotherShelf(t *testing.T) {
+func testGateActRefusesAProofOfAnotherShelf(t *testing.T) {
 	h := newHandshake(t, func(a *AgreeBody) { a.ShelfLogID = "deal-cadence/ffffffffffffffff" })
 	h.buyer.receive(h.agreementPair, &h.proof)
 	ag, _, _ := gateBook(t, h, true)
 	assert.Equal(t, ActGate{Gated: true, Reason: GateNoProof}, gate(t, h, []Record{ag}, gateAct(2, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('1')})))
 }
 
-func TestGateActRefusesAnotherBook(t *testing.T) {
+func testGateActRefusesAnotherBook(t *testing.T) {
 	h := newHandshake(t, nil)
 	ag, _, _ := gateBook(t, h, true)
 	own := []Record{ag}
@@ -121,7 +121,7 @@ func TestGateActRefusesAnotherBook(t *testing.T) {
 
 // The gate holds on both sides (design 461 §7.2): the acceptor's first perform waits
 // for the offerer's stamp proof covering the offerer's agreement.
-func TestGateActHoldsTheAcceptor(t *testing.T) {
+func testGateActHoldsTheAcceptor(t *testing.T) {
 	h := newHandshake(t, nil)
 	h.buyer.receive(h.agreementPair, &h.proof)
 	_, buyerID, buyerPair := gateBook(t, h, true)
@@ -142,7 +142,7 @@ func TestGateActHoldsTheAcceptor(t *testing.T) {
 
 // The gate never reads the witnesses (design 461 §7.2: whether or not a witness is
 // named), and a holder with no agreement of the deal is refused.
-func TestGateActWithoutWitnessesAndWithoutAnAgreement(t *testing.T) {
+func testGateActWithoutWitnessesAndWithoutAnAgreement(t *testing.T) {
 	h := newHandshake(t, nil)
 	pay := gateAct(2, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('1')})
 	_, err := h.buyer.recGateAct(ActGateInput{Own: []Record{h.agreement}, Act: pay})
@@ -167,7 +167,7 @@ func TestGateActWithoutWitnessesAndWithoutAnAgreement(t *testing.T) {
 // counterparty_layer is about the holder, so reading it would invert the
 // gate. Here the seller's agreement says it runs no counterparty layer,
 // which would let the buyer's first act through unguarded.
-func TestGateActRefusesTheCounterpartysAgreement(t *testing.T) {
+func testGateActRefusesTheCounterpartysAgreement(t *testing.T) {
 	h := newHandshake(t, nil)
 	gateBook(t, h, true)
 	theirs := h.agreement

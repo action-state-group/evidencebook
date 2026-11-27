@@ -301,7 +301,7 @@ func TestBookPairVerifies(t *testing.T) {
 // The handshake from an offer (design §7.3, handshake-from-offer): the
 // buyer holds only its journal offer; the seller's agreement and proof are
 // admitted, and the gate opens.
-func TestHandshakeFromOffer(t *testing.T) {
+func testHandshakeFromOffer(t *testing.T) {
 	h := newHandshake(t, nil)
 	ok, err := h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
@@ -344,7 +344,7 @@ func TestHandshakeFromOffer(t *testing.T) {
 }
 
 // Without a proof the agreement is held but the act is refused.
-func TestNoProofNoAct(t *testing.T) {
+func testNoProofNoAct(t *testing.T) {
 	h := newHandshake(t, nil)
 	h.buyer.receive(h.agreementPair, nil)
 	ok, err := h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID})
@@ -354,7 +354,7 @@ func TestNoProofNoAct(t *testing.T) {
 
 // A proof over another shelf log than the agreement names leaves the gate
 // shut, before and after a restart (wrong-shelf-then-restart).
-func TestProofUnderAnotherShelfLog(t *testing.T) {
+func testProofUnderAnotherShelfLog(t *testing.T) {
 	h := newHandshake(t, func(a *AgreeBody) { a.ShelfLogID = "deal-cadence/ffffffffffffffff" })
 	h.buyer.receive(h.agreementPair, &h.proof)
 	proofs, err := h.buyer.shelf.HeldProofs(context.Background(), h.seller.key(), h.sellerLog)
@@ -372,7 +372,7 @@ func TestProofUnderAnotherShelfLog(t *testing.T) {
 
 // A proof by another checkpoint key than the agreement names relates to no
 // sender: it is refused.
-func TestProofByAnotherCheckpointKey(t *testing.T) {
+func testProofByAnotherCheckpointKey(t *testing.T) {
 	h := newHandshake(t, func(a *AgreeBody) { a.CheckpointKey = hex.EncodeToString(make([]byte, 32)) })
 	res, _ := h.buyer.receiveRaw(h.agreementPair, &h.proof)
 	require.NotNil(t, res.Proof)
@@ -386,7 +386,7 @@ func TestProofByAnotherCheckpointKey(t *testing.T) {
 // proof was accepted, forks the genesis: the act is refused, before and
 // after a restart, and a proof for that log is refused from then on
 // (genesis-fork-after-proof, fork-at-position-1).
-func TestGenesisForkAfterProof(t *testing.T) {
+func testGenesisForkAfterProof(t *testing.T) {
 	h := newHandshake(t, nil)
 	h.buyer.receive(h.agreementPair, &h.proof)
 	other := h.agreement
@@ -431,7 +431,7 @@ func (p *party) sealOnNewShelf(logID string, r Record) (string, []byte) {
 // ProofSender on both sides: the seller's proof at the buyer, and the
 // buyer's proof at the seller, each give the proof author's record key
 // (proof-sender-both-sides).
-func TestProofSenderBothSides(t *testing.T) {
+func testProofSenderBothSides(t *testing.T) {
 	h := newHandshake(t, nil)
 	h.buyer.receive(h.agreementPair, &h.proof)
 	sender, ok, err := h.buyer.recProofSender(h.seller.checkpointKey(), h.sellerLog)
@@ -466,7 +466,7 @@ func TestProofSenderBothSides(t *testing.T) {
 
 // Answered: an offer the seller agreed to stays answered; one it holds and
 // did not answer is not.
-func TestAnswered(t *testing.T) {
+func testAnswered(t *testing.T) {
 	h := newHandshake(t, nil)
 	held, err := h.seller.shelf.HeldFirst(context.Background(), SentLogPrefix+mustDigest(t, h.offer))
 	require.NoError(t, err)
@@ -490,7 +490,7 @@ func TestAnswered(t *testing.T) {
 
 // Admit: a stranger's deal-book record, a decline from a key the offer was
 // not sent to, and a ruling from no adjudicator are refused.
-func TestAdmitRefusesStrangers(t *testing.T) {
+func testAdmitRefusesStrangers(t *testing.T) {
 	h := newHandshake(t, nil)
 	stranger := newParty(t, "stranger")
 	_, pair := stranger.seal("deal/"+hex.EncodeToString(seed("stranger log")[:16]), h.agreement)
@@ -526,7 +526,7 @@ func settleRecord(t *testing.T, seq int64, prev, agreement Record, seen string) 
 // A later record of an admitted book is admitted, placed after the record it
 // cites; a later record of a log whose first record was never admitted is
 // refused.
-func TestLaterRecords(t *testing.T) {
+func testLaterRecords(t *testing.T) {
 	h := newHandshake(t, nil)
 	h.buyer.receive(h.agreementPair, &h.proof)
 	next := settleRecord(t, 2, h.agreement, h.agreement, h.agreementID)
@@ -550,7 +550,7 @@ func TestLaterRecords(t *testing.T) {
 
 // An agreement citing our counter-offer, not our first offer of the deal,
 // is admitted.
-func TestAgreementOnACounterOffer(t *testing.T) {
+func testAgreementOnACounterOffer(t *testing.T) {
 	buyer, seller := newParty(t, "buyer"), newParty(t, "seller")
 	first := fxOffer()
 	first.To = Some(seller.key())
@@ -574,7 +574,7 @@ func TestAgreementOnACounterOffer(t *testing.T) {
 
 // A cancellation from the offer's signer, of an offer of this deal, is
 // admitted; one citing an offer of another deal is refused.
-func TestCancellation(t *testing.T) {
+func testCancellation(t *testing.T) {
 	h := newHandshake(t, nil)
 	od := mustDigest(t, h.offer)
 	cancel := Record{Block: journalBlock(TypeAgree, "2026-11-01T09:50:00Z", true), Body: &AgreeBody{Kind: KindCancellation, Offer: RefTo(od)}}
@@ -592,7 +592,7 @@ func TestCancellation(t *testing.T) {
 }
 
 // A ruling is admitted from our agreement's adjudicator only.
-func TestRulingFromTheAdjudicator(t *testing.T) {
+func testRulingFromTheAdjudicator(t *testing.T) {
 	adjudicator := newParty(t, "adjudicator")
 	h := newHandshake(t, func(a *AgreeBody) {
 		adj := fxAdjudicator
@@ -638,7 +638,7 @@ func TestBookPairWithTwoPayloads(t *testing.T) {
 // Two sellers whose books share one log id (shared-log-id): ProofSender
 // returns the one agreement under the proof's checkpoint key, and refuses
 // when both name it.
-func TestSharedLogID(t *testing.T) {
+func testSharedLogID(t *testing.T) {
 	for _, both := range []bool{false, true} {
 		h := newHandshake(t, nil)
 		h.buyer.receive(h.agreementPair, &h.proof)
@@ -672,7 +672,7 @@ func TestSharedLogID(t *testing.T) {
 // A journal offer withheld under retention is read again once it is
 // available: a decline of it is refused while it is withheld, and admitted
 // after, though the profile read the journal in between.
-func TestWithheldOfferReadAgain(t *testing.T) {
+func testWithheldOfferReadAgain(t *testing.T) {
 	ctx := context.Background()
 	h := newHandshake(t, nil)
 	journal, err := h.buyer.shelf.Journal(ctx)
@@ -697,7 +697,7 @@ func TestWithheldOfferReadAgain(t *testing.T) {
 // A proof whose book checkpoint the records held do not recompute is
 // refused and kept as evidence, and the gate stays shut: the buyer holds
 // another first record of the seller's log than the one the proof covers.
-func TestProofTheRecordsDoNotRecompute(t *testing.T) {
+func testProofTheRecordsDoNotRecompute(t *testing.T) {
 	ctx := context.Background()
 	h := newHandshake(t, nil)
 	other := h.agreement
@@ -766,7 +766,7 @@ func TestOursResultIsACopy(t *testing.T) {
 
 // A deal whose counterparty runs no layer holds no counterpart agreement:
 // CanAct is false, and the gate does not apply to it (design §4.7).
-func TestCanActWithoutALayerIsFalse(t *testing.T) {
+func testCanActWithoutALayerIsFalse(t *testing.T) {
 	h := newHandshake(t, nil)
 	ok, err := h.seller.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: ""})
 	require.NoError(t, err)
