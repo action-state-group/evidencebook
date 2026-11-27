@@ -66,6 +66,10 @@ func TestStatementReadsTheSameAfterReopen(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalid, "a repeated member name")
 	_, err = lifecycle("{\"retention_state\":\"AVAILABLE\",\"reason\":\"\xff\"}")
 	assert.ErrorIs(t, err, ErrInvalid, "invalid UTF-8")
+	for _, number := range []string{`1.5`, `9007199254740993`} {
+		_, err = lifecycle(`{"retention_state":"AVAILABLE","n":` + number + `}`)
+		assert.ErrorIs(t, err, ErrInvalid, "a number JCS cannot carry: %s", number)
+	}
 
 	sealed, err := lifecycle(`{"retention_state":"AVAILABLE", "RETENTION_STATE":"LEGAL_HOLD"}`)
 	require.NoError(t, err)

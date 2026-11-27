@@ -242,7 +242,12 @@ func canonicalStatement(doc []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	return evidencerequest.EncodeJCS(decoded)
+	out, err := evidencerequest.EncodeJCS(decoded)
+	if err != nil {
+		// A number JCS cannot carry (a fraction, an integer past 2^53).
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	return out, nil
 }
 
 // checkDerivedResult validates the Result an evaluator returned with the

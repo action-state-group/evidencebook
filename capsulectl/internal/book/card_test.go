@@ -332,6 +332,7 @@ func TestLoadCardServiceRefuses(t *testing.T) {
 		// Member names are read exactly and once (evidencebook#1072).
 		"a case variant": `{"NAME":"a","operator":"o","url":"https://a.example",` + k + `}`,
 		"name twice":     `{"name":"a","name":"b","operator":"o","url":"https://a.example",` + k + `}`,
+		"trailing data":  good + ` {}`,
 	} {
 		_, err := loadCardService(writeJSON(t, body))
 		assert.ErrorIs(t, err, cli.ErrInput, name)
