@@ -1,10 +1,9 @@
-// Package assets holds the deal view's presentation module: the script, its
-// stylesheet and the two manifests that pin them by digest
-// (capsulectl.deal-view/v0 and capsulectl.deal-view-composed/v0). Both
-// launchers use it: capsulectl-deal draws its pages with it, and
-// capsulectl-book puts it in a settlement report that carries deal receipts
-// (`book report build --receipts`). It links no command, hook or wording of
-// either launcher.
+// Package assets holds the deal view's composed presentation module: the
+// script, its stylesheet and the manifest that pins them by digest
+// (capsulectl.deal-view-composed/v0), which `capsulectl deal compose --html`
+// draws with until it is removed (evidencebook#869, EB2b). Every other
+// receipt is drawn by capsule-viewer's go/receipt. It links no command, hook
+// or wording of either launcher.
 package assets
 
 import (
@@ -25,11 +24,10 @@ var (
 	CSS string
 	//go:embed deal-view.js.sha256
 	JSSHA256 string
-	//go:embed deal-view.manifest.json
-	ManifestJSON []byte
-	// The same script's second module, capsulectl.deal-view-composed/v0: the
-	// receipt with the other party's half, read from a deal composition
-	// (docs/design/two-sided-receipt.md).
+	// The script's one module, capsulectl.deal-view-composed/v0: the receipt
+	// with the other party's half, read from a deal composition
+	// (docs/design/two-sided-receipt.md). A single copy's receipt is drawn by
+	// capsule-viewer's x-deal-v0 modules (evidencebook#869).
 	//go:embed deal-view-composed.manifest.json
 	ComposedManifestJSON []byte
 )
@@ -41,7 +39,7 @@ var (
 // the module, so the emitter checks that it pins the script and stylesheets.
 func Module() (emitter.Module, error) {
 	var manifest map[string]interface{}
-	if err := json.Unmarshal(ManifestJSON, &manifest); err != nil {
+	if err := json.Unmarshal(ComposedManifestJSON, &manifest); err != nil {
 		return emitter.Module{}, fmt.Errorf("the deal view's manifest: %w", err)
 	}
 	executable := cli.ManifestMap(manifest, "executable")
@@ -65,5 +63,5 @@ func Module() (emitter.Module, error) {
 			styles = append(styles, digest)
 		}
 	}
-	return emitter.Module{Code: []byte(JS), SHA256: pin, StyleSHA256: styles, Manifest: json.RawMessage(ManifestJSON)}, nil
+	return emitter.Module{Code: []byte(JS), SHA256: pin, StyleSHA256: styles, Manifest: json.RawMessage(ComposedManifestJSON)}, nil
 }

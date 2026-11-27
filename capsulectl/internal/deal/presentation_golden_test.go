@@ -238,7 +238,8 @@ func rerenderPresentationPage(t *testing.T, dir string, meta presentationMeta, b
 		}
 		return emitter.EmitEvidenceGraphHTML(bundle, pageruntime.IIFE)
 	case "deal-report":
-		return dealReportHTML(bundle, dealNotCountersigned(), dealVerifyCommand(""), cli.BuiltinWording())
+		usePluginVerify(t)
+		return dealReportHTML(t.Context(), bundle, nil, dealVerifyCommand(""))
 	case "compose-page":
 		// The composer's both-halves page: the composed bundle with the
 		// keep copy beside it (evidencebook-deal#31).

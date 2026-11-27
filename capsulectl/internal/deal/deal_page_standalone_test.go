@@ -134,32 +134,12 @@ if (edit === "stripped") {
 })();
 `
 
-// The deal page checks a standalone report itself (capsule-cli#294): the
-// page as written shows it; a step whose key_id is not the key its envelope
-// verified under, a report signature that does not verify, an edited
-// report, and a copy stripped to inline text are each refused.
-func TestTheDealPageChecksAStandaloneReport(t *testing.T) {
-	run := dealPageUnderNode(t)
-	shown := run("")
-	assert.Empty(t, shown["refusal"], "the page as written shows its report")
-	assert.NotEmpty(t, shown["scope"])
-	for _, edit := range []string{"step-key", "report-signature", "report-text", "stripped"} {
-		got := run(edit)
-		assert.NotEmpty(t, got["refusal"], "%s: the deal view refuses it, not shown", edit)
-	}
-}
-
-// A receipt sealed on the deal's log, as capsulectl wrote before
-// capsule-cli#294, with its report's disclosure dropped and edited text put
-// inline: the page refuses it rather than show it under the "not checked"
-// label. capsulectl no longer writes such a copy, so scripts/check-html-render.sh
-// cannot; this keeps the page's in-log path covered.
-func TestTheDealPageRefusesADowngradedInLogReceipt(t *testing.T) {
-	inLogReports(t)
-	run := dealPageUnderNode(t)
-	assert.Empty(t, run("")["refusal"], "the page as written shows its report")
-	assert.Equal(t, "⚠️ The receipt's text could not be checked against its sealed record. Do not rely on it.", run("downgraded-in-log")["refusal"])
-}
+// The page's own check of a copy's standalone report (a step key that is not
+// the one its envelope verified under, a report signature or text that does
+// not verify, a copy stripped to inline text, a downgraded in-log receipt)
+// is capsule-viewer's, tested there (ts/test/deal-standalone-report.test.ts),
+// as is a page opened without WebCrypto or its Ed25519
+// (ts/test/no-webcrypto.test.ts), since capsule-viewer's x-deal-v0 module draws capsulectl's pages (#869).
 
 // dealPageUnderNode writes a retail deal's counterparty page and returns a
 // runner that loads it under node after the named edit.
@@ -192,7 +172,7 @@ func dealPageUnderNode(t *testing.T) func(edit string) map[string]string {
 // module, which needs composed/v1) is not run (evidencebook-deal#214). capsule-viewer#322 shows a v1 file.
 func TestAV1OnlyBundleDoesNotSelectTheDealPage(t *testing.T) {
 	run := dealPageUnderNode(t)
-	assert.Equal(t, "capsulectl.deal-view/v0", run("")["module"], "control: the v0 file selects the deal view")
+	assert.Equal(t, "capsuleviewer.receipt.unilateral/v0", run("")["module"], "control: the v0 file selects the viewer's x-deal-v0 module")
 	got := run("v1-only")
-	assert.NotEqual(t, "capsulectl.deal-view/v0", got["module"], "got %v", got)
+	assert.NotEqual(t, "capsuleviewer.receipt.unilateral/v0", got["module"], "got %v", got)
 }

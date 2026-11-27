@@ -314,8 +314,9 @@ func TestDealMerchantEmailSealVerifyAndMismatch(t *testing.T) {
 	assert.Contains(t, report["did_line"], "with an independent source attached: the merchant's own email, its signature checked against the merchant's key sealed at ")
 	html, err := os.ReadFile(page)
 	require.NoError(t, err)
-	assert.Contains(t, string(html), "DKIM signature: ")
-	assert.Contains(t, string(html), "Our seal: ")
+	// capsule-viewer's x-deal-v0 module draws it (#869); the drawing is
+	// tested there.
+	assert.Contains(t, string(html), "capsuleviewer.receipt.unilateral/v0")
 	b := embeddedBundle(t, string(html))
 	deal := dealReportOf(b)
 	assert.Contains(t, string(html), dealScopeLine, "the receipt states its scope on its face")

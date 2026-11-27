@@ -150,70 +150,6 @@ func renderPageUnderNode(t *testing.T, node, page string, edit ...string) map[st
 	return got
 }
 
-// The deal page shows the errand's journey (capsule-cli#370): the page's
-// rows are the report's journey, one model, worded alike, each saying who
-// moved, so the switch to eBay reads as the user's. The sealed report keeps
-// no pack words; a shared copy shows no journey.
-func TestTheDealPageShowsTheJourney(t *testing.T) {
-	dealFixture(t)
-	id, _, _ := fawnDeal(t)
-	var labels []any
-	for _, s := range dealRun(t, "report", "--deal", id)["journey"].([]any) {
-		labels = append(labels, s.(map[string]any)["label"])
-	}
-	got := renderJourney(t, id, false)
-	require.Empty(t, got["refusal"])
-	assert.Equal(t, true, got["shown"])
-	assert.Equal(t, labels, got["labels"], "the page words the journey as the report does")
-	rows := got["rows"].([]any)
-	require.Len(t, rows, len(labels))
-	assert.Regexp(t, `^\S.* · You · Asked$`, rows[0], "the first row says its time")
-	assert.Regexp(t, `^\S.* · Your agent · Couldn't \(AliExpress sign-in\)$`, rows[4], "every row says its time, as the receipt's frames do")
-	assert.Regexp(t, `^\S.* · You · Switched to eBay$`, rows[5], "the switch is the user's")
-
-	shared := renderJourney(t, id, true)
-	require.Empty(t, shared["refusal"])
-	assert.Equal(t, false, shared["shown"], "a shared copy carries no journey")
-	assert.Empty(t, shared["words"], "nor the words to word one")
-	assert.NotEmpty(t, got["words"])
-
-	// A row whose step did not verify says so on the row itself.
-	withheld := renderJourney(t, id, false, "withhold")
-	require.Empty(t, withheld["refusal"])
-	assert.Equal(t, "You · Switched to eBay · step not verified in this report", withheld["rows"].([]any)[5], "and gives no time")
-}
-
-// The receipt's face says only what this page checked: the banner says
-// "checked" only when every step and the asked words were, a stamp is "passed"
-// only for a check that ran, a withheld or unreadable one is "not checked" or
-// "failed", and the note on what the words rest on is on the face.
-func TestTheReceiptFaceSaysOnlyWhatWasChecked(t *testing.T) {
-	dealFixture(t)
-	id, _, _ := fawnDeal(t)
-
-	own := renderJourney(t, id, false)
-	require.Empty(t, own["refusal"])
-	assert.Equal(t, "yes", own["banner"])
-	assert.Equal(t, "Your copy only · checked", own["bannerText"])
-	assert.Equal(t, []any{"passed", "passed", "missing", "passed", "missing", "not checked", "missing", "missing", "not checked"}, own["stamps"],
-		"no record is signed with the person's key, card settlement is not in the file, the deal is open, the book names no witness's receipt, and the other side is not in the file")
-	assert.Equal(t, "3 passed · 6 not checkable here", own["pill"], "no failure to name, and the unchecked ones are said")
-	assert.EqualValues(t, 1, own["restsNote"], "what the words rest on is on the face")
-
-	shared := renderJourney(t, id, true)
-	require.Empty(t, shared["refusal"])
-	assert.Equal(t, "not checked", shared["stamps"].([]any)[0], "withheld words are not a passed check")
-
-	// A step whose disclosure is gone is not verified: the banner stops saying "checked".
-	withheld := renderJourney(t, id, false, "withhold")
-	require.Empty(t, withheld["refusal"])
-	assert.Equal(t, "no", withheld["banner"])
-	assert.Equal(t, "Your copy only · not fully checked", withheld["bannerText"])
-	assert.Equal(t, "failed", withheld["stamps"].([]any)[1])
-	assert.Equal(t, "1 passed · 1 failed · 7 not checkable here", withheld["pill"], "a check that ran and failed is on the pill")
-	assert.Equal(t, "not checked", withheld["stamps"].([]any)[3], "a withheld step may be an act: the order is not passed")
-}
-
 // The sealed report's journey is facts only: no word from a wording pack,
 // so the same bundle words alike under any pack.
 func TestTheSealedJourneyHoldsNoWords(t *testing.T) {
@@ -262,10 +198,12 @@ func pinJourneyPack(t *testing.T, edit func(entries map[string]any)) {
 	require.NoError(t, cli.SaveProfile(p, true))
 }
 
-// A pinned pack words the page's journey as it words the report's; one
-// without the journey keys is not used, and both fall back to the built-in
-// words, as every other line does.
-func TestThePageWordsTheJourneyFromThePinnedPack(t *testing.T) {
+// A pinned pack words the report's journey; one without the journey keys is
+// not used, and it falls back to the built-in words, as every other line
+// does. The page's words are capsule-viewer's own pack whatever the profile
+// pins (Sherlock2 dropped the deal view's profile words, line 10,
+// capsule-viewer#383 comment 7176241436), so the page is not compared here.
+func TestTheReportWordsTheJourneyFromThePinnedPack(t *testing.T) {
 	dealFixture(t)
 	id, _, _ := fawnDeal(t)
 	labels := func() []any {
@@ -284,7 +222,6 @@ func TestThePageWordsTheJourneyFromThePinnedPack(t *testing.T) {
 	want := labels()
 	assert.Contains(t, want, "Told eBay your name and address")
 	assert.Contains(t, want, "Couldn't (AliExpress )")
-	assert.Equal(t, want, renderJourney(t, id, false)["labels"])
 
 	pinJourneyPack(t, func(e map[string]any) {
 		e["journey.user.switched"] = "You moved the errand to {who}"
@@ -295,7 +232,6 @@ func TestThePageWordsTheJourneyFromThePinnedPack(t *testing.T) {
 	assert.Contains(t, want, "You moved the errand to eBay")
 	assert.Contains(t, want, "Couldn't (AliExpress needed a sign-in)")
 	assert.Contains(t, want, "Told eBay your name and street address")
-	assert.Equal(t, want, renderJourney(t, id, false)["labels"])
 
 	pinJourneyPack(t, func(e map[string]any) {
 		for k := range e {
@@ -306,11 +242,10 @@ func TestThePageWordsTheJourneyFromThePinnedPack(t *testing.T) {
 	})
 	want = labels()
 	assert.Contains(t, want, "Switched to eBay", "the built-in words")
-	assert.Equal(t, want, renderJourney(t, id, false)["labels"])
 }
 
 // An "other" reason is worded by its own detail, on the page as in the
-// report.
+// report (a pinned pack words only the report).
 func TestTheJourneyWordsAnOtherReasonByItsDetail(t *testing.T) {
 	dealFixture(t)
 	id := dealRun(t, "open", "--input", writeJSON(t, fawnErrand))["deal_id"].(string)
@@ -320,7 +255,7 @@ func TestTheJourneyWordsAnOtherReasonByItsDetail(t *testing.T) {
 		labels = append(labels, s.(map[string]any)["label"])
 	}
 	assert.Contains(t, labels, "Couldn't (the checkout page kept reloading)")
-	assert.Equal(t, labels, renderJourney(t, id, false)["labels"])
+	assertPageJourneyIsTheReports(t, id)
 
 	// A detail is a reason's value, not a placeholder of its own.
 	pinJourneyPack(t, func(e map[string]any) { e["journey.agent.couldnt"] = "Couldn't ({detail})" })
@@ -329,27 +264,4 @@ func TestTheJourneyWordsAnOtherReasonByItsDetail(t *testing.T) {
 		labels = append(labels, s.(map[string]any)["label"])
 	}
 	assert.Contains(t, labels, "")
-	assert.Equal(t, labels, renderJourney(t, id, false)["labels"])
-}
-
-// One adjudicator copy shows the referee its side named, never "both chose",
-// and says what "both chose" would not prove (evidencebook-deal#107).
-func TestAnAdjudicatorCopyShowsTheRefereeThisSideNamed(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not installed")
-	}
-	dealFixture(t)
-	id, _, _ := fawnDeal(t)
-	page := filepath.Join(t.TempDir(), "page.html")
-	dealRun(t, "report", "--deal", id, "--html", page, "--share", cli.DealAudienceAdjudicator, "--to", "the platform")
-	got := renderPageUnderNode(t, node, page)
-	require.Empty(t, got["refusal"])
-	text, _ := got["pageText"].(string)
-	assert.Contains(t, text, "The referee this side named: the platform")
-	assert.Contains(t, text, "a match means the same name as written, not the same person.")
-	assert.NotContains(t, text, "a referee you both chose")
-
-	counterparty := renderJourney(t, id, true)
-	assert.NotContains(t, counterparty["pageText"], "The referee this side named")
 }

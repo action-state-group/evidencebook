@@ -1942,13 +1942,10 @@ const dealViewRender = (model, regions) => {
   );
 };
 
-EvidenceGraph.registerPresentation({
-  manifest: {"spec_version": "aac.presentation-manifest/v0", "id": "capsulectl.deal-view/v0", "presentation_api": "aac.presentation-api/v0", "runtime_min": "0.1.0", "trust_class": "trusted-executable", "requires": {"bundle_kind": "evidence-bundle/v2", "extensions": {"required": ["x-deal-v0"]}}, "forbids": {"extensions": ["composed/v1", "x-history-selection/v0"], "profiles": ["spec_version:report/v1", "result_version:evidence-result-v0", "spec_version:evaluation-summary/v1"]}, "audiences": ["*"], "formats": ["html"], "fallback": false, "priority": 1, "executable": {"carrier": "module-slot", "script_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "style_sha256": ["04759c13ec65dd02645149cb7d009153712b8f8c31027fd73923df35e95f8279"]}},
-  canRender: dealViewVerified,
-  buildModel: dealViewModel,
-  render: dealViewRender,
-});
-
+// The script registers only the composed module: a single copy's receipt is
+// drawn by capsule-viewer's x-deal-v0 modules (#869, EB2a), and a second
+// module matching x-deal-v0 beside them would make every such page
+// ambiguous. The rest of this file goes with `deal compose --html` (EB2b).
 EvidenceGraph.registerPresentation({
   manifest: {"spec_version": "aac.presentation-manifest/v0", "id": "capsulectl.deal-view-composed/v0", "presentation_api": "aac.presentation-api/v0", "runtime_min": "0.1.0", "trust_class": "trusted-executable", "requires": {"bundle_kind": "evidence-bundle/v2", "extensions": {"required": ["composed/v1"]}}, "forbids": {"extensions": ["x-history-selection/v0"], "profiles": ["spec_version:report/v1", "result_version:evidence-result-v0", "spec_version:evaluation-summary/v1"]}, "audiences": ["*"], "formats": ["html"], "fallback": false, "priority": 1, "executable": {"carrier": "module-slot", "script_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "style_sha256": ["04759c13ec65dd02645149cb7d009153712b8f8c31027fd73923df35e95f8279"]}},
   canRender: dealComposedCanRender,

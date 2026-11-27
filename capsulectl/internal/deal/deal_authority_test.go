@@ -102,7 +102,8 @@ func TestAuthorityBlockListsEveryLayerWithItsTime(t *testing.T) {
 	assert.Equal(t, "pass", v.PerRecordMembership.Status, v.PerRecordMembership.Findings)
 	ext := dealReportOf(b)
 	assert.Equal(t, toPlain(t, report["authority"]), toPlain(t, ext["authority"]))
-	assert.Contains(t, string(raw), `more.append(el("h2", W("page.authority.title")))`)
+	// capsule-viewer's x-deal-v0 module draws the block (line 5, #869).
+	assert.Contains(t, string(raw), "capsuleviewer.receipt.unilateral/v0")
 }
 
 // When the user's rules needed no approval, the block says DO, within your

@@ -96,7 +96,9 @@ This note settles where the other half rides, how the page reads it, and what ea
 ### D1. The other half rides in `composed/v1`, read by deal-view
 
 The receipt with both halves is a `composed/v1` bundle. deal-view registers a second page
-manifest, `capsulectl.deal-view-composed/v0`, from the same script and stylesheet. It requires
+manifest, `capsulectl.deal-view-composed/v0`, from the same script and stylesheet. (Since
+evidencebook#869 the script registers only this one: a single copy's receipt is drawn by
+capsule-viewer's x-deal-v0 modules, and `deal compose --html` goes in EB2b.) It requires
 `composed/v1` and forbids what the single-book manifest forbids. The single-book manifest adds
 `composed/v1` to its `forbids.extensions`, so a composition that also carries `x-deal-v0`
 resolves to one module. The core's composed section still renders below the page, unchanged, as

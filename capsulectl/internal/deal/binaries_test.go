@@ -38,6 +38,14 @@ var installed struct {
 // capsulectl the test runs finds them.
 func installedCapsulectl(t *testing.T) string {
 	t.Helper()
+	dir, err := buildInstalled()
+	require.NoError(t, err, installed.out)
+	t.Setenv("CAPSULECTL_PLUGIN_ROOTS", filepath.Join(dir, "plugins"))
+	return dir
+}
+
+// buildInstalled builds the core and the deal plugin once per test run.
+func buildInstalled() (string, error) {
 	installed.once.Do(func() {
 		installed.dir, installed.err = os.MkdirTemp("", "capsulectl-bin-")
 		if installed.err != nil {
@@ -58,9 +66,17 @@ func installedCapsulectl(t *testing.T) string {
 			}
 		}
 	})
-	require.NoError(t, installed.err, installed.out)
-	t.Setenv("CAPSULECTL_PLUGIN_ROOTS", filepath.Join(installed.dir, "plugins"))
-	return installed.dir
+	return installed.dir, installed.err
+}
+
+// builtPluginVerify is selfVerifyBinary in tests: a page's verify run is the
+// built plugin's, not the test binary's (which would run the tests).
+func builtPluginVerify() (string, error) {
+	dir, err := buildInstalled()
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", err, installed.out)
+	}
+	return filepath.Join(dir, "plugins", "capsulectl-deal"), nil
 }
 
 // removeInstalled deletes the built binaries; TestMain calls it.

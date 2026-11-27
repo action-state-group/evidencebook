@@ -19,9 +19,10 @@
 #   standard-history-VERSION.tar.gz, the History card module's files, to unpack
 #     beside the book launcher;
 #   deal-skill-VERSION.tar.gz, the skills/deal tree;
-#   deal-view-VERSION.tar.gz, the deal view's files as the core reads them
-#     beside the deal launcher (capsulectl-deal.d/deal-view.js and .css, the
-#     bytes the binary embeds and its handshake states);
+#   deal-view-VERSION.tar.gz, the presentation modules' files as the core
+#     reads them beside the deal launcher (capsulectl-deal.d/: capsule-viewer's
+#     x-deal-v0 receipt scripts and stylesheets, and the deal view's composed
+#     module), the bytes the binary embeds and its handshake states;
 #   SHA256SUMS over all of them.
 # Every archive is deterministic (sorted entries, fixed mtime, owner 0:0,
 # gzip -n). It needs GNU tar: TAR names it, else `tar` when that is GNU tar,
@@ -99,10 +100,12 @@ git ls-files -z skills/deal | LC_ALL=C sort -z |
     --mode='u+rw,go=rX' --mtime='1970-01-01 00:00:00Z' -cf - |
   gzip -n -9 >"$OUT/deal-skill-$VERSION.tar.gz"
 
-# The deal view, unpacked into the plugin root beside capsulectl-deal.
+# The presentation modules, unpacked into the plugin root beside
+# capsulectl-deal: the files its handshake states, written from the bytes the
+# binary embeds (scripts/dealviewfiles).
 mkdir "$tmp/capsulectl-deal.d"
-cp internal/deal/assets/deal-view.js internal/deal/assets/deal-view.css "$tmp/capsulectl-deal.d/"
-(cd "$tmp" && printf '%s\0' capsulectl-deal.d capsulectl-deal.d/deal-view.css capsulectl-deal.d/deal-view.js |
+go run ./scripts/dealviewfiles "$tmp/capsulectl-deal.d"
+(cd "$tmp" && { printf '%s\0' capsulectl-deal.d; for f in $(cd capsulectl-deal.d && ls | LC_ALL=C sort); do printf '%s\0' "capsulectl-deal.d/$f"; done; } |
   "$TAR" --null --no-recursion -T - --format=gnu --owner=0 --group=0 --numeric-owner \
     --mode='u+rw,go=rX' --mtime='1970-01-01 00:00:00Z' -cf -) |
   gzip -n -9 >"$OUT/deal-view-$VERSION.tar.gz"

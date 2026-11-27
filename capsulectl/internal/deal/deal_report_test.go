@@ -243,7 +243,7 @@ func TestDealReportAskedIsCheckable(t *testing.T) {
 	intent := baseline["body"].(map[string]interface{})["intent"].(map[string]interface{})
 	assert.Equal(t, intent["verbatim_commitment"], commitment)
 	assert.Equal(t, "rent me 2 jet skis Saturday", opening["text"])
-	assert.Contains(t, string(raw), "not checked by this page")
+	assert.Contains(t, string(raw), "capsuleviewer.receipt.unilateral/v0", "capsule-viewer's x-deal-v0 module recomputes it in the page (#869)")
 }
 
 // Every grade capsulectl shows names a rung of the grade ladder

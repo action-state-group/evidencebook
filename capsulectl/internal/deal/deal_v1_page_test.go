@@ -3,6 +3,7 @@
 package deal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -25,18 +26,26 @@ func usePluginVerify(t *testing.T) {
 	t.Cleanup(func() { selfVerifyBinary = old })
 }
 
-var pageBootstrap = regexp.MustCompile(`globalThis\.capsulectlDealPage = Object\.freeze\((.*?)\);`)
-
-// pageVerifyReport is the verify report a page carries in its bootstrap.
+// pageVerifyReport is the verify report a page carries in its bootstrap:
+// the one JSON value after the bootstrap's prefix (its strings may hold
+// ");", so the value is decoded, not cut by a pattern).
 func pageVerifyReport(t *testing.T, page []byte) map[string]any {
 	t.Helper()
-	m := pageBootstrap.FindSubmatch(page)
-	require.NotNil(t, m, "the page carries capsulectl's report")
 	var boot struct {
 		Report map[string]any `json:"verifier_report"`
 	}
-	require.NoError(t, json.Unmarshal(m[1], &boot))
+	require.NoError(t, json.Unmarshal(pageBootstrapData(t, page), &boot))
 	return boot.Report
+}
+
+// pageBootstrapData is the one JSON value after the page bootstrap's prefix.
+func pageBootstrapData(t *testing.T, page []byte) json.RawMessage {
+	t.Helper()
+	_, rest, ok := bytes.Cut(page, []byte("globalThis.capsulectlDealPage = Object.freeze("))
+	require.True(t, ok, "the page carries its bootstrap data")
+	var data json.RawMessage
+	require.NoError(t, json.NewDecoder(bytes.NewReader(rest)).Decode(&data))
+	return data
 }
 
 // `deal report --html` on an x-deal-v1 deal writes your own copy's receipt
@@ -109,7 +118,7 @@ func TestSelfVerifyReport(t *testing.T) {
 		old := selfVerifyBinary
 		selfVerifyBinary = func() (string, error) { return path, nil }
 		defer func() { selfVerifyBinary = old }()
-		return selfVerifyReport(context.Background(), []byte(`{}`), nil, "")
+		return selfVerifyReport(context.Background(), []byte(`{}`), nil, "", nil)
 	}
 	got, err := run(script("invalid", `echo '{"spec_version":"capsule-cli-result/v1","verdict":"INVALID","bundle_digest":"ab"}'; exit 1`))
 	require.NoError(t, err)

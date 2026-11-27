@@ -733,11 +733,7 @@ func TestTheUsersAnswerIsTheirMove(t *testing.T) {
 	assert.NotContains(t, moves, "user:approved", "an answer without their words is not the user's OK")
 
 	// The page words the no as the report does.
-	var want []any
-	for _, s := range dealRun(t, "report", "--deal", id)["journey"].([]any) {
-		want = append(want, s.(map[string]any)["label"])
-	}
-	assert.Equal(t, want, renderJourney(t, id, false)["labels"])
+	assertPageJourneyIsTheReports(t, id)
 }
 
 // An answer to an offer's or a commitment's check is worded by its amount,

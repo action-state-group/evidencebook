@@ -679,7 +679,7 @@ characters). In an order reference or a URL path it counts. A hit refuses the
 copy: nothing is written and nothing goes on record. On a page, the gate reads
 what a reader can be shown: the markup outside its scripts and stylesheets,
 the bundle, and the page's own data. It never reads the code of the verifier,
-the deal view or a stylesheet, so a refreshed verifier whose strings hold an
+the receipt modules or a stylesheet, so a refreshed verifier whose strings hold an
 amount does not refuse the copy. A page whose bundle it cannot find is read
 whole.
 
@@ -731,8 +731,8 @@ in the local deal store, where `deal verify-email` re-checks it; no bundle
 carries it.
 
 The self-contained `deal report --html` page embeds its verifier:
-capsule-viewer's page runtime, 753,028 B (capsule-viewer/go v0.3.0), and
-`deal-view.js`, 42,069 B.
+capsule-viewer's page runtime and its x-deal-v0 receipt modules
+(capsule-viewer's go/receipt, evidencebook#869).
 
 ## Which build made a record, and what is never collected
 

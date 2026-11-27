@@ -15,6 +15,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/capsule-viewer/go/receipt"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 )
 
@@ -175,10 +176,17 @@ func dealGateText(page []byte, jsonValue func([]byte) []byte) []byte {
 	return append(out, page[last:]...)
 }
 
-// dealWithoutVendored is a copy read whole, less the two vendored scripts
-// where they are found byte for byte: fixed code, pinned by digest.
+// dealWithoutVendored is a copy read whole, less the vendored scripts where
+// they are found byte for byte: fixed code, pinned by digest. They are the
+// page runtime, capsule-viewer's x-deal-v0 receipt modules a single copy's
+// page carries, and the deal view the composed page still carries.
 func dealWithoutVendored(page []byte) []byte {
 	data := bytes.Replace(page, pageruntime.IIFE, nil, 1)
+	for _, kind := range []string{receipt.Unilateral, receipt.Seller} {
+		if module, err := receipt.Module(kind); err == nil {
+			data = bytes.Replace(data, module.Code, nil, 1)
+		}
+	}
 	return bytes.Replace(data, []byte(DealViewJS), nil, 1)
 }
 

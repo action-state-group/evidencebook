@@ -20,12 +20,10 @@ import (
 // carries, or nil when it carries none.
 func pageCountersignedCopy(t *testing.T, page []byte) *v1PageCountersignedCopy {
 	t.Helper()
-	m := pageBootstrap.FindSubmatch(page)
-	require.NotNil(t, m, "the page carries its bootstrap data")
 	var boot struct {
 		Copy *v1PageCountersignedCopy `json:"countersigned_copy"`
 	}
-	require.NoError(t, json.Unmarshal(m[1], &boot))
+	require.NoError(t, json.Unmarshal(pageBootstrapData(t, page), &boot))
 	return boot.Copy
 }
 
