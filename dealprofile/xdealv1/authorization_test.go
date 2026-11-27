@@ -697,3 +697,22 @@ func TestRulesUnevaluated(t *testing.T) {
 	assert.True(t, RulesUnevaluated(&dealprofile.VerdictBodyRules{Status: "not_evaluated", Cause: "refused"}))
 	assert.True(t, RulesUnevaluated(&dealprofile.VerdictBodyRules{Status: "not_applicable", Findings: []dealprofile.VerdictBodyRulesFindingsItem{capUnevaluate}}))
 }
+
+// An intent built in memory with v0's body, value or pointer, sets the
+// limits as the decoded form does: reading it as no intent would leave the
+// limits unset, which allows everything.
+func TestAV0IntentBodyStillSetsTheLimits(t *testing.T) {
+	for name, body := range map[string]func(dealprofile.IntentBody) Body{
+		"pointer": func(b dealprofile.IntentBody) Body { return &b },
+		"value":   func(b dealprofile.IntentBody) Body { return b },
+	} {
+		f := &authFlow{t: t}
+		f.seal(TypeIntent, false, body(dealprofile.IntentBody{VerbatimCommitment: label("verbatim v0 " + name), Allowed: []string{}}))
+		c := f.check("pay")
+		f.approve(f.verdict(c, "pass"), "standing_intent", true)
+		f.pay(c)
+		_, err := CheckAuthorizations(f.journal, f.acts)
+		assert.ErrorContains(t, err, "the limits in force do not allow", name)
+		assert.Equal(t, label("verbatim v0 "+name), nonceOf(f.journal[0]), name)
+	}
+}

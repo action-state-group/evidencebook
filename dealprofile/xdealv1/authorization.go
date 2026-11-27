@@ -832,10 +832,16 @@ func settleLeg(r Record) string {
 }
 
 // intentV0 is an intent record's v0 body, the part the limits, the
-// confirmations and the detail changes read; nil for any other body.
+// confirmations and the detail changes read; nil for any other body. A
+// caller may still build an intent record in memory with v0's body, which
+// encodes as the same intent, so it is read too: dropping it would leave
+// the limits unset, which allows everything.
 func intentV0(b Body) *dealprofile.IntentBody {
 	if v1, ok := bodyOf[IntentBody](b); ok {
 		return &v1.IntentBody
+	}
+	if v0, ok := bodyOf[dealprofile.IntentBody](b); ok {
+		return v0
 	}
 	return nil
 }

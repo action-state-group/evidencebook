@@ -1721,7 +1721,7 @@
           }
         }
       },
-      "description": "v0's body_intent and, on a buyer's opening intent, seller: the seller's record key as the citing agreement's counterparty_key names it (null for a seller with no layer) and sha256-jcs-nonce256 commitments of its name and, when given, its domain (evidencebook#1031). The record checks validate the body without seller against v0's body_intent, which is closed, so the two are not merged here."
+      "description": "v0's body_intent and, on a buyer's intent, seller: the seller's record key as the citing agreement's counterparty_key names it (null for a seller with no layer) and sha256-jcs-nonce256 commitments of its name and, when given, its domain (evidencebook#1031). The record checks validate the body without seller against v0's body_intent, which is closed, so the two are not merged here."
     },
     "body_verdict": {
       "type": "object",

@@ -525,7 +525,7 @@ impl<'de> Deserialize<'de> for CheckBody {
     }
 }
 
-/// The journal overlay's intent: v0's body and, on a buyer's opening
+/// The journal overlay's intent: v0's body and, on a buyer's
 /// intent, `seller` (evidencebook#1031), read beside v0's closed body as a
 /// verdict's `received_history` is (Go `xdealv1.IntentBody`).
 #[derive(Clone, Debug, Default, PartialEq)]

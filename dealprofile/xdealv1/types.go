@@ -393,7 +393,7 @@ type ReceivedHistoryDigests struct {
 }
 
 // IntentBody is the journal overlay's intent: v0's body and, on a buyer's
-// opening intent, Seller (evidencebook#1031). Seller is v1's own member
+// intent, Seller (evidencebook#1031). Seller is v1's own member
 // beside v0's closed body_intent, as a verdict's received_history is.
 type IntentBody struct {
 	dealprofile.IntentBody
