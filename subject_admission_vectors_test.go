@@ -286,8 +286,9 @@ func buildAdmissionVectors(t *testing.T) admissionVectors {
 	lroot2 := r.step("a root whose id is the second link's target", "ok", rootHeader("linked", target, "field:/links/1/target")).RecordID
 	r.step("a member whose second link targets the id", "ok", Header{RecordType: "linked", Links: []Link{{Type: Cites, Target: lroot2}, {Type: Supersedes, Target: target}}})
 	r.step("a record with one link: no second link", "cites_root_without_id", Header{RecordType: "linked", Links: []Link{{Type: Cites, Target: lroot2}}})
-	zero := r.step("a root reading /links/01/target", "ok", rootHeader("linked", "z", "field:/links/01/target")).RecordID
-	r.step("a record citing it: 01 is no array index", "cites_root_without_id", Header{RecordType: "linked", Links: []Link{{Type: Cites, Target: zero}, {Type: Cites, Target: zero}}})
+	zid := dg("pointer zero")
+	zero := r.step("a root reading /links/01/target", "ok", rootHeader("linked", zid, "field:/links/01/target")).RecordID
+	r.step("a record whose second link targets the id: 01 is no array index", "cites_root_without_id", Header{RecordType: "linked", Links: []Link{{Type: Cites, Target: zero}, {Type: Supersedes, Target: zid}}})
 	empty := r.step("a root reading the member named \"\" of the statement", "ok", rootHeader("custom", "e-1", "field:/statement/")).RecordID
 	r.step("a member carrying it", "ok", Header{RecordType: "custom", Links: []Link{{Type: Cites, Target: empty}}, Statement: json.RawMessage(`{"":"e-1"}`)})
 	v.Cases = append(v.Cases, r.done())

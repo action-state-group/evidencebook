@@ -179,9 +179,15 @@ def requests(rng, n):
         b = copy.deepcopy(base[rng.choice(names)])
         for _ in range(rng.choice([1, 1, 1, 2, 3])):
             if b.get("form") == "projection":
-                rng.choice([mutate_projection, mutate_projection, mutate_anywhere])(rng, b)
+                mutation = rng.choice([mutate_projection, mutate_projection, mutate_anywhere])
             else:
-                rng.choice([mutate_extension] * 6 + [mutate_records, mutate_anywhere])(rng, b)
+                mutation = rng.choice([mutate_extension] * 6 + [mutate_records, mutate_anywhere])
+            try:
+                mutation(rng, b)
+            except (AttributeError, IndexError, KeyError, TypeError):
+                # An earlier mutation changed the shape this one walks; the
+                # input stays as the earlier ones left it.
+                pass
         text = json.dumps(b, separators=(",", ":"))
         if rng.random() < 0.05:
             text = rng.choice([text[: rng.randrange(len(text))], text + " ", "[" + text + "]", "null"])

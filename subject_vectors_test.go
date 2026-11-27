@@ -141,18 +141,27 @@ func buildSubjectVectors(t *testing.T) (subjectVectors, map[string][]byte) {
 	}
 
 	// Worked case (iv) (TestSubjectBundleMemberAfterCloseFails): a forged
-	// book holding a member after the close.
-	lbook := newFixture(t, "holder", 1).open(t)
-	lr := subjectRoot(t, lbook, testSubject)
-	mustAppend(t, lbook, member(lr, testSubject, "one"))
-	_, err = lbook.CloseSubject(ctx, lr.RecordID)
+	// book holding a member after the close. The close counts that member
+	// and names it as the last, so only its place refuses it: its record id
+	// is known before it is sealed because the books are deterministic, and
+	// a book run once with a placeholder gives it.
+	lateBook := func(last string) (*Book, Record, Record) {
+		book := newFixture(t, "holder", 1).open(t)
+		book.forgeSubjects = true
+		root := subjectRoot(t, book, testSubject)
+		mustAppend(t, book, member(root, testSubject, "one"))
+		mustAppend(t, book, Entry{RecordType: RecordTypeSubjectClose, EpistemicType: ProducerClaim, Links: []Link{{Type: Closes, Target: root.RecordID}},
+			Statement: json.RawMessage(`{"last":"` + last + `","members":2}`)})
+		late := mustAppend(t, book, member(root, testSubject, "late"))
+		book.forgeSubjects = false
+		return book, root, late
+	}
+	_, _, placeholder := lateBook("placeholder")
+	lbook, _, late := lateBook(placeholder.RecordID)
+	require.Equal(t, placeholder.RecordID, late.RecordID, "the late member's id does not depend on the close's statement")
+	lateBundle, err := lbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true})
 	require.NoError(t, err)
-	lbook.forgeSubjects = true
-	mustAppend(t, lbook, member(lr, testSubject, "late"))
-	lbook.forgeSubjects = false
-	late, err := lbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true})
-	require.NoError(t, err)
-	add("member-after-close.json", "(iv) a forged book holding a member after the close: refused", late.JSON)
+	add("member-after-close.json", "(iv) a forged book whose close counts both members and names the last, sealed before it: refused", lateBundle.JSON)
 
 	// A stale proof (TestSubjectBundleRefusesAStaleProof): the current
 	// bundle with an older, honest key range proof and the members it held.
@@ -168,10 +177,13 @@ func buildSubjectVectors(t *testing.T) (subjectVectors, map[string][]byte) {
 	mustAppend(t, sbook, member(sroot, testSubject, "two"))
 	_, err = sbook.CloseSubject(ctx, sroot.RecordID)
 	require.NoError(t, err)
-	current, err := sbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true})
+	// The current bundle discloses the whole log, the older proof's
+	// index_root record included, so only the proof's freshness refuses it:
+	// a member and the close follow that index root.
+	current, err := sbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true, DiscloseLog: true})
 	require.NoError(t, err)
-	add("stale-proof.json", "the current bundle carrying an older, honest key range proof and its one member: refused", editExtension(t, current.JSON, func(ext *SubjectExtension) {
-		ext.Members, ext.Close, ext.Closed, ext.KeyRange = []string{s1.RecordID}, "", false, oldExt.KeyRange
+	add("stale-proof.json", "the current bundle carrying an older, honest key range proof and its one member, the older proof's index root disclosed: refused", editExtension(t, current.JSON, func(ext *SubjectExtension) {
+		ext.Members, ext.Close, ext.Closed, ext.KeyRange, ext.Level = []string{s1.RecordID}, "", false, oldExt.KeyRange, SubjectLevelHolderCommitment
 	}))
 
 	// held_by_digest (TestSubjectBundleHeldByDigestIsChecked): a member

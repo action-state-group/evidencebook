@@ -100,12 +100,12 @@
     },
     {
       "file": "member-after-close.json",
-      "case": "(iv) a forged book holding a member after the close: refused",
+      "case": "(iv) a forged book whose close counts both members and names the last, sealed before it: refused",
       "valid": false
     },
     {
       "file": "stale-proof.json",
-      "case": "the current bundle carrying an older, honest key range proof and its one member: refused",
+      "case": "the current bundle carrying an older, honest key range proof and its one member, the older proof's index root disclosed: refused",
       "valid": false
     },
     {

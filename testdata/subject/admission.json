@@ -2222,7 +2222,7 @@
             "seq": 5,
             "statement": {
               "membership": "field:/links/01/target",
-              "subject_id": "z",
+              "subject_id": "e85f6dd9c7da4c42cac6a4b41b5bd3f0f50c81d7f74050928b1ab8e51ed83fbe",
               "subject_kind": "linked"
             },
             "v": 1
@@ -2231,13 +2231,13 @@
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "1c61754dd5b69c912311a726585117caa6dd17fc400fdf29adbfcb4bd5327b0c",
+            "root": "77dddc1bdec96326bf338c5ae8de6619b93e568e50451436eac6ed6e3be898f8",
             "size": 5
           },
           "checkpoint_commits": true
         },
         {
-          "note": "a record citing it: 01 is no array index",
+          "note": "a record whose second link targets the id: 01 is no array index",
           "header": {
             "book_id": "subject-vectors/pointers",
             "committed_at": "2026-11-27T00:00:00Z",
@@ -2248,8 +2248,8 @@
                 "type": "cites"
               },
               {
-                "target": "07f9380a9f42be6e3e252311f543a63399e22f4e27535b6ab1df7bcca30310f6",
-                "type": "cites"
+                "target": "e85f6dd9c7da4c42cac6a4b41b5bd3f0f50c81d7f74050928b1ab8e51ed83fbe",
+                "type": "supersedes"
               }
             ],
             "record_type": "linked",
@@ -2260,7 +2260,7 @@
           "expect": "cites_root_without_id",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "1c61754dd5b69c912311a726585117caa6dd17fc400fdf29adbfcb4bd5327b0c",
+            "root": "77dddc1bdec96326bf338c5ae8de6619b93e568e50451436eac6ed6e3be898f8",
             "size": 5
           },
           "checkpoint_commits": true
@@ -2285,7 +2285,7 @@
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "75c9d17001c6d224fcb005e0b5ec8992f27031caa4f3f5057de72f741c4834c3",
+            "root": "433dfe6bfb3b810d8fdae96de34b7a5d14473d00c772fbea34284ccf44539254",
             "size": 6
           },
           "checkpoint_commits": true
@@ -2313,7 +2313,7 @@
           "expect": "ok",
           "subject_id_index": {
             "index": "subject_id",
-            "root": "428918779e0b7e9c3a16bdcc1f94cd9b9bd6d8bfca1f86472133cc7125cc30aa",
+            "root": "f295bbfc28c4f3cf36fd0c2661e7b8b506d60588085769179467d03971a0622a",
             "size": 7
           },
           "checkpoint_commits": true
