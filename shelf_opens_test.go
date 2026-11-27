@@ -75,29 +75,42 @@ func TestAShelfOpensABooksLogWithoutAProbeOfItsOwn(t *testing.T) {
 }
 
 // A log the file holds state of is never provisioned over when its CLL
-// store refuses to open it, as before the shelf asked its own handle.
+// store refuses to open it, whichever of the shelf's openers reaches it (a
+// book, the cadence log, a host log): the shelf's own handle sees the
+// state, so no Init writes a fresh meta row beside it.
 func TestAShelfNeverReprovisionsALogItCannotOpen(t *testing.T) {
 	ctx := context.Background()
-	f := newShelfFixture(t)
-	shelf := f.open(t)
-	book := mustOpenBook(t, shelf, "deal-a")
-	mustAppend(t, book, observation("s", "first"))
-	require.NoError(t, shelf.Release())
-
-	db, err := sql.Open("sqlite", "file:"+f.path)
-	require.NoError(t, err)
-	_, err = db.Exec(`UPDATE cll_meta SET state = X'00' WHERE log_id = 'deal-a'`)
-	require.NoError(t, err)
-	var before []byte
-	require.NoError(t, db.QueryRow(`SELECT state FROM cll_meta WHERE log_id = 'deal-a'`).Scan(&before))
-
-	shelf = f.open(t)
-	_, err = shelf.Open(ctx, "deal-a")
-	require.Error(t, err)
-	var after []byte
-	require.NoError(t, db.QueryRow(`SELECT state FROM cll_meta WHERE log_id = 'deal-a'`).Scan(&after))
-	assert.Equal(t, before, after, "the log's state is left as it was")
-	require.NoError(t, db.Close())
+	const logID = "deal-x"
+	for name, open := range map[string]func(*Shelf) error{
+		"book":     func(s *Shelf) error { _, err := s.Open(ctx, logID); return err },
+		"host log": func(s *Shelf) error { _, err := s.HostLog(ctx, logID, false); return err },
+		"cadence": func(s *Shelf) error {
+			_, err := s.Cadence(ctx, CadenceConfig{LogID: logID, Ended: func(context.Context, string) (bool, error) { return false, nil }})
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newShelfFixture(t)
+			db, err := sql.Open("sqlite", "file:"+f.path)
+			require.NoError(t, err)
+			defer db.Close()
+			// An entry with no meta row: not a log anyone provisioned.
+			for _, statement := range []string{
+				`CREATE TABLE cll_entries (log_id TEXT NOT NULL, seq INTEGER NOT NULL, value BLOB NOT NULL, appended_at TEXT NOT NULL, PRIMARY KEY(log_id, seq))`,
+				`INSERT INTO cll_entries VALUES ('` + logID + `', 1, x'00', '2026-10-19T00:00:00Z')`,
+			} {
+				_, err := db.Exec(statement)
+				require.NoError(t, err)
+			}
+			shelf := f.open(t)
+			require.Error(t, open(shelf), "a log with entries and no state must not open")
+			var meta, entries int
+			require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'cll_meta'`).Scan(&meta))
+			assert.Zero(t, meta, "no Init ran: the file has no meta table")
+			require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM cll_entries WHERE log_id = ?`, logID).Scan(&entries))
+			assert.Equal(t, 1, entries, "the log's entries are left as they were")
+		})
+	}
 }
 
 // ReadShelfWindowFrom reads on the caller's handle what ReadShelfWindow reads
