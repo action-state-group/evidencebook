@@ -662,10 +662,13 @@ type closeResult struct {
 	Period       string `json:"period"`
 	Counterparty string `json:"counterparty"`
 	// Window is the window whose book holds the Close, on a windowed store.
-	Window         string                       `json:"window,omitempty"`
-	AlreadyClosed  bool                         `json:"already_closed"`
-	PeerBundle     string                       `json:"peer_bundle,omitempty"`
-	PeerClose      string                       `json:"peer_close,omitempty"`
+	Window        string `json:"window,omitempty"`
+	AlreadyClosed bool   `json:"already_closed"`
+	PeerBundle    string `json:"peer_bundle,omitempty"`
+	PeerClose     string `json:"peer_close,omitempty"`
+	// HeldBundle is the held_bundle record a Close citing a peer Close
+	// cites: the peer bundle its tallies rely on, held in full (#116).
+	HeldBundle     string                       `json:"held_bundle,omitempty"`
 	Reconciliation *evidencebook.Reconciliation `json:"reconciliation,omitempty"`
 	Close          json.RawMessage              `json:"close"`
 	Capsule        string                       `json:"capsule,omitempty"`
@@ -927,6 +930,30 @@ type peerCloseCandidate struct {
 // only. More than one: refused, since the bundle does not say which Close
 // the tallies would answer.
 func citablePeerClose(peer evidencebook.VerifiedBundle, ownBook string, p period) (*peerCloseCandidate, uint64, uint64, error) {
+	cited, err := currentPeerClose(peer, ownBook, p)
+	if err != nil || cited == nil {
+		return nil, 0, 0, err
+	}
+	if cited.close.legacy != nil {
+		return cited, cited.close.legacy.Reconciliation.FromSeq, cited.close.legacy.Reconciliation.ToSeq, nil
+	}
+	for _, r := range peer.Records {
+		if r.RecordID == cited.close.v1.Head.Digest {
+			from, to, err := cited.close.v1.Window(r.Seq, cited.record.Seq)
+			if err != nil {
+				return nil, 0, 0, errors.Join(cli.InputError(fmt.Sprintf("the peer's Close %s states a window its head cannot hold", cited.record.RecordID)), err)
+			}
+			return cited, from, to, nil
+		}
+	}
+	return nil, 0, 0, cli.InputError(fmt.Sprintf("the peer bundle does not disclose the head of the peer's Close %s, so the positions it binds cannot be placed", cited.record.RecordID))
+}
+
+// currentPeerClose is the counterparty's Close for p that the bundle
+// discloses and no other candidate supersedes (citablePeerClose's
+// candidates), without placing the positions it binds: nil when there is
+// none, refused when there is more than one.
+func currentPeerClose(peer evidencebook.VerifiedBundle, ownBook string, p period) (*peerCloseCandidate, error) {
 	var candidates []peerCloseCandidate
 	superseded := map[string]bool{}
 	for _, r := range peer.Records {
@@ -935,7 +962,7 @@ func citablePeerClose(peer evidencebook.VerifiedBundle, ownBook string, p period
 		}
 		c, err := readSealedClose(evidencebook.Record{RecordID: r.RecordID, Seq: r.Seq, Header: *r.Header})
 		if err != nil {
-			return nil, 0, 0, errors.Join(cli.InputError(fmt.Sprintf("the peer bundle's Close at position %d does not read as a Close", r.Seq)), err)
+			return nil, errors.Join(cli.InputError(fmt.Sprintf("the peer bundle's Close at position %d does not read as a Close", r.Seq)), err)
 		}
 		if !c.closes(p) {
 			if c.legacy == nil {
@@ -959,29 +986,16 @@ func citablePeerClose(peer evidencebook.VerifiedBundle, ownBook string, p period
 	}
 	switch len(current) {
 	case 0:
-		return nil, 0, 0, nil
+		return nil, nil
 	case 1:
 	default:
 		ids := make([]string, len(current))
 		for i, c := range current {
 			ids[i] = c.record.RecordID
 		}
-		return nil, 0, 0, cli.InputError(fmt.Sprintf("the peer bundle discloses %d Closes for this period that none supersedes (%s); a Close cites exactly one", len(current), strings.Join(ids, ", ")))
+		return nil, cli.InputError(fmt.Sprintf("the peer bundle discloses %d Closes for this period that none supersedes (%s); a Close cites, and an acknowledgement or rebuttal answers, exactly one", len(current), strings.Join(ids, ", ")))
 	}
-	cited := current[0]
-	if cited.close.legacy != nil {
-		return &cited, cited.close.legacy.Reconciliation.FromSeq, cited.close.legacy.Reconciliation.ToSeq, nil
-	}
-	for _, r := range peer.Records {
-		if r.RecordID == cited.close.v1.Head.Digest {
-			from, to, err := cited.close.v1.Window(r.Seq, cited.record.Seq)
-			if err != nil {
-				return nil, 0, 0, errors.Join(cli.InputError(fmt.Sprintf("the peer's Close %s states a window its head cannot hold", cited.record.RecordID)), err)
-			}
-			return &cited, from, to, nil
-		}
-	}
-	return nil, 0, 0, cli.InputError(fmt.Sprintf("the peer bundle does not disclose the head of the peer's Close %s, so the positions it binds cannot be placed", cited.record.RecordID))
+	return &current[0], nil
 }
 
 func closeCommand() *cobra.Command {
@@ -1085,6 +1099,9 @@ func closeCommand() *cobra.Command {
 			}
 		}
 		result.RecordID, result.Seq, result.Close = sealed.RecordID, sealed.Seq, sealed.Header.Statement
+		if result.HeldBundle, e = heldBundleOf(c.Context(), book, sealed); e != nil {
+			return e
+		}
 		// The Close is sealed from here on: a failure writing either file
 		// still reports its record_id, so the caller never loses it.
 		if e = closeOutputs(c, opened, p, &result, sealed, from, to); e != nil {
@@ -1097,6 +1114,25 @@ func closeCommand() *cobra.Command {
 	cmd.Flags().String("capsule-out", "", "Also write the Close as an artifact.Record for `verify --capsule`; a file already holding exactly those bytes is left alone (a repeat is a no-op), any other file there is refused")
 	cmd.Flags().String("bundle-out", "", "Also write an Evidence Bundle rooted at the Close (commits a disclosure record and a checkpoint; in an earlier window in its grace the checkpoint is that window's and the disclosure record goes in the current window)")
 	return cmd
+}
+
+// heldBundleOf returns the held_bundle record a Close cites, or "" for a
+// Close that cites none (one that cites no peer Close, or one sealed before
+// #116). It reads the book's own records, so a repeat reports it too.
+func heldBundleOf(ctx context.Context, book *evidencebook.Book, sealed evidencebook.Record) (string, error) {
+	for _, target := range sealed.Header.LinksTo(evidencebook.Cites) {
+		r, err := book.Get(ctx, target)
+		if errors.Is(err, evidencebook.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if r.Header.RecordType == evidencebook.RecordTypeHeldBundle {
+			return r.RecordID, nil
+		}
+	}
+	return "", nil
 }
 
 func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *closeResult, sealed evidencebook.Record, from, to uint64) error {

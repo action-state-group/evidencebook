@@ -8,7 +8,7 @@ set -euo pipefail
 #   - every `book ...` command named in the skill's five-verbs table
 #     (SKILL.md) or in the book verb table (references/book.md) is one the
 #     capsulectl-book plugin has (`capsulectl-book <words> --help` knows it);
-#   - the book verb table lists the 8 book verbs the demo runs.
+#   - the book verb table lists the 10 book verbs the demo runs.
 #
 # The five-verbs table's own structure (only the five verbs, no expert command
 # in SKILL.md) is checked by the deal package's Go tests. It builds
@@ -35,8 +35,8 @@ while IFS= read -r verb; do
 done <<<"$named"
 
 listed=$(grep -c '^| `book [a-z -]*` |' "$skill_dir/references/book.md" || true)
-if [[ "$listed" -ne 8 ]]; then
-  echo "FAIL: expected the 8 book verbs in references/book.md's table, found $listed" >&2
+if [[ "$listed" -ne 10 ]]; then
+  echo "FAIL: expected the 10 book verbs in references/book.md's table, found $listed" >&2
   status=1
 fi
 [[ "$status" -eq 0 ]] && echo "skill check passed" >&2
