@@ -5,7 +5,10 @@ package deal
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -285,4 +288,79 @@ func TestV0WitnessedForAnInLogKeepCopy(t *testing.T) {
 	entry := v0Entry(t, report)
 	require.NotEqual(t, "standalone", entry["report"], "the report is sealed in the log")
 	assert.Equal(t, "verified", entry["witnessed"].(map[string]any)["status"], "%v", entry["witnessed"])
+}
+
+// The member names the row of the receipt it reports on, among distinct
+// witnesses with distinct lists (evidencebook#1073): the earliest verified
+// time's witness wherever its receipt stands; on failed the first receipt
+// that does not verify; on withheld the first listed receipt; and never a
+// row with no endpoint for a receipt W does not list.
+func TestV0WitnessedNamesTheChosenReceiptsRow(t *testing.T) {
+	f := newV0WitnessFixture(t, time.Date(2026, 10, 4, 9, 5, 0, 0, time.UTC))
+	copyPath, proofPath, _ := f.copyAndProof(t, "all")
+	var proof v0ChainProof
+	require.NoError(t, json.Unmarshal(mustRead(t, proofPath), &proof))
+	inner := proof.Chain["parent"].(map[string]any)
+	first := inner["witnesses"].([]any)[0].(map[string]any)
+	entry, err := hex.DecodeString(first["entry_hash"].(string))
+	require.NoError(t, err)
+	secondPublic, secondKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	const secondURL = "https://second.example"
+	receiptOf := func(base map[string]any, url string, receipt []byte) map[string]any {
+		out := map[string]any{}
+		for k, v := range base {
+			out[k] = v
+		}
+		out["ts_url"], out["receipt_b64"] = url, base64.StdEncoding.EncodeToString(receipt)
+		return out
+	}
+	firstKey := f.key
+	at := func(key ed25519.PrivateKey, url string, iat time.Time) map[string]any {
+		return receiptOf(first, url, mintReceiptAt(t, entry, key, iat))
+	}
+	bad := func(url string) map[string]any { return receiptOf(first, url, []byte(strings.Repeat("x", 30))) }
+	a, b := strings.Repeat("a1", 32), strings.Repeat("b2", 32)
+	row1 := rawKeyRow(f.endpoint, f.public)
+	row1["independent_of"] = []string{a}
+	row2 := rawKeyRow(secondURL, secondPublic)
+	row2["name"], row2["independent_of"] = "second witness", []string{b}
+	directory := writeDirectory(t, row1, row2)
+	n := 0
+	member := func(dir string, entries ...any) map[string]any {
+		inner["witnesses"] = entries
+		n++
+		path := filepath.Join(f.dir, fmt.Sprintf("chosen-%d.proof.json", n))
+		data, err := json.Marshal(proof)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, data, 0o600))
+		w, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", path, "--witness-directory", dir)
+		return w
+	}
+	nine05 := time.Date(2026, 10, 4, 9, 5, 0, 0, time.UTC)
+	nine01 := time.Date(2026, 10, 4, 9, 1, 0, 0, time.UTC)
+	earliestSecond := map[string]any{"status": "verified", "witness": "second witness", "at": "2026-10-04T09:01:00Z", "independent_of": []any{b}}
+	assert.Equal(t, earliestSecond, member(directory, at(firstKey, f.endpoint, nine05), at(secondKey, secondURL, nine01)), "the earlier receipt second")
+	assert.Equal(t, earliestSecond, member(directory, at(secondKey, secondURL, nine01), at(firstKey, f.endpoint, nine05)), "the earlier receipt first")
+
+	failed := member(directory, bad(f.endpoint), bad(secondURL))
+	assert.Equal(t, []any{"failed", "test witness", []any{a}}, []any{failed["status"], failed["witness"], failed["independent_of"]})
+	failed = member(directory, bad(secondURL), bad(f.endpoint))
+	assert.Equal(t, []any{"failed", "second witness", []any{b}}, []any{failed["status"], failed["witness"], failed["independent_of"]})
+
+	withheld := member(directory, at(secondKey, secondURL, time.Time{}), at(firstKey, f.endpoint, time.Time{}))
+	assert.Equal(t, []any{"withheld", "second witness", []any{b}}, []any{withheld["status"], withheld["witness"], withheld["independent_of"]}, "no time: the first listed receipt")
+
+	// A row with no endpoint is no receipt's row here.
+	noEndpoint := map[string]interface{}{"name": "unrelated", "key_ids": []string{hex.EncodeToString(f.public)}, "independent_of": []string{a}}
+	unrelated := writeDirectory(t, noEndpoint)
+	for name, entries := range map[string][]any{
+		"an unlisted receipt":                 {at(firstKey, "https://unlisted.example", nine05)},
+		"a malformed and an unlisted receipt": {receiptOf(first, f.endpoint, nil), at(firstKey, "https://unlisted.example", nine05)},
+	} {
+		w := member(unrelated, entries...)
+		assert.NotEqual(t, "verified", w["status"], name)
+		assert.NotContains(t, w, "witness", name)
+		assert.NotContains(t, w, "independent_of", name)
+	}
 }

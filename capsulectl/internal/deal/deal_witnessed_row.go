@@ -86,10 +86,7 @@ func decodeWitnessRows(raw []byte) witnessRows {
 // when dir lists no such witness. independent_of is left out when the row's
 // list is not a list of strings: it is never guessed.
 func (rows witnessRows) rowMembers(dir *witness.Directory, tsURL string) (map[string]any, bool) {
-	if dir == nil {
-		return nil, false
-	}
-	row, ok := dir.RowFor(tsURL)
+	row, ok := listedRow(dir, tsURL)
 	if !ok {
 		return nil, false
 	}
@@ -148,8 +145,18 @@ func firstListed(first, tsURL string, dir *witness.Directory) string {
 	if first != "" {
 		return first
 	}
-	if _, ok := dir.RowFor(tsURL); ok {
+	if _, ok := listedRow(dir, tsURL); ok {
 		return tsURL
 	}
 	return ""
+}
+
+// listedRow is dir's row for a receipt's witness URL. An empty URL names no
+// witness: "" stands for no receipt here, and RowFor would match it to a row
+// with no endpoint.
+func listedRow(dir *witness.Directory, tsURL string) (witness.Row, bool) {
+	if dir == nil || tsURL == "" {
+		return witness.Row{}, false
+	}
+	return dir.RowFor(tsURL)
 }
