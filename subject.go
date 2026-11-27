@@ -182,8 +182,8 @@ func (s subjectOf) isMember(h Header) bool {
 // verified bundle is a member, read from the bundle's verified headers
 // alone (PeerRecord.HeaderVerified): the readers of a claim's subject (the
 // subject convention v0, evidencebook#116 design note section 4, Readers).
-// The root is a record of the member's own book with a lower seq, as the
-// book admits members, and the member is one by isMember (a field member
+// The root is a record of the member's own book with a lower seq (a log
+// root at seq 1), as the book admits them, and the member is one by isMember (a field member
 // cites the root and carries its id; a log member need not cite it). The result is sorted and has no duplicates; it is
 // empty for a record that is no verified member, such as one whose root
 // the bundle does not carry. A book admits a record to one subject only, so
@@ -208,8 +208,9 @@ func SubjectsOfRecord(records []PeerRecord, id string) []string {
 			continue
 		}
 		s := subjectOf{root: Record{RecordID: r.RecordID, Seq: r.Header.Seq, Header: *r.Header}, statement: statement}
-		// A book admits members to its own subjects only, after their root.
-		if member.BookID != r.Header.BookID || member.Seq <= r.Header.Seq {
+		// A book admits members to its own subjects only, after their root,
+		// and a log root only as its first record.
+		if member.BookID != r.Header.BookID || member.Seq <= r.Header.Seq || (statement.Membership == MembershipLog && r.Header.Seq != 1) {
 			continue
 		}
 		if s.isMember(*member) && !slices.Contains(out, statement.SubjectID) {

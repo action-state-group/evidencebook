@@ -105,6 +105,16 @@ func TestSubjectsOfRecordReadsALogMemberWithNoCitation(t *testing.T) {
 	require.Positive(t, bookkeeping)
 	foreign := edited(records, m.RecordID, func(r *PeerRecord) { r.Header.BookID = "another-book" })
 	assert.Empty(t, SubjectsOfRecord(foreign, m.RecordID), "a log subject's members are its own book's")
+	late := edited(records, root.RecordID, func(r *PeerRecord) { r.Header.Seq = 0 })
+	assert.Empty(t, SubjectsOfRecord(late, m.RecordID), "a log root is its book's first record")
+	var moved []PeerRecord
+	for _, r := range edited(records, root.RecordID, func(r *PeerRecord) { r.Header.Seq = 5 }) {
+		if r.RecordID == m.RecordID {
+			r.Header.Seq = 6
+		}
+		moved = append(moved, r)
+	}
+	assert.Empty(t, SubjectsOfRecord(moved, m.RecordID), "a log root after seq 1 roots nothing")
 }
 
 func TestSubjectsOfRecordNamesEverySubjectARecordIsAMemberOf(t *testing.T) {
