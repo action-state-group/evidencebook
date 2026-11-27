@@ -21,6 +21,26 @@ const dealClaimCommitVersion = "1"
 // dealSourceKinds is whose a claim is.
 var dealSourceKinds = map[string]bool{"merchant": true, "agent": true, "platform": true, "user": true, "external": true}
 
+// sourceKindWords is whose a claim is, in the words a line names it by when
+// the claim carries no note of where it was read (evidencebook#680). Every
+// copy speaks to its holder as "you", as a shared copy's other lines do.
+var sourceKindWords = map[string]string{
+	"agent": "your agent", "user": "you", "merchant": "the other party", "platform": "the platform", "external": "an outside source",
+}
+
+// claimSourceWords names where a claim came from for a line a person reads:
+// its note of where it was read, or, with none, whose it is. A claim always
+// has one of the two (dealClaim.validate), so a line never says "()".
+func claimSourceWords(c dealClaim) string {
+	if s := strings.TrimSpace(c.Source); s != "" {
+		return rowWords(s)
+	}
+	if w, ok := sourceKindWords[c.SourceKind]; ok {
+		return w
+	}
+	return "source not stated"
+}
+
 // dealClaimClasses are the kinds of representation a claim may be labelled
 // as: a seller's representation classes, the same closed set, in the same
 // order, as the seller rules' required disclosures. delivery_promise is the

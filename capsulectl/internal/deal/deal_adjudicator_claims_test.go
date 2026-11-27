@@ -98,6 +98,15 @@ func TestTheAdjudicatorCopyHidesTheAgentsClaimsUnlessTheSellerChooses(t *testing
 	var ob map[string]any
 	require.NoError(t, json.Unmarshal([]byte(optedRaw), &ob))
 	assert.NotNil(t, dealReportOf(ob)["representations"])
+	// The agent's claims are the seller's representations, not the other
+	// party's unverified claims (evidencebook#680); the buyer's page keeps its.
+	var optedUnverified []string
+	for _, a := range dealReportOf(ob)["anomalies"].([]any) {
+		if item := a.(map[string]any); item["kind"] == "unverified_claim" {
+			optedUnverified = append(optedUnverified, item["text"].(string))
+		}
+	}
+	assert.Equal(t, []string{"Unverified: The buyer said it ships by Friday (from the buyer page)"}, optedUnverified)
 	assert.NotContains(t, dealReportOf(ob)["withheld"], claimsEntry, "an opted-in copy does not say they are withheld")
 	records, _ = sharedRecords(t, id)
 	assert.NotContains(t, records[len(records)-1]["suppressed_receipt_fields"], claimsEntry)

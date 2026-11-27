@@ -159,7 +159,7 @@ func TestASellersLaterEvidenceChainsToTheCloseAndRenders(t *testing.T) {
 	assert.Equal(t, refund, second["capsule_id"])
 	assert.Equal(t, "confirms", second["relation"])
 	assert.Contains(t, first["text"], "evidence (carrier), checked")
-	assert.Contains(t, second["text"], "evidence (buyer_refund_request), unverified: Returns accepted within 7 days if unridden")
+	assert.Contains(t, second["text"], "evidence (buyer refund request), unverified: Returns accepted within 7 days if unridden")
 	assert.NotContains(t, first["text"], "confirms it", "the relation is said once, beside the line")
 	assert.Contains(t, life["text"], "2 records sealed after the close are linked to it")
 
@@ -167,7 +167,7 @@ func TestASellersLaterEvidenceChainsToTheCloseAndRenders(t *testing.T) {
 	page := filepath.Join(t.TempDir(), "page.html")
 	dealRun(t, "report", "--deal", dealID, "--html", page)
 	html := string(mustRead(t, page))
-	assert.Contains(t, html, "evidence (buyer_refund_request), unverified: Returns accepted within 7 days if unridden")
+	assert.Contains(t, html, "evidence (buyer refund request), unverified: Returns accepted within 7 days if unridden")
 	assert.Contains(t, html, refund)
 }
 

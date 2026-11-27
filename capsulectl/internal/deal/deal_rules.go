@@ -2150,7 +2150,7 @@ func trailLine(e dealEvent) string {
 	case "message":
 		return "message from " + e.Message.From
 	case "claim":
-		return "claim recorded (" + e.Claim.Source + "): " + e.Claim.Text
+		return "claim recorded (" + claimSourceWords(*e.Claim) + "): " + e.Claim.Text
 	case "evidence":
 		if e.Evidence.Source == sourceDispute {
 			return "the buyer disputed " + rowWords(e.Evidence.About)
@@ -2176,7 +2176,7 @@ func trailLine(e dealEvent) string {
 			if o.due() {
 				what = "due date"
 			}
-			line += what + " recorded (" + e.Evidence.Source + "): " + o.sentence("")
+			line += what + " recorded (" + rowWords(e.Evidence.Source) + "): " + o.sentence("")
 		}
 		if line != "" {
 			return line
@@ -2185,7 +2185,7 @@ func trailLine(e dealEvent) string {
 		if e.Evidence.Verified {
 			state = "checked"
 		}
-		return "evidence (" + e.Evidence.Source + "), " + state + ": " + e.Evidence.About
+		return "evidence (" + rowWords(e.Evidence.Source) + "), " + state + ": " + e.Evidence.About
 	case "change":
 		return "counterparty changed details (" + e.Change.Source + ")"
 	case "snapshot":
@@ -2260,10 +2260,6 @@ type dealReportItem struct {
 	// check's line without the user's and the agent's choices (the items go
 	// only to an adjudicator).
 	Shared string `json:"-"`
-	// AgentClaim marks an "unverified_claim" item whose claim the seller's agent
-	// made: a shared copy leaves it out where the seller has not chosen to show
-	// those claims (evidencebook-deal#231).
-	AgentClaim bool `json:"-"`
 	// SharedPack is what a counterparty's copy adds after its scrubbing when the check was
 	// judged under the party's pinned deal terms: the pack's shown fingerprint, which the
 	// scrubber would take for a code. Empty for any other pack.
@@ -2761,9 +2757,14 @@ func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealRepo
 	}
 	r.Anomalies = kept
 	// Unverified claims, as they stand at the end, each with where it came from.
+	// Where the user sells, the agent's own claims are the seller's
+	// representations, not something the other party said that nobody checked
+	// (evidencebook#680): their record is the represent check and the claim
+	// step, and an unauthorized one is an agent anomaly above.
 	state, _ := foldDeal(events)
+	seller := dealRole(events) == dealRoleSeller
 	for _, c := range state.claims {
-		if c.Verified {
+		if c.Verified || (seller && c.SourceKind == "agent") {
 			continue
 		}
 		step := openID
@@ -2775,8 +2776,7 @@ func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealRepo
 				step = se.CapsuleID
 			}
 		}
-		counterparty("unverified_claim", "Unverified: "+c.Text+" (from "+strings.ReplaceAll(c.Source, "_", " ")+")", step)
-		r.Anomalies[len(r.Anomalies)-1].AgentClaim = c.SourceKind == "agent"
+		counterparty("unverified_claim", "Unverified: "+c.Text+" (from "+claimSourceWords(c)+")", step)
 	}
 	var merchant []dealReportItem
 	r.Merchant, merchant = merchantReport(events, state)
