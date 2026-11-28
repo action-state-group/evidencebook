@@ -3,7 +3,7 @@ module github.com/action-state-group/evidencebook/capsulectl
 go 1.27.0
 
 require (
-	github.com/action-state-group/agent-action-capsule/go v0.24.0
+	github.com/action-state-group/agent-action-capsule/go v0.25.0
 	github.com/action-state-group/capsule-cli v0.1.2
 	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
 	github.com/action-state-group/capsule-viewer/go v0.28.1-0.20261128052131-6bc5a4db9fc1

@@ -1,0 +1,4 @@
+### Changed: agent-action-capsule go v0.25.0, so the Result gate admits `subject_bundle` (#1092)
+
+- The root module, `capsulectl/` and `report/` require `github.com/action-state-group/agent-action-capsule/go` v0.25.0 (was v0.24.0). Its Evidence Result v0 gate admits the optional claim member `subject_bundle` (agent-action-capsule#674, spec/evidence-result-v0.md section 4.5), so `ReportFromDerivation` and `ReportFromWindows` seal an evaluator's Result whose claims name the Evidence Bundle that shows their subject, and still refuse a malformed one. The version also carries composed signature profiles and strict Ed25519 verification (agent-action-capsule#678, #703).
+- capsulectl's `book result build`, `book result show` and `book report` check a Result with capsule-cli's gate, which does not admit `subject_bundle` yet (capsule-cli#473).
