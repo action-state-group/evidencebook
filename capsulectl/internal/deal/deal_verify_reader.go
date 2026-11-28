@@ -53,6 +53,9 @@ type dealReader struct {
 	// cadence chain for its checkpoint (deal_v0_witnessed.go); nil when none
 	// was given.
 	v0Chain *v0ChainProof
+	// witnessRows is verify's --witness-directory as decoded, for the row the
+	// witnessed member names (deal_witnessed_row.go); nil without one.
+	witnessRows witnessRows
 	// countersign is verify's --countersign-directory and --producer-key,
 	// for an x-deal-v0 copy's countersign member
 	// (deal_v0_countersign_report.go); nil when no directory was given.
@@ -98,12 +101,12 @@ func (r *dealReader) Read(ctx *cli.ExtensionContext, kind string) (map[string]an
 		// The witness time of the copy's own book, from a proof beside it:
 		// reported only, never a claim, so the verdict is unchanged.
 		if r.proof != nil && kind == DealProfileV1 && entry["report"] == "standalone" {
-			entry["witnessed"] = v1Witnessed(ctx.Value, r.proof, ctx.Directory)
+			entry["witnessed"] = v1Witnessed(ctx.Value, r.proof, ctx.Directory, r.witnessRows)
 		}
 		// The witness time of an x-deal-v0 copy's own book, from the chain
 		// beside it, in any report form: reported only, never a claim.
 		if r.v0Chain != nil && kind == DealProfile {
-			entry["witnessed"] = v0Witnessed(ctx.Value, r.v0Chain, ctx.Statement, ctx.Directory)
+			entry["witnessed"] = v0Witnessed(ctx.Value, r.v0Chain, ctx.Statement, ctx.Directory, r.witnessRows)
 		}
 		// capsulectl's check of an x-deal-v0 copy's countersignatures:
 		// reported only, never a claim.
@@ -210,11 +213,17 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 			}
 			var proof *entryProof
 			var v0Chain *v0ChainProof
+			var rows witnessRows
 			if proofPath != "" {
 				var err error
 				if proof, v0Chain, err = readVerifyProof(proofPath); err != nil {
 					return err
 				}
+				var cleanup func()
+				if rows, cleanup, err = snapshotWitnessDirectory(c); err != nil {
+					return err
+				}
+				defer cleanup()
 			}
 			var cs *countersignInput
 			if csDir != "" {
@@ -228,7 +237,9 @@ func WithDealVerify(root *cobra.Command) *cobra.Command {
 				}
 				cs = &countersignInput{ctx: ctx, directory: csDir, producerKeys: keys}
 			}
-			reader := func() cli.ExtensionReader { return &dealReader{proof: proof, v0Chain: v0Chain, countersign: cs} }
+			reader := func() cli.ExtensionReader {
+				return &dealReader{proof: proof, v0Chain: v0Chain, witnessRows: rows, countersign: cs}
+			}
 			return cli.VerifyBundleFileWith(c, bundle, reader)
 		}
 	}

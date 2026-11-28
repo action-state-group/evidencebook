@@ -5,7 +5,10 @@ package deal
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,7 +80,17 @@ func TestV0WitnessedFromTheHoldersChain(t *testing.T) {
 	_, plain := v0WitnessedOf(t, copyPath)
 	w, verdict := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", f.directory)
 	assert.Equal(t, plain, verdict, "the witness time never changes the verdict")
-	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt}, w)
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt, "independent_of": []any{}}, w,
+		"the row states no independent_of: [] (evidencebook#1073)")
+	listedRow := rawKeyRow(f.endpoint, f.public)
+	listedRow["independent_of"] = []string{strings.Repeat("a1", 32)}
+	listed, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", writeDirectory(t, listedRow))
+	assert.Equal(t, []any{strings.Repeat("a1", 32)}, listed["independent_of"], "the row's list as W states it")
+	badRow := rawKeyRow(f.endpoint, f.public)
+	badRow["independent_of"] = "everyone"
+	malformedList, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", writeDirectory(t, badRow))
+	assert.Equal(t, "test witness", malformedList["witness"])
+	assert.NotContains(t, malformedList, "independent_of", "a list that is not a list of strings is never guessed")
 
 	// The member has the viewer contract's shape (capsule-viewer
 	// tests/testdata/deal-v0-report, main-standalone-keep.verify.json).
@@ -94,10 +107,15 @@ func TestV0WitnessedFromTheHoldersChain(t *testing.T) {
 	assert.Equal(t, "withheld", none["status"], "no directory")
 	unknown, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", writeDirectory(t, rawKeyRow("https://other.example", f.public)))
 	assert.Equal(t, "withheld", unknown["status"], "a witness the directory does not list")
+	assert.NotContains(t, unknown, "witness", "no row is known")
+	assert.NotContains(t, unknown, "independent_of", "no row is known")
+	assert.NotContains(t, none, "witness", "no directory, no row")
 	other, _, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	wrongKey, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", writeDirectory(t, rawKeyRow(f.endpoint, other)))
 	assert.Equal(t, "failed", wrongKey["status"], "a receipt that does not verify, and none that does")
+	assert.Equal(t, "test witness", wrongKey["witness"], "the row of the receipt that does not verify")
+	assert.Equal(t, []any{}, wrongKey["independent_of"])
 
 	// A failing receipt beside one that verifies: the verified one counts.
 	var proof v0ChainProof
@@ -127,14 +145,19 @@ func TestV0WitnessedFromTheHoldersChain(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, data, 0o600))
 		return path
 	}
+	// statusOf is the member's status, and the row it names ("" for none).
 	statusOf := func(path string) string {
 		w, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", path, "--witness-directory", f.directory)
+		if name, named := w["witness"].(string); named {
+			return w["status"].(string) + " " + name
+		}
 		return w["status"].(string)
 	}
-	assert.Equal(t, "verified", statusOf(write("bad-good", bad, good)), "a receipt that does not verify beside one that does")
-	assert.Equal(t, "failed", statusOf(write("bad", bad)), "a receipt that does not verify, alone")
-	assert.Equal(t, "verified", statusOf(write("malformed-good", malformedEntry, good)), "a malformed receipt beside a verified one")
-	assert.Equal(t, "failed", statusOf(write("malformed", malformedEntry)), "a malformed receipt alone fails, never reads as no receipt")
+	assert.Equal(t, "verified test witness", statusOf(write("bad-good", bad, good)), "a receipt that does not verify beside one that does")
+	assert.Equal(t, "failed test witness", statusOf(write("bad", bad)), "a receipt that does not verify, alone")
+	assert.Equal(t, "failed test witness", statusOf(write("unknown-bad", unknownEntry, bad)), "the row of the receipt that does not verify, not an unlisted one")
+	assert.Equal(t, "verified test witness", statusOf(write("malformed-good", malformedEntry, good)), "a malformed receipt beside a verified one")
+	assert.Equal(t, "failed", statusOf(write("malformed", malformedEntry)), "a malformed receipt alone fails, never reads as no receipt; it gives no result, so no row")
 	assert.Equal(t, "withheld", statusOf(write("unknown", unknownEntry)), "a witness the directory does not list")
 	assert.Equal(t, "failed", statusOf(write("malformed-unknown", malformedEntry, unknownEntry)), "nothing verified, and a receipt is malformed")
 }
@@ -145,6 +168,9 @@ func TestV0WitnessedWithNoTimeIsWithheld(t *testing.T) {
 	copyPath, proofPath, _ := f.copyAndProof(t, "all")
 	w, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", proofPath, "--witness-directory", f.directory)
 	assert.Equal(t, "withheld", w["status"])
+	assert.Equal(t, "test witness", w["witness"], "the row of the receipt that verified without a time")
+	assert.Equal(t, []any{}, w["independent_of"])
+	assert.NotContains(t, w, "at")
 }
 
 // A chain witnessed for an earlier checkpoint, after a later step: its time
@@ -160,6 +186,7 @@ func TestV0WitnessedOnlyForTheCopysOwnCheckpoint(t *testing.T) {
 	w, _ := v0WitnessedOf(t, partCopy, "--stamp-proof", partProof, "--witness-directory", f.directory)
 	assert.Equal(t, "withheld", w["status"])
 	assert.Contains(t, w["reason"], "earlier checkpoint")
+	assert.NotContains(t, w, "witness", "an earlier checkpoint's chain names no row")
 	// The chain of the earlier copy beside the later one names another
 	// checkpoint.
 	stale, _ := v0WitnessedOf(t, partCopy, "--stamp-proof", allProof, "--witness-directory", f.directory)
@@ -186,7 +213,7 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 	f := newV0WitnessFixture(t, time.Date(2026, 10, 4, 9, 5, 0, 0, time.UTC))
 	page := filepath.Join(t.TempDir(), "keep.html")
 	dealRun(t, "report", "--deal", f.dealID, "--html", page, "--witness-directory", f.directory)
-	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt},
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "test witness", "at": v0WitnessAt, "independent_of": []any{}},
 		v0Entry(t, pageVerifyReport(t, mustRead(t, page)))["witnessed"], "capsulectl's report on the page, to the second")
 	// The chain itself never reaches the page: neither its bundle nor its
 	// bootstrap data carries it (u219).
@@ -261,4 +288,90 @@ func TestV0WitnessedForAnInLogKeepCopy(t *testing.T) {
 	entry := v0Entry(t, report)
 	require.NotEqual(t, "standalone", entry["report"], "the report is sealed in the log")
 	assert.Equal(t, "verified", entry["witnessed"].(map[string]any)["status"], "%v", entry["witnessed"])
+}
+
+// The member names the row of the receipt it reports on, among distinct
+// witnesses with distinct lists (evidencebook#1073): the earliest verified
+// time's witness wherever its receipt stands; on failed the first receipt
+// that does not verify; on withheld the first listed receipt; and never a
+// row with no endpoint for a receipt W does not list.
+func TestV0WitnessedNamesTheChosenReceiptsRow(t *testing.T) {
+	f := newV0WitnessFixture(t, time.Date(2026, 10, 4, 9, 5, 0, 0, time.UTC))
+	copyPath, proofPath, _ := f.copyAndProof(t, "all")
+	var proof v0ChainProof
+	require.NoError(t, json.Unmarshal(mustRead(t, proofPath), &proof))
+	inner := proof.Chain["parent"].(map[string]any)
+	first := inner["witnesses"].([]any)[0].(map[string]any)
+	entry, err := hex.DecodeString(first["entry_hash"].(string))
+	require.NoError(t, err)
+	secondPublic, secondKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	const secondURL = "https://second.example"
+	receiptOf := func(base map[string]any, url string, receipt []byte) map[string]any {
+		out := map[string]any{}
+		for k, v := range base {
+			out[k] = v
+		}
+		out["ts_url"], out["receipt_b64"] = url, base64.StdEncoding.EncodeToString(receipt)
+		return out
+	}
+	firstKey := f.key
+	at := func(key ed25519.PrivateKey, url string, iat time.Time) map[string]any {
+		return receiptOf(first, url, mintReceiptAt(t, entry, key, iat))
+	}
+	bad := func(url string) map[string]any { return receiptOf(first, url, []byte(strings.Repeat("x", 30))) }
+	a, b := strings.Repeat("a1", 32), strings.Repeat("b2", 32)
+	row1 := rawKeyRow(f.endpoint, f.public)
+	row1["independent_of"] = []string{a}
+	row2 := rawKeyRow(secondURL, secondPublic)
+	row2["name"], row2["independent_of"] = "second witness", []string{b}
+	directory := writeDirectory(t, row1, row2)
+	n := 0
+	member := func(dir string, entries ...any) map[string]any {
+		inner["witnesses"] = entries
+		n++
+		path := filepath.Join(f.dir, fmt.Sprintf("chosen-%d.proof.json", n))
+		data, err := json.Marshal(proof)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, data, 0o600))
+		w, _ := v0WitnessedOf(t, copyPath, "--stamp-proof", path, "--witness-directory", dir)
+		return w
+	}
+	nine05 := time.Date(2026, 10, 4, 9, 5, 0, 0, time.UTC)
+	nine01 := time.Date(2026, 10, 4, 9, 1, 0, 0, time.UTC)
+	earliestSecond := map[string]any{"status": "verified", "witness": "second witness", "at": "2026-10-04T09:01:00Z", "independent_of": []any{b}}
+	assert.Equal(t, earliestSecond, member(directory, at(firstKey, f.endpoint, nine05), at(secondKey, secondURL, nine01)), "the earlier receipt second")
+	assert.Equal(t, earliestSecond, member(directory, at(secondKey, secondURL, nine01), at(firstKey, f.endpoint, nine05)), "the earlier receipt first")
+
+	// own_witness rides on the chosen row only (ops u655).
+	ownRow1 := rawKeyRow(f.endpoint, f.public)
+	ownRow1["own_witness"] = true
+	own := member(writeDirectory(t, ownRow1, row2), at(firstKey, f.endpoint, nine05), at(secondKey, secondURL, nine01))
+	assert.Equal(t, "second witness", own["witness"])
+	assert.NotContains(t, own, "own_witness", "the earliest receipt's row is not marked")
+	own = member(writeDirectory(t, ownRow1, row2), at(firstKey, f.endpoint, nine05))
+	assert.Equal(t, true, own["own_witness"], "the chosen row is marked")
+	ownFailed := member(writeDirectory(t, ownRow1, row2), bad(f.endpoint))
+	assert.Equal(t, []any{"failed", true}, []any{ownFailed["status"], ownFailed["own_witness"]}, "on failed too")
+
+	failed := member(directory, bad(f.endpoint), bad(secondURL))
+	assert.Equal(t, []any{"failed", "test witness", []any{a}}, []any{failed["status"], failed["witness"], failed["independent_of"]})
+	failed = member(directory, bad(secondURL), bad(f.endpoint))
+	assert.Equal(t, []any{"failed", "second witness", []any{b}}, []any{failed["status"], failed["witness"], failed["independent_of"]})
+
+	withheld := member(directory, at(secondKey, secondURL, time.Time{}), at(firstKey, f.endpoint, time.Time{}))
+	assert.Equal(t, []any{"withheld", "second witness", []any{b}}, []any{withheld["status"], withheld["witness"], withheld["independent_of"]}, "no time: the first listed receipt")
+
+	// A row with no endpoint is no receipt's row here.
+	noEndpoint := map[string]interface{}{"name": "unrelated", "key_ids": []string{hex.EncodeToString(f.public)}, "independent_of": []string{a}}
+	unrelated := writeDirectory(t, noEndpoint)
+	for name, entries := range map[string][]any{
+		"an unlisted receipt":                 {at(firstKey, "https://unlisted.example", nine05)},
+		"a malformed and an unlisted receipt": {receiptOf(first, f.endpoint, nil), at(firstKey, "https://unlisted.example", nine05)},
+	} {
+		w := member(unrelated, entries...)
+		assert.NotEqual(t, "verified", w["status"], name)
+		assert.NotContains(t, w, "witness", name)
+		assert.NotContains(t, w, "independent_of", name)
+	}
 }
