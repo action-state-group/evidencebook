@@ -7,8 +7,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -100,16 +103,16 @@ func dealSubject(s dealSubjectRef) bool {
 	return s.Kind == dealSubjectKind && cli.DealIDPattern.MatchString(s.Value) && s.Digest == "" && s.First == 0 && s.Last == 0
 }
 
-// parseDealRequest reads request bytes as evidencebook does: unknown fields
-// refused, so a field this path would ignore cannot change what is served.
+// parseDealRequest reads request bytes as evidencebook does: unknown,
+// differently cased and repeated member names refused (evidencebook#1072),
+// so a field this path would ignore or fold cannot change what is served.
 func parseDealRequest(raw []byte) (dealEvidenceRequest, error) {
 	var req dealEvidenceRequest
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := jsonv2.UnmarshalDecode(decoder, &req, jsonv2.RejectUnknownMembers(true)); err != nil {
 		return req, err
 	}
-	if decoder.More() {
+	if _, err := decoder.ReadToken(); err != io.EOF {
 		return req, errors.New("trailing data after the request")
 	}
 	return req, nil

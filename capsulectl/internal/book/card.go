@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -66,9 +67,9 @@ func loadCardService(path string) (cardService, error) {
 	if err != nil {
 		return s, err
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&s); err != nil {
+	// One JSON value, its member names read exactly and once
+	// (evidencebook#1072).
+	if err := jsonv2.Unmarshal(raw, &s, jsonv2.RejectUnknownMembers(true)); err != nil {
 		return s, cli.InputError("service file " + path + ": " + err.Error())
 	}
 	if s.Name == "" || s.Operator == "" || s.URL == "" {

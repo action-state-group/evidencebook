@@ -210,6 +210,9 @@ func (b *Book) recover(ctx context.Context) error {
 		if record.Header.BookID != b.id {
 			return fmt.Errorf("%w: record %s belongs to book %q", ErrCorrupt, record.RecordID, record.Header.BookID)
 		}
+		if err := refuseLegacySubjectRoot(record); err != nil {
+			return err
+		}
 		b.records[record.RecordID] = record
 		b.log = append(b.log, record)
 		b.trackSubjectLocked(record)
@@ -578,6 +581,16 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if statementAt != nil {
 		if header.Statement, err = statementAt(seq, header.CommittedAt); err != nil {
 			return Record{}, err
+		}
+	}
+	// The statement is held in its canonical form, which every check at
+	// admission, the record returned here and a reopened book all read, so
+	// no reader sees one statement before reopen and another after
+	// (evidencebook#1072). A statement repeating a member name in an object,
+	// or holding invalid UTF-8, is refused rather than silently reduced.
+	if len(header.Statement) > 0 {
+		if header.Statement, err = canonicalStatement(header.Statement); err != nil {
+			return Record{}, fmt.Errorf("statement: %w", err)
 		}
 	}
 	if err := b.window.admits(header, committedAt, b.checkpointing); err != nil {

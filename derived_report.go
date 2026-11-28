@@ -234,13 +234,20 @@ func (b *Book) ReportFromDerivation(ctx context.Context, responseRecordID string
 }
 
 // canonicalStatement is the JCS of a JSON document, so two spellings of one
-// Result compare equal.
+// Result compare equal; a book also holds every statement in this form
+// (commitEntryLocked). A repeated member name in any object, invalid UTF-8 and
+// an unpaired surrogate escape are refused (evidencerequest.DecodeJSON).
 func canonicalStatement(doc []byte) ([]byte, error) {
 	decoded, err := evidencerequest.DecodeJSON(doc)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	return evidencerequest.EncodeJCS(decoded)
+	out, err := evidencerequest.EncodeJCS(decoded)
+	if err != nil {
+		// A number JCS cannot carry (a fraction, an integer past 2^53).
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	return out, nil
 }
 
 // checkDerivedResult validates the Result an evaluator returned with the

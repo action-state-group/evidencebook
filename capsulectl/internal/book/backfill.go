@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -273,9 +274,8 @@ func readBackfillSource(in io.Reader) (rows, gaps, horizons []backfillSourceReco
 			continue
 		}
 		var r backfillSourceRecord
-		d := json.NewDecoder(bytes.NewReader(raw))
-		d.DisallowUnknownFields()
-		if d.Decode(&r) != nil || d.More() {
+		// Member names are read exactly and once (evidencebook#1072).
+		if jsonv2.Unmarshal(raw, &r, jsonv2.RejectUnknownMembers(true)) != nil {
 			return nil, nil, nil, backfillLineError(line, "line", "is not one JSON object of known fields")
 		}
 		if err := r.validate(line); err != nil {

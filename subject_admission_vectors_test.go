@@ -192,7 +192,12 @@ func buildAdmissionVectors(t *testing.T) admissionVectors {
 	r.step("a root missing its subject_id", "malformed_root", rootHeader("exchange", "", MembershipExchangeID))
 	r.step("a root with an extra statement member", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"extra":1,"membership":"log","subject_id":"y","subject_kind":"exchange"}`)})
 	r.step("a root with no statement", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim})
-	r.step("a root whose member names differ in case only, as Go's decoder reads them", "ok", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"Membership":"field:/subject_ref","SUBJECT_ID":"session-9","subject_kind":"session"}`)})
+	// Member names are read exactly: a case variant of a name is an unknown
+	// member, even beside the exact name, which a decoder that folds case
+	// would read as one subject at admission and as another from the
+	// canonical header after reopen (evidencebook#1072).
+	r.step("a root whose member names differ in case only", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"Membership":"field:/subject_ref","SUBJECT_ID":"session-9","subject_kind":"session"}`)})
+	r.step("a root naming subject_id twice, once in upper case", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"SUBJECT_ID":"a","membership":"field:/correlation/exchange_id","subject_id":"b","subject_kind":"exchange"}`)})
 	r.step("a record citing the root with another exchange id", "cites_root_without_id", citing("exchange", "exchange-2", root))
 	r.step("a record citing the root with no correlation", "cites_root_without_id", citing("exchange", "", root))
 	m1 := r.step("member M1", "ok", citing("exchange", "exchange-1", root)).RecordID
@@ -217,13 +222,15 @@ func buildAdmissionVectors(t *testing.T) admissionVectors {
 	r.step("another root after the close", "ok", rootHeader("exchange", "exchange-3", MembershipExchangeID))
 	v.Cases = append(v.Cases, r.done())
 
-	// Go's decoder reads a statement leniently in some ways and not others.
+	// A statement's members are read exactly; null reads as the member's
+	// zero value, which the checks then judge.
 	r = newAdmissionRun(t, "statement decoding", "subject-vectors/decoding")
 	r.step("a root whose subject_kind is null", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"membership":"log","subject_id":"d","subject_kind":null}`)})
 	r.step("a root whose subject_id is a number", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"membership":"log","subject_id":7,"subject_kind":"deal"}`)})
 	r.step("a root whose statement is an array", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`["log"]`)})
 	r.step("a root whose statement is null", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`null`)})
-	droot := r.step("the log root, its members named in other cases", "ok", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"MEMBERSHIP":"log","Subject_Id":"d","subject_kind":"deal"}`)}).RecordID
+	r.step("a log root, its members named in other cases", "malformed_root", Header{RecordType: RecordTypeSubjectRoot, EpistemicType: ProducerClaim, Statement: json.RawMessage(`{"MEMBERSHIP":"log","Subject_Id":"d","subject_kind":"deal"}`)})
+	droot := r.step("the log root", "ok", rootHeader("deal", "d", MembershipLog)).RecordID
 	for _, bad := range []string{`{"last":"","members":-1}`, `{"last":"","members":"0"}`, `{"last":0,"members":0}`, `{"last":"","members":0,"more":1}`} {
 		r.step("an empty subject's close stating "+bad, "close_statement", Header{RecordType: RecordTypeSubjectClose, EpistemicType: ProducerClaim, Links: []Link{{Type: Closes, Target: droot}}, Statement: json.RawMessage(bad)})
 	}
@@ -231,7 +238,8 @@ func buildAdmissionVectors(t *testing.T) admissionVectors {
 	v.Cases = append(v.Cases, r.done())
 	r = newAdmissionRun(t, "close decoding", "subject-vectors/close-decoding")
 	croot := r.step("a log root", "ok", rootHeader("deal", "c", MembershipLog)).RecordID
-	r.step("an empty subject's close stating null members: admitted", "ok", Header{RecordType: RecordTypeSubjectClose, EpistemicType: ProducerClaim, Links: []Link{{Type: Closes, Target: croot}}, Statement: json.RawMessage(`{"LAST":null,"Members":null}`)})
+	r.step("an empty subject's close naming its members in other cases", "close_statement", Header{RecordType: RecordTypeSubjectClose, EpistemicType: ProducerClaim, Links: []Link{{Type: Closes, Target: croot}}, Statement: json.RawMessage(`{"LAST":null,"Members":null}`)})
+	r.step("an empty subject's close stating null members: admitted", "ok", Header{RecordType: RecordTypeSubjectClose, EpistemicType: ProducerClaim, Links: []Link{{Type: Closes, Target: croot}}, Statement: json.RawMessage(`{"last":null,"members":null}`)})
 	v.Cases = append(v.Cases, r.done())
 
 	// Two field subjects: a record is a member of one.

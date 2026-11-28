@@ -21,6 +21,8 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -85,14 +87,13 @@ type Presentation struct {
 // DecodePresentation reads one presentation/v1 block from JSON, refusing
 // any member outside the three, and checks it.
 func DecodePresentation(raw []byte) (Presentation, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
+	// Member names are read exactly and once (evidencebook#1072).
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw))
 	var block Presentation
-	if err := decoder.Decode(&block); err != nil {
+	if err := jsonv2.UnmarshalDecode(decoder, &block, jsonv2.RejectUnknownMembers(true)); err != nil {
 		return Presentation{}, refusal("presentation must be a JSON object with only producer_display_name, logo_data_url and title (all optional strings)")
 	}
-	var extra any
-	if decoder.Decode(&extra) != io.EOF {
+	if _, err := decoder.ReadToken(); err != io.EOF {
 		return Presentation{}, refusal("presentation input must contain one JSON value")
 	}
 	return block, block.check()

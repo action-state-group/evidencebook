@@ -19,6 +19,8 @@ package adapter
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"os"
 	"strings"
@@ -145,9 +147,11 @@ func LoadTrustPolicy(path string) (TrustPolicy, error) {
 	if err != nil {
 		return p, err
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&p); err != nil {
+	// Member names are read exactly ("PINS" is not pins: encoding/json v1
+	// would fold it onto pins, evidencebook#1072). Repeated names are allowed
+	// so that each key set and recording keeps its octets as written, for the
+	// adapter's own strict reader (TestLoadTrustPolicyKeySetVerbatim).
+	if err := jsonv2.Unmarshal(data, &p, jsonv2.RejectUnknownMembers(true), jsontext.AllowDuplicateNames(true)); err != nil {
 		return p, fmt.Errorf("trust policy %s: %w", path, err)
 	}
 	return p, nil

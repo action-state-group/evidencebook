@@ -82,7 +82,7 @@ def test_subject_root_refusals(b):
     for membership in ("", "field:", "field:x", "field:/a~2", "field:/a~", "logs"):
         with pytest.raises(eb.InvalidError):
             root_of(b, "x-" + membership, membership)
-    with pytest.raises(eb.InvalidError, match="unknown field"):
+    with pytest.raises(eb.InvalidError, match="unknown object member"):
         b.append(eb.Entry(RECORD_TYPE_SUBJECT_ROOT, eb.PRODUCER_CLAIM,
                           statement={"subject_kind": "exchange", "subject_id": "y", "membership": "log", "extra": 1}))
     with pytest.raises(eb.InvalidError, match="carries the subject id"):
@@ -127,18 +127,15 @@ def test_a_close_names_one_root_of_this_book(b):
 
 
 def test_a_close_statement_is_decoded_as_go_decodes_it(b):
-    # Go's struct decoding: missing and null members are zero, names match
-    # case-insensitively, an unknown member is refused.
+    # Go's decodeStrict (encoding/json/v2, evidencebook#1072): missing and
+    # null members are zero, names match exactly, any other name is refused.
     root = root_of(b)
     closed = b.append(eb.Entry(RECORD_TYPE_SUBJECT_CLOSE, eb.PRODUCER_CLAIM, links=(eb.Link(CLOSES, root.record_id),),
-                               statement={"MEMBERS": 0, "last": None}))
+                               statement={"members": 0, "last": None}))
     assert closed.header.record_type == RECORD_TYPE_SUBJECT_CLOSE
     assert read_subject_close({}) == SubjectCloseStatement(0, "")
-    # Canonical order puts "LAST" before "last"; a later null leaves it.
-    assert read_subject_close({"last": None, "LAST": "x"}) == SubjectCloseStatement(0, "x")
-    assert read_subject_root({"SUBJECT_ID": "a", "ſubject_kind": "k", "membership": "log"}) == \
-        SubjectRootStatement("k", "a", "log")
-    for bad in ({"members": -1}, {"members": "2"}, {"members": True}, {"x": 1}, {"members": 2.5}, [], "s"):
+    for bad in ({"members": -1}, {"members": "2"}, {"members": True}, {"x": 1}, {"members": 2.5}, [], "s",
+                {"MEMBERS": 0}, {"last": None, "LAST": "x"}):
         with pytest.raises(eb.InvalidError):
             read_subject_close(bad)
 
@@ -415,9 +412,10 @@ def test_a_changed_extension_is_refused(edit):
         verify_subject_bundle(_edit_extension(_full(), edit))
 
 
-def test_an_extension_member_matched_by_case_is_read_as_go_reads_it():
+def test_an_extension_member_in_another_case_is_refused():
     data = _edit_extension(_full(), lambda e: e.__setitem__("Closed", e.pop("closed")))
-    assert verify_subject_bundle(data).closed
+    with pytest.raises(eb.InvalidError, match="unknown object member"):
+        verify_subject_bundle(data)
 
 
 def test_a_bundle_without_the_extension_or_anchor_is_refused():
@@ -446,9 +444,11 @@ def test_a_projection_is_checked_for_its_shape():
     fractional = copy.deepcopy(data)
     fractional["root"]["statement"] = {"score": 1.5}
     assert verify_subject_bundle(json.dumps(fractional).encode()).form == SUBJECT_BUNDLE_PROJECTION
-    # Go's probe matches the form by case-insensitive name.
+    # Go's probe matches the form by case-insensitive name, but the
+    # projection itself is read by exact names.
     folded = {("FORM" if k == "form" else k): v for k, v in data.items()}
-    assert verify_subject_bundle(jcs(folded)).form == SUBJECT_BUNDLE_PROJECTION
+    with pytest.raises(eb.InvalidError, match="unknown object member"):
+        verify_subject_bundle(jcs(folded))
 
 
 # -- the strict header reader ----------------------------------------------------------------------
@@ -475,11 +475,11 @@ def test_the_strict_header_reader_is_gos():
 def test_go_struct_decoding_of_nested_values():
     spec = _gostruct.Struct({"a": _gostruct.List(_gostruct.UINT64), "p": _gostruct.Ptr(_gostruct.Struct({"x": _gostruct.STRING})),
                              "t": _gostruct.TIME, "b": _gostruct.BYTES, "r": _gostruct.RAW})
-    got = _gostruct.decode({"a": [1, 2], "P": {"X": "y"}, "t": "2026-11-28T00:00:00.5+01:00", "b": "AAE=", "r": None}, spec, "v")
+    got = _gostruct.decode({"a": [1, 2], "p": {"x": "y"}, "t": "2026-11-28T00:00:00.5+01:00", "b": "AAE=", "r": None}, spec, "v")
     assert got == {"a": [1, 2], "p": {"x": "y"}, "t": "2026-11-28T00:00:00.5+01:00", "b": b"\x00\x01", "r": _gostruct.JSON_NULL}
     assert _gostruct.decode({}, spec, "v")["p"] is None
     for bad in ({"t": "2026-11-28t00:00:00Z"}, {"t": "2026-02-30T00:00:00Z"}, {"t": "2016-12-31T23:59:60Z"},
-                {"b": "AAE"}, {"a": [1, -1]}, {"a": {}}):
+                {"b": "AAE"}, {"b": [0, 1]}, {"a": [1, -1]}, {"a": {}}, {"P": {"x": "y"}}, {"p": {"X": "y"}}):
         with pytest.raises(eb.InvalidError):
             _gostruct.decode(bad, spec, "v")
 
@@ -517,23 +517,21 @@ def test_admission_vectors(case):
 # -- Go's decoding, case by case (review round 1) ---------------------------------------------------------
 
 
-def test_admission_reads_a_statement_in_the_order_given(b):
-    # Go decodes the entry's statement text in order: the later member wins.
-    with pytest.raises(eb.InvalidError, match="subject_id"):
-        b.append(eb.Entry(RECORD_TYPE_SUBJECT_ROOT, eb.PRODUCER_CLAIM, statement={
-            "subject_kind": "k", "subject_id": "s", "SUBJECT_ID": "", "membership": "log"}))
-    assert read_subject_root({"SUBJECT_ID": "", "subject_id": "s", "subject_kind": "k", "membership": "log"}).subject_id == "s"
+def test_admission_reads_member_names_exactly(b):
+    # Go reads a statement by exact member names (evidencebook#1072): a case
+    # variant is an unknown member, beside the exact name or alone.
+    for statement in ({"subject_kind": "k", "subject_id": "s", "SUBJECT_ID": "", "membership": "log"},
+                      {"subject_kind": "k", "SUBJECT_ID": "s", "membership": "log"}):
+        with pytest.raises(eb.InvalidError, match="unknown object member"):
+            b.append(eb.Entry(RECORD_TYPE_SUBJECT_ROOT, eb.PRODUCER_CLAIM, statement=statement))
+    assert b.size() == 0
 
 
-@pytest.mark.parametrize("name,ok", [("subject_\u0131d", False), ("subject_\u0130d", False), ("\u017fubject_id", True),
-                                     ("SUBJECT_ID", True), ("subject_\u212ad", False)])
-def test_struct_fields_fold_as_go_folds_them(name, ok):
+@pytest.mark.parametrize("name", ["subject_\u0131d", "subject_\u0130d", "\u017fubject_id", "SUBJECT_ID", "subject_\u212ad"])
+def test_struct_fields_match_exactly(name):
     statement = {"subject_kind": "k", json.loads(f'"{name}"'): "s", "membership": "log"}
-    if ok:
-        assert read_subject_root(statement).subject_id == "s"
-    else:
-        with pytest.raises(eb.InvalidError):
-            read_subject_root(statement)
+    with pytest.raises(eb.InvalidError):
+        read_subject_root(statement)
 
 
 @pytest.mark.parametrize("pair,collide", [(("\u00b5", "\u03bc"), True), (("k", "\u212a"), True), (("s", "\u017f"), True),
@@ -552,8 +550,11 @@ def test_keys_folding_equal_under_go_simple_fold_are_refused(pair, collide):
 
 
 @pytest.mark.parametrize("text,ok", [
-    ("2026-11-28T0:00:00Z", True), ("2026-11-28T00:00:00,5Z", True), ("2026-11-28T00:00:00+24:00", True),
-    ("2026-11-28T00:00:00-00:00", True), ("2026-11-28T00:00:00.1234567891234Z", True), ("0000-01-01T00:00:00Z", True),
+    # encoding/json/v2 reads RFC 3339 strictly (evidencebook#1072).
+    ("2026-11-28T0:00:00Z", False), ("2026-11-28T00:00:00,5Z", False), ("2026-11-28T00:00:00+24:00", False),
+    ("2026-11-28T00:00:00+23:59", True), ("2026-11-28T00:00:00-00:00", True),
+    ("2026-\uff11\uff11-28T00:00:00Z", False), ("2026-11-28T00:00:00.\uff15Z", False),
+    ("2026-11-28T00:00:00+\uff10\uff11:00", False), ("2026-11-28T00:00:00.1234567891234Z", True), ("0000-01-01T00:00:00Z", True),
     ("2026-11-28T00:00:00.Z", False), ("2026-11-28T24:00:00Z", False), ("2026-11-28T00:00:60Z", False),
     ("\uff12026-11-28T00:00:00Z", False), ("2026-11-28t00:00:00Z", False), ("2026-11-28T00:00:00z", False),
     ("-026-11-28T00:00:00Z", False), ("2026-02-29T00:00:00Z", False), ("2026-11-28T00:00:00+0100", False),
@@ -571,8 +572,8 @@ def test_anchor_times_are_read_as_go_reads_them(text, ok):
             verify_subject_bundle(jcs(bundle))
 
 
-def test_an_anchor_statement_may_be_an_array_of_bytes():
-    for statement, ok in (([0, 1], True), ([None, 255], True), ([256], False), ([True], False), ("AAE", False)):
+def test_an_anchor_statement_is_padded_base64_only():
+    for statement, ok in (("AAE=", True), ("", True), ([0, 1], False), ([], False), ("AAE", False), ("AA\nE=", False)):
         bundle = _full()
         bundle["extensions"]["evidencebook/subject"]["key_range"]["anchor"]["statement"] = statement
         if ok:
@@ -595,16 +596,13 @@ def _projection() -> dict:
 
 def test_a_projection_is_read_from_its_own_text():
     text = json.dumps(_projection(), separators=(",", ":"))
-    # A duplicate map merges into the first, as Go decodes it: the position survives.
-    merged = text[:-1] + ',"root":{"x":1}}'
-    seq_first = text.replace('"root":{', '"root":{"seq":1},"root":{', 1)
-    with pytest.raises(eb.InvalidError, match="no position"):
-        verify_subject_bundle(seq_first.encode())
-    verify_subject_bundle(merged.encode())
-    # A later null empties the members; a later case-variant one replaces them.
-    with pytest.raises(eb.InvalidError):
-        verify_subject_bundle((text[:-1] + ',"Members":null}').encode())
-    assert verify_subject_bundle((text[:-1] + ',"Members":[]}').encode()).member_count == 0
+    # A member named twice, or in another case, is refused (evidencebook#1072).
+    for tail in (',"root":{"x":1}}', ',"Members":[]}', ',"members":[]}'):
+        with pytest.raises(eb.InvalidError):
+            verify_subject_bundle((text[:-1] + tail).encode())
+    nested = text.replace('"root":{', '"root":{"x":{"a":1,"a":2},', 1)
+    with pytest.raises(eb.InvalidError, match="duplicate"):
+        verify_subject_bundle(nested.encode())
     # Nesting Go's decoder takes, and past it.
     for depth, ok in ((1500, True), (10000 - 3, True), (10001, False)):
         p = _projection()
@@ -617,33 +615,41 @@ def test_a_projection_is_read_from_its_own_text():
                 verify_subject_bundle(deep.encode())
 
 
-def _projection_with(tail: str) -> bytes:
-    return (json.dumps(_projection(), separators=(",", ":"))[:-1] + tail).encode()
+def _projection_member(member: str) -> bytes:
+    text = json.dumps(_projection(), separators=(",", ":"))
+    return text.replace('"members":[', '"members":[' + member + ",", 1).encode()
 
 
-@pytest.mark.parametrize("tail,ok", [
-    # Go keeps a slice's elements past its length and decodes into them when it grows again.
-    (',"members":[{},{"seq":1}],"members":[{}],"members":[{},{}]}', False),
-    (',"members":[{},{},{},{"seq":1}],"members":[{},{},{}],"members":[{},{},{},{}]}', False),
-    # An empty array is a new slice: nothing is kept.
-    (',"members":[{},{"seq":1}],"members":[],"members":[{},{}]}', True),
+@pytest.mark.parametrize("member,ok", [
     # A number out of float64 range fails in an interface value; -0 and a long integer do not.
-    (',"members":[{"x":1e400}]}', False),
-    (',"root":{"x":[1e999]}}', False),
-    (',"members":[{"x":-0}]}', True),
-    (',"root":{"x":123456789012345678901234567890}}', True),
+    ('{"x":1e400}', False),
+    ('{"x":[1e999]}', False),
+    ('{"x":-0}', True),
+    ('{"x":123456789012345678901234567890}', True),
 ])
-def test_a_projection_is_decoded_as_go_decodes_it(tail, ok):
+def test_a_projection_is_decoded_as_go_decodes_it(member, ok):
     if ok:
-        verify_subject_bundle(_projection_with(tail))
+        verify_subject_bundle(_projection_member(member))
     else:
         with pytest.raises(eb.InvalidError):
-            verify_subject_bundle(_projection_with(tail))
+            verify_subject_bundle(_projection_member(member))
 
 
-def test_an_unpaired_surrogate_reads_as_the_replacement_character():
-    got = verify_subject_bundle(_projection_with(',"subject_id":"\\ud800","subject_kind":"a\\ud83d\\ude00"}'))
-    assert (got.subject.subject_id, got.subject.subject_kind) == ("\ufffd", "a\U0001f600")
+def test_an_unpaired_surrogate_is_refused():
+    text = json.dumps(_projection(), separators=(",", ":"))
+
+    def kind(prefix: str) -> bytes:
+        # The projection's own subject_kind is its last member.
+        at = text.rindex('"subject_kind":"') + len('"subject_kind":"')
+        return (text[:at] + prefix + text[at:]).encode()
+
+    with pytest.raises(eb.InvalidError, match="surrogate"):
+        verify_subject_bundle(kind("a\\ud800"))
+    assert verify_subject_bundle(kind("a\\ud83d\\ude00")).subject.subject_kind.startswith("a\U0001f600")
+    with pytest.raises(eb.InvalidError, match="UTF-8"):
+        data = kind("a")
+        at = data.rindex(b'"subject_kind":"a') + len(b'"subject_kind":"')
+        verify_subject_bundle(data[:at] + b"\xff" + data[at + 1:])
 
 
 def test_a_deep_object_in_a_projection_is_read_without_recursion():
@@ -651,3 +657,21 @@ def test_a_deep_object_in_a_projection_is_read_without_recursion():
     p["root"]["deep"] = "@"
     deep = json.dumps(p).replace('"@"', '{"a":' * 3000 + "1" + "}" * 3000)
     assert verify_subject_bundle(deep.encode()).form == SUBJECT_BUNDLE_PROJECTION
+
+
+@pytest.mark.parametrize("statement,ok", [
+    ({"as_of_seq": 3, "index": "subject_id", "root": "r", "size": 1}, True),
+    ({"as_of_seq": 3, "index": "subject_id", "ROOT": "r", "size": 1}, False),
+    ({"as_of_seq": 3, "index": "subject_id", "root": "r", "size": 1, "note": "x"}, False),
+])
+def test_an_index_root_statement_is_read_by_exact_names(statement, ok):
+    # Go readIndexRoot reads with decodeStrict (evidencebook#1072).
+    from evidencebook.subject_bundle import _read_index_root
+    value = {"v": 1, "book_id": "b", "seq": 4, "record_type": "index_root", "epistemic_type": "derived_metric",
+             "committed_at": "2026-11-28T00:00:00Z", "links": [], "statement": statement}
+    r = PeerRecord(record_id=dg("ir"), seq=4, header=eb.Header.from_value(value), header_verified=True, header_value=value)
+    if ok:
+        assert _read_index_root(r) == {"index": "subject_id", "root": "r", "size": 1, "as_of_seq": 3}
+    else:
+        with pytest.raises(eb.InvalidError):
+            _read_index_root(r)

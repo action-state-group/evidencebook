@@ -631,7 +631,7 @@ func readIndexRoot(h Header) (committedIndexRoot, error) {
 	if h.RecordType != RecordTypeIndexRoot {
 		return committed, fmt.Errorf("%w: not an index_root record", ErrInvalid)
 	}
-	if err := json.Unmarshal(h.Statement, &committed); err != nil {
+	if err := decodeStrict(h.Statement, &committed); err != nil {
 		return committed, fmt.Errorf("%w: index_root statement: %v", ErrInvalid, err)
 	}
 	return committed, nil

@@ -496,3 +496,17 @@ func TestBackfillTimeLaunderingShapeFails(t *testing.T) {
 	}
 	assert.Equal(t, []string{"provenance_time_laundering_shape"}, codes)
 }
+
+// A source line's member names are read exactly and once (evidencebook#1072).
+func TestBackfillSourceExactNames(t *testing.T) {
+	row := toolRow("tc-1", 1, "2026-09-27T18:00:00Z", "succeeded")
+	_, _, _, err := readBackfillSource(strings.NewReader(row))
+	require.NoError(t, err)
+	for _, bad := range []string{
+		strings.Replace(row, `"status"`, `"STATUS"`, 1),
+		strings.Replace(row, `{"kind":"row",`, `{"kind":"row","kind":"gap",`, 1),
+	} {
+		_, _, _, err := readBackfillSource(strings.NewReader(bad))
+		assert.ErrorIs(t, err, cli.ErrInput, bad)
+	}
+}

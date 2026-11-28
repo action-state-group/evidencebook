@@ -241,6 +241,8 @@ func TestDecodePresentation(t *testing.T) {
 		"nothing named":     {`{}`, "names none of"},
 		"a non-string":      {`{"title":7}`, "only producer_display_name, logo_data_url and title"},
 		"two values":        {`{"title":"x"} {"title":"y"}`, "one JSON value"},
+		"a case variant":    {`{"Title":"x"}`, "only producer_display_name, logo_data_url and title"},
+		"a member twice":    {`{"title":"x","title":"y"}`, "only producer_display_name, logo_data_url and title"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
