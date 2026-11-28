@@ -200,7 +200,7 @@ func TestAV1SharedReportIsOnRecordFirst(t *testing.T) {
 	assert.Len(t, disclosures(), 2, "nothing recorded")
 
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "counterparty", "--out", filepath.Join(t.TempDir(), "x.json")), "needs --out FILE or --bundle FILE, and --to")
-	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--to", "Kettle Shop"), "use it with --share counterparty or adjudicator")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--to", "Kettle Shop"), "use it with --share counterparty, adjudicator or audit")
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--read-only", "--share", "counterparty", "--to", "x"), "writes nothing")
 }
 

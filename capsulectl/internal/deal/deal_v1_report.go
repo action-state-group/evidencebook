@@ -82,16 +82,16 @@ func v1ReportFlagRefusal(c *cobra.Command) error {
 	switch share {
 	case dealprofile.AudienceKeep:
 		if strings.TrimSpace(to) != "" {
-			return cli.InputError("--to names who a shared copy is for; use it with --share counterparty or adjudicator")
+			return cli.InputError("--to names who a shared copy is for; use it with --share counterparty, adjudicator or audit")
 		}
-	case dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator:
+	case dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator, dealprofile.AudienceAudit:
 		out, _ := f.GetString("out")
 		bundle, _ := f.GetString("bundle")
 		if strings.TrimSpace(out)+strings.TrimSpace(bundle) == "" || strings.TrimSpace(to) == "" {
 			return cli.InputError("--share writes a copy for someone else: it needs --out FILE or --bundle FILE, and --to (who it is for; for an adjudicator, the referee's name)")
 		}
 	default:
-		return cli.InputError("--share must be keep, counterparty or adjudicator")
+		return cli.InputError("--share must be keep, counterparty, adjudicator or audit")
 	}
 	return nil
 }
@@ -307,7 +307,14 @@ func runV1Report(c *cobra.Command) (err error) {
 			// written is the copy as it is.
 			// The deal's own id is taken out as for a v0 deal: a v1 deal may
 			// have no journey event to carry it (evidencebook#787).
-			if err := v1ShareGate(scrubPaymentRefs(file), events, share, v1OwnIDs(dealID, snap.Book)...); err != nil {
+			gated := scrubPaymentRefs(file)
+			if share == dealprofile.AudienceAudit {
+				// An audit copy is for a reader who is not a party: the
+				// gate reads its exact bytes, payment references included
+				// (evidencebook#1058), so a private value in one refuses it.
+				gated = file
+			}
+			if err := v1ShareGate(gated, events, share, v1OwnIDs(dealID, snap.Book)...); err != nil {
 				return err
 			}
 			record = func() error {

@@ -382,7 +382,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal perform --deal ID --act ACT --check CHECK_ID --observed HOW --out FILE` | An act other than a payment (a delivery), on a passing commit check. |
 | `deal statement --deal ID --statement ROW=VALUE --out FILE` | How a row went: `met`, `not_met` or `cannot_tell`. |
 | `deal dispute --deal ID --row ROW --out FILE [--forum F] [--withdraw]` | Disputes a row before the agreement's referee, or takes it back. `--challenge RULING --grounds FILE` challenges a ruling the user holds; only the grounds' SHA-256 is sealed. |
-| `deal report --deal ID [--bundle FILE] [--out FILE] [--share counterparty --to NAME]` | Each row's status, read at your last checkpoint. `--bundle` writes an Evidence Bundle; `--share counterparty` makes it the copy for the other side, put on record first; `--out` seals the report. |
+| `deal report --deal ID [--bundle FILE] [--out FILE] [--share counterparty\|audit --to NAME]` | Each row's status, read at your last checkpoint. `--bundle` writes an Evidence Bundle; `--share counterparty` makes it the copy for the other side, and `--share audit` the copy for an outside reader who is not a party (see [Sharing a copy](#sharing-a-copy)), each put on record first; `--out` seals the report. |
 | `deal list [--json] [--since D] [--until D]` | Every deal in the store with its state; read-only. |
 
 ## Try it: the demo (2 minutes, no real money)

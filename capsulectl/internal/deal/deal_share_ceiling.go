@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // The user's bounds are private from the counterparty, whichever side the
@@ -270,7 +271,9 @@ func dealCeilingGate(data []byte, events []sealedEvent, audience string, own ...
 	if audience == cli.DealAudienceKeep {
 		return nil
 	}
-	counterparty := audience == cli.DealAudienceCounterparty
+	// An audit copy's reader is no party: the spending limit is kept from
+	// it as from the counterparty (evidencebook#1058).
+	counterparty := audience == cli.DealAudienceCounterparty || audience == dealprofile.AudienceAudit
 	// data is the raw copy: dealGateText masks the cose ids in its JSON regions.
 	data = dealGateText(data, maskCoseIDs(events))
 	// The deal's own ids and every digest, key and signature are taken out
@@ -288,6 +291,9 @@ func dealCeilingGate(data []byte, events []sealedEvent, audience string, own ...
 	refuseLimit := cli.InputError("refusing to write the shared copy: the counterparty's copy would carry your spending limit")
 	if dealRole(events) == dealRoleSeller {
 		refuseLimit = cli.InputError("refusing to write the shared copy: the counterparty's copy would carry the lowest price you will take, or a limit you set")
+	}
+	if audience == dealprofile.AudienceAudit {
+		refuseLimit = cli.InputError("refusing to write the shared copy: the audit copy would carry a limit you set")
 	}
 	refuseFloor := cli.InputError("refusing to write the shared copy: it would carry the lowest price you will take")
 	for _, k := range dealFloorKeys {

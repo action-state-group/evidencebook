@@ -17,6 +17,7 @@ import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -292,6 +293,19 @@ func TestRulingEntriesFromBothCopies(t *testing.T) {
 	h.seller.act(t)
 	cp := filepath.Join(t.TempDir(), "cp.json")
 	dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", cp)
+	// The same ruled deal as an audit copy for an outside reader
+	// (evidencebook#1058): it verifies, and its rows keep the ruling.
+	audit := filepath.Join(t.TempDir(), "audit.json")
+	dealRun(t, "report", "--deal", h.dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", audit)
+	res, err := verifyBundleOutput(t, audit)
+	require.NoError(t, err, "%v", res)
+	auditRuled := false
+	for _, row := range v1BundleOf(t, audit)["extensions"].(map[string]interface{})[dealprofile.ReportExtension].(map[string]interface{})["agent_input"].(map[string]interface{})["rows"].([]interface{}) {
+		if row.(map[string]interface{})["ruling"] != nil {
+			auditRuled = true
+		}
+	}
+	assert.True(t, auditRuled, "the audit copy keeps the ruling")
 	h.buyer.act(t)
 	got := dealRun(t, "receive", cp)
 	found := false
