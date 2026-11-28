@@ -685,7 +685,14 @@ func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool, de
 	}
 	block := map[string]interface{}{"policy": h.Policy, "as_of": shAsOfBlock(h)}
 	if !shared {
-		block["deals"] = h.Deals
+		// No deal entry is an empty array, never null: the History card
+		// module's block reader refuses a deals member that is not an array
+		// (evidencebook#1074).
+		deals := h.Deals
+		if deals == nil {
+			deals = []standardhistory.Deal{}
+		}
+		block["deals"] = deals
 	}
 	extensions, _ := b["extensions"].(map[string]interface{})
 	if extensions == nil {
