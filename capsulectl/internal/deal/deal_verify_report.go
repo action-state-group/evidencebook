@@ -19,6 +19,7 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/disclosure"
 	"github.com/action-state-group/agent-action-capsule/go/envelope"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // dealReportActionID is the action_id of the capsule a deal report seals its
@@ -113,7 +114,8 @@ func standaloneReportEntry(value map[string]interface{}, x map[string]interface{
 	logID, _ := cert["log_id"].(string)
 	dealID, isDeal := strings.CutPrefix(logID, "deal/")
 	audience, _ := input["audience"].(string)
-	if input["type"] != "deal_report" || input["profile"] != profile || !isDeal || !dealCopyAudiences[audience] {
+	copyAudience := dealCopyAudiences[audience] || profile == DealProfileV1 && audience == dealprofile.AudienceAudit
+	if input["type"] != "deal_report" || input["profile"] != profile || !isDeal || !copyAudience {
 		return fail
 	}
 	if profile == DealProfileV1 {
