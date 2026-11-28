@@ -430,12 +430,21 @@ func TestReportBundleVectors(t *testing.T) {
 			auditKeep.Rows[i].ReliedOn[j].Time, auditKeep.Rows[i].ReliedOn[j].Witnessed = nil, false
 		}
 	}
-	rp, rx = resealed(auditKeep)
+	// An audit copy of this deal carries no offer: its offer names an ask.
+	auditResealed := func(r Report) ([]byte, []byte) {
+		t.Helper()
+		p, ext := resealed(r)
+		var c ReportBundle
+		require.NoError(t, json.Unmarshal(ext, &c))
+		c.Book.Offer = nil
+		return p, extJSON(t, c)
+	}
+	rp, rx = auditResealed(auditKeep)
 	_, err = VerifyReportBundle(rp, rx)
 	require.NoError(t, err, "the keep copy's rows cut as an audit copy verify")
 	witnessed := auditKeep
 	witnessed.RestsOn.Witnesses = []Witness{{KeyID: strings.Repeat("c", 64), URL: "https://witness.example"}}
-	rp, rx = resealed(witnessed)
+	rp, rx = auditResealed(witnessed)
 	refuse("an audit copy naming a witness", rx, rp, "an audit copy names no witnesses")
 	timed := auditKeep
 	require.NotEmpty(t, timed.Rows)
@@ -444,11 +453,22 @@ func TestReportBundleVectors(t *testing.T) {
 	timed.Rows[0].ReliedOn = slices.Clone(auditKeep.Rows[0].ReliedOn)
 	at := keep.AsOf
 	timed.Rows[0].ReliedOn[0].Time, timed.Rows[0].ReliedOn[0].Witnessed = &at, true
-	rp, rx = resealed(timed)
+	rp, rx = auditResealed(timed)
 	refuse("an audit copy giving a witnessed time", rx, rp, "an audit copy gives no witnessed time")
+	// The counterparty's copy's offer, which names an ask, put into an audit
+	// copy (evidencebook#1058).
+	require.NotNil(t, x.Book.Offer)
+	auditPayload, err := ReportPayload(auditKeep)
+	require.NoError(t, err)
+	auditPair := sealReport(t, "buyer", auditPayload, "")
+	auditRead, err := VerifyReport(auditPair, x.Book.Agreement)
+	require.NoError(t, err)
+	withOffer := clone()
+	withOffer.SealedReport = auditRead.CapsuleID
+	refuse("an audit copy carrying an offer that names an ask", extJSON(t, withOffer), auditPair, "an audit copy carries no offer that names an ask")
 	refereed := auditKeep
 	refereed.Referee = "Lamp Court"
-	rp, rx = resealed(refereed)
+	rp, rx = auditResealed(refereed)
 	refuse("an audit copy naming a referee", rx, rp, "an audit copy names no referee")
 
 	writeOrCompare(t, reportBundleVectors, map[string]any{

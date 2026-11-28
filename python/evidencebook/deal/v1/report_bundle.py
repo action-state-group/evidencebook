@@ -190,6 +190,10 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
             raise _bad(f"the offer {sent.digest} is not the offer {ag['offer']['digest']} the agreement cites")
         if sent.key_id != offerer:
             raise _bad("the offer is not signed by the deal's offerer")
+        # The offer travels whole, and an ask is a way to reach the offerer: an
+        # audit copy never carries such an offer (evidencebook#1058).
+        if r["audience"] == AUDIENCE_AUDIT and sent.record.body.get("ask") is not None:
+            raise _bad("an audit copy carries no offer that names an ask")
     own, cp = r["rests_on"]["own"], r["rests_on"].get("counterparty")
     sides: dict[str, str] = {}
     counterpart_log = ""

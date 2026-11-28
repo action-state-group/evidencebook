@@ -569,7 +569,7 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   receipt travels. It carries the offer only when the offer names no `ask`: `ask.url` is a way
   to reach the offerer, a contact, and the signed offer travels whole or not at all, so an audit
   copy of such a deal shows no item or quantity, and its page says why (Sherlock2's ruling on
-  evidencebook#1058). The parties' keys, the agreement's `rules_url` (the adjudicator's
+  evidencebook#1058); `xdealv1.VerifyReportBundle` refuses an audit copy that carries one. The parties' keys, the agreement's `rules_url` (the adjudicator's
   published rules) and the witnesses' URLs in the signed agreement stay: they are not personal,
   and the keys let a reader link a party across copies, which the copy does not prevent.
 - **Verifying a report.** `xdealv1.VerifyReport` reads a report against its deal's first record,

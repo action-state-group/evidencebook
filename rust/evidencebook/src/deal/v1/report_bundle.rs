@@ -232,6 +232,13 @@ pub fn verify_report_bundle(report: &[u8], ext: &[u8]) -> Result<ReportRead, Err
         if sent.key_id != offerer {
             return Err(bad("the offer is not signed by the deal's offerer".into()));
         }
+        // The offer travels whole, and an ask is a way to reach the offerer:
+        // an audit copy never carries such an offer (evidencebook#1058).
+        if r.audience == AUDIENCE_AUDIT && sent.record.propose().is_some_and(|p| p.ask.is_some()) {
+            return Err(bad(
+                "an audit copy carries no offer that names an ask".into()
+            ));
+        }
     }
     let mut sides: BTreeMap<&str, &str> = BTreeMap::new();
     let mut counterpart_log = String::new();

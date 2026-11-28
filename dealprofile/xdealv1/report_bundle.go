@@ -263,6 +263,12 @@ func verifyReportBundle(report, ext []byte) (ReportRead, *FullCopy, error) {
 		case sent.KeyID != offerer:
 			return bad("the offer is not signed by the deal's offerer")
 		}
+		if of, _ := asPropose(sent.Record.Body); r.Audience == dealprofile.AudienceAudit && of.Ask != nil {
+			// The offer travels whole, and an ask is a way to reach the
+			// offerer: an audit copy never carries such an offer
+			// (evidencebook#1058).
+			return bad("an audit copy carries no offer that names an ask")
+		}
 	}
 	sides := map[string]string{}
 	counterpartLog := ""
