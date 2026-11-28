@@ -63,7 +63,7 @@
     "✓ Unchanged since it was sealed",
     "10 of 10 checks passed · 23 top-level records",
     "How this page was checked",
-    "No witness this verifier trusts has vouched for this log: this file checks only against its holder's own signatures. Without such a receipt for its checkpoint, it could be a private copy of the log.",
+    "This file carries no witness receipt, so this page could not check a time-stamp itself.",
     "DEMO",
     "Sale receipt",
     "· deal-4a5566992d9d3190",

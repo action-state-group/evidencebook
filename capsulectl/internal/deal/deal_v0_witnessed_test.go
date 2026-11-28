@@ -228,9 +228,15 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 	// (capsule-viewer#489); the module's ladder no longer has a witness rung.
 	assert.Contains(t, with.WitnessNotice["book-witnessed"], "test witness")
 	assert.Contains(t, with.WitnessNotice["book-witnessed"], "as capsulectl verify reported on your own book")
+	assert.NotContains(t, with.WitnessNotice, "not-witnessed")
+	assert.NotContains(t, with.WitnessNotice, "file-no-receipt")
+	// A v0 copy carries no witness receipt by design (u225), so the page says
+	// the file has none rather than calling it a possible private copy (u286,
+	// capsule-viewer#527).
 	without := reportV0Page(t, chrome, f.dealID, "")
 	assert.NotContains(t, without.WitnessNotice, "book-witnessed", "no witness time without --witness-directory")
-	assert.Contains(t, without.WitnessNotice, "not-witnessed")
+	assert.Contains(t, without.WitnessNotice, "file-no-receipt")
+	assert.NotContains(t, without.WitnessNotice, "not-witnessed")
 
 	_, err = invoke(t, "", "--profile", "deal", "deal", "report", "--deal", f.dealID, "--html", filepath.Join(t.TempDir(), "s.html"),
 		"--share", cli.DealAudienceCounterparty, "--to", "the shop", "--witness-directory", f.directory)
