@@ -7,6 +7,7 @@
   - feat(capsulectl): capsulectl-deal writes a recorded absence as recorded_absence (#116 PR 2) (#1037)
   - feat(deal): an x-deal-v1 copy carries the offer it rests on (#1065) (#1066)
   - feat(capsulectl): the witnessed member names the witness row's independent_of (#1073) (#1078)
+  - feat(capsulectl): deal tick names each delivered and pending checkpoint's tick (#1083) (#1091)
 - Fixed:
   - fix(deal-skill): ask with approval_text when the user presses the button after a pass (#1030) (#1039)
 - Tests and CI:
