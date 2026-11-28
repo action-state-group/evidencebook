@@ -23,9 +23,9 @@
     "275aa76b0710dc593d5cbb774e9759d129c21e6a46d13d0f2192b13df01b9103",
     "5743bc4e9ec214398fe36d544117279944caefd4a5e8ab59dfa34b6d0f4b7a4e",
     "71ed5fef137ba0605f3e75be840ccb96b636ac8249b575f80c878c7a0764e0a8",
-    "8fbedab7c3dc1a9f6117c6b5a3ffa8637808c966d219aecdf1be61a45d0d20ad",
     "97296499fb08c09bcc4661c11efef414fa3c45bb4d1925923fc01eb76485b5be",
     "af3c1753c654c0af3f084d6bf2bcf6ce3bc12eed7ef01fed6885e29f3cca6a47",
+    "b157e57eaa3f8d6bc3829177ec4250793ceda876a1df465eb232290d1fcb267f",
     "de39f93a86fa9bd4ca7ccca248c2629545b2589f0930f58255d0ffdc63c18b06",
     "ec00e44287e0eb9178763207af2eb4978c4435f2b64e9a87c31c7be3d19c0e26"
   ],
@@ -300,7 +300,7 @@
     "agent-action-capsule verify --store DIR",
     "5",
     "Inclusion",
-    "each record's leaf and seq",
+    "each record's place in the log",
     "This record is in the book at that position, under the checkpoint root. Not: that the book was not rewritten before the checkpoint (rung 6).",
     "PASS",
     "6 of 6 records",
@@ -433,6 +433,6 @@
     "Who sealed these records",
     "Produced by capsulectl 0.1.0-dev (unknown).",
     "Which skill instructions were present was not recorded (the deal was opened without --skill).",
-    "This page's words: wording pack capsuleviewer.receipt.wording.en/v1, sha256 8fbedab7c3dc1a9f6117c6b5a3ffa8637808c966d219aecdf1be61a45d0d20ad."
+    "This page's words: wording pack capsuleviewer.receipt.wording.en/v1, sha256 b157e57eaa3f8d6bc3829177ec4250793ceda876a1df465eb232290d1fcb267f."
   ]
 }

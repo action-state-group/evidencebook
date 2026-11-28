@@ -14,8 +14,8 @@ github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af1
 github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b/go.mod h1:TKXiVniDy7RlksGjEAF6k9rj5NcwvwdQ6EGajzhghuo=
 github.com/action-state-group/capsule-engine/go v0.3.0 h1:nrRT2GOj+zPLF5lohWlYVR9sJ6fQJWUJuvHXIUap0go=
 github.com/action-state-group/capsule-engine/go v0.3.0/go.mod h1:RUUfr+8kEmYFT3Qelv7aZynN49rtaRkx7HhkWmu6AVw=
-github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261127224342-462da5741059 h1:VUEn0Mwk8fzVjqQFX5aGheWcUsvRaDjMWoQPcriBGTY=
-github.com/action-state-group/capsule-viewer/go v0.27.3-0.20261127224342-462da5741059/go.mod h1:D6U6Q9b4cEFb8McPyqInxANbVPCaoDFCM0KJk3CTwG4=
+github.com/action-state-group/capsule-viewer/go v0.28.1-0.20261128013950-7bb5b5598a5d h1:UJUJgvWIz7C+6cu8j5gyuJi8Jf9aX4Li+NiXBRzJNfY=
+github.com/action-state-group/capsule-viewer/go v0.28.1-0.20261128013950-7bb5b5598a5d/go.mod h1:D6U6Q9b4cEFb8McPyqInxANbVPCaoDFCM0KJk3CTwG4=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0 h1:AcIdYJq6vkhzBMQGsXm/AmfAqGLNAVLaNHXfambPVf0=
 github.com/action-state-group/checkpointed-local-log/go v0.4.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
 github.com/action-state-group/evidencebook v0.26.1-0.20261127020945-c201d503da3d h1:qydTbm3wL/gx7fhgck9tPaAf/Jpg+HPOHqs/GvoRnp8=

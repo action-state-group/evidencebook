@@ -261,6 +261,11 @@ func TestReportBuildRefusesAnXDealV1Bundle(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "no page was written")
 }
 
+// virtualFrames runs each animation frame callback on a 16 ms timer, which
+// the virtual clock of a --virtual-time-budget render always reaches.
+const virtualFrames = `window.requestAnimationFrame=function(cb){return setTimeout(function(){cb(performance.now())},16)};` +
+	`window.cancelAnimationFrame=function(id){clearTimeout(id)};`
+
 // clickedReceiptText renders page in headless Chrome after clicking the first
 // "Open receipt" control, and returns the document's visible text. The click is
 // a test-only script; with EVIDENCEBOOK_CHROME unset the test is skipped.
@@ -278,6 +283,15 @@ func clickedReceiptText(t *testing.T, page []byte) string {
 	html := strings.Replace(string(page), `{"audience":"*"`, `{"audience":"*","depth":"L2"`, 1)
 	html = regexp.MustCompile(`<meta http-equiv="Content-Security-Policy"[^>]*>`).ReplaceAllString(html, "")
 	html = strings.Replace(html, "</body>", "<script>"+click+"</script></body>", 1)
+	// --dump-dom takes the document when the virtual time budget runs out,
+	// and frames do not follow the virtual clock: on a busy machine the budget
+	// can end before the next real frame. The page's banner and the carried
+	// receipt's check are drawn on the frame after render (capsule-viewer
+	// f9fff24b, #492), so this copy delivers frames on the virtual clock, in
+	// the order they were asked for. The viewer's own browser tests hold its
+	// frame timing (capsule-viewer ts/test/banner-frame-browser.test.ts).
+	require.Contains(t, html, "<head>")
+	html = strings.Replace(html, "<head>", "<head><script>"+virtualFrames+"</script>", 1)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "page.html")
 	require.NoError(t, os.WriteFile(file, []byte(html), 0o600))
