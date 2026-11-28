@@ -149,11 +149,11 @@ func (s *dealSession) tick(ctx context.Context, stampNow bool, budget time.Durat
 	if err := s.settleEnded(ctx, c); err != nil {
 		return nil, err
 	}
-	delivered, pending, err := s.deliverCadence(ctx, c, p, service, now, budget)
+	delivered, deliveredTicks, pending, err := s.deliverCadence(ctx, c, p, service, now, budget)
 	if err != nil {
 		return nil, err
 	}
-	out["delivered"], out["pending"] = delivered, pending
+	out["delivered"], out["delivered_ticks"], out["pending"] = delivered, deliveredTicks, pending
 	return out, nil
 }
 
@@ -180,23 +180,49 @@ func (s *dealSession) tick(ctx context.Context, stampNow bool, budget time.Durat
 // Oldest first is the protocol's order, not a choice: the witness refuses a
 // checkpoint whose predecessor it has not registered. Each row not tried
 // keeps the reason of its stored state and says it was not tried.
-func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadence, p cli.Profile, service string, now time.Time, budget time.Duration) (delivered []uint64, pending []map[string]any, err error) {
+//
+// Each delivered checkpoint is also listed in deliveredTicks with the number
+// of the cadence tick (the stamp) that holds it, in delivered's order, and
+// each pending row names that number as "tick" when a tick holds it
+// (evidencebook#1083): a stamp cut by `deal agree` or `deal ruling` is
+// delivered by a later tick, and its reader numbers it from here rather
+// than from its size.
+func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadence, p cli.Profile, service string, now time.Time, budget time.Duration) (delivered []uint64, deliveredTicks []map[string]any, pending []map[string]any, err error) {
 	t, err := openOwnedTarget(ctx, p, cli.UseCLL, s)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer func() { err = errors.Join(err, t.Close()) }()
 	if err := cli.RearmRefusedLog(ctx, t.Log, service, now); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	waiting, err := t.Log.PendingWitnesses(ctx, now.Add(24*time.Hour), cll.MaxWitnesses)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if waiting, err = withReanchorDue(ctx, t.Log, waiting, p, service); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	delivered, pending = []uint64{}, []map[string]any{}
+	var sizes []uint64
+	for _, w := range waiting {
+		if w.WitnessID == service {
+			sizes = append(sizes, w.CheckpointSize)
+		}
+	}
+	ticks, err := ticksAtSizes(ctx, c, sizes)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// pendingRow is a pending row for the checkpoint at size, with the
+	// number of the tick that holds it when one does.
+	pendingRow := func(size uint64, members map[string]any) map[string]any {
+		members["checkpoint"] = size
+		if n, ok := ticks[size]; ok {
+			members["tick"] = n
+		}
+		return members
+	}
+	delivered, deliveredTicks, pending = []uint64{}, []map[string]any{}, []map[string]any{}
 	var deadline time.Time
 	if budget > 0 {
 		deadline = dealDeliverNow().Add(budget)
@@ -211,7 +237,7 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 		}
 		if stopped {
 			reason, text := cli.WitnessPendingReason(w, p.Checkpoint.Endpoint)
-			pending = append(pending, map[string]any{"checkpoint": w.CheckpointSize, "reason": reason, "text": text, "not_tried_this_run": true})
+			pending = append(pending, pendingRow(w.CheckpointSize, map[string]any{"reason": reason, "text": text, "not_tried_this_run": true}))
 			continue
 		}
 		// A delivery can store a receipt and still fail (a cancelled read
@@ -225,15 +251,15 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 		_, _ = dealDeliverWitness(ctx, p, t.Log, service, w.CheckpointSize, deadline)
 		receipt, ok, err := verifiedReceipt(ctx, p, t.Log, service, w.CheckpointSize)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if !ok {
 			state, err := t.Log.GetWitness(ctx, service, w.CheckpointSize)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			reason, text := cli.WitnessPendingReason(state, p.Checkpoint.Endpoint)
-			row := map[string]any{"checkpoint": w.CheckpointSize, "reason": reason, "text": text}
+			row := pendingRow(w.CheckpointSize, map[string]any{"reason": reason, "text": text})
 			// No attempt recorded: the delivery sent nothing, because the
 			// budget crossed capsule-cli's floor after the check above or the
 			// row's retry is not due yet.
@@ -248,29 +274,27 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 			stopped = !failedForGood(state, p)
 			continue
 		}
-		n, found, err := tickAtSize(ctx, c, w.CheckpointSize)
-		if err != nil {
-			return nil, nil, err
-		}
+		n, found := ticks[w.CheckpointSize]
 		// A cadence checkpoint no tick holds (a released build's core write,
 		// note §3.3) is witnessed on the log but not part of the cadence.
 		if found {
 			check, err := c.Witnessed(ctx, n, *receipt)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			if check.State != evidencebook.WitnessVerified {
 				// Nothing was stored, so the checkpoint is reported pending
 				// again rather than delivered.
-				pending = append(pending, map[string]any{"checkpoint": w.CheckpointSize, "reason": "not_checked", "text": check.Reason})
+				pending = append(pending, pendingRow(w.CheckpointSize, map[string]any{"reason": "not_checked", "text": check.Reason}))
 				s.migrated = migrated
 				continue
 			}
 			delivered = append(delivered, w.CheckpointSize)
+			deliveredTicks = append(deliveredTicks, map[string]any{"checkpoint": w.CheckpointSize, "tick": n})
 		}
 		s.migrated = migrated
 	}
-	return delivered, pending, nil
+	return delivered, deliveredTicks, pending, nil
 }
 
 // dealDeliverWitness is cli.DeliverWitnessBy, a test hook for a delivery
@@ -294,26 +318,40 @@ var dealDeliverNow = time.Now
 // checkpoints before leaving the rest for a later tick.
 const dealDeliverBudget = 5 * time.Second
 
-// tickAtSize is the cadence's tick whose checkpoint has size, walking back
-// from the newest: a pending delivery is for a recent tick.
-func tickAtSize(ctx context.Context, c *evidencebook.Cadence, size uint64) (uint64, bool, error) {
+// ticksAtSizes maps each of sizes that a cadence tick's checkpoint has to
+// that tick's number, in one walk back from the newest tick that stops below
+// the smallest size: pending deliveries are for recent ticks, and one walk
+// for the whole run keeps a long backlog from costing a walk per row.
+func ticksAtSizes(ctx context.Context, c *evidencebook.Cadence, sizes []uint64) (map[uint64]uint64, error) {
+	ticks := map[uint64]uint64{}
+	if len(sizes) == 0 {
+		return ticks, nil
+	}
+	want := make(map[uint64]bool, len(sizes))
+	least := sizes[0]
+	for _, size := range sizes {
+		want[size] = true
+		least = min(least, size)
+	}
 	last, ok, err := c.Last(ctx)
 	if err != nil || !ok {
-		return 0, false, err
+		return ticks, err
 	}
-	for n := last.N; n >= 1; n-- {
+	for n := last.N; n >= 1 && len(ticks) < len(want); n-- {
 		tick, err := c.Get(ctx, n)
 		if err != nil {
-			return 0, false, err
+			return nil, err
 		}
-		if tick.CheckpointSize == size {
-			return n, true, nil
+		if want[tick.CheckpointSize] {
+			if _, seen := ticks[tick.CheckpointSize]; !seen {
+				ticks[tick.CheckpointSize] = n
+			}
 		}
-		if tick.CheckpointSize != 0 && tick.CheckpointSize < size {
+		if tick.CheckpointSize != 0 && tick.CheckpointSize < least {
 			break
 		}
 	}
-	return 0, false, nil
+	return ticks, nil
 }
 
 // dealWitnessState says, for the deal checkpoint a report carries, where it

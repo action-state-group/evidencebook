@@ -313,7 +313,12 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   recorded as `witness_timeout` (no answer within this run's budget, which
   a healthy witness can also miss), and none starts with under 2s left; each row
   it did not send is listed in `pending` with `not_tried_this_run: true`
-  and its stored reason, for a later tick.
+  and its stored reason, for a later tick. Each `pending` row names the
+  stamp that holds its checkpoint as `tick` (absent for a checkpoint no
+  tick holds), and `delivered_ticks` lists each delivered checkpoint as
+  `{"checkpoint", "tick"}` in `delivered`'s order, so a stamp `deal agree`
+  or `deal ruling` cut and a later tick delivered keeps its number. With
+  `--wait-up-to`, these describe the last poll only.
 - A delivery whose request never reached the witness (refused, unresolved,
   timed out before connecting, or stopped by a proxy) is reported as "pending: network consent
   needed, or no network", in the poll's output and on the receipt: on an

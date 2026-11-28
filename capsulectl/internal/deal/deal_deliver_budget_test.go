@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/checkpointed-local-log/go/witness"
+	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -149,6 +151,11 @@ func TestDealTickStopsDeliveringAtTheBudget(t *testing.T) {
 	sizes := []uint64{uint64(rows[0]["checkpoint"].(float64)), uint64(rows[1]["checkpoint"].(float64)), uint64(rows[2]["checkpoint"].(float64))}
 	assert.Less(t, sizes[0], sizes[1])
 	assert.Less(t, sizes[1], sizes[2])
+	// Each pending row names the tick that holds it (evidencebook#1083).
+	for i, row := range rows {
+		assert.Equal(t, float64(i+1), row["tick"], "%v", row)
+	}
+	assert.Equal(t, []any{}, tick["delivered_ticks"])
 
 	// 3s a delivery against a 5s budget: the first is delivered, the
 	// second starts with 2s left and is ended at the deadline (capsule-cli
@@ -159,9 +166,12 @@ func TestDealTickStopsDeliveringAtTheBudget(t *testing.T) {
 	tick = dealRun(t, "tick")
 	assert.Equal(t, sizes[:2], h.calls)
 	assert.Equal(t, []any{float64(sizes[0])}, tick["delivered"])
+	assert.Equal(t, []any{map[string]any{"checkpoint": float64(sizes[0]), "tick": float64(1)}}, tick["delivered_ticks"])
 	rows = pendingRows(t, tick)
 	require.Len(t, rows, 2)
 	assert.Equal(t, float64(sizes[1]), rows[0]["checkpoint"])
+	assert.Equal(t, float64(2), rows[0]["tick"], "a row that timed out names its tick")
+	assert.Equal(t, float64(3), rows[1]["tick"], "a row left after the stop names its tick")
 	assert.Equal(t, "witness_timeout", rows[0]["reason"], "%v", rows[0])
 	assert.NotContains(t, rows[0], "not_tried_this_run")
 	assert.Equal(t, float64(sizes[2]), rows[1]["checkpoint"])
@@ -174,6 +184,10 @@ func TestDealTickStopsDeliveringAtTheBudget(t *testing.T) {
 	tick = dealRun(t, "tick")
 	assert.Equal(t, sizes[1:], h.calls)
 	assert.Equal(t, []any{float64(sizes[1]), float64(sizes[2])}, tick["delivered"])
+	assert.Equal(t, []any{
+		map[string]any{"checkpoint": float64(sizes[1]), "tick": float64(2)},
+		map[string]any{"checkpoint": float64(sizes[2]), "tick": float64(3)},
+	}, tick["delivered_ticks"], "in delivered's order")
 	assert.Empty(t, tick["pending"])
 }
 
@@ -279,7 +293,110 @@ func TestDealTickWithNoBacklogDeliversItsCheckpoint(t *testing.T) {
 	tick := dealRun(t, "tick")
 	require.Equal(t, "ticked", tick["state"])
 	assert.Equal(t, []any{tick["checkpoint"]}, tick["delivered"])
+	assert.Equal(t, []any{map[string]any{"checkpoint": tick["checkpoint"], "tick": tick["tick"]}}, tick["delivered_ticks"],
+		"a due tick names its own checkpoint's tick")
 	assert.Empty(t, tick["pending"])
+}
+
+// The stamp `deal agree` cuts (Cadence.Stamp, deal/open.go) is delivered by
+// a later tick, which names it by its tick number, pending and delivered,
+// so a reader never infers the number from the size (evidencebook#1083).
+// `deal ruling` cuts its stamp with the same call (caseProof).
+func TestDealTickNumbersTheStampAgreeCut(t *testing.T) {
+	public, key := witnessPair(t)
+	cadenceFixture(t, "https://127.0.0.1:1", public, "1h", "0s", 0)
+	dealRun(t, "set-version", "x-deal-v1", "--migrate")
+	seller := thisDealParty(t)
+	newV1Side(t) // the buyer, who offers
+	offerFile := filepath.Join(t.TempDir(), "offer.json")
+	offer := dealRun(t, "offer", "--input", writeJSON(t, offerTo(seller.signer)), "--out", offerFile)["offer"].(string)
+	party(t, seller.config)
+	// The buyer's fixture set the deal clock; the seller's run is timed from here.
+	h := hookDelivery(t)
+	clock := clockAt(t, time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC))
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"], "a scheduled tick, delivery stalled")
+	require.Equal(t, "kept, and counted", dealRun(t, "receive", offerFile)["record"])
+	before := lastTick(t)
+	*clock = clock.Add(10 * time.Minute)
+	agreed := dealRun(t, "agree", offer, "--admit", sealAdmit(t, "GO"), "--out", filepath.Join(t.TempDir(), "agreement.json"))
+	require.Equal(t, true, agreed["stamp_proof"], "%v", agreed)
+	stamp := lastTick(t)
+	require.Equal(t, before.N+1, stamp.N, "agree cut one stamp")
+
+	// Not due: the run only retries what is pending, oldest first. Stalled,
+	// every row stays pending, numbered one after another, the agree stamp
+	// last.
+	*clock = clock.Add(time.Minute)
+	tick := dealRun(t, "tick")
+	require.Equal(t, "not_due", tick["state"], "%v", tick)
+	rows := pendingRows(t, tick)
+	require.Len(t, rows, int(stamp.N), "%v", tick)
+	for i, row := range rows {
+		assert.Equal(t, float64(i+1), row["tick"], "%v", row)
+	}
+	assert.Equal(t, float64(stamp.CheckpointSize), rows[len(rows)-1]["checkpoint"])
+
+	// Not due again, and the witness answers: all are delivered, numbered.
+	h.slow(time.Second, key)
+	tick = dealRun(t, "tick", "--deliver-for", "0")
+	require.Equal(t, "not_due", tick["state"], "%v", tick)
+	assert.Empty(t, tick["pending"])
+	ticks := tick["delivered_ticks"].([]any)
+	require.Len(t, ticks, int(stamp.N), "%v", tick)
+	assert.Equal(t, map[string]any{"checkpoint": float64(stamp.CheckpointSize), "tick": float64(stamp.N)}, ticks[len(ticks)-1],
+		"the agree stamp is numbered when delivered")
+	for i, row := range ticks {
+		assert.Equal(t, tick["delivered"].([]any)[i], row.(map[string]any)["checkpoint"], "in delivered's order")
+	}
+}
+
+// lastTick is the selected profile's newest cadence tick.
+func lastTick(t *testing.T) evidencebook.CadenceTick {
+	t.Helper()
+	var last evidencebook.CadenceTick
+	withSession(t, func(s *dealSession) {
+		c, _, err := s.cadenceOf(t.Context())
+		require.NoError(t, err)
+		var ok bool
+		last, ok, err = c.Last(t.Context())
+		require.NoError(t, err)
+		require.True(t, ok)
+	})
+	return last
+}
+
+// ticksAtSizes finds every size a tick holds in one walk, and leaves out a
+// size no tick holds.
+func TestTicksAtSizes(t *testing.T) {
+	public, _ := witnessPair(t)
+	cadenceFixture(t, "https://127.0.0.1:1", public, "1m", "0s", 0)
+	retailDeal(t)
+	h := hookDelivery(t)
+	backlog(t, h, 3)
+	withSession(t, func(s *dealSession) {
+		c, _, err := s.cadenceOf(t.Context())
+		require.NoError(t, err)
+		want := map[uint64]uint64{}
+		for n := uint64(1); n <= 3; n++ {
+			tick, err := c.Get(t.Context(), n)
+			require.NoError(t, err)
+			want[tick.CheckpointSize] = n
+		}
+		var sizes []uint64
+		var newest uint64
+		for size := range want {
+			sizes = append(sizes, size)
+			newest = max(newest, size)
+		}
+		sizes = append(sizes, newest+1) // no tick's
+
+		got, err := ticksAtSizes(t.Context(), c, sizes)
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+		none, err := ticksAtSizes(t.Context(), c, nil)
+		require.NoError(t, err)
+		assert.Empty(t, none)
+	})
 }
 
 // A delivery longer than the budget is ended at the budget and tried again
