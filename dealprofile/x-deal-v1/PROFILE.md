@@ -564,14 +564,18 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   `time` `null` and `witnessed` `false`, because the copy withholds the time, which its audience
   says; a page never reads them as "not witnessed". `xdealv1.VerifyReport` refuses an `audit`
   report that names a witness, a referee or a witnessed time. It is never full and never carries
-  the counterparty's half. It carries no personal detail: x-deal-v1 records hold a party's name,
-  contact and addresses only as commitments (section 5), and no opening, intent or witness
-  receipt travels. It carries the offer only when the offer names no `ask`: `ask.url` is a way
-  to reach the offerer, a contact, and the signed offer travels whole or not at all, so an audit
-  copy of such a deal shows no item or quantity, and its page says why (Sherlock2's ruling on
-  evidencebook#1058); `xdealv1.VerifyReportBundle` refuses an audit copy that carries one. The parties' keys, the agreement's `rules_url` (the adjudicator's
-  published rules) and the witnesses' URLs in the signed agreement stay: they are not personal,
-  and the keys let a reader link a party across copies, which the copy does not prevent.
+  the counterparty's half. It carries no personal detail as a structured member: x-deal-v1
+  records hold a party's name, contact and addresses only as commitments (section 5), and no
+  opening, intent or witness receipt travels. A free-text member of a signed record, such as the
+  offer's `item`, travels as it was signed; the host's share gate refuses a copy that would carry
+  any personal value the holder holds (capsulectl's `deal report --share audit`). It carries the
+  offer only when the offer names no `ask`: `ask.url` is a way to reach the offerer, a contact,
+  and the signed offer travels whole or not at all, so an audit copy of such a deal shows no item
+  or quantity, and a page drawing it says why (capsule-viewer's receipt module; Sherlock2's
+  ruling on evidencebook#1058). `xdealv1.VerifyReportBundle` refuses an audit copy that carries
+  such an offer. The parties' keys, the agreement's `rules_url` (the adjudicator's published
+  rules) and the witnesses' URLs in the signed agreement stay: they are not personal, and the
+  keys let a reader link a party across copies, which the copy does not prevent.
 - **Verifying a report.** `xdealv1.VerifyReport` reads a report against its deal's first record,
   the agreement at seq 1 of the holder's deal book. Among its checks (design note §9, "Verifying a
   report"), it refuses a report not signed by the key that signed that record, and a row whose
