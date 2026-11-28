@@ -224,11 +224,13 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 	assert.NotContains(t, string(pageBootstrapData(t, mustRead(t, page))), "inclusion_proof")
 	with := readV0Page(t, chrome, page)
 	require.Empty(t, with.Errors)
-	require.Len(t, with.Rungs["witness"], 1)
-	assert.Contains(t, with.Rungs["witness"][0], "test witness")
-	assert.NotEqual(t, "No witness result was reported to this page.", with.Rungs["witness"][0])
+	// The page's core draws capsulectl's witness line under the banner
+	// (capsule-viewer#489); the module's ladder no longer has a witness rung.
+	assert.Contains(t, with.WitnessNotice["book-witnessed"], "test witness")
+	assert.Contains(t, with.WitnessNotice["book-witnessed"], "as capsulectl verify reported on your own book")
 	without := reportV0Page(t, chrome, f.dealID, "")
-	assert.Equal(t, []string{"No witness result was reported to this page."}, without.Rungs["witness"])
+	assert.NotContains(t, without.WitnessNotice, "book-witnessed", "no witness time without --witness-directory")
+	assert.Contains(t, without.WitnessNotice, "not-witnessed")
 
 	_, err = invoke(t, "", "--profile", "deal", "deal", "report", "--deal", f.dealID, "--html", filepath.Join(t.TempDir(), "s.html"),
 		"--share", cli.DealAudienceCounterparty, "--to", "the shop", "--witness-directory", f.directory)
@@ -267,7 +269,7 @@ func TestV0PageDrawsTheHoldersWitnessTime(t *testing.T) {
 		assert.NotEqual(t, "verified", w.(map[string]any)["status"])
 	}
 	part := readV0Page(t, chrome, later)
-	assert.NotContains(t, strings.Join(part.Rungs["witness"], " "), "test witness", "no earlier witness time")
+	assert.NotContains(t, part.WitnessNotice, "book-witnessed", "no earlier witness time")
 }
 
 // A copy whose report is sealed in the deal's log reads its witness time the

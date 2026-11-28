@@ -20,6 +20,10 @@ type v0PageView struct {
 	Module string `json:"module"`
 	// Rungs are each [data-rung] line's text, by rung.
 	Rungs map[string][]string `json:"rungs"`
+	// WitnessNotice is the core's witness line under the banner, by its
+	// data-witness-notice (capsule-viewer#489: "book-witnessed" is
+	// capsulectl's reported witness time of the holder's own book).
+	WitnessNotice map[string]string `json:"witness_notice"`
 	// Attrs are the after-yes, settlement and countersign lines' states.
 	AfterYes    string   `json:"after_yes"`
 	Settlement  string   `json:"settlement"`
@@ -47,9 +51,12 @@ const v0PageViewScript = `(() => {
   const rows = journey ? [...journey.querySelector(".cv-section__body").children].map((c) =>
     c.getAttribute("data-item") ? c.querySelector("[data-sealed-text=item]").textContent : c.getAttribute("data-sealed-text") === "item" ? c.textContent : null).filter((t) => t !== null) : null;
   const authority = document.querySelector("[data-authority=sealed]") || section("Authority, as the holder's report states it");
+  const notices = {};
+  for (const n of document.querySelectorAll("[data-witness-notice]")) notices[n.getAttribute("data-witness-notice")] = n.textContent;
   return {
     module: root ? root.getAttribute("data-receipt-module") : "",
     rungs,
+    witness_notice: notices,
     after_yes: attr("[data-after-yes]", "data-after-yes"),
     settlement: attr("[data-settlement]", "data-settlement"),
     countersign: [...document.querySelectorAll("[data-countersign]")].map((n) => n.getAttribute("data-countersign")),

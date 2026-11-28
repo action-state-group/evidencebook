@@ -480,7 +480,8 @@ var v1ShareGate = dealShareGate
 // it is written (persistShare): the deal, the audience, the recipient, the
 // digest of the exact bytes, the time and a fresh nonce; kind is report (the
 // pair) or bundle, and a bundle's record also names the records it carries
-// beside the deal book (the agreement and every record the rows rely on).
+// beside the deal book (the agreement and every record the rows rely on)
+// and, when it carries the offer, the offer's record digest.
 // It carries none of an x-deal-v0 copy's receipt-page fields.
 func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, kind, audience, recipient, adjudicatorKey string, data []byte, book xdealv1.ReportBook) (map[string]any, error) {
 	nonce := make([]byte, 32)
@@ -511,6 +512,15 @@ func (s *dealSession) recordV1Share(ctx context.Context, p cli.Profile, dealID, 
 			ids = append(ids, id)
 		}
 		record["relied_on"] = ids
+		// The offer the copy carries (book.offer, evidencebook#1065): named
+		// by its record digest, the one the agreement cites.
+		if book.Offer != nil {
+			sent, err := xdealv1.VerifySent(book.Offer, nil)
+			if err != nil {
+				return nil, err
+			}
+			record["offer"] = sent.Digest
+		}
 	}
 	s.dp = p
 	s.dp.LogID = cli.DealLogID(dealID)

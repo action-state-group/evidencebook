@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-85tj9wJmR+Gsh37I66iN8M1BI2morkQMF7q9I8dnbpc=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-zpwy4068Y9scM1bTDNrSJGth8TPCV6oVS12xGSJ1vMQ='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-QBCqYBHboWw7xo9tZ7FDzcE6U0PSnqEKuuf2m5XO6kQ=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-n9uvQ0qkdQ13DBClqOk/tdvYVZR7W4Tp5yl6Td2Hd/8=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-zpwy4068Y9scM1bTDNrSJGth8TPCV6oVS12xGSJ1vMQ='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Evidence Graph</title>
     <style>
@@ -14184,12 +14184,18 @@ ${body}
     const input = obj3(context.resolvedDisclosures.get(named)?.agent_input);
     return input["state"] === "disclosed" ? obj3(obj3(input["payload"])["report"])["audience"] : void 0;
   }
-  function bookWitnessedOnKeep(context, reading) {
-    if (reading?.kind !== "pass") return false;
-    const w = obj3(reading.witnessed);
-    if (w["status"] !== "verified" || typeof w["witness"] !== "string" || w["witness"] === "" || !utcInstant(w["at"]))
-      return false;
-    return sealedAudience(context) === "keep";
+  function bookWitnessOf(reading) {
+    if (reading?.kind !== "pass") return void 0;
+    const got = obj3(reading.witnessed);
+    if (got["status"] === "failed" || got["status"] === "withheld")
+      return { status: got["status"] };
+    if (got["status"] !== "verified" || typeof got["witness"] !== "string" || got["witness"] === "" || !utcInstant(got["at"]))
+      return void 0;
+    return {
+      status: "verified",
+      witness: got["witness"],
+      at: got["at"]
+    };
   }
   function utcInstant(value) {
     if (typeof value !== "string") return false;
@@ -14197,6 +14203,65 @@ ${body}
     const ms = Date.parse(value);
     return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 19) + "Z" === value;
   }
+
+  // src/receipt-core-words.generated.ts
+  var RECEIPT_RECORD_PACK = {
+    pack: `{
+  "wording_pack_version": "aac.wording-pack/v0",
+  "id": "capsuleviewer.receipt.wording.en/v1",
+  "locale": "en",
+  "entries": {
+    "record.rung.10.sub": "a sealed Result (a receipt has none)",
+    "record.rung.10.proves.own": "A receipt carries no sealed Result: a ruling on a term is one of the deal's own records, in the steps above.",
+    "record.rung.10.proves.shared": "A receipt carries no sealed Result: a ruling on a term is one of the deal's own records, in the steps above.",
+    "record.rung.11.sub": "a countersigner's signature over this file",
+    "record.rung.11.proves.own": "A countersigner also signed this file's records; the COUNTERSIGNED stamp names it, and says so when the directory does not list it as independent of the parties. Not: that it checked any term.",
+    "record.rung.11.proves.shared": "A countersigner also signed this file's records; the COUNTERSIGNED stamp names it, and says so when the directory does not list it as independent of the parties. Not: that it checked any term."
+  }
+}
+`,
+    sha256: "0d6ab05b67d12be5a9d7168ec90f4f28fa7f608d940e0b34b4657a8d7f38636b"
+  };
+  var RECEIPT_PAGE_WORDS = {
+    "rung.book_witnessed": "Time-stamped by {witness} at {at} ({utc}), as capsulectl verify reported on your own book. This file carries no witness receipt, so this page did not check it itself.",
+    "rung.book_witness_failed": "capsulectl verify reported that your own book's witness time-stamp did not verify, so no time-stamp is shown. This page did not check it itself.",
+    "rung.book_witness_withheld": "capsulectl verify found no time-stamp for your own book from the witnesses it was given. That does not mean there is none. This page did not check it itself.",
+    "deal.proof.lede.passed": "Yes. capsulectl verify passed every test when this page was made. The page shows its answer; it did not re-check by itself.",
+    "deal.proof.lede.partial": "capsulectl verify passed every test it ran when this page was made; a test marked \u2013 was not run on this copy. The page shows its answer; it did not re-check by itself.",
+    "deal.proof.lede.failed": "No. capsulectl verify reported a test that failed.",
+    "deal.proof.lede.none": "This page was not given capsulectl verify's answer for each test. Download the proof file and check it yourself.",
+    "deal.proof.producer_signatures": "Signed by the agent's device",
+    "deal.proof.interval_coverage": "No step missing from first to last",
+    "deal.proof.graph_closure": "Each step links to the one before",
+    "deal.proof.per_record_membership": "Every step is in this deal's log",
+    "deal.proof.checkpoint": "The log's summary adds up",
+    "deal.proof.witness.filled": "Outside time stamp: {witness} at {at}, as capsulectl verify reported on your own book",
+    "deal.proof.witness.open": "Outside time stamp: not in this copy",
+    "deal.proof.witness.not_checked": "Outside time stamp: not checked here",
+    "deal.proof.witness.failed": "Outside time stamp: didn't verify",
+    "deal.proof.witness.note": "Your History card's checkpoint may carry it.",
+    "deal.proof.witness.note.report": "The holder's History card's checkpoint may carry it.",
+    "deal.proof.status.pass": "passed",
+    "deal.proof.status.fail": "failed",
+    "deal.proof.status.absent": "not in this copy",
+    "deal.proof.status.withheld": "not run on this copy",
+    "deal.proof.witness.filled_checked": "Outside time stamp: {witness} at {at}, on your own book",
+    "deal.proof.counterparty_half": "The seller's signed agreement",
+    "deal.proof.counterparty_half.seller": "The buyer's signed agreement",
+    "deal.proof.counterparty_half.report": "The other side's signed agreement",
+    "deal.proof.lede.answers.failed": "No. capsulectl verify failed a test when this page was made. The page shows its answers; it did not re-check by itself.",
+    "deal.proof.lede.answers.some": "These are the only answers capsulectl verify gave this page; a test marked \u2013 was not among them. Download the proof file and check it yourself.",
+    "receipt_page.check.reported": "{check}: {status}, as capsulectl verify reported it. This page did not run this check.",
+    "receipt_page.check.reported.also": "{check}: {status}, as capsulectl verify reported it. This page also ran this check itself, in the list above.",
+    "receipt_page.check.witnesses": "Witness time stamp",
+    "receipt_page.ladder.lede": "One ladder for every record in this file: each rung's status, and how many of the {n} records have it.",
+    "receipt_page.ladder.count": "{k} of {n} records",
+    "receipt_page.ladder.records": "records {ids}",
+    "receipt_page.ladder.inclusion": "each record's leaf and seq",
+    "receipt_page.content.times_withheld": "The content as recorded matches the digest the record commits to. It is shown here with its record times left out, so what is shown is not exactly what the digest covers.",
+    "receipt_page.times.withheld": "Record times are shown only on the holder's own copy. This copy was made for someone else, so the record views here leave them out.",
+    "deal.proof.cited": "Each check, and whether capsulectl verify or this page ran it, is listed under \u201CHow this page was checked\u201D."
+  };
 
   // src/builtin-manifests.ts
   var BUILTIN_MANIFEST_REPORT_ROWS = Object.freeze(
@@ -18673,7 +18738,7 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
   }
   function builtCommit() {
     if (false) return void 0;
-    return commitPrefix("ae17d1b9538a0b1ef1ff115a3d4463b98e09808c");
+    return commitPrefix("353ff7b4cd31ab3661f00187be56d18cbf6ab29d");
   }
   var commit = builtCommit();
   var unreleased = true;
@@ -26174,6 +26239,22 @@ ${key}`);
   };
 
   // src/record-page.ts
+  var RECORD_TIME_MEMBERS = /* @__PURE__ */ new Set([
+    "timestamp",
+    "committed_at",
+    "observed_at",
+    "at"
+  ]);
+  var TIME_VALUE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/u;
+  function withoutRecordTimes(value) {
+    if (Array.isArray(value)) return value.map(withoutRecordTimes);
+    if (value === null || typeof value !== "object") return value;
+    const out = {};
+    for (const [key, member] of Object.entries(value))
+      if (!(RECORD_TIME_MEMBERS.has(key) && typeof member === "string" && TIME_VALUE.test(member)))
+        out[key] = withoutRecordTimes(member);
+    return out;
+  }
   var object11 = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
   var HEX = /^[0-9a-f]+$/u;
   var ANY_HEX = /^[0-9a-fA-F]+$/u;
@@ -26585,7 +26666,10 @@ ${key}`);
     return w.t(`record.tag.${tag}`);
   }
   function capsuleCard(input, w) {
-    const raw = object11(input.context.recordIndex.get(input.capsuleId));
+    const stored = input.context.recordIndex.get(input.capsuleId);
+    const raw = object11(
+      input.timesWithheld === true ? withoutRecordTimes(stored) : stored
+    );
     const card2 = el11("section", "l3-card");
     card2.dataset.l3 = "capsule";
     card2.append(el11("h4", "l3-k", w.t("record.capsule.title")));
@@ -26661,7 +26745,7 @@ ${key}`);
     }
     return foot;
   }
-  function renderRecordPage(input, w) {
+  function renderRecordPage(input, w, options = {}) {
     const raw = object11(input.context.recordIndex.get(input.capsuleId));
     const page = el11("div", "cv-l3");
     page.dataset.level = "3";
@@ -26677,7 +26761,111 @@ ${key}`);
     );
     const cols = el11("div", "l3-cols");
     cols.append(envelopeCard(input, w), capsuleCard(input, w));
-    page.append(cols, ladderCard(input, w), footer(w));
+    page.append(cols);
+    if (options.ladder !== false) page.append(ladderCard(input, w), footer(w));
+    return page;
+  }
+  var STATUS_ORDER = [
+    "FAIL",
+    "INCONCLUSIVE",
+    "NOT_CHECKED",
+    "NOT_PRESENT",
+    "PASS"
+  ];
+  function renderPageLadder(input, w, words) {
+    const n = input.capsuleIds.length;
+    const per = input.capsuleIds.map((capsuleId) => ({
+      capsuleId,
+      rungs: ladder({ ...input, capsuleId }, w)
+    }));
+    const page = el11("div", "cv-l3");
+    page.dataset.pageLadder = "";
+    const card2 = el11("section", "l3-card l3-ladder");
+    card2.dataset.l3 = "ladder";
+    card2.append(
+      el11("h3", "l3-title", w.t("record.ladder.title")),
+      el11("p", "l3-note", words.lede(n))
+    );
+    const table3 = el11("table", "l3-table");
+    const head2 = el11("tr");
+    for (const key of [
+      "record.ladder.col.n",
+      "record.ladder.col.proof",
+      "record.ladder.col.proves",
+      "record.ladder.col.status",
+      "record.ladder.col.check"
+    ])
+      head2.append(el11("th", "", w.t(key)));
+    const thead = el11("thead");
+    thead.append(head2);
+    table3.append(thead);
+    const body = el11("tbody");
+    const rungCount = per[0]?.rungs.length ?? 0;
+    for (let i = 0; i < rungCount; i++) {
+      const number = per[0].rungs[i].n;
+      const by = /* @__PURE__ */ new Map();
+      for (const record of per) {
+        const status3 = record.rungs[i].status;
+        by.set(status3, [...by.get(status3) ?? [], record.capsuleId]);
+      }
+      const tr = el11("tr");
+      tr.dataset.rung = String(number);
+      tr.dataset.rungStatus = [...by.keys()].sort().join(" ");
+      tr.append(el11("td", "l3-n", String(number)));
+      const name = el11("td");
+      name.append(
+        el11("b", "", w.t(`record.rung.${number}.title`)),
+        el11(
+          "div",
+          "l3-sub",
+          // A rung's line names one record's parent or log position on a
+          // record's own ladder; here it names no record.
+          number === 4 ? w.t("record.rung.4.sub.none") : number === 5 ? words.inclusionSub() : per[0].rungs[i].sub
+        )
+      );
+      tr.append(
+        name,
+        el11("td", "", w.t(`record.rung.${number}.proves.${input.voice}`))
+      );
+      const status2 = el11("td");
+      for (const state of STATUS_ORDER) {
+        const ids = by.get(state);
+        if (ids === void 0) continue;
+        const line = el11("div");
+        line.dataset.status = state;
+        const chip = el11("span", `l3-status l3-s-${state}`, state);
+        chip.dataset.status = state;
+        line.append(chip, " ", words.count(ids.length, n));
+        if (ids.length < n)
+          line.append(
+            " \xB7 ",
+            words.records(ids.map((id) => shortHex(id)).join(", "))
+          );
+        status2.append(line);
+        const notes = /* @__PURE__ */ new Map();
+        for (const record of per)
+          if (record.rungs[i].status === state) {
+            const note = record.rungs[i].note;
+            if (note !== void 0)
+              notes.set(note, [...notes.get(note) ?? [], record.capsuleId]);
+          }
+        for (const [note, about] of notes) {
+          const said = el11("div", "l3-sub", note);
+          said.dataset.rungNote = "";
+          if (about.length < ids.length)
+            said.append(
+              " \xB7 ",
+              words.records(about.map((id) => shortHex(id)).join(", "))
+            );
+          status2.append(said);
+        }
+      }
+      tr.append(status2, el11("td", "l3-cmd", w.t(`record.rung.${number}.check`)));
+      body.append(tr);
+    }
+    table3.append(body);
+    card2.append(table3);
+    page.append(card2, footer(w));
     return page;
   }
   var RECORD_PAGE_CSS = `
@@ -26711,6 +26899,10 @@ ${key}`);
 .cv-l3 .l3-foot{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));gap:16px;font-size:12.5px}
 .cv-l3 .l3-foot p{margin:0}
 @media (max-width:40rem){.cv-l3 .l3-table,.cv-l3 .l3-table tbody,.cv-l3 .l3-table tr,.cv-l3 .l3-table td{display:block}.cv-l3 .l3-table thead{display:none}.cv-l3 .l3-table tr{border-bottom:1px solid #E3DED3;padding:6px 0}.cv-l3 .l3-table td{border:0;padding:3px 6px}}
+/* A receipt page's checked section, as a card (capsule-viewer#489). */
+details.cv-checked--card{border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:10px;padding:12px 16px;margin:16px 0}
+details.cv-checked--card>summary{cursor:pointer}
+details.cv-checked--card[open]>summary{margin-bottom:8px}
 `;
 
   // src/core-strip.ts
@@ -27622,7 +27814,7 @@ ${pad.repeat(depth)}`;
   }
   var recordsWord2 = (count3) => `${count3} ${count3 === 1 ? "record" : "records"}`;
   var topLevelRecordsWord = (count3) => `${count3} top-level ${count3 === 1 ? "record" : "records"}`;
-  function renderVerificationBanner(root, model, coverage, witness) {
+  function renderVerificationBanner(root, model, coverage, witness, bookWitness) {
     const bar = element6("div");
     bar.className = model.state === "failed" ? "cv-shell-bar cv-failed" : model.state === "incomplete" ? "cv-shell-bar cv-incomplete" : "cv-shell-bar";
     const banner = element6("span", model.line);
@@ -27662,7 +27854,12 @@ ${pad.repeat(depth)}`;
       detail.dataset.bannerDetail = "";
       root.append(detail);
     }
-    if (witness !== void 0) {
+    if (bookWitness !== void 0 && (model.state === "verified" || model.state === "incomplete")) {
+      const notice = bookWitnessLine(bookWitness);
+      notice.className = "cv-banner-detail cv-witness-notice";
+      notice.dataset.witnessNotice = "book-witnessed";
+      root.append(notice);
+    } else if (witness !== void 0) {
       const notice = element6("p", WITNESS_NOTICE_LINES[witness]);
       notice.className = "cv-banner-detail cv-witness-notice";
       notice.dataset.witnessNotice = witness;
@@ -28195,7 +28392,7 @@ ${pad.repeat(depth)}`;
       () => verdict2 ?? "not valid"
     )
   );
-  function renderCheckLists(host, lists, verifierHint, reportFailed = [], verdict2) {
+  function renderCheckLists(host, lists, verifierHint, reportFailed = [], verdict2, reported = []) {
     const groups = [
       ["page", CHECKED_ON_THIS_PAGE, lists.page],
       [
@@ -28221,10 +28418,17 @@ ${pad.repeat(depth)}`;
       ]
     ];
     for (const [which, heading, ids] of groups) {
-      if (ids.length === 0) continue;
+      const extra = which === "capsulectl" ? reported : [];
+      if (ids.length === 0 && extra.length === 0) continue;
       host.append(element6("h4", heading));
       const list2 = element6("ul");
       list2.dataset.checks = which;
+      for (const row2 of extra) {
+        const item = row2.node();
+        item.dataset.check = `capsulectl-${row2.name}`;
+        item.dataset.checkStatus = row2.status;
+        list2.append(item);
+      }
       for (const id of ids) {
         const item = element6(
           "li",
@@ -28256,7 +28460,7 @@ ${pad.repeat(depth)}`;
     scope.dataset.checks = "scope";
     host.append(scope);
   }
-  async function renderVerificationPage(root, context, styled, applied, refused, citedSigners, verifierHint, depth, stamps, charts, contract, l3, checkedId, reportFailed = [], verdict2) {
+  async function renderVerificationPage(root, context, styled, applied, refused, citedSigners, verifierHint, depth, stamps, charts, contract, l3, checkedId, reportFailed = [], verdict2, receipt) {
     const { bundle, verification: verified } = context;
     const passed = bundleVerified(verified) && reportFailed.length === 0;
     const section = element6("section");
@@ -28311,13 +28515,19 @@ ${pad.repeat(depth)}`;
     renderReceipts(page, model.receipts);
     if (model.parentWitness !== void 0)
       renderParentWitness(page, model.parentWitness);
-    if (model.selfWitnessed) {
+    const book = receipt?.bookWitness;
+    if (model.selfWitnessed && book?.status !== "verified") {
       const witness = element6(
         "p",
         "self-witnessed: no transparency-service receipt"
       );
       witness.dataset.witness = "self";
       page.append(witness);
+    }
+    if (receipt?.shared === true) {
+      const withheld = element6("p", receiptWord("receipt_page.times.withheld"));
+      withheld.dataset.times = "withheld";
+      page.append(withheld);
     }
     const contentStyle = element6("style");
     contentStyle.textContent = RECORD_CONTENT_CSS;
@@ -28346,12 +28556,20 @@ ${pad.repeat(depth)}`;
         read,
         kind: (id) => recordKind(rawRecords.get(id), read.get(id)),
         build: (id, record) => {
-          const body = renderRecordEntry(id, record);
+          const body = renderRecordEntry(id, record, receipt?.shared === true);
           if (l3 !== void 0 && context.recordIndex.has(id))
             body.append(
               renderRecordPage(
-                { context, capsuleId: id, stamps, result: result3, voice: l3.voice },
-                l3.words
+                {
+                  context,
+                  capsuleId: id,
+                  stamps,
+                  result: result3,
+                  voice: l3.voice,
+                  ...receipt?.shared === true ? { timesWithheld: true } : {}
+                },
+                l3.words,
+                { ladder: receipt === void 0 }
               )
             );
           return body;
@@ -28359,14 +28577,37 @@ ${pad.repeat(depth)}`;
       },
       depth
     );
+    if (receipt !== void 0 && l3 !== void 0 && passed) {
+      const ids = model.records.map((r) => r.capsuleId).filter((id) => context.recordIndex.has(id));
+      if (ids.length > 0)
+        page.append(
+          renderPageLadder(
+            { context, capsuleIds: ids, stamps, result: result3, voice: l3.voice },
+            l3.words,
+            {
+              lede: (n) => receiptWord("receipt_page.ladder.lede", { n }),
+              count: (k, n) => receiptWord("receipt_page.ladder.count", { k, n }),
+              records: (list2) => receiptWord("receipt_page.ladder.records", { ids: list2 }),
+              inclusionSub: () => receiptWord("receipt_page.ladder.inclusion")
+            }
+          )
+        );
+    }
     renderStamps(page, stamps);
     renderCompletenessStatement(page, model.completeness);
-    renderChecks(page, model.checks);
+    if (receipt === void 0) renderChecks(page, model.checks);
     renderExtensions(page, extensions2, presentationRefusalNotices(refused));
-    renderCheckLists(page, model.checkLists, verifierHint, reportFailed, verdict2);
+    renderCheckLists(
+      page,
+      model.checkLists,
+      verifierHint,
+      reportFailed,
+      verdict2,
+      receipt === void 0 ? [] : reportedRows(receipt, model.checkLists)
+    );
     page.append(element6("p", model.verifyIndependentlyLine));
     const folded = document.createElement("details");
-    folded.className = "cv-checked";
+    folded.className = receipt === void 0 ? "cv-checked" : "cv-checked cv-checked--card";
     folded.id = checkedId;
     folded.dataset.checked = "";
     folded.open = !passed || depth === "L2";
@@ -28426,20 +28667,22 @@ ${pad.repeat(depth)}`;
     cell2.dataset.n = String(count3.n);
     parent2.append(cell2);
   }
-  function renderProvenance2(capsuleId, coordinates, times) {
+  function renderProvenance2(capsuleId, coordinates, times, timesWithheld = false) {
     const panel = element6("section");
     panel.append(element6("h4", "Provenance"));
     const details = element6("dl");
     appendValue(details, "capsule ID", capsuleId);
     if (times.provenanceMode !== void 0)
       appendValue(details, "provenance", times.provenanceMode);
-    appendTime(
-      details,
-      "action time",
-      times.actionTime,
-      "action time not stated"
-    );
-    appendTime(details, "seal time", times.sealTime, "seal time not stated");
+    if (!timesWithheld) {
+      appendTime(
+        details,
+        "action time",
+        times.actionTime,
+        "action time not stated"
+      );
+      appendTime(details, "seal time", times.sealTime, "seal time not stated");
+    }
     details.append(element6("dt", "seal status"));
     const seal = element6(
       "dd",
@@ -28614,7 +28857,7 @@ ${pad.repeat(depth)}`;
     );
     root.append(section);
   }
-  function renderCitedMember(host, field, resolution, committed, label = field) {
+  function renderCitedMember(host, field, resolution, committed, label = field, timesWithheld = false) {
     if (resolution.state !== "disclosed" && resolution.state !== "disclosure_mismatch" && committed === void 0)
       return;
     host.append(element6("h5", label));
@@ -28624,10 +28867,24 @@ ${pad.repeat(depth)}`;
         "The content shown matches the digest the record commits to."
       );
       checked.dataset.contentCheck = "digest";
-      host.append(
-        checked,
-        renderContent(resolution.payload, DEFAULT_WORDS.lines)
+      if (!timesWithheld) {
+        host.append(
+          checked,
+          renderContent(resolution.payload, DEFAULT_WORDS.lines)
+        );
+        return;
+      }
+      const content = renderContent(
+        withoutRecordTimes(resolution.payload),
+        DEFAULT_WORDS.lines
       );
+      for (const exact of content.querySelectorAll("[data-exact]"))
+        exact.dataset.exact = "times-withheld";
+      if (content.dataset.exact !== void 0)
+        content.dataset.exact = "times-withheld";
+      checked.textContent = receiptWord("receipt_page.content.times_withheld");
+      checked.dataset.contentCheck = "digest-times-withheld";
+      host.append(checked, content);
       return;
     }
     const note = element6(
@@ -28662,33 +28919,40 @@ ${pad.repeat(depth)}`;
     }
     host.append(section);
   }
-  function renderCarriedInput(host, record) {
+  function renderCarriedInput(host, record, timesWithheld = false) {
     if (record.carriedInput === void 0) return;
     renderCitedMember(
       host,
       "agent_input",
       record.carriedInput,
       record.carriedInputDigest,
-      "agent_input of the capsule it carries"
+      "agent_input of the capsule it carries",
+      timesWithheld
     );
   }
-  function renderRecordEntry(capsuleId, record) {
+  function renderRecordEntry(capsuleId, record, timesWithheld = false) {
     const body = element6("div");
     body.className = "cv-record-body";
-    body.append(renderProvenance2(capsuleId, record.logCoordinates, record));
+    body.append(
+      renderProvenance2(capsuleId, record.logCoordinates, record, timesWithheld)
+    );
     renderCitedMember(
       body,
       "agent_input",
       record.agentInput,
-      record.agentInputDigest
+      record.agentInputDigest,
+      "agent_input",
+      timesWithheld
     );
     renderCitedMember(
       body,
       "agent_output",
       record.agentOutput,
-      record.agentOutputDigest
+      record.agentOutputDigest,
+      "agent_output",
+      timesWithheld
     );
-    renderCarriedInput(body, record);
+    renderCarriedInput(body, record, timesWithheld);
     if (record.cites.length > 0) {
       body.append(element6("h5", "Cites"));
       const list2 = element6("ul");
@@ -29686,12 +29950,157 @@ ${pad.repeat(depth)}`;
     "capsulectl.deal-view/v0",
     "capsulectl.deal-view-composed/v0"
   ]);
+  var RECEIPT_PAGE_MODULE_IDS = /* @__PURE__ */ new Set([
+    "capsuleviewer.receipt.unilateral/v0",
+    "capsuleviewer.receipt.seller/v0",
+    "capsuleviewer.receipt.bilateral/v0",
+    "capsuleviewer.receipt.deal/v1",
+    "capsuleviewer.receipt.provider/v0"
+  ]);
   var RECEIPT_CARRIER_ATTRIBUTE = "data-receipt-carrier";
   var BOOK_WITNESS_MODULES = /* @__PURE__ */ new Set([
     "capsuleviewer.receipt.deal/v1",
     "capsuleviewer.receipt.unilateral/v0",
     "capsuleviewer.receipt.seller/v0"
   ]);
+  function receiptCoreOf(module, context, reading, root) {
+    if (module === void 0 || !RECEIPT_PAGE_MODULE_IDS.has(module.manifest.id))
+      return void 0;
+    const pass2 = reading?.kind === "pass" ? reading : null;
+    const audience = sealedAudience(context);
+    const ownPage = BOOK_WITNESS_MODULES.has(module.manifest.id) && audience === "keep" && !sharedCarrierOf(root);
+    const book = ownPage ? bookWitnessOf(pass2) : void 0;
+    return {
+      reading: pass2,
+      ...book === void 0 ? {} : { bookWitness: book },
+      shared: audience === "counterparty" || audience === "adjudicator"
+    };
+  }
+  function receiptWord(key, vars = {}) {
+    const text2 = RECEIPT_PAGE_WORDS[key];
+    if (text2 === void 0) throw new Error(`no receipt word ${key}`);
+    return text2.replace(
+      /\{(\w+)\}/gu,
+      (whole, name) => Object.hasOwn(vars, name) ? String(vars[name]) : whole
+    );
+  }
+  function utcClock(at) {
+    return `${at.slice(11, 19)} UTC`;
+  }
+  function localTime(at) {
+    try {
+      return new Intl.DateTimeFormat(void 0, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short"
+      }).format(new Date(at));
+    } catch {
+      return at;
+    }
+  }
+  function bookWitnessLine(book) {
+    const line = element6("p");
+    if (book.status !== "verified") {
+      line.textContent = receiptWord(
+        book.status === "failed" ? "rung.book_witness_failed" : "rung.book_witness_withheld"
+      );
+      line.dataset.bookWitness = book.status;
+      return line;
+    }
+    const mark = "\0";
+    const [before, ...after] = receiptWord("rung.book_witnessed", {
+      witness: book.witness,
+      utc: utcClock(book.at),
+      at: mark
+    }).split(mark);
+    const time = element6("span", localTime(book.at));
+    time.dataset.time = book.at;
+    line.append(before ?? "", time, after.join(mark));
+    line.dataset.bookWitness = "verified";
+    return line;
+  }
+  var SAME_CHECK = {
+    producer_signatures: "producer-signatures",
+    interval_coverage: "range",
+    graph_closure: "closure",
+    per_record_membership: "membership",
+    checkpoint: "checkpoint-signature"
+  };
+  function reportedRows(receipt, lists) {
+    const reading = receipt.reading;
+    if (reading === null) return [];
+    const rows = [];
+    const statusOf = (value) => value === "pass" || value === "fail" || value === "withheld" ? value : void 0;
+    const ranHere = new Set(lists.page);
+    const say = (name, label, status2) => receiptWord(
+      Object.hasOwn(SAME_CHECK, name) && ranHere.has(SAME_CHECK[name]) ? "receipt_page.check.reported.also" : "receipt_page.check.reported",
+      { check: label, status: receiptWord(`deal.proof.status.${status2}`) }
+    );
+    for (const name of REPORTED_CHECKS) {
+      if (name === "witnesses") continue;
+      const status2 = statusOf(reading.checks?.[name]?.status);
+      if (status2 === void 0) continue;
+      rows.push({
+        name,
+        status: status2,
+        node: () => element6("li", say(name, receiptWord(`deal.proof.${name}`), status2))
+      });
+    }
+    const half = reading.counterpartyHalf === "verified" ? "pass" : reading.counterpartyHalf === "failed" ? "fail" : void 0;
+    if (half !== void 0)
+      rows.push({
+        name: "counterparty_half",
+        status: half,
+        node: () => element6(
+          "li",
+          say(
+            "counterparty_half",
+            receiptWord("deal.proof.counterparty_half.report"),
+            half
+          )
+        )
+      });
+    const book = receipt.bookWitness;
+    if (book !== void 0)
+      rows.push({
+        name: "witnesses",
+        status: book.status === "verified" ? "pass" : book.status === "failed" ? "fail" : "withheld",
+        node: () => {
+          const item = element6("li");
+          item.append(...Array.from(bookWitnessLine(book).childNodes));
+          return item;
+        }
+      });
+    else {
+      const status2 = statusOf(reading.checks?.["witnesses"]?.status);
+      if (status2 !== void 0)
+        rows.push({
+          name: "witnesses",
+          status: status2,
+          node: () => element6(
+            "li",
+            say(
+              "witnesses",
+              receiptWord("receipt_page.check.witnesses"),
+              status2
+            )
+          )
+        });
+    }
+    return rows;
+  }
+  var RECEIPT_RECORD_WORDS_PACK = readWordingPack(
+    JSON.parse(RECEIPT_RECORD_PACK.pack)
+  );
+  function receiptRecordWords(grouping) {
+    return wordsOf(DEFAULT_PACKS[grouping], {
+      pack: RECEIPT_RECORD_WORDS_PACK,
+      sha256: RECEIPT_RECORD_PACK.sha256
+    });
+  }
   function sharedCarrierOf(root) {
     const mark = root.closest?.(`[${RECEIPT_CARRIER_ATTRIBUTE}]`)?.getAttribute(RECEIPT_CARRIER_ATTRIBUTE);
     return mark === "report" || mark === "page";
@@ -29853,11 +30262,9 @@ ${pad.repeat(depth)}`;
     };
     let bar;
     let stripNode;
-    const oneWitnessLine = selected !== void 0 && BOOK_WITNESS_MODULES.has(selected.module.manifest.id) && bookWitnessedOnKeep(context, reading) && !sharedCarrierOf(root);
-    let framesDrawn = 0;
+    const receipt = verified ? receiptCoreOf(selected?.module, context, reading, root) : void 0;
+    const bannerBook = receipt?.bookWitness?.status === "verified" ? receipt.bookWitness : void 0;
     const drawFrame = () => {
-      const leaveOutWitnessLine = oneWitnessLine && framesDrawn === 0;
-      framesDrawn += 1;
       root.replaceChildren();
       root.classList.remove("cv-shell-chrome");
       renderPresentationHeader(root, bundle);
@@ -29869,14 +30276,13 @@ ${pad.repeat(depth)}`;
           bannerModel,
           bundle,
           withStrict(context),
-          // Only while the x-deal-v1 receipt module draws the one line, on
-          // the holder's own copy not carried in a report or shown as a page
-          // (#424); a discarded render draws the frame again with the header.
-          leaveOutWitnessLine
-        )
+          bannerBook !== void 0
+        ),
+        bannerBook
       );
       const L2 = region("L2");
       const core = region("L2-core");
+      if (receipt !== void 0) core.dataset.checkedId = checkedSectionId(root);
       const L2module = region("L2-module");
       L2.append(core, L2module);
       if (verified) {
@@ -30146,18 +30552,33 @@ ${pad.repeat(depth)}`;
       chartDigests,
       contract,
       verified ? {
-        words: await contractReportWords(
+        // A receipt page's record views take the receipt pack's record
+        // words, laid over the generic pack's (#489).
+        words: receipt === void 0 ? await contractReportWords(
           contractReportGroupingOf(bundle),
           options.wording
-        ),
+        ) : receiptRecordWords(contractReportGroupingOf(bundle)),
         voice: options.voice ?? "shared"
       } : void 0,
       checkedSectionId(root),
       reportFailed,
-      verdictLine
+      verdictLine,
+      receipt
     );
     const summary = root.querySelector("[data-verify-summary]");
     if (summary !== null) summary.textContent = checkedLine;
+    if (receipt !== void 0) {
+      const checkedId = checkedSectionId(root);
+      for (const link of root.querySelectorAll(
+        "a[data-cites-core]"
+      ))
+        if (link.getAttribute("href") === `#${checkedId}`)
+          link.addEventListener("click", () => {
+            const section2 = root.querySelector(`[id="${checkedId}"]`);
+            if (section2 instanceof root.ownerDocument.defaultView.HTMLDetailsElement)
+              section2.open = true;
+          });
+    }
     linkCitedBy(root);
     revealRecordsByHash(root.ownerDocument);
   }
