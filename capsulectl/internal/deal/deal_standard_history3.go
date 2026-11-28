@@ -26,8 +26,9 @@ import (
 // whole-shelf handover (Cadence.Handover, the replay VerifyHandover checks),
 // takes each deal's status value from its latest fact's opening, resolves the
 // times in it, computes each row's status with the library's rule
-// (rowstatus.Compute) as of the anchor's time, and gives the entries to AAC's
-// standardhistory.DeriveAs. /1 and /2 are served as before for v0 deals.
+// (rowstatus.Compute) as of the anchor's time, reads its disputes as of that
+// same time (SH §11.1 "One card, one time", rowsAndDisputes3), and gives the
+// entries to AAC's standardhistory.DeriveAs. /1 and /2 are served as before for v0 deals.
 
 // errNotMigratedForCard is a /3 card asked of a store still in the old
 // layout, which has no shelf log of book facts to count.
@@ -255,22 +256,14 @@ func (s *dealSession) dealEntry3(ctx context.Context, bookID string, v xdealv1.S
 	if started.State != xdealv1.StateStarted {
 		return standardhistory.Deal{}, false, nil
 	}
-	rows := make([]standardhistory.Row, 0, len(v.Rows))
-	for _, r := range v.Rows {
-		in, err := xdealv1.ResolveRow(r, at, stamps)
-		if err != nil {
-			return standardhistory.Deal{}, false, fmt.Errorf("%w: book %s row %s: %v", evidencebook.ErrCorrupt, bookID, r.ID, err)
-		}
-		res, err := rowstatus.Compute(in)
-		if err != nil {
-			return standardhistory.Deal{}, false, fmt.Errorf("%w: book %s row %s: %v", evidencebook.ErrCorrupt, bookID, r.ID, err)
-		}
-		rows = append(rows, rowResult3(v.Role, r, res))
+	rows, disputes, err := rowsAndDisputes3(v, at, stamps)
+	if err != nil {
+		return standardhistory.Deal{}, false, fmt.Errorf("%w: book %s: %v", evidencebook.ErrCorrupt, bookID, err)
 	}
 	deal := standardhistory.Deal{
 		Deal: bookID, AgreedAt: v.AgreedAt, CounterpartyClass: v.CounterpartyKind,
 		Role: map[string]string{"seller": "provided", "buyer": "bought"}[v.Role], Rows: rows,
-		Happened: happened3(v), Disputes: disputes3(v),
+		Happened: happened3(v), Disputes: disputes,
 	}
 	if a, ok := bandAmount(v.ValueBand); ok {
 		deal.Amount = a
@@ -411,13 +404,150 @@ func happened3(v xdealv1.StatusValue) string {
 	return "receipt_only"
 }
 
-// disputes3 maps the status value's disputes to SH §5.4's entries with DP
-// §10's words: the side is raised or received by the claimant's role, and a
-// ruling's outcome is for or against the holder.
-func disputes3(v xdealv1.StatusValue) []standardhistory.Dispute {
+// rowsAndDisputes3 is a deal's row results and its disputes as of at (SH
+// §11.1 "One card, one time"): both read the same records, each row's input
+// resolved once with the stamps' times (xdealv1.ResolveRow), so a record
+// whose time is after at exists for neither.
+func rowsAndDisputes3(v xdealv1.StatusValue, at string, stamps map[uint64]string) ([]standardhistory.Row, []standardhistory.Dispute, error) {
+	rows := make([]standardhistory.Row, 0, len(v.Rows))
+	inputs := make([]rowstatus.Input, 0, len(v.Rows))
+	for _, r := range v.Rows {
+		in, err := xdealv1.ResolveRow(r, at, stamps)
+		if err != nil {
+			return nil, nil, fmt.Errorf("row %s: %v", r.ID, err)
+		}
+		res, err := rowstatus.Compute(in)
+		if err != nil {
+			return nil, nil, fmt.Errorf("row %s: %v", r.ID, err)
+		}
+		rows = append(rows, rowResult3(v.Role, r, res))
+		inputs = append(inputs, in)
+	}
+	disputes, err := disputesAsOf(v, inputs, at)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rows, disputes3(v.Role, disputes), nil
+}
+
+// disputesAsOf is the status value's disputes as they stand at at, from the
+// rows' inputs resolved as of at (SH §11.1 "One card, one time"). The status
+// value is written with its fact, before any anchor, so its disputes read
+// every record the books held then; the card reads only those that exist as
+// of at, by rowstatus's test: a record whose time is after at does not yet
+// exist, and one with no time exists.
+//
+// The status value builds its disputes and each row's input.disputes in one
+// loop and one order (per row, the buyer's book then the seller's, each in
+// book order), so the k-th dispute of a row is its k-th input dispute, which
+// carries the record's time; any other shape is a corrupt status value.
+//
+// A dispute whose time is after at is no entry. It is withdrawn as of at
+// when a withdrawal of its claimant on the row exists by then and is not
+// earlier than the dispute, read from the held records alone, never from the
+// status value's outcome, which may rest on a withdrawal made after at. A
+// book's times never decrease, so a withdrawal after the dispute in its book
+// is never missed. The time cannot order a withdrawal and a dispute of the
+// same time, or one with no time, so such a held withdrawal reads as
+// withdrawing the dispute even where it came first in the book; that is how
+// the row rule reads every held withdrawal of the claimant (rowstatus
+// withdraws all its disputes on the row), so the tally and the row agree.
+// Otherwise it is resolved by the ruling rowstatus's rule 1
+// reads, the row's first final ruling held as of at, none while the case
+// book forked: against whom is the row's ruling_against, the profile keeping
+// one final ruling per row in an unforked case book (xdealv1.SealRuling);
+// with none held, the dispute is open.
+func disputesAsOf(v xdealv1.StatusValue, inputs []rowstatus.Input, at string) ([]xdealv1.StatusDispute, error) {
+	if len(inputs) != len(v.Rows) {
+		return nil, fmt.Errorf("%d row inputs for %d rows", len(inputs), len(v.Rows))
+	}
+	out := []xdealv1.StatusDispute{}
+	next := 0
+	for k, row := range v.Rows {
+		in := inputs[k]
+		ruled, err := heldFinalRuling(row.ID, in, at)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range in.Disputes {
+			if next >= len(v.Disputes) {
+				return nil, fmt.Errorf("row %s has more dispute records than the status value's disputes", row.ID)
+			}
+			sd := v.Disputes[next]
+			next++
+			if sd.Row != row.ID || sd.Claimant != d.Side {
+				return nil, fmt.Errorf("the status value's dispute %d (row %s, claimant %s) is not row %s's dispute by the %s", next-1, sd.Row, sd.Claimant, row.ID, d.Side)
+			}
+			if !heldAt(d.Time, at) {
+				continue
+			}
+			outcome := xdealv1.OutcomeOpen
+			switch {
+			case withdrawnAt(in.Withdrawals, d, at):
+				outcome = xdealv1.OutcomeWithdrawn
+			case !ruled:
+			case row.RulingAgainst == nil:
+				outcome = xdealv1.OutcomeNoFinding
+			case *row.RulingAgainst == d.Side:
+				outcome = xdealv1.OutcomeAgainstClaimant
+			default:
+				outcome = xdealv1.OutcomeForClaimant
+			}
+			sd.Outcome = outcome
+			out = append(out, sd)
+		}
+	}
+	if next != len(v.Disputes) {
+		return nil, fmt.Errorf("the status value has %d disputes, its rows %d dispute records", len(v.Disputes), next)
+	}
+	return out, nil
+}
+
+// heldAt says whether a record with time t exists as of at: times are in
+// rowstatus's one form, YYYY-MM-DDTHH:MM:SSZ, so they compare as strings.
+func heldAt(t rowstatus.Time, at string) bool {
+	return t == nil || *t <= at
+}
+
+// heldFinalRuling says whether the row is resolved as of at by the ruling
+// rowstatus's rule 1 reads: its first final ruling held then, none while its
+// case book forked. A held final ruling that is not the row's first final one
+// is refused: the status value's ruling_against is the first one's.
+func heldFinalRuling(row string, in rowstatus.Input, at string) (bool, error) {
+	if in.ConflictingFinalRulings {
+		return false, nil
+	}
+	first := true
+	for _, r := range in.Rulings {
+		if !r.Final {
+			continue
+		}
+		if heldAt(r.Time, at) {
+			if !first {
+				return false, fmt.Errorf("row %s: a final ruling held at %s follows one that is not, in an unforked case book", row, at)
+			}
+			return true, nil
+		}
+		first = false
+	}
+	return false, nil
+}
+
+// withdrawnAt says whether a withdrawal of d's claimant on the row exists as
+// of at and is not earlier than d.
+func withdrawnAt(ws []rowstatus.Withdrawal, d rowstatus.Dispute, at string) bool {
+	return slices.ContainsFunc(ws, func(w rowstatus.Withdrawal) bool {
+		return w.Side == d.Side && heldAt(w.Time, at) && (w.Time == nil || d.Time == nil || *w.Time >= *d.Time)
+	})
+}
+
+// disputes3 maps a deal's disputes to SH §5.4's entries with DP §10's words:
+// the side is raised or received by the claimant's role (role is the
+// holder's), and a ruling's outcome is for or against the holder.
+func disputes3(role string, disputes []xdealv1.StatusDispute) []standardhistory.Dispute {
 	out := []standardhistory.Dispute{}
-	for _, d := range v.Disputes {
-		raised := d.Claimant == v.Role
+	for _, d := range disputes {
+		raised := d.Claimant == role
 		side, outcome := "received", d.Outcome
 		if raised {
 			side = "raised"
