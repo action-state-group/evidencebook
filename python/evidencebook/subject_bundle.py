@@ -492,7 +492,7 @@ def verify_subject_bundle(data: bytes) -> VerifiedSubject:
     raw = verified.extensions.get(EXTENSION_SUBJECT)
     if raw is None:
         raise InvalidError(f"the bundle carries no {EXTENSION_SUBJECT} extension")
-    ext = _go.decode(json.loads(raw), _EXTENSION_SPEC, f"{EXTENSION_SUBJECT} extension")
+    ext = _go.decode_text(raw, _EXTENSION_SPEC, f"{EXTENSION_SUBJECT} extension")
     if ext["derivation"] != DERIVATION_SUBJECT_BUNDLE or ext["form"] != SUBJECT_BUNDLE_FULL:
         raise InvalidError(f"the {EXTENSION_SUBJECT} extension is not a full {DERIVATION_SUBJECT_BUNDLE}")
     ext_subject = SubjectRootStatement(**ext["subject"])
@@ -610,17 +610,12 @@ def _probe(data: bytes) -> Optional[dict]:
 
 
 def _read_index_root(r: PeerRecord) -> dict:
-    """An ``index_root`` record's statement (Go ``readIndexRoot``: plain
-    ``json.Unmarshal``, so unknown members are ignored)."""
+    """An ``index_root`` record's statement (Go ``readIndexRoot``:
+    ``decodeStrict``, member names exact and none unknown)."""
     if r.header is None or r.header.record_type != RECORD_TYPE_INDEX_ROOT:
         raise InvalidError("not an index_root record")
     spec = _go.Struct({"index": _go.STRING, "root": _go.STRING, "size": _go.UINT64, "as_of_seq": _go.UINT64})
-    statement = _statement(r)
-    if isinstance(statement, dict):
-        # json.Unmarshal ignores members the struct does not name.
-        known = {"INDEX", "ROOT", "SIZE", "AS_OF_SEQ"}
-        statement = {k: v for k, v in statement.items() if fold_key(k) in known}
-    return _go.decode(statement, spec, "index_root statement")
+    return _go.decode(_statement(r), spec, "index_root statement")
 
 
 def _verify_key_range(ext: dict, subject: SubjectRootStatement, listed: list[str],

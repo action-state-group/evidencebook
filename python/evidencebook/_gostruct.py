@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
-"""JSON decoded into a typed value as Go's ``encoding/json`` decodes it into a
-struct under ``DisallowUnknownFields`` (Go ``decodeStrict``), so a Python
-reader accepts and refuses exactly what Go's does.
+"""JSON decoded into a typed value as Go's ``decodeStrict`` decodes it:
+``encoding/json/v2`` with ``RejectUnknownMembers`` (evidencebook#1072), so a
+Python reader accepts and refuses exactly what Go's does.
 
-Go reads an object's members in order: a member name matches its field
-exactly or else under Go's fold (:mod:`evidencebook._gofold`), a later member
-overwrites an earlier one, and an unknown member is refused. ``null`` sets a
-slice, map or pointer to nil and leaves any other field as it was. An object
-decoded into a map that already holds one adds to it, and an array decoded
-into a slice decodes into the elements it already has. A ``[]byte`` takes a
-base64 string or an array of bytes, and a ``time.Time`` an RFC 3339 text as
-Go's ``time.Parse`` reads it.
+A member name matches its field exactly; any other name, a case variant
+included, is refused, and so is a name repeated in any object, at any depth
+(:func:`decode_text`). ``null`` sets a field to its zero value. A ``[]byte``
+takes a standard base64 string with its padding, and a ``time.Time`` an RFC
+3339 text (Go's ``time.RFC3339Nano`` layout, read strictly: :func:`go_time`).
+Text with invalid UTF-8 or an unpaired surrogate escape is refused.
 
-:func:`decode` reads a Python value (members in their dict order: the order
-a caller gave them, or the text's own order when the value was read from
-JSON); :func:`decode_text` reads JSON text, keeping duplicate members.
+:func:`decode` reads a Python value; :func:`decode_text` reads JSON text.
+:func:`read_text` without ``strict`` reads text as ``encoding/json`` v1 does
+(members in order, duplicates kept, invalid text as U+FFFD), for Go's
+lenient ``json.Unmarshal`` readers.
 
 A spec is one of ``STRING``, ``UINT64``, ``INT``, ``BOOL``, ``TIME``,
 ``BYTES``, ``RAW`` (a ``json.RawMessage``: the value as read, or
@@ -27,10 +26,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 from dataclasses import dataclass
 from typing import Any
 
-from ._gofold import fold_key
 from .errors import InvalidError
 
 __all__ = ["STRING", "UINT64", "INT", "BOOL", "TIME", "BYTES", "RAW", "JSON_NULL", "List", "Map", "Ptr", "Struct",
@@ -38,7 +37,8 @@ __all__ = ["STRING", "UINT64", "INT", "BOOL", "TIME", "BYTES", "RAW", "JSON_NULL
 
 STRING, UINT64, INT, BOOL, TIME, BYTES, RAW = "string", "uint64", "int", "bool", "time", "bytes", "raw"
 
-#: Go's decoder nests at most this deep (encoding/json maxNestingDepth).
+#: Go's decoder nests at most this deep (encoding/json maxNestingDepth, and
+#: encoding/json/jsontext's limit alike).
 MAX_DEPTH = 10000
 
 
@@ -80,29 +80,6 @@ class _Pairs(list):
     """An object's members as read from text, in order, duplicates kept."""
 
 
-class GoSlice(list):
-    """A decoded Go slice; ``backing`` is its backing array, which a later
-    member of the same name decodes into (Go keeps elements past a slice's
-    length)."""
-
-    backing: list = []
-
-
-def _grown(cap: int, length: int) -> int:
-    """The capacity Go's growslice gives a slice of capacity ``cap`` grown
-    to ``length`` (nextslicecap; small slices of pointer-sized or
-    power-of-two elements, whose size classes add nothing)."""
-    double = cap + cap
-    if length > double:
-        return length
-    if cap < 256:
-        return double
-    new = cap
-    while new < length:
-        new += (new + 3 * 256) >> 2
-    return new
-
-
 def is_object(value: Any) -> bool:
     """Whether ``value``, read by :func:`read_text`, is a JSON object."""
     return isinstance(value, _Pairs)
@@ -122,66 +99,21 @@ def _days_in(month: int, year: int) -> int:
     return 30 if month in (4, 6, 9, 11) else 31
 
 
-def _getnum(s: str, fixed: bool) -> tuple[int, str] | None:
-    # Go time.getnum: one or two ASCII digits, two when fixed.
-    if not s or not "0" <= s[0] <= "9":
-        return None
-    if len(s) < 2 or not "0" <= s[1] <= "9":
-        return None if fixed else (int(s[0]), s[1:])
-    return int(s[:2]), s[2:]
+_TIME = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-](\d{2}):(\d{2}))")
 
 
 def go_time(text: str) -> bool:
-    """Whether Go's ``time.Time.UnmarshalJSON`` reads ``text`` (the string's
-    content): ``time.Parse(time.RFC3339, text)`` as Go 1.27 runs it."""
-    s = text
-    # 2006: four ASCII digits.
-    if len(s) < 4 or not all("0" <= c <= "9" for c in s[:4]):
+    """Whether Go's ``encoding/json/v2`` reads ``text`` (the string's content)
+    into a ``time.Time``: ``time.RFC3339Nano`` read strictly, so two-digit
+    hours, a fraction only after a period, and an offset under 24:00 with
+    minutes under 60."""
+    m = _TIME.fullmatch(text)
+    if m is None or not m.group(1).isascii():
         return False
-    year, s = int(s[:4]), s[4:]
-    if not s.startswith("-"):
+    year, month, day, hour, minute, second = (int(m.group(i)) for i in range(1, 7))
+    if not 1 <= month <= 12 or not 1 <= day <= _days_in(month, year) or hour > 23 or minute > 59 or second > 59:
         return False
-    got = _getnum(s[1:], True)
-    if got is None or not 1 <= got[0] <= 12:
-        return False
-    month, s = got
-    if not s.startswith("-"):
-        return False
-    got = _getnum(s[1:], True)
-    if got is None:
-        return False
-    day, s = got
-    if not s.startswith("T"):
-        return False
-    got = _getnum(s[1:], False)
-    if got is None or not 0 <= got[0] < 24:
-        return False
-    s = got[1]
-    for limit in (60, 60):
-        if not s.startswith(":"):
-            return False
-        got = _getnum(s[1:], True)
-        if got is None or not 0 <= got[0] < limit:
-            return False
-        s = got[1]
-    # A fraction the layout does not name, after a period or a comma.
-    if len(s) >= 2 and s[0] in ".," and "0" <= s[1] <= "9":
-        n = 1
-        while n < len(s) and "0" <= s[n] <= "9":
-            n += 1
-        s = s[n:]
-    if s.startswith("Z"):
-        s = s[1:]
-    else:
-        if len(s) < 6 or s[3] != ":" or s[0] not in "+-":
-            return False
-        hh, mm = _getnum(s[1:3], True), _getnum(s[4:6], True)
-        if hh is None or mm is None or hh[1] or mm[1] or hh[0] > 24 or mm[0] > 60:
-            return False
-        s = s[6:]
-    if s:
-        return False
-    return 1 <= day <= _days_in(month, year)
+    return m.group(9) is None or (int(m.group(9)) < 24 and int(m.group(10)) < 60)
 
 
 def zero(spec: Any) -> Any:
@@ -203,7 +135,7 @@ def _read(spec: Any, value: Any, current: Any, where: str) -> Any:
             raise InvalidError(f"{where}: a number out of range")
         return JSON_NULL if value is None else value
     if value is None:
-        return None if isinstance(spec, (List, Map, Ptr)) or spec == BYTES else current
+        return zero(spec)
     if spec == STRING:
         if not isinstance(value, str):
             raise InvalidError(f"{where}: not a string")
@@ -223,55 +155,39 @@ def _read(spec: Any, value: Any, current: Any, where: str) -> Any:
             raise InvalidError(f"{where}: not an RFC 3339 time")
         return value
     if spec == BYTES:
-        if isinstance(value, list) and not isinstance(value, _Pairs):
-            out = bytearray()
-            for i, item in enumerate(value):
-                if item is not None and (isinstance(item, bool) or not isinstance(item, int) or not 0 <= item < 256):
-                    raise InvalidError(f"{where}[{i}]: not a byte")
-                out.append(item or 0)
-            return bytes(out)
-        if not isinstance(value, str):
-            raise InvalidError(f"{where}: not a base64 string")
+        if not isinstance(value, str) or len(value) % 4:
+            raise InvalidError(f"{where}: not a padded base64 string")
         try:
-            return base64.b64decode(value.replace("\r", "").replace("\n", ""), validate=True)
+            return base64.b64decode(value, validate=True)
         except (binascii.Error, ValueError):
             raise InvalidError(f"{where}: not base64") from None
     if isinstance(spec, List):
         if not isinstance(value, list) or isinstance(value, _Pairs):
             raise InvalidError(f"{where}: not an array")
-        if not value:
-            return GoSlice([])
-        # Go decodes into the elements the slice's backing array already
-        # holds, those past its length included, and grows it as append does.
-        backing = list(getattr(current, "backing", current or []))
-        for i, v in enumerate(value):
-            if i >= len(backing):
-                backing = backing[:i] + [zero(spec.item)] * (_grown(len(backing), i + 1) - i)
-            backing[i] = _read(spec.item, v, backing[i], f"{where}[{i}]")
-        out = GoSlice(backing[:len(value)])
-        out.backing = backing
-        return out
+        return [_read(spec.item, v, zero(spec.item), f"{where}[{i}]") for i, v in enumerate(value)]
     if isinstance(spec, Map):
         members = _members(value)
         if members is None:
             raise InvalidError(f"{where}: not an object")
-        out = dict(current) if current is not None else {}
+        out = {}
         for key, member in members:
             out[key] = _read(spec.item, member, zero(spec.item), f"{where}[{key!r}]")
         return out
     if isinstance(spec, Ptr):
-        return _read(spec.to, value, zero(spec.to) if current is None else current, where)
+        return _read(spec.to, value, zero(spec.to), where)
     if isinstance(spec, Struct):
         members = _members(value)
         if members is None:
             raise InvalidError(f"{where}: not an object")
         out = dict(current)
-        folded = {fold_key(name): name for name in spec.fields}
+        seen: set[str] = set()
         for key, member in members:
-            name = key if key in spec.fields else folded.get(fold_key(key))
-            if name is None:
-                raise InvalidError(f"{where}: unknown field {key!r}")
-            out[name] = _read(spec.fields[name], member, out[name], f"{where}.{name}")
+            if key not in spec.fields:
+                raise InvalidError(f"{where}: unknown object member name {key!r}")
+            if key in seen:
+                raise InvalidError(f"{where}: duplicate object member name {key!r}")
+            seen.add(key)
+            out[key] = _read(spec.fields[key], member, out[key], f"{where}.{key}")
         return out
     raise TypeError(f"spec {spec!r}")
 
@@ -347,9 +263,9 @@ def _read_number(text: str, i: int) -> tuple[Any, int]:
     return value, j
 
 
-def _read_string(text: str, i: int) -> tuple[str, int]:
-    # text[i] is the opening quote. Go writes an unpaired surrogate escape as
-    # U+FFFD, and refuses a raw control character.
+def _read_string(text: str, i: int, strict: bool = False) -> tuple[str, int]:
+    # text[i] is the opening quote. Go v1 writes an unpaired surrogate escape
+    # as U+FFFD, v2 (strict) refuses it; both refuse a raw control character.
     out = []
     j = i + 1
     while True:
@@ -384,23 +300,34 @@ def _read_string(text: str, i: int) -> tuple[str, int]:
                 out.append(chr(0x10000 + ((code - 0xD800) << 10) + (int(low, 16) - 0xDC00)))
                 j += 6
                 continue
+            if strict:
+                raise ValueError(f"invalid surrogate pair at {j - 6}")
             out.append("\ufffd")
         elif 0xDC00 <= code < 0xE000:
+            if strict:
+                raise ValueError(f"invalid surrogate pair at {j - 6}")
             out.append("\ufffd")
         else:
             out.append(chr(code))
 
 
-def read_text(data: bytes) -> Any:
+def read_text(data: bytes, strict: bool = False) -> Any:
     """JSON text as Go's decoder reads it into a typed value, without
-    recursion: invalid UTF-8 and unpaired surrogate escapes as U+FFFD,
-    members in document order with duplicates kept, nesting at most
-    :data:`MAX_DEPTH`, trailing data refused, a number out of float64 range
-    kept as a marker that only an interface value refuses. Raises
-    ``ValueError``."""
-    text = data.decode("utf-8", errors="replace")
+    recursion: members in document order, nesting at most :data:`MAX_DEPTH`,
+    trailing data refused, a number out of float64 range kept as a marker
+    that only an interface value refuses. As ``encoding/json`` v1 reads it,
+    invalid UTF-8 and unpaired surrogate escapes become U+FFFD and repeated
+    members are kept; ``strict`` reads it as v2 does, refusing all three.
+    Raises ``ValueError``."""
+    if strict:
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"invalid UTF-8 at {exc.start}") from None
+    else:
+        text = data.decode("utf-8", errors="replace")
     n = len(text)
-    stack: list[list] = []  # [container, the pending member name]
+    stack: list[list] = []  # [container, the pending member name, the names seen]
     i, state = 0, "value"   # value, key, after
     while True:
         while i < n and text[i] in _WS:
@@ -412,7 +339,11 @@ def read_text(data: bytes) -> Any:
         if state == "key":
             if c != '"':
                 raise ValueError(f"expected a member name at {i}")
-            stack[-1][1], i = _read_string(text, i)
+            stack[-1][1], i = _read_string(text, i, strict)
+            if strict:
+                if stack[-1][1] in stack[-1][2]:
+                    raise ValueError(f"duplicate object member name {stack[-1][1]!r}")
+                stack[-1][2].add(stack[-1][1])
             while i < n and text[i] in _WS:
                 i += 1
             if i >= n or text[i] != ":":
@@ -430,7 +361,7 @@ def read_text(data: bytes) -> Any:
         elif c in "{[":
             if len(stack) >= MAX_DEPTH:
                 raise ValueError(f"exceeded max depth {MAX_DEPTH}")
-            stack.append([_Pairs() if c == "{" else _Array(), None])
+            stack.append([_Pairs() if c == "{" else _Array(), None, set()])
             i += 1
             while i < n and text[i] in _WS:
                 i += 1
@@ -440,7 +371,7 @@ def read_text(data: bytes) -> Any:
                 state = "key" if c == "{" else "value"
                 continue
         elif c == '"':
-            value, i = _read_string(text, i)
+            value, i = _read_string(text, i, strict)
         elif c in _NUMBER_START:
             value, i = _read_number(text, i)
         elif text.startswith("true", i):
@@ -470,9 +401,9 @@ def read_text(data: bytes) -> Any:
 
 def decode_text(data: bytes, spec: Any, what: str) -> Any:
     """Decode JSON text into ``spec`` as Go's ``decodeStrict`` decodes raw
-    bytes (:func:`read_text`)."""
+    bytes (:func:`read_text`, strictly)."""
     try:
-        text = read_text(data)
+        text = read_text(data, strict=True)
     except ValueError as exc:
         raise InvalidError(f"{what}: {exc}") from None
     return _read(spec, text, zero(spec), what)
