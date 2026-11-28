@@ -229,24 +229,31 @@ func TestAnAuditCopyCarryingAShortNameIsRefused(t *testing.T) {
 // export: no file, no disclosure record. A short name held as a disclosed
 // field is read as a whole word too.
 func TestAnAuditCopyCarryingAHeldValueOfAnyClassIsRefused(t *testing.T) {
+	// The control: the same offer, with nothing held about the value, is
+	// written, so each refusal below is the held value's.
+	control := noLayerAgreedWith(t, func(o string) string {
+		return strings.Replace(o, `"item": "lamp"`, `"item": "lamp, `+auditNoted["address"]+`"`, 1)
+	})
+	dealRun(t, "report", "--deal", control, "--share", "audit", "--to", "Outside Auditor", "--bundle", filepath.Join(t.TempDir(), "control.json"))
 	values := maps.Clone(auditNoted)
 	values["name"] = "Bo"
 	for _, class := range slices.Sorted(maps.Keys(values)) {
 		v := values[class]
 		t.Run(class, func(t *testing.T) {
-			offer := func(key string) string {
-				return strings.Replace(oneForum(key), `"item": "lamp"`, `"item": "lamp, `+v+`"`, 1)
-			}
-			h := auditDealWith(t, offer, v1Opening)
-			noteDisclosure(t, h.dealID, map[string]string{class: v})
+			// A deal with the shop's own website (no layer on the other
+			// side): one book, the cheapest real deal to run per class.
+			dealID := noLayerAgreedWith(t, func(o string) string {
+				return strings.Replace(o, `"item": "lamp"`, `"item": "lamp, `+v+`"`, 1)
+			})
+			noteDisclosure(t, dealID, map[string]string{class: v})
 			var before int
-			require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_disclosures WHERE deal_id=?`, h.dealID).Scan(&before))
+			require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_disclosures WHERE deal_id=?`, dealID).Scan(&before))
 			file := filepath.Join(t.TempDir(), "audit.json")
-			assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", file), "private value")
+			assert.Contains(t, v1Err(t, "report", "--deal", dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", file), "private value")
 			_, err := os.Lstat(file)
 			assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
 			var after int
-			require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_disclosures WHERE deal_id=?`, h.dealID).Scan(&after))
+			require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_disclosures WHERE deal_id=?`, dealID).Scan(&after))
 			assert.Equal(t, before, after, "nothing recorded")
 		})
 	}
