@@ -391,7 +391,7 @@ func TestDoctorReportsStandardHistory(t *testing.T) {
 	if f := findingOf(t, findings, DoctorIdentifiedView); !strings.Contains(f.Detail, "whatever the tier, standard_history/1") {
 		t.Errorf("identified view = %+v", f)
 	}
-	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1 and standard_history/1 is refused") {
+	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1, history_card/2 and standard_history/1 is refused") {
 		t.Errorf("unsupported = %+v", f)
 	}
 	if _, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{"for":"carol"}`), Recipient: "carol", Forms: []SubjectKind{SubjectRecord}, Fields: []string{"record_type"}}); err != nil {
@@ -400,7 +400,7 @@ func TestDoctorReportsStandardHistory(t *testing.T) {
 	if findings, err = book.Doctor(ctx, DoctorOptions{Policy: off}); err != nil {
 		t.Fatal(err)
 	}
-	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1, standard_history/1 and the 1 registered here is refused") {
+	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1, history_card/2, standard_history/1 and the 1 registered here is refused") {
 		t.Errorf("unsupported = %+v", f)
 	}
 	plain := checkpointedBook(t, "plain", 3)
@@ -410,7 +410,7 @@ func TestDoctorReportsStandardHistory(t *testing.T) {
 	if f := findingOf(t, findings, DoctorIdentifiedView); strings.Contains(f.Detail, "standard_history") {
 		t.Errorf("identified view = %+v", f)
 	}
-	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1 is refused") {
+	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1 and history_card/2 is refused") {
 		t.Errorf("unsupported = %+v", f)
 	}
 }
@@ -513,5 +513,67 @@ func TestDoctorProbeStandardCardUnanchoredSubstrate(t *testing.T) {
 	}
 	if f := findingOf(t, findings, DoctorProbeStandardCard); f.State != DoctorStateNotChecked || !strings.Contains(f.Detail, "not a Checkpointed Local Log") {
 		t.Errorf("finding = %+v", f)
+	}
+}
+
+// The probe asks history_card/2, never the retired history_card/1 (Steven's
+// simplification ruling, Q3), and verifies the sampled card a stranger is
+// served, on a book with more checkpoints than a non-default window under
+// the probe's size-one freshness floor.
+func TestDoctorProbeAsksHistoryCard2(t *testing.T) {
+	ctx := context.Background()
+	policy := DefaultSharePolicy()
+	book := cardBook(t, 2, 6)
+	cps, err := book.Checkpoints(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var asked []string
+	served := strangerTransport(book, policy)
+	recording := func(ctx context.Context, request Message) (Message, error) {
+		read := readRequest(request)
+		if read.reason != "" {
+			t.Fatalf("the probe sent an unreadable request: %s", read.reason)
+		}
+		asked = append(asked, string(read.request.Subject.Kind)+"/"+read.request.Derivation)
+		return served(ctx, request)
+	}
+	findings, err := book.Doctor(ctx, DoctorOptions{Policy: policy, Probe: recording})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"checkpoints/", "checkpoints/" + DerivationHistoryCard2}; !slices.Equal(asked, want) {
+		t.Fatalf("the probe asked %v, want %v", asked, want)
+	}
+	f := findingOf(t, findings, DoctorProbeHistoryCard)
+	if f.State != DoctorStateMatch || !slices.Equal(f.Records, []string{anchorDigest(cps[len(cps)-1])}) || !strings.Contains(f.Detail, "history_card/2 is answered") {
+		t.Fatalf("probe = %+v, want a history_card/2 match at the latest of %d checkpoints", f, len(cps))
+	}
+}
+
+// A history_card/2 answer that is signed and digested correctly but drops a
+// sampled entry is caught by the card check, not the envelope check.
+func TestDoctorProbeCatchesABrokenHistoryCard2(t *testing.T) {
+	ctx := context.Background()
+	policy := DefaultSharePolicy()
+	book := cardBook(t, 2, 6)
+	served := strangerTransport(book, policy)
+	tampering := func(ctx context.Context, request Message) (Message, error) {
+		reply, err := served(ctx, request)
+		if err != nil || readRequest(request).request.Derivation != DerivationHistoryCard2 {
+			return reply, err
+		}
+		return reply2Tampered(t, book, Staple{Reply: Reply{Message: reply}}).Message, nil
+	}
+	findings, err := book.Doctor(ctx, DoctorOptions{Policy: policy, Probe: tampering})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorProbeCheckpoints); f.State != DoctorStateMatch {
+		t.Errorf("checkpoints probe = %+v", f)
+	}
+	f := findingOf(t, findings, DoctorProbeHistoryCard)
+	if f.State != DoctorStateMismatch || !strings.Contains(f.Detail, "history_card/2 fails verification") || !strings.Contains(f.Detail, "position_missing") {
+		t.Fatalf("probe of a broken card = %+v, want a card-check mismatch", f)
 	}
 }

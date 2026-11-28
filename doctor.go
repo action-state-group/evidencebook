@@ -90,7 +90,9 @@ type DoctorOptions struct {
 	// not delivered to any witness.
 	Witnesses []DoctorWitness
 	// Probe, when set, asks the node's own responder for checkpoints and
-	// then history_card/1, as a stranger, and verifies both answers. A book
+	// then history_card/2, as a stranger, and verifies both answers.
+	// history_card/1 is still answered but no longer asked (Steven's
+	// simplification ruling, Q3). A book
 	// that serves standard_history/1 also reports the card a signed
 	// requester receives, built in-process by the serve path's own decision
 	// and builder, so doctor seals nothing.
@@ -167,7 +169,7 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 	if err != nil {
 		return nil, err
 	}
-	card, err := target.probe(ctx, opts.Probe, DoctorProbeHistoryCard, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: coverage})
+	card, err := target.probe(ctx, opts.Probe, DoctorProbeHistoryCard, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard2, Coverage: coverage})
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +348,7 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 	case !isCLL:
 		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStateMissing, Detail: "this book's substrate is not a Checkpointed Local Log, so it has no checkpoint a responder can anchor an answer to"})
 	case latest == nil:
-		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStateMissing, Detail: "the book has no checkpoint, so a stranger's checkpoints and history_card/1 requests are refused: a stranger's request never issues one"})
+		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStateMissing, Detail: "the book has no checkpoint, so a stranger's checkpoints, history_card/1 and history_card/2 requests are refused: a stranger's request never issues one"})
 	case latest.Entries < uint64(len(b.log)):
 		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStatePresent, Detail: fmt.Sprintf("the latest checkpoint covers %d of %d records; the rest are under no checkpoint yet", latest.Entries, len(b.log)), Records: []string{anchorDigest(*latest)}})
 	default:
@@ -378,7 +380,7 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 	if p0 := opts.Policy; p0.servesStandardHistory(b.standardHistory) {
 		unsupported += " or, to an authenticated requester, standard_history/1"
 	}
-	served := []string{"history_card/1"}
+	served := []string{"history_card/1", "history_card/2"}
 	if opts.Policy.servesStandardHistory(b.standardHistory) {
 		served = append(served, "standard_history/1")
 	}
@@ -412,12 +414,12 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 		DoctorFinding{Check: DoctorPolicyCommitment, State: DoctorStateNotChecked, Detail: "this book publishes no commitment document, so whether the policy digest is in one is not checked"},
 	)
 
-	stranger := "checkpoints and history_card/1 (commitments only, no record); every other subject is refused not_authorized"
+	stranger := "checkpoints, history_card/1 and history_card/2 (commitments only, no record); every other subject is refused not_authorized"
 	switch {
 	case !isCLL:
 		stranger = "refusals only: this book serves no anchors, so every request is refused"
 	case latest == nil:
-		stranger = "refusals only: checkpoints and history_card/1 are public, but there is no checkpoint to answer with; every other subject is refused not_authorized"
+		stranger = "refusals only: checkpoints, history_card/1 and history_card/2 are public, but there is no checkpoint to answer with; every other subject is refused not_authorized"
 	}
 	findings = append(findings, DoctorFinding{Check: DoctorStrangerView, State: DoctorStateAnswered, Detail: stranger})
 	identified := identifiedView(p, b.derivations, p.servesStandardHistory(b.standardHistory))

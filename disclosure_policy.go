@@ -233,7 +233,7 @@ func (p DisclosurePolicy) Rows() []SettingRow {
 	}
 	std := "a signed asker is refused derivation_unsupported; no standard card is served"
 	if p.StandardHistory == "on" {
-		std = "a signed asker receives the standard card counting " + window + "; an unsigned asker receives history_card/1 only"
+		std = "a signed asker receives the standard card counting " + window + "; an unsigned asker receives history_card/1 and history_card/2 only"
 	}
 	staple := "no card is attached to offers or orders"
 	if p.Staple == "on" {
@@ -260,7 +260,7 @@ func (p DisclosurePolicy) Rows() []SettingRow {
 		logs = fmt.Sprintf("the asked-of-you log is kept for the holder only, %d days", p.AskedLogRetentionDays)
 	}
 	return []SettingRow{
-		{"proof_of_records", "always", "checkpoints and history_card/1 are answered to anyone, and are not counted against the unsigned-ask limit"},
+		{"proof_of_records", "always", "checkpoints, history_card/1 and history_card/2 are answered to anyone, and are not counted against the unsigned-ask limit"},
 		{FieldStandardHistory, p.StandardHistory, std},
 		{FieldWindow, p.Window, "the standard card counts " + window},
 		{FieldStaple, p.Staple, staple},
