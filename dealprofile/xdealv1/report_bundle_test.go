@@ -30,7 +30,18 @@ type bundleDeal struct {
 
 func newBundleDeal(t *testing.T) bundleDeal {
 	t.Helper()
-	d := newPaymentDeal(t, func(o *ProposeBody) { o.Witnesses = []Witness{} }, true)
+	return newBundleDealWith(t, nil)
+}
+
+// newBundleDealWith is newBundleDeal with edit applied to its offer too.
+func newBundleDealWith(t *testing.T, edit func(*ProposeBody)) bundleDeal {
+	t.Helper()
+	d := newPaymentDeal(t, func(o *ProposeBody) {
+		o.Witnesses = []Witness{}
+		if edit != nil {
+			edit(o)
+		}
+	}, true)
 	d.leg(t, true, payerBody(), d.payerMember("settled", "6000"))
 	payee := d.leg(t, false, &SettleBody{Leg: LegPayee, Statements: statements()}, d.payeeMember("settled", "6000"))
 	// A payee leg whose member names the payer's role: the check excludes
@@ -176,10 +187,17 @@ func TestReportBundleVectors(t *testing.T) {
 		payload, err := ReportPayload(r)
 		require.NoError(t, err)
 		p := sealReport(t, "buyer", payload, "")
-		read, err := VerifyReport(p, x.Book.Agreement)
-		require.NoError(t, err)
+		// The Capsule's own id, read without VerifyReport, which refuses
+		// some of the reports sealed here (an audit copy's).
+		var sealed struct {
+			Record struct {
+				CapsuleID string `json:"capsule_id"`
+			} `json:"record"`
+		}
+		require.NoError(t, json.Unmarshal(p, &sealed))
+		require.NotEmpty(t, sealed.Record.CapsuleID)
 		c := x
-		c.SealedReport = read.CapsuleID
+		c.SealedReport = sealed.Record.CapsuleID
 		return p, extJSON(t, c)
 	}
 
@@ -391,6 +409,67 @@ func TestReportBundleVectors(t *testing.T) {
 	require.NoError(t, err)
 	twoLogs.SealedReport = aread.CapsuleID
 	refuse("an adjudicator's copy with counterparty records in two logs", extJSON(t, twoLogs), ap, "in another counterparty book")
+
+	// An audit copy (evidencebook#1058): the rows listed as a counterparty's,
+	// with no witness evidence.
+	auditCopy, _, _ := valid("ruling-audit-copy", h.buyer, "buyer", buyerLog, copyAt(hat, dealprofile.AudienceAudit))
+	assert.Empty(t, auditCopy.RestsOn.Witnesses, "an audit copy names no witnesses")
+	for _, row := range auditCopy.Rows {
+		for _, src := range row.ReliedOn {
+			assert.Nil(t, src.Time, "an audit copy gives no witnessed time")
+		}
+	}
+	// The refusals, on the keep copy's rows cut as an audit copy and sealed
+	// again.
+	auditKeep := keep
+	auditKeep.Audience, auditKeep.RestsOn.Witnesses = dealprofile.AudienceAudit, nil
+	auditKeep.Rows = slices.Clone(keep.Rows)
+	for i := range auditKeep.Rows {
+		auditKeep.Rows[i].ReliedOn = slices.Clone(keep.Rows[i].ReliedOn)
+		for j := range auditKeep.Rows[i].ReliedOn {
+			auditKeep.Rows[i].ReliedOn[j].Time, auditKeep.Rows[i].ReliedOn[j].Witnessed = nil, false
+		}
+	}
+	// An audit copy of this deal carries no offer: its offer names an ask.
+	auditResealed := func(r Report) ([]byte, []byte) {
+		t.Helper()
+		p, ext := resealed(r)
+		var c ReportBundle
+		require.NoError(t, json.Unmarshal(ext, &c))
+		c.Book.Offer = nil
+		return p, extJSON(t, c)
+	}
+	rp, rx = auditResealed(auditKeep)
+	_, err = VerifyReportBundle(rp, rx)
+	require.NoError(t, err, "the keep copy's rows cut as an audit copy verify")
+	witnessed := auditKeep
+	witnessed.RestsOn.Witnesses = []Witness{{KeyID: strings.Repeat("c", 64), URL: "https://witness.example"}}
+	rp, rx = auditResealed(witnessed)
+	refuse("an audit copy naming a witness", rx, rp, "an audit copy names no witnesses")
+	timed := auditKeep
+	require.NotEmpty(t, timed.Rows)
+	require.NotEmpty(t, timed.Rows[0].ReliedOn)
+	timed.Rows = slices.Clone(auditKeep.Rows)
+	timed.Rows[0].ReliedOn = slices.Clone(auditKeep.Rows[0].ReliedOn)
+	at := keep.AsOf
+	timed.Rows[0].ReliedOn[0].Time, timed.Rows[0].ReliedOn[0].Witnessed = &at, true
+	rp, rx = auditResealed(timed)
+	refuse("an audit copy giving a witnessed time", rx, rp, "an audit copy gives no witnessed time")
+	// The counterparty's copy's offer, which names an ask, put into an audit
+	// copy (evidencebook#1058).
+	require.NotNil(t, x.Book.Offer)
+	auditPayload, err := ReportPayload(auditKeep)
+	require.NoError(t, err)
+	auditPair := sealReport(t, "buyer", auditPayload, "")
+	auditRead, err := VerifyReport(auditPair, x.Book.Agreement)
+	require.NoError(t, err)
+	withOffer := clone()
+	withOffer.SealedReport = auditRead.CapsuleID
+	refuse("an audit copy carrying an offer that names an ask", extJSON(t, withOffer), auditPair, "an audit copy carries no offer that names an ask")
+	refereed := auditKeep
+	refereed.Referee = "Lamp Court"
+	rp, rx = auditResealed(refereed)
+	refuse("an audit copy naming a referee", rx, rp, "an audit copy names no referee")
 
 	writeOrCompare(t, reportBundleVectors, map[string]any{
 		"description": "x-deal-v1 bundle extension (evidencebook#588, docs/design/461-deal-profile.md §9, PROFILE §10): VerifyReportBundle(report, extension) gives want: the report's signing key, or a refusal at stage with error in its text. report is the report pair's hex; extension is the x-deal-v1 extension as a bundle carries it. Written by dealprofile/xdealv1's TestReportBundleVectors (EB_WRITE_DEAL_V1_VECTORS=1).",

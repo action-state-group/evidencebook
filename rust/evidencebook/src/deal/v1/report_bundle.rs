@@ -18,7 +18,9 @@ use super::report::{ROWS_LISTED, ROWS_NOT_STARTED, ROWS_WITHHELD, SIDE_ADJUDICAT
 use super::report_verify::{verify_report, ReportRead, STAGE_REPORT};
 use super::sent::verify_sent;
 use super::start::STATE_STARTED;
-use crate::deal::names::{AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP};
+use crate::deal::names::{
+    AUDIENCE_ADJUDICATOR, AUDIENCE_AUDIT, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP,
+};
 use crate::deal::Error;
 
 /// A member kept as written when it is `null`, as Go's `json.RawMessage`
@@ -147,7 +149,11 @@ pub fn verify_report_bundle(report: &[u8], ext: &[u8]) -> Result<ReportRead, Err
         )));
     }
     let adj = r.audience == AUDIENCE_ADJUDICATOR;
-    if r.audience != AUDIENCE_KEEP && r.audience != AUDIENCE_COUNTERPARTY && !adj {
+    if r.audience != AUDIENCE_KEEP
+        && r.audience != AUDIENCE_COUNTERPARTY
+        && r.audience != AUDIENCE_AUDIT
+        && !adj
+    {
         return Err(bad(format!(
             "audience {:?} is not a copy audience",
             r.audience
@@ -170,7 +176,7 @@ pub fn verify_report_bundle(report: &[u8], ext: &[u8]) -> Result<ReportRead, Err
     let listed = r.rows_state == ROWS_LISTED;
     if !adj && listed != (r.start.state == STATE_STARTED) {
         return Err(bad(format!(
-            "a keep or counterparty copy is listed exactly when its deal has started; this one is {:?} at start {:?}",
+            "a keep, counterparty or audit copy is listed exactly when its deal has started; this one is {:?} at start {:?}",
             r.rows_state, r.start.state
         )));
     }
@@ -225,6 +231,13 @@ pub fn verify_report_bundle(report: &[u8], ext: &[u8]) -> Result<ReportRead, Err
         }
         if sent.key_id != offerer {
             return Err(bad("the offer is not signed by the deal's offerer".into()));
+        }
+        // The offer travels whole, and an ask is a way to reach the offerer:
+        // an audit copy never carries such an offer (evidencebook#1058).
+        if r.audience == AUDIENCE_AUDIT && sent.record.propose().is_some_and(|p| p.ask.is_some()) {
+            return Err(bad(
+                "an audit copy carries no offer that names an ask".into()
+            ));
         }
     }
     let mut sides: BTreeMap<&str, &str> = BTreeMap::new();

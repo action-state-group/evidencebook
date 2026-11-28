@@ -110,6 +110,9 @@ const (
 	AudienceKeep         = "keep"
 	AudienceCounterparty = "counterparty"
 	AudienceAdjudicator  = "adjudicator"
+	// AudienceAudit is an x-deal-v1 copy for an outside reader who is not a
+	// party (evidencebook#1058): no personal detail, no witness evidence.
+	AudienceAudit = "audit"
 )
 
 // The evidence record header a step or report carries on a book.

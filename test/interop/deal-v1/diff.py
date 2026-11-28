@@ -197,7 +197,7 @@ def requests(r, n):
             if r.random() < 0.3:
                 cp["as_of"] = r.choice(TIMES)
             if r.random() < 0.1:
-                cp["audience"] = r.choice(["keep", "counterparty", "adjudicator", "other"])
+                cp["audience"] = r.choice(["keep", "counterparty", "adjudicator", "audit", "other"])
                 cp["referee"] = "Lamp Court" if cp["audience"] == "adjudicator" else ""
             out.append({"kind": "report", "books": books, "copy": cp})
     return out

@@ -30,7 +30,7 @@ from typing import Any
 from agent_action_capsule.canonical import jcs
 
 from ..check import StageError
-from ..names import REPORT_ACTION_ID, REPORT_TYPE
+from ..names import AUDIENCE_AUDIT, REPORT_ACTION_ID, REPORT_TYPE
 from . import gotypes, rawjson
 from .check import _read_text
 from .names import KIND_AGREEMENT, PROFILE, ROLE_BUYER, ROLE_SELLER, TYPE_AGREE
@@ -92,6 +92,8 @@ def verify_report(report: bytes, first: bytes) -> ReportRead:
         against = (row["ruling"] or {}).get("against")
         if against is not None and against not in (ROLE_BUYER, ROLE_SELLER):
             raise _err(STAGE_REPORT, f"row {row['id']!r}: a ruling is against buyer, seller or null, not {against!r}")
+    if doc["audience"] == AUDIENCE_AUDIT:
+        _audit_withholds(doc)
     b = verify_book(first)
     r = b.record
     if r.record_type != TYPE_AGREE or r.body["kind"] != KIND_AGREEMENT or b.seq != 1:
@@ -212,3 +214,19 @@ def _nulls(doc: dict) -> None:
             if src["witnessed"] != (src["time"] is not None):
                 raise _NotAReport(
                     f"row {row['id']!r}: relied_on {src['record']!r} is witnessed exactly when it has a time")
+
+
+def _audit_withholds(r: dict) -> None:
+    """Refuses an audit copy's report that carries witness evidence
+    (evidencebook#1058, u219): a witness, a relied_on record's witnessed
+    time, or a referee (Go ``auditWithholds``)."""
+    if r.get("referee", ""):
+        raise _err(STAGE_REPORT, "an audit copy names no referee")
+    if r["rests_on"].get("witnesses"):
+        raise _err(STAGE_REPORT, "an audit copy names no witnesses")
+    for row in r["rows"]:
+        for src in row["relied_on"]:
+            if src.get("time") is not None or src.get("witnessed"):
+                raise _err(STAGE_REPORT, f"an audit copy gives no witnessed time: row {row['id']!r}, "
+                           f"relied_on {src['record']}")
+

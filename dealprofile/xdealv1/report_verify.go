@@ -109,6 +109,11 @@ func VerifyReport(report, first []byte) (ReportRead, error) {
 			return bad("row %q: a ruling is against buyer, seller or null, not %q", row.ID, a)
 		}
 	}
+	if r.Audience == dealprofile.AudienceAudit {
+		if err := auditWithholds(r); err != nil {
+			return bad("%v", err)
+		}
+	}
 	b, err := VerifyBook(first)
 	if err != nil {
 		return ReportRead{}, err
@@ -151,6 +156,26 @@ func reportNulls(r Report) error {
 		for _, src := range row.ReliedOn {
 			if src.Witnessed != (src.Time != nil) {
 				return fmt.Errorf("row %q: relied_on %q is witnessed exactly when it has a time", row.ID, src.Record)
+			}
+		}
+	}
+	return nil
+}
+
+// auditWithholds refuses an audit copy's report that carries witness
+// evidence (evidencebook#1058, u219): a witness, or a relied_on record's
+// witnessed time, or a referee.
+func auditWithholds(r Report) error {
+	if r.Referee != "" {
+		return fmt.Errorf("an audit copy names no referee")
+	}
+	if len(r.RestsOn.Witnesses) > 0 {
+		return fmt.Errorf("an audit copy names no witnesses")
+	}
+	for _, row := range r.Rows {
+		for _, src := range row.ReliedOn {
+			if src.Time != nil || src.Witnessed {
+				return fmt.Errorf("an audit copy gives no witnessed time: row %q, relied_on %s", row.ID, src.Record)
 			}
 		}
 	}
