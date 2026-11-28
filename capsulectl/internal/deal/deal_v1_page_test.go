@@ -312,7 +312,9 @@ func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
 	opened := chrome.open(t, "file://"+file, presentationViews[1])
 	var text string
 	opened.eval(t, `document.getElementById("app").textContent`, &text)
-	assert.Contains(t, text, "Time-stamped by Action State's witness at Nov 25, 2026, 2:41 PM UTC (14:41:19 UTC), as capsulectl verify reported on your own book. This file carries no witness receipt, so this page did not check it itself.")
+	// The middle sentence is capsule-viewer#513's: the directory entry of the
+	// witness this sample names does not list it as independent.
+	assert.Contains(t, text, "Time-stamped by Action State's witness at Nov 25, 2026, 2:41 PM UTC (14:41:19 UTC), as capsulectl verify reported on your own book. The directory entry for Action State's witness does not list it as independent of the parties. This file carries no witness receipt, so this page did not check it itself.")
 	assert.NotContains(t, text, "so this page could not check a time-stamp itself", "the header line is left out on this page (capsule-viewer#424)")
 	// The demo's own copy draws the receipt design's top line and its seal
 	// (capsule-viewer#442; the seal's cases:
