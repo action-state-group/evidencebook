@@ -102,7 +102,7 @@ func (rows witnessRows) rowMembers(dir *witness.Directory, tsURL string) (map[st
 		if list, ok := independentOfList(fields); ok {
 			members["independent_of"] = list
 		}
-		// The directory's publisher runs this witness (u655): only true
+		// W marks this witness as its own (u655): only true
 		// counts; absent, false or any other value leaves the member out.
 		if fields["own_witness"] == true {
 			members["own_witness"] = true
