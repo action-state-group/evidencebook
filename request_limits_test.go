@@ -13,9 +13,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/veraison/go-cose"
@@ -71,18 +71,61 @@ func (c limitCase) octets() []byte {
 	return []byte(b.Text)
 }
 
-// check asserts err against the case's expected error, and that the check
-// finished within a second.
-func (c limitCase) check(t *testing.T, err error, took time.Duration) {
+// check asserts err against the case's expected error, and bounds the work
+// the check did by the depth scans it ran over data (nil when the check
+// reads no octets): none when refused over the byte limit, one that stops
+// at the first bracket past the depth limit when refused over it, and one
+// full pass otherwise (evidencebook#1077; Go's DecodeJSON keeps its own
+// depth bound and is not counted).
+func (c limitCase) check(t *testing.T, err error, data []byte, scans []int) {
 	t.Helper()
-	if took > time.Second {
-		t.Errorf("%s: the limit took %s", c.Name, took)
-	}
 	switch {
 	case c.Error == nil && err != nil:
 		t.Errorf("%s: refused within the limit: %v", c.Name, err)
 	case c.Error != nil && (err == nil || !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), *c.Error)):
 		t.Errorf("%s: got %v, want %q", c.Name, err, *c.Error)
+	}
+	if data == nil {
+		return
+	}
+	var want []int
+	switch {
+	case c.Error != nil && strings.Contains(*c.Error, "bytes:"):
+	case c.Error != nil && strings.Contains(*c.Error, "depth:"):
+		want = []int{overAt(data, MaxReplyDepth)}
+	default:
+		want = []int{len(data)}
+	}
+	if !slices.Equal(scans, want) {
+		t.Errorf("%s: the depth scans read %v octets, want %v", c.Name, scans, want)
+	}
+}
+
+// overAt is how many octets of a nest vector a depth scan reads to refuse
+// it: up to and including its first bracket past limit, however long the
+// rest.
+func overAt(data []byte, limit int) int {
+	for i, c := range data {
+		if c == '[' || c == '{' {
+			if limit--; limit < 0 {
+				return i + 1
+			}
+		}
+	}
+	return -1
+}
+
+// countScans records the octets each depth scan reads until the test ends;
+// the returned function takes the reads so far and starts afresh.
+func countScans(t *testing.T) func() []int {
+	t.Helper()
+	var reads []int
+	depthScanned = func(read int) { reads = append(reads, read) }
+	t.Cleanup(func() { depthScanned = nil })
+	return func() []int {
+		got := reads
+		reads = nil
+		return got
 	}
 }
 
@@ -104,11 +147,11 @@ func TestLimitVectors(t *testing.T) {
 	if v.Limits.ReplyBytes != MaxReplyBytes || v.Limits.Depth != MaxReplyDepth || v.Limits.Items != MaxReplyItems || v.Limits.Receipts != MaxReplyReceipts {
 		t.Fatalf("the vectors state other limits: %+v", v.Limits)
 	}
+	scans := countScans(t)
 	for _, c := range v.Reply {
 		octets := c.octets()
-		start := time.Now()
 		err := checkReplyOctets(Message{Octets: octets, MediaType: MediaTypeJSON})
-		c.check(t, err, time.Since(start))
+		c.check(t, err, octets, scans())
 		if c.Error == nil {
 			if _, err := evidencerequest.DecodeJSON(octets); err != nil {
 				t.Errorf("%s: within the limit but the decoder refuses it: %v", c.Name, err)
@@ -117,12 +160,11 @@ func TestLimitVectors(t *testing.T) {
 	}
 	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}}
 	for _, c := range v.Artifact {
-		start := time.Now()
-		c.check(t, checkEnvelopeLimits(req, Envelope{Artifact: c.octets()}), time.Since(start))
+		octets := c.octets()
+		c.check(t, checkEnvelopeLimits(req, Envelope{Artifact: octets}), octets, scans())
 	}
 	for _, c := range v.Verification {
-		start := time.Now()
-		c.check(t, checkEnvelopeLimits(req, Envelope{Artifact: []byte(`{}`), Verification: make([]VerificationEntry, c.Count)}), time.Since(start))
+		c.check(t, checkEnvelopeLimits(req, Envelope{Artifact: []byte(`{}`), Verification: make([]VerificationEntry, c.Count)}), nil, nil)
 	}
 	for _, c := range v.Receipts {
 		entries := make([]any, c.Count)
@@ -133,9 +175,8 @@ func TestLimitVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		start := time.Now()
 		_, err = carriedReceipts(Message{Octets: reply, MediaType: MediaTypeJSON}, "anchor")
-		c.check(t, err, time.Since(start))
+		c.check(t, err, nil, nil)
 	}
 }
 
@@ -395,22 +436,37 @@ func TestAReplyOverAnOctetLimitIsRefusedAndTheRequestStaysOpen(t *testing.T) {
 	for i := range receipts {
 		receipts[i] = map[string]any{}
 	}
+	// Each hostile reply also carries a signature that does not verify, so a
+	// refusal naming the limit shows no signature was checked before it.
+	forged := withMember(t, honest.Message, "sig", strings.Repeat("00", 64))
+	if _, err := requester.RecordResponse(ctx, sent.RecordID, forged, keys); err == nil || strings.Contains(err.Error(), "limit: ") {
+		t.Fatalf("the forged reply: got %v, want its signature refused", err)
+	}
+	prefix := append(bytes.TrimSuffix(bytes.Clone(forged.Octets), []byte("}")), []byte(`,"x":`)...) // at depth 1
+	scans := countScans(t)
 	for name, hostile := range map[string]Message{
-		"bytes":    withMember(t, honest.Message, "x", strings.Repeat("a", MaxReplyBytes)),
-		"depth":    {Octets: append(bytes.TrimSuffix(bytes.Clone(honest.Message.Octets), []byte("}")), []byte(`,"x":`+deep+`}`)...), MediaType: MediaTypeJSON},
-		"receipts": withMember(t, honest.Message, WitnessReceiptsMember, receipts),
+		"bytes":    withMember(t, forged, "x", strings.Repeat("a", MaxReplyBytes)),
+		"depth":    {Octets: append(bytes.Clone(prefix), []byte(deep+`}`)...), MediaType: MediaTypeJSON},
+		"receipts": withMember(t, forged, WitnessReceiptsMember, receipts),
 	} {
 		before := len(requester.log)
-		start := time.Now()
+		scans()
 		_, err := requester.RecordResponse(ctx, sent.RecordID, hostile, keys)
-		if took := time.Since(start); took > 2*time.Second {
-			t.Errorf("%s: refusing took %s", name, took)
-		}
 		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "limit: ") {
 			t.Fatalf("%s: got %v, want a refusal naming the limit", name, err)
 		}
 		if len(requester.log) != before {
 			t.Fatalf("%s: a refused reply was recorded", name)
+		}
+		switch read := scans(); name {
+		case "bytes": // refused on its length, unread
+			if len(read) != 0 {
+				t.Errorf("bytes: the depth scans read %v octets, want none", read)
+			}
+		case "depth": // up to the nest's bracket past the limit
+			if want := []int{len(prefix) + MaxReplyDepth}; !slices.Equal(read, want) {
+				t.Errorf("depth: the depth scans read %v octets, want %v", read, want)
+			}
 		}
 	}
 	recorded, err := requester.RecordResponse(ctx, sent.RecordID, honest.Message, keys)
@@ -444,11 +500,7 @@ func TestASignedEnvelopeOverACountLimitIsReceivedAndFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.Artifact, e.ArtifactDigest = artifact, digestBytes(artifact)
-	start := time.Now()
 	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resign(t, responder, e).Message, responderKeys(responder, 1))
-	if took := time.Since(start); took > 2*time.Second {
-		t.Errorf("failing the envelope took %s", took)
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -617,12 +669,14 @@ func TestBundleLimits(t *testing.T) {
 		}
 		return data
 	}
+	prefix := append(bytes.TrimSuffix(bytes.Clone(bundle.JSON), []byte("}")), []byte(`,"x":`)...) // at depth 1
+	scans := countScans(t)
 	for name, tc := range map[string]struct {
 		data []byte
 		want string
 	}{
 		"bytes": {encode(func(m map[string]any) { m["x"] = strings.Repeat("a", MaxReplyBytes) }), "limit: bundle bytes"},
-		"depth": {append(bytes.TrimSuffix(bytes.Clone(bundle.JSON), []byte("}")), []byte(`,"x":`+strings.Repeat("[", MaxReplyDepth)+strings.Repeat("]", MaxReplyDepth)+`}`)...), "limit: bundle depth"},
+		"depth": {append(bytes.Clone(prefix), []byte(strings.Repeat("[", MaxReplyDepth)+strings.Repeat("]", MaxReplyDepth)+`}`)...), "limit: bundle depth"},
 		"records": {encode(func(m map[string]any) {
 			many := make([]any, MaxReplyItems+1)
 			for i := range many {
@@ -634,13 +688,16 @@ func TestBundleLimits(t *testing.T) {
 			m["checkpoint"].(map[string]any)["witnesses"] = make([]any, MaxReplyReceipts+1)
 		}), "limit: witness receipts"},
 	} {
-		start := time.Now()
+		scans()
 		_, err := VerifyBundle(tc.data)
-		if took := time.Since(start); took > 2*time.Second {
-			t.Errorf("%s: refusing took %s", name, took)
-		}
 		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: got %v, want %q", name, err, tc.want)
+		}
+		// Refused on its length unread, or after reading only up to the
+		// bracket past the depth limit.
+		read, want := scans(), map[string][]int{"bytes": nil, "depth": {len(prefix) + MaxReplyDepth}}
+		if w, ok := want[name]; ok && !slices.Equal(read, w) {
+			t.Errorf("%s: the depth scans read %v octets, want %v", name, read, w)
 		}
 	}
 }

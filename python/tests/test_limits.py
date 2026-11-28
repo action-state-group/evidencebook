@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import time
+import operator
 from pathlib import Path
 
 import pytest
@@ -49,14 +49,46 @@ def octets(build: dict) -> bytes:
     return build["text"].encode()
 
 
-def expect(case: dict, check) -> None:
-    start = time.monotonic()
+class Scanned(bytes):
+    """Octets that count the passes made over them and the bytes each read,
+    so a test bounds the work a limit check does rather than its time on
+    this machine (evidencebook#1077). The depth scan iterates the octets;
+    each iterator's remaining length, read afterwards, gives how far it got."""
+
+    def __iter__(self):
+        it = super().__iter__()
+        self.__dict__.setdefault("passes", []).append(it)
+        return it
+
+    def reads(self) -> list[int]:
+        return [len(self) - operator.length_hint(it) for it in self.__dict__.get("passes", [])]
+
+
+def over_at(data: bytes, limit: int) -> int:
+    """The octets a depth scan reads to refuse a nest vector: up to and
+    including its first bracket past ``limit``, however long the rest."""
+    openers = [i for i, c in enumerate(data) if c in b"[{"]
+    return openers[limit] + 1
+
+
+def expect(case: dict, check, data: Scanned | None = None, passes: int = 1) -> None:
+    """Run the case's check and compare its outcome with the vector. With
+    ``data``, also bound the work: a reply over the byte limit is refused
+    unread, one over the depth limit after reading only up to the first
+    bracket past it, and anything else costs ``passes`` full passes."""
     if case["error"] is None:
         check()
     else:
         with pytest.raises(eb.InvalidError, match=case["error"]):
             check()
-    assert time.monotonic() - start < 1, case["name"]
+    if data is None:
+        return
+    if "bytes:" in (case["error"] or ""):
+        assert data.reads() == [], case["name"]
+    elif "depth:" in (case["error"] or ""):
+        assert data.reads() == [over_at(data, eb.MAX_REPLY_DEPTH)], case["name"]
+    else:
+        assert data.reads() == [len(data)] * passes, case["name"]
 
 
 def test_the_vectors_state_these_limits():
@@ -66,16 +98,18 @@ def test_the_vectors_state_these_limits():
 
 @pytest.mark.parametrize("case", LIMITS["reply"], ids=lambda c: c["name"])
 def test_reply_limit_vectors(case):
-    data = octets(case["build"])
-    expect(case, lambda: check_reply_octets(data, True))
+    data = Scanned(octets(case["build"]))
+    expect(case, lambda: check_reply_octets(data, True), data)
     if case["error"] is None:
         strict_json(data)  # within the limits, the decoder reads it
 
 
 @pytest.mark.parametrize("case", LIMITS["artifact"], ids=lambda c: c["name"])
 def test_artifact_limit_vectors(case):
-    data = octets(case["build"])
-    expect(case, lambda: check_envelope_limits(False, data, 0))
+    data = Scanned(octets(case["build"]))
+    # Within the limits the decoder reads it after the limit check: two
+    # passes, each its own depth scan; refused, the decoder never runs.
+    expect(case, lambda: check_envelope_limits(False, data, 0), data, passes=2)
 
 
 @pytest.mark.parametrize("case", LIMITS["verification"], ids=lambda c: c["name"])
@@ -138,19 +172,28 @@ def test_a_reply_over_an_octet_limit_is_refused_and_the_request_stays_open(clock
     r, _ = responder
     q = book(clock, "requester")
     sent, reply = ask(q, r, eb.Subject("checkpoints"))
+    # Each hostile reply also carries a signature that does not verify, so a
+    # refusal naming the limit shows no signature was checked before it.
+    forged = with_member(reply.message, "sig", "00" * 64)
     deep = b"[" * 100_000 + b"]" * 100_000
+    prefix = forged.octets[:-1] + b',"x":'  # at depth 1, inside the reply object
     hostile = {
-        "bytes": with_member(reply.message, "x", "a" * eb.MAX_REPLY_BYTES),
-        "depth": eb.Message(reply.message.octets[:-1] + b',"x":' + deep + b"}", eb.MEDIA_TYPE_JSON),
-        "receipts": with_member(reply.message, eb.WITNESS_RECEIPTS_MEMBER, [{}] * (eb.MAX_REPLY_RECEIPTS + 1)),
+        "bytes": with_member(forged, "x", "a" * eb.MAX_REPLY_BYTES),
+        "depth": eb.Message(prefix + deep + b"}", eb.MEDIA_TYPE_JSON),
+        "receipts": with_member(forged, eb.WITNESS_RECEIPTS_MEMBER, [{}] * (eb.MAX_REPLY_RECEIPTS + 1)),
     }
     for name, message in hostile.items():
         size = q.size()
-        start = time.monotonic()
+        data = Scanned(message.octets)
         with pytest.raises(eb.InvalidError, match="limit: "):
-            q.record_response(sent.record_id, message, keys_of(r))
-        assert time.monotonic() - start < 2, name
+            q.record_response(sent.record_id, eb.Message(data, message.media_type), keys_of(r))
         assert q.size() == size, name
+        if name == "bytes":
+            assert data.reads() == [], name  # refused on its length, unread
+        elif name == "depth":  # read up to the nest's bracket past the limit
+            assert data.reads() == [len(prefix) + eb.MAX_REPLY_DEPTH], name
+    with pytest.raises(eb.InvalidError, match="envelope signature does not verify"):
+        q.record_response(sent.record_id, forged, keys_of(r))
     record = q.record_response(sent.record_id, reply.message, keys_of(r))
     assert record.header.statement["outcome"] == eb.OUTCOME_ARTIFACT
     assert record.header.statement["witness"] == eb.UNWITNESSED
@@ -167,9 +210,7 @@ def test_a_signed_envelope_over_a_count_limit_is_received_and_failed(clock, resp
     data = jcs(artifact)
     envelope["artifact"] = base64.urlsafe_b64encode(data).rstrip(b"=").decode()
     envelope["artifact_digest"] = hashlib.sha256(data).hexdigest()
-    start = time.monotonic()
     record = q.record_response(sent.record_id, eb.Message(resign(envelope, key("responder signer"))), keys_of(r))
-    assert time.monotonic() - start < 2
     statement = record.header.statement
     assert statement["outcome"] == eb.OUTCOME_ARTIFACT_FAILED
     assert f"limit: checkpoints: {eb.MAX_REPLY_ITEMS + 1} over {eb.MAX_REPLY_ITEMS}" in statement["failure"]
