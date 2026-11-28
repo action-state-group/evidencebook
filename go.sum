@@ -1,7 +1,7 @@
 filippo.io/edwards25519 v1.2.0 h1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo=
 filippo.io/edwards25519 v1.2.0/go.mod h1:xzAOLCNug/yB62zG1bQ8uziwrIqIuxhctzJT18Q77mc=
-github.com/action-state-group/agent-action-capsule/go v0.24.0 h1:RXBD2giWUg6uXcfMZVhix1QmunR3WICeEpLcR+I6Lu4=
-github.com/action-state-group/agent-action-capsule/go v0.24.0/go.mod h1:RENcdbZODNLaxDuPUeEeGjqCg+CdebARCA3ORaG8mZc=
+github.com/action-state-group/agent-action-capsule/go v0.25.0 h1:bpQJyYNmtyXyRmp07TsxoGByNUelBaLOG3PPrIhp+30=
+github.com/action-state-group/agent-action-capsule/go v0.25.0/go.mod h1:RENcdbZODNLaxDuPUeEeGjqCg+CdebARCA3ORaG8mZc=
 github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b h1:GGYqlFX1dZmLl7lNDBVynOjx0z2CAsAMWrChVyDYtsk=
 github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b/go.mod h1:TKXiVniDy7RlksGjEAF6k9rj5NcwvwdQ6EGajzhghuo=
 github.com/action-state-group/capsule-engine/go v0.3.0 h1:nrRT2GOj+zPLF5lohWlYVR9sJ6fQJWUJuvHXIUap0go=

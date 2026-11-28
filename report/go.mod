@@ -3,7 +3,7 @@ module github.com/action-state-group/evidencebook/report
 go 1.27.0
 
 require (
-	github.com/action-state-group/agent-action-capsule/go v0.24.0
+	github.com/action-state-group/agent-action-capsule/go v0.25.0
 	github.com/action-state-group/capsule-cli v0.1.0-rc50
 	github.com/action-state-group/capsule-engine/go v0.3.0
 	github.com/action-state-group/capsule-viewer/go v0.28.1-0.20261128052131-6bc5a4db9fc1

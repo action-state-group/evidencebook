@@ -558,3 +558,66 @@ func TestSettlementReceiptsFixture(t *testing.T) {
 		assert.Equal(t, string(committed), string(data), "%s differs from what the producer builds", filepath.Join(dir, name))
 	}
 }
+
+// An evaluator's Result may name, per claim, the Evidence Bundle that shows
+// the claim's subject (subject_bundle, agent-action-capsule
+// spec/evidence-result-v0.md section 4.5). The gate admits it and the sealed
+// Result carries it unchanged; a Result without it still seals; a malformed
+// one is refused before anything is signed.
+func TestReportFromDerivationAdmitsSubjectBundle(t *testing.T) {
+	ctx := context.Background()
+	subject := digestBytes([]byte("the subject's evidence bundle"))
+	withSubject := func(ref any) func(DerivedInputs) (json.RawMessage, error) {
+		return func(inputs DerivedInputs) (json.RawMessage, error) {
+			raw, err := evaluatePack(inputs)
+			require.NoError(t, err)
+			var doc map[string]any
+			require.NoError(t, json.Unmarshal(raw, &doc))
+			for _, claim := range doc["claims"].([]any) {
+				claim.(map[string]any)["subject_bundle"] = ref
+			}
+			return json.Marshal(doc)
+		}
+	}
+
+	t.Run("with subject_bundle", func(t *testing.T) {
+		f := newPackFixture(t, true)
+		recorded, _ := f.record(t, "requester-1")
+		report, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, withSubject(map[string]any{"digest": subject, "digest_alg": "SHA-256"}), ReportOptions{Derivation: f.id})
+		require.NoError(t, err)
+		verified, err := VerifyBundle(report.Bundle.JSON)
+		require.NoError(t, err)
+		require.NoError(t, verified.FullyVerified())
+		var result struct {
+			Claims []struct {
+				SubjectBundle struct{ Digest string } `json:"subject_bundle"`
+			} `json:"claims"`
+		}
+		require.NoError(t, json.Unmarshal(report.Result.Header.Statement, &result))
+		require.Len(t, result.Claims, 5)
+		for _, c := range result.Claims {
+			assert.Equal(t, subject, c.SubjectBundle.Digest, "the sealed Result carries subject_bundle")
+		}
+	})
+
+	t.Run("without subject_bundle", func(t *testing.T) {
+		f := newPackFixture(t, true)
+		recorded, _ := f.record(t, "requester-1")
+		report, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, evaluatePack, ReportOptions{Derivation: f.id})
+		require.NoError(t, err)
+		assert.NotContains(t, string(report.Result.Header.Statement), "subject_bundle")
+	})
+
+	t.Run("malformed subject_bundle", func(t *testing.T) {
+		f := newPackFixture(t, true)
+		recorded, _ := f.record(t, "requester-1")
+		for name, ref := range map[string]any{
+			"a bare string":   subject,
+			"another alg":     map[string]any{"digest": subject, "digest_alg": "SHA-512"},
+			"an extra member": map[string]any{"digest": subject, "digest_alg": "SHA-256", "uri": "https://example.org"},
+		} {
+			_, err := f.requester.ReportFromDerivation(ctx, recorded.RecordID, withSubject(ref), ReportOptions{Derivation: f.id})
+			assert.ErrorIs(t, err, ErrInvalid, name)
+		}
+	})
+}
