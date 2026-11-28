@@ -75,10 +75,25 @@ func checkReplyOctets(reply Message) error {
 
 // jsonDepthOver reports whether JSON text nests arrays and objects deeper
 // than limit. It scans the octets without decoding them, so it costs one
-// pass whatever the input; text that is not JSON is left to the decoder.
+// pass whatever the input, and stops at the first bracket past limit; text
+// that is not JSON is left to the decoder.
 func jsonDepthOver(data []byte, limit int) bool {
+	read, over := jsonDepthScan(data, limit)
+	if depthScanned != nil {
+		depthScanned(read)
+	}
+	return over
+}
+
+// depthScanned, set only by tests, is told how many octets each depth scan
+// read, so a test bounds the work a limit check does rather than its time
+// (evidencebook#1077). Nil in production, where it changes nothing.
+var depthScanned func(read int)
+
+// jsonDepthScan is jsonDepthOver, also returning the octets it read.
+func jsonDepthScan(data []byte, limit int) (read int, over bool) {
 	depth, inString, escaped := 0, false, false
-	for _, c := range data {
+	for i, c := range data {
 		switch {
 		case inString:
 			switch {
@@ -93,13 +108,13 @@ func jsonDepthOver(data []byte, limit int) bool {
 			inString = true
 		case c == '[' || c == '{':
 			if depth++; depth > limit {
-				return true
+				return i + 1, true
 			}
 		case c == ']' || c == '}':
 			depth--
 		}
 	}
-	return false
+	return len(data), false
 }
 
 // checkEnvelopeLimits applies the limits on what the responder signed,
