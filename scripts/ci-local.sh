@@ -13,7 +13,9 @@
 # when a changed path matches it (act itself ignores those lists). The setup
 # actions are replaced by the stand-ins in .github/act/ (this machine's go, the
 # workflow's Rust toolchain through rustup, a uv virtual environment per job,
-# Chrome for Testing at the pinned version).
+# Chrome for Testing at the pinned version). Every other action is fetched
+# once per machine into $EB_CI_CACHE/actions by .github/act/fetch-action.sh
+# before act starts, so act never fetches one while jobs run (evidencebook#1061).
 #
 # Not run here, and listed by --list and in every summary: steps that need
 # Linux (they carry `if: env.ACT != 'true'`; their jobs report "partial"),
@@ -114,11 +116,6 @@ declare -A standin=(
   [browser-actions/setup-chrome]=setup-chrome
   [actions/upload-artifact]=noop
 )
-locals=()
-while read -r use; do
-  [[ -n "${standin[${use%@*}]:-}" ]] && locals+=(--local-repository "$use=$work/repo/.github/act/${standin[${use%@*}]}")
-done < <(grep -hoE 'uses: [^ ]+@[0-9a-f]{40}' "$wfdir"/*.yml | sed 's/^uses: //' | sort -u)
-
 
 # A pull_request trigger's paths list, as GitHub applies it: the workflow runs
 # when a changed path matches a glob (`**` any characters, `*` any but `/`).
@@ -152,6 +149,80 @@ for f in "${wfs[@]}"; do
   else
     printf 'not triggered (no changed path matches its pull_request paths): %s\n' "$f"
   fi
+done
+
+# Every other action the selected workflows use comes from a directory in the
+# per-machine cache, fetched once, before act starts (evidencebook#1061). Left
+# to act, each job fetches it into one go-git repository under act's cache
+# (GoGitActionCache, which act uses because of the stand-ins'
+# --local-repository), on every step and even on a hit, so concurrent jobs
+# read a ref or tree another job is still writing and fail the step at 0 s
+# ("ref file is empty", "file does not exist"). A step act would fetch any
+# other way is a setup error: an action (stand-in or not) not pinned by full
+# sha, a remote reusable workflow, a composite action (fetched or local) that
+# uses a remote action itself, or a `uses` this line scan cannot read (a flow
+# mapping such as `- {uses: x}`).
+cache=${EB_CI_CACHE:-$HOME/Library/Caches/evidencebook-ci}
+uses_in() { # files...: each step's `uses` value, unquoted, one per line
+  grep -hE '^[[:space:]-]*uses:' "$@" | sed -E 's/^[[:space:]-]*uses:[[:space:]]*//; s/[[:space:]]+#.*$//; s/[[:space:]]*$//' | tr -d "\"'"
+}
+unreadable() { # file: refuses a flow-mapping `uses`, which uses_in does not see
+  if grep -qE '[{,][[:space:]]*["'\'']?uses["'\'']?[[:space:]]*:' "$1"; then
+    echo "${1#"$work/repo/"}: a flow-mapping uses, which ci-local cannot read; write it as a block mapping (evidencebook#1061)" >&2
+    exit 2
+  fi
+}
+manifest_of() { # action directory: its action.yml or action.yaml, if any
+  local m
+  for m in action.yml action.yaml; do [[ -f "$1/$m" ]] && { printf '%s\n' "$1/$m"; return; }; done
+}
+locals=()
+declare -A fetched=() seen=()
+composites=() # manifests of the local and fetched actions, checked below
+if ((${#selected[@]})); then
+  for f in "${selected[@]}"; do unreadable "$wfdir/$f"; done
+  while read -r use; do
+    case "$use" in
+      docker://*) continue ;;
+      ./*) composites+=("$(manifest_of "$work/repo/${use#./}")") && continue ;;
+    esac
+    if ! [[ "$use" =~ ^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(/[^@]*)?@([0-9a-f]{40})$ ]] || [[ "$use" == */.github/workflows/* ]]; then
+      echo "act would fetch $use into its shared cache: pin a full commit sha of an action (evidencebook#1061)" >&2
+      exit 2
+    fi
+    repo=${BASH_REMATCH[1]} sub=${BASH_REMATCH[2]#/} sha=${BASH_REMATCH[3]}
+    if [[ -n "${standin[${use%@*}]:-}" ]]; then
+      locals+=(--local-repository "$use=$work/repo/.github/act/${standin[${use%@*}]}")
+      continue
+    fi
+    if [[ -z "${fetched[$repo@$sha]:-}" ]]; then
+      fetched[$repo@$sha]=$("$work/repo/.github/act/fetch-action.sh" "$repo" "$sha" "$cache/actions") || {
+        echo "could not fetch $repo at $sha" >&2
+        exit 2
+      }
+      locals+=(--local-repository "$repo@$sha=${fetched[$repo@$sha]}")
+    fi
+    composites+=("$(manifest_of "${fetched[$repo@$sha]}${sub:+/$sub}")")
+  done < <(uses_in "${selected[@]/#/$wfdir/}" | sort -u)
+fi
+# A composite action may use local actions (checked in turn) and docker
+# images; a remote one would go through act's shared cache.
+while ((${#composites[@]})); do
+  m=${composites[0]}
+  composites=("${composites[@]:1}")
+  [[ -n "$m" && -z "${seen[$m]:-}" ]] || continue
+  seen[$m]=1
+  unreadable "$m"
+  while read -r use; do
+    case "$use" in
+      docker://*) ;;
+      ./*) composites+=("$(manifest_of "$work/repo/${use#./}")") ;;
+      *)
+        echo "${m#"$work/repo/"}: a composite action that uses the remote action $use, which act would fetch into its shared cache (evidencebook#1061)" >&2
+        exit 2
+        ;;
+    esac
+  done < <(uses_in "$m")
 done
 
 # Steps that run `google-chrome` before a job sets up its pinned Chrome get
@@ -197,7 +268,7 @@ EOF
     act pull_request -W "$work/workflows" -e "$work/event.json" \
     -P ubuntu-latest=-self-hosted -P ubuntu-24.04=-self-hosted --concurrent-jobs "$n" \
     "${locals[@]}" --env EB_CI_CHROME_SH="$work/repo/.github/act/chrome.sh" \
-    --env EB_CI_CACHE="${EB_CI_CACHE:-$HOME/Library/Caches/evidencebook-ci}" \
+    --env EB_CI_CACHE="$cache" \
     --env GIT_PAGER=cat --env PAGER=cat --env UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}") < /dev/null > "$work/act.log" 2>&1 || status=$?
   if ((status == 124 || status == 137)); then
     printf 'the act run passed CI_LOCAL_TIMEOUT (%s) and was stopped\n' "${CI_LOCAL_TIMEOUT:-40m}"

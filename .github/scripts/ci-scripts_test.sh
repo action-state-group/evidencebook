@@ -581,6 +581,19 @@ jobs:
     steps:
       - run: true
 WF
+# A remote action (evidencebook#1061), served from a local repository through
+# EB_ACT_ACTION_URL: ci-local fetches it into EB_CI_CACHE before act starts.
+mkdir -p "$cl/actions/example/act"
+(cd "$cl/actions/example/act" && git init -q &&
+  printf 'name: act\nruns:\n  using: node20\n  main: index.js\n' > action.yml && echo 'console.log(1)' > index.js &&
+  git add action.yml index.js && git -c user.name=t -c user.email=t@t commit -qm one)
+act_sha=$(git -C "$cl/actions/example/act" rev-parse HEAD)
+printf '      - uses: example/act@%s\n' "$act_sha" >> "$cl/repo/.github/workflows/always.yml"
+# A second commit: a composite action that uses a remote action itself.
+(cd "$cl/actions/example/act" &&
+  printf 'name: act\nruns:\n  using: composite\n  steps:\n    - uses: other/thing@%s\n' "$act_sha" > action.yml &&
+  git add action.yml && git -c user.name=t -c user.email=t@t commit -qm composite)
+composite_sha=$(git -C "$cl/actions/example/act" rev-parse HEAD)
 printf 'leak me\n' > "$cl/repo/docs/a.md"
 printf 'readme\n' > "$cl/repo/README.md"
 (cd "$cl/repo" && git add .github scripts docs README.md && git -c user.name=t -c user.email=t@t commit -qm base &&
@@ -620,7 +633,8 @@ cl_run() { # description, want exit, changed file on the branch, env...
   (cd "$cl/repo" && git checkout -q -B t origin/main && mkdir -p "$(dirname "$change")" && echo x >> "$change" && git add "$change" &&
     git -c user.name=t -c user.email=t@t commit -qm change)
   : > "$cl/act.log"
-  (cd "$cl/repo" && env PATH="$cl/bin:$PATH" ACT_LOG="$cl/act.log" "$@" bash scripts/ci-local.sh) > "$cl/out" 2>&1 || st=$?
+  (cd "$cl/repo" && env PATH="$cl/bin:$PATH" ACT_LOG="$cl/act.log" EB_CI_CACHE="$cl/cache" EB_ACT_ACTION_URL="file://$cl/actions" \
+    "$@" bash scripts/ci-local.sh) > "$cl/out" 2>&1 || st=$?
   if ((st != want)); then
     printf 'FAIL %s: exit %d, want %d\n%s\n' "$what" "$st" "$want" "$(tail -15 "$cl/out")"
     fails=$((fails + 1))
@@ -652,7 +666,89 @@ if cl_run "ci-local: a change outside docs/" 0 README.md CI_LOCAL_JOBS=3 LEAK_LI
   check "ci-local: act runs on a branch, so the checkout it copies keeps a refs/ directory" grep -qx 'branch=ci-local' "$cl/act.log"
   check "ci-local: a max-parallel expression (act runs it as 1) becomes the local job bound" grep -qx 'max-parallel=max-parallel: 3' "$cl/act.log"
   check "ci-local: act keeps its per-job copies in the run's own directory" grep -qE '^xdg=/.+/xdg$' "$cl/act.log"
+  check "ci-local: a remote action reaches act as a directory fetched before it starts" \
+    grep -qF "example/act@$act_sha=$cl/cache/actions/example/act@$act_sha " "$cl/act.log"
+  check "ci-local: the fetched directory holds the action at that sha" test -f "$cl/cache/actions/example/act@$act_sha/index.js"
 fi
+# A cached action needs no fetch: the next run works with no source at all.
+cl_run "ci-local: a second run uses the cached action" 0 README.md EB_ACT_ACTION_URL="file://$cl/nowhere" &&
+  check "ci-local: the cached action reaches act" grep -qF "example/act@$act_sha=" "$cl/act.log"
+# Workflows whose action act would fetch itself, into its shared cache, stop
+# the run before act starts.
+cl_refused() { # description, message, a workflow step (YAML at step indent), [a local composite's steps]
+  local what=$1 msg=$2 step=$3 composite=${4:-} st=0
+  (cd "$cl/repo" && git checkout -q -B t origin/main &&
+    printf 'on:\n  pull_request:\njobs:\n  r:\n    runs-on: ubuntu-latest\n    steps:\n      %s\n' "$step" > .github/workflows/remote.yml &&
+    git add .github/workflows/remote.yml &&
+    if [[ -n "$composite" ]]; then
+      mkdir -p .github/actions/loc &&
+        printf 'name: loc\nruns:\n  using: composite\n  steps:\n    %s\n' "$composite" > .github/actions/loc/action.yml &&
+        git add .github/actions/loc/action.yml
+    fi &&
+    git -c user.name=t -c user.email=t@t commit -qm remote)
+  : > "$cl/act.log"
+  (cd "$cl/repo" && env PATH="$cl/bin:$PATH" ACT_LOG="$cl/act.log" EB_CI_CACHE="$cl/cache" EB_ACT_ACTION_URL="file://$cl/actions" \
+    bash scripts/ci-local.sh) > "$cl/out" 2>&1 || st=$?
+  if ((st == 2)) && grep -q "$msg" "$cl/out" && ! [[ -s "$cl/act.log" ]]; then printf 'ok   %s\n' "$what"; else
+    printf 'FAIL %s: exit %d (want 2), act ran: %s\n%s\n' "$what" "$st" "$([[ -s "$cl/act.log" ]] && echo yes || echo no)" "$(tail -5 "$cl/out")"
+    fails=$((fails + 1))
+  fi
+}
+cl_refused "ci-local: an action pinned by tag stops the run" 'pin a full commit sha' '- uses: "example/act@v1"'
+cl_refused "ci-local: a stand-in pinned by tag stops the run" 'pin a full commit sha' "- uses: 'actions/setup-go@v7'"
+cl_refused "ci-local: a fetched composite action that uses a remote action stops the run" \
+  'composite action that uses the remote action other/thing' "- uses: example/act@$composite_sha"
+cl_refused "ci-local: a local composite action that uses a remote action stops the run" \
+  'composite action that uses the remote action example/act' '- uses: ./.github/actions/loc' "- uses: example/act@$act_sha"
+cl_refused "ci-local: a flow-mapping uses, which the scan cannot read, stops the run" \
+  'flow-mapping uses' "- {uses: example/act@$act_sha}"
+cl_refused "ci-local: an action that cannot be fetched stops the run" "could not fetch example/missing" "- uses: example/missing@$act_sha"
+
+# .github/act/fetch-action.sh on its own.
+fa="$cl/repo/.github/act/fetch-action.sh"
+fc=$(mktemp -d)
+if EB_ACT_ACTION_URL="file://$cl/actions" bash "$fa" example/act 0123456789012345678901234567890123456789 "$fc" > /dev/null 2>&1; then
+  printf 'FAIL fetch-action.sh: fetched a sha its source lacks\n'
+  fails=$((fails + 1))
+elif [[ -n "$(ls -A "$fc/example" 2> /dev/null)" ]]; then
+  printf 'FAIL fetch-action.sh: a failed fetch left %s\n' "$(ls -A "$fc/example")"
+  fails=$((fails + 1))
+else printf 'ok   fetch-action.sh: a sha its source lacks fails and leaves nothing\n'; fi
+st=0
+bash "$fa" example/act v1 "$fc" > /dev/null 2>&1 || st=$?
+if ((st == 2)); then printf 'ok   fetch-action.sh: a ref that is not a full sha is a usage error\n'; else
+  printf 'FAIL fetch-action.sh: a tag ref exited %d, want 2\n' "$st"
+  fails=$((fails + 1))
+fi
+# Two runs fetching the same action at once both get the one complete entry.
+EB_ACT_ACTION_URL="file://$cl/actions" bash "$fa" example/act "$act_sha" "$fc" > "$fc/1.out" 2>&1 &
+p1=$!
+EB_ACT_ACTION_URL="file://$cl/actions" bash "$fa" example/act "$act_sha" "$fc" > "$fc/2.out" 2>&1 &
+p2=$!
+s1=0 s2=0
+wait "$p1" || s1=$?
+wait "$p2" || s2=$?
+if ((s1 == 0 && s2 == 0)) && [[ "$(cat "$fc/1.out")" == "$fc/example/act@$act_sha" && "$(cat "$fc/2.out")" == "$fc/example/act@$act_sha" ]] &&
+  [[ "$(ls -A "$fc/example")" == "act@$act_sha" ]] && [[ -f "$fc/example/act@$act_sha/index.js" ]]; then
+  printf 'ok   fetch-action.sh: two concurrent fetches share one complete entry\n'
+else
+  printf 'FAIL fetch-action.sh: concurrent fetches: exits %d %d; entries: %s\n' "$s1" "$s2" "$(ls -A "$fc/example")"
+  fails=$((fails + 1))
+fi
+# A fetch that stalls is stopped at EB_ACT_FETCH_TIMEOUT and leaves nothing.
+mkdir -p "$fc/bin"
+printf '#!/usr/bin/env bash\n[[ " $* " == *" fetch "* ]] && exec sleep 60\nexec %q "$@"\n' "$(command -v git)" > "$fc/bin/git"
+chmod +x "$fc/bin/git"
+st=0
+SECONDS=0
+PATH="$fc/bin:$PATH" EB_ACT_FETCH_TIMEOUT=1 EB_ACT_ACTION_URL="file://$cl/actions" bash "$fa" example/act "$act_sha" "$fc/stall" > /dev/null 2>&1 || st=$?
+if ((st == 1 && SECONDS < 20)) && [[ -z "$(ls -A "$fc/stall/example" 2> /dev/null)" ]]; then
+  printf 'ok   fetch-action.sh: a stalled fetch stops at EB_ACT_FETCH_TIMEOUT and leaves nothing\n'
+else
+  printf 'FAIL fetch-action.sh: a stalled fetch: exit %d after %ds; left: %s\n' "$st" "$SECONDS" "$(ls -A "$fc/stall/example" 2> /dev/null)"
+  fails=$((fails + 1))
+fi
+rm -rf "$fc"
 if cl_run "ci-local: a docs/ change" 0 docs/a.md; then
   check "ci-local: a docs/ change runs the block-list and the quoted flow-list workflows too" \
     grep -qx 'given=always.yml docs.yml flow.yml' "$cl/act.log"
@@ -680,7 +776,8 @@ kept=$(sed -n 's/^the whole act log: //p' "$cl/out")
   git checkout -q -B t origin/main~1 && echo x >> README.md && git add README.md &&
   git -c user.name=t -c user.email=t@t commit -qm change)
 : > "$cl/act.log"
-if (cd "$cl/repo" && env PATH="$cl/bin:$PATH" ACT_LOG="$cl/act.log" bash scripts/ci-local.sh) > "$cl/out" 2>&1; then
+if (cd "$cl/repo" && env PATH="$cl/bin:$PATH" ACT_LOG="$cl/act.log" EB_CI_CACHE="$cl/cache" EB_ACT_ACTION_URL="file://$cl/actions" \
+  bash scripts/ci-local.sh) > "$cl/out" 2>&1; then
   check "ci-local: a workflow main gained after the branch diverged runs" grep -qx 'given=always.yml late.yml' "$cl/act.log"
 else
   printf 'FAIL ci-local: the run with a late base workflow exited nonzero\n%s\n' "$(tail -15 "$cl/out")"
