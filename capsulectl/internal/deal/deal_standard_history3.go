@@ -442,16 +442,17 @@ func rowsAndDisputes3(v xdealv1.StatusValue, at string, stamps map[uint64]string
 // book order), so the k-th dispute of a row is its k-th input dispute, which
 // carries the record's time; any other shape is a corrupt status value.
 //
-// A dispute whose time is after at is no entry. One the status value has
-// withdrawn is withdrawn as of at when a withdrawal of its claimant on the
-// row exists by then and is not earlier than the dispute (a book's times
-// never decrease). The status value does not say which withdrawal withdrew
-// it, so a held withdrawal that came before the dispute in its book with
-// the same time, or with no time on one of the two, also reads as
-// withdrawing it; that is how the row rule reads every held withdrawal of
-// the claimant (rowstatus withdraws all its disputes on the row), so the
-// tally and the row still agree. A withdrawal after the dispute in its book
-// is never missed. Otherwise it is resolved by the ruling rowstatus's rule 1
+// A dispute whose time is after at is no entry. It is withdrawn as of at
+// when a withdrawal of its claimant on the row exists by then and is not
+// earlier than the dispute, read from the held records alone, never from the
+// status value's outcome, which may rest on a withdrawal made after at. A
+// book's times never decrease, so a withdrawal after the dispute in its book
+// is never missed. The time cannot order a withdrawal and a dispute of the
+// same time, or one with no time, so such a held withdrawal reads as
+// withdrawing the dispute even where it came first in the book; that is how
+// the row rule reads every held withdrawal of the claimant (rowstatus
+// withdraws all its disputes on the row), so the tally and the row agree.
+// Otherwise it is resolved by the ruling rowstatus's rule 1
 // reads, the row's first final ruling held as of at, none while the case
 // book forked: against whom is the row's ruling_against, the profile keeping
 // one final ruling per row in an unforked case book (xdealv1.SealRuling);
@@ -482,7 +483,7 @@ func disputesAsOf(v xdealv1.StatusValue, inputs []rowstatus.Input, at string) ([
 			}
 			outcome := xdealv1.OutcomeOpen
 			switch {
-			case sd.Outcome == xdealv1.OutcomeWithdrawn && withdrawnAt(in.Withdrawals, d, at):
+			case withdrawnAt(in.Withdrawals, d, at):
 				outcome = xdealv1.OutcomeWithdrawn
 			case !ruled:
 			case row.RulingAgainst == nil:

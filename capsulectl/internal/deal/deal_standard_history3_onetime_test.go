@@ -107,8 +107,7 @@ func TestALateDisputeIsStillATallyEntry(t *testing.T) {
 
 // A withdrawal counts once it exists: before T the dispute is withdrawn, after
 // T it is open again, and a withdrawal before T outranks a ruling after T. A
-// withdrawal the status value did not read as withdrawing the dispute never
-// does.
+// withdrawal earlier than the dispute never withdraws it.
 func TestTheCardReadsAWithdrawalAsOfItsAnchor(t *testing.T) {
 	withdrawn := func(at string, rulings ...xdealv1.StatusRuling) xdealv1.StatusValue {
 		return otDeal(xdealv1.StatusRowInput{
@@ -122,14 +121,13 @@ func TestTheCardReadsAWithdrawalAsOfItsAnchor(t *testing.T) {
 	_, got = otAt(t, withdrawn("2026-11-09T00:00:00Z"), "2026-11-08T00:00:00Z", nil)
 	assert.Equal(t, otReceived("open"), got, "withdrawn after T")
 	ruled := xdealv1.StatusRuling{Final: true, Value: "not_met", Time: xdealv1.KnownTime(otRuling)}
-	_, got = otAt(t, withdrawn("2026-11-07T00:00:00Z", ruled), "2026-11-13T00:00:00Z", nil)
-	assert.Equal(t, otReceived("withdrawn"), got, "withdrawn before T, ruled after it: the status value's order stands")
+	_, got = otAt(t, withdrawn("2026-11-07T00:00:00Z", ruled), "2026-11-10T00:00:00Z", nil)
+	assert.Equal(t, otReceived("withdrawn"), got, "withdrawn before T, ruled after it")
 	_, got = otAt(t, withdrawn("2026-11-09T00:00:00Z", ruled), "2026-11-13T00:00:00Z", nil)
-	assert.Equal(t, otReceived("withdrawn"), got, "both held at T")
+	assert.Equal(t, otReceived("withdrawn"), got, "both held at T: the withdrawal outranks the ruling")
 
-	// The buyer withdrew an earlier dispute, then disputed again: the status
-	// value says the second dispute is open, and the earlier withdrawal does
-	// not withdraw it at any anchor.
+	// The buyer withdrew an earlier dispute, then disputed again: the earlier
+	// withdrawal does not withdraw the later dispute at any anchor.
 	again := otDeal(xdealv1.StatusRowInput{
 		Disputes:    []xdealv1.StatusRowDispute{{Side: "buyer", Time: xdealv1.KnownTime(otDispute)}},
 		Withdrawals: []xdealv1.StatusSideTime{{Side: "buyer", Time: xdealv1.KnownTime("2026-11-05T12:00:00Z")}},
@@ -138,22 +136,29 @@ func TestTheCardReadsAWithdrawalAsOfItsAnchor(t *testing.T) {
 	assert.Equal(t, otReceived("open"), got)
 }
 
-// The time test errs one way only, toward the row rule: a held withdrawal
-// that came before the dispute in its book with the same time reads as
-// withdrawing it, which is how the row rule reads it (any held withdrawal of
-// the claimant withdraws its disputes on the row), so the tally and the row
-// agree. Book order D1, W1, D2, W2, with W2 after T.
-func TestAnEqualTimeWithdrawalReadsAsTheRowRuleReadsIt(t *testing.T) {
+// A withdrawal made after T cannot change the tally at T: book order D1, W1,
+// D2 with the same time, then W2 after T. The status value reads D2 as
+// withdrawn only with W2, but at T both books read the same, D2 withdrawn by
+// the held W1 of the same time, as the row rule reads it (any held withdrawal
+// of the claimant withdraws its disputes on the row).
+func TestAWithdrawalAfterTheAnchorDoesNotChangeTheTally(t *testing.T) {
 	same := xdealv1.KnownTime(otDispute)
-	v := otDeal(xdealv1.StatusRowInput{
-		Disputes:    []xdealv1.StatusRowDispute{{Side: "buyer", Time: same}, {Side: "buyer", Time: same}},
-		Withdrawals: []xdealv1.StatusSideTime{{Side: "buyer", Time: same}, {Side: "buyer", Time: xdealv1.KnownTime("2026-11-09T00:00:00Z")}},
-	}, nil, otBuyerDispute(xdealv1.OutcomeWithdrawn), otBuyerDispute(xdealv1.OutcomeWithdrawn))
-	row, got := otAt(t, v, "2026-11-08T00:00:00Z", nil)
-	assert.NotEqual(t, "in_dispute", row)
+	disputes := []xdealv1.StatusRowDispute{{Side: "buyer", Time: same}, {Side: "buyer", Time: same}}
+	w1 := xdealv1.StatusSideTime{Side: "buyer", Time: same}
+	w2 := xdealv1.StatusSideTime{Side: "buyer", Time: xdealv1.KnownTime("2026-11-09T00:00:00Z")}
+	without := otDeal(xdealv1.StatusRowInput{Disputes: disputes, Withdrawals: []xdealv1.StatusSideTime{w1}},
+		nil, otBuyerDispute(xdealv1.OutcomeWithdrawn), otBuyerDispute(xdealv1.OutcomeOpen))
+	with := otDeal(xdealv1.StatusRowInput{Disputes: disputes, Withdrawals: []xdealv1.StatusSideTime{w1, w2}},
+		nil, otBuyerDispute(xdealv1.OutcomeWithdrawn), otBuyerDispute(xdealv1.OutcomeWithdrawn))
+	at := "2026-11-08T00:00:00Z"
+	rowWithout, gotWithout := otAt(t, without, at, nil)
+	rowWith, gotWith := otAt(t, with, at, nil)
+	assert.Equal(t, gotWithout, gotWith)
+	assert.Equal(t, rowWithout, rowWith)
+	assert.NotEqual(t, "in_dispute", rowWith)
 	assert.Equal(t, []standardhistory.Dispute{
 		{Side: "received", Outcome: "withdrawn", Forum: "auto"}, {Side: "received", Outcome: "withdrawn", Forum: "auto"},
-	}, got)
+	}, gotWith)
 }
 
 // A ruling is held once its time is T or earlier: before it the dispute is
