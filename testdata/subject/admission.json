@@ -1,0 +1,2354 @@
+{
+  "description": "The subject convention v0's admission rule, header by header (evidencebook#116 design note section 4; Go checkSubjectEntryLocked, NewSubjectIDIndex, bookView.correlationOf), written by subject_admission_vectors_test.go (EB_WRITE_SUBJECT_VECTORS=1). Each case starts from an empty book. Each step is a record header the book is asked to admit, with a fixed record id: expect is ok (the record joins the log at that seq) or a refusal class (it does not, and the next step takes the same seq). subject_id_index is the index's root after the step, over the admitted records in log order (an index_root, window_open, window_close or book_close record is never indexed); checkpoint_commits is whether a checkpoint then, in a book that has never committed that index, commits it (once it holds a leaf). correlation lists, for each admitted record in log order, the identifier a correlation subject holds it under: the subject_id of the first subject_root it cites, else its correlation.exchange_id, else its subject_ref.",
+  "classes": [
+    "cites_root_without_id",
+    "close_again",
+    "close_count",
+    "close_not_one",
+    "close_statement",
+    "close_unknown_root",
+    "log_root_not_first",
+    "malformed_root",
+    "member_after_close",
+    "per_subject_book",
+    "second_root",
+    "two_subjects"
+  ],
+  "cases": [
+    {
+      "name": "field subject",
+      "book_id": "subject-vectors/field",
+      "steps": [
+        {
+          "note": "a record before any subject",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [],
+            "record_type": "observation",
+            "seq": 1,
+            "subject_ref": "s-1",
+            "v": 1
+          },
+          "record_id": "4d59da2d5ed6e984c2106051ad0a0f46067bca86db669dac7e6cc8c3dfada63e",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          },
+          "checkpoint_commits": false
+        },
+        {
+          "note": "the root of exchange-1",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 2,
+            "statement": {
+              "membership": "field:/correlation/exchange_id",
+              "subject_id": "exchange-1",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a second root for exchange-1",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "field:/correlation/exchange_id",
+              "subject_id": "exchange-1",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "40580f133d7b6c753256239107722d014ce39a4ea6bce5b30d9b0e847af8bb13",
+          "expect": "second_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a log root after seq 1",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "log",
+              "subject_id": "deal-1",
+              "subject_kind": "deal"
+            },
+            "v": 1
+          },
+          "record_id": "06b4171d7d8ce31584651e40bc6250258c9a5f2284e8004d2cd2f0f2f9bcb290",
+          "expect": "log_root_not_first",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root with membership \"\"",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "",
+              "subject_id": "x",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "e4b11afc82a18aeb3b9e1ac2c8b8218073a364bd6efbae237e4dc327b99d48e1",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root with membership \"field:\"",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "field:",
+              "subject_id": "x",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "e04e5fbcb93e8439571f5ea1a2b8a04228a8febef9b25dff07dd0040f178fee0",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root with membership \"field:x\"",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "field:x",
+              "subject_id": "x",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "da04a4fa5611fc15fdc19f030c5530c161a777c1e40eee477dc9d17b96bd3d95",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root with membership \"field:/a~2\"",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "field:/a~2",
+              "subject_id": "x",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "7c177ee65c758dd7f5b7cf43c55df8521f44cec9e668f8bfadec4fab335dc510",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root with membership \"field:/a~\"",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "field:/a~",
+              "subject_id": "x",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "d5d23480e5dbf59d72b931f1d2a6cb3595d9a93279f486dccb3d6d57127b23c7",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root with membership \"logs\"",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "logs",
+              "subject_id": "x",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "57033651dd11a84bb44660cde32bbb583505aeb501d36f4976c6d9c57e030f5c",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root missing its subject_id",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "field:/correlation/exchange_id",
+              "subject_id": "",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "cecf569931503ce2728c8e3eb41860276acddea3de55813ee77b5130c6eb47ad",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root with an extra statement member",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "extra": 1,
+              "membership": "log",
+              "subject_id": "y",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "542eeb2984b26d22cf9f802d50bea18307ead3d89161529d4b6098708341bbcd",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root with no statement",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "v": 1
+          },
+          "record_id": "db0cad1d871306ba9ef860a75ebc8abe3817e95cbdb9bf39019adbf1c1cee870",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3975b47f9f669e7c07c8569285aee782dfab472876d4967d0ce1739a85af5f06",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root whose member names differ in case only, as Go's decoder reads them",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "Membership": "field:/subject_ref",
+              "SUBJECT_ID": "session-9",
+              "subject_kind": "session"
+            },
+            "v": 1
+          },
+          "record_id": "073e9e4ee89170f503c51a8a709fa335eca15f876b66b3acbd3045be4f43a451",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "b9c0c710bd8877e0b9ef48dfaf289d68f7f24eb3d958ebb43923dda6deb35053",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record citing the root with another exchange id",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "exchange-2"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              }
+            ],
+            "record_type": "exchange",
+            "seq": 4,
+            "v": 1
+          },
+          "record_id": "8a2cae1a12b375678aea454de1593259789e01576292168bed9e54dc2037dfe9",
+          "expect": "cites_root_without_id",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "b9c0c710bd8877e0b9ef48dfaf289d68f7f24eb3d958ebb43923dda6deb35053",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record citing the root with no correlation",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              }
+            ],
+            "record_type": "exchange",
+            "seq": 4,
+            "v": 1
+          },
+          "record_id": "f19b632861cf76a09aab967ccb5963847aefcf1aa06ba90be33d864216a49120",
+          "expect": "cites_root_without_id",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "b9c0c710bd8877e0b9ef48dfaf289d68f7f24eb3d958ebb43923dda6deb35053",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "member M1",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "exchange-1"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              }
+            ],
+            "record_type": "exchange",
+            "seq": 4,
+            "v": 1
+          },
+          "record_id": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "f5496863c3948bbad8df533475226090aa5ad3c716fb4599b6efbbb6a1c3dd9b",
+            "size": 3
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record carrying the id without citing the root: not a member",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "exchange-1"
+            },
+            "epistemic_type": "observed_event",
+            "links": [],
+            "record_type": "exchange",
+            "seq": 5,
+            "v": 1
+          },
+          "record_id": "12825020c82ffd11c98e9db63f48f2adc93ce135d4ee0f4969245097c1b2bfb0",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "f5496863c3948bbad8df533475226090aa5ad3c716fb4599b6efbbb6a1c3dd9b",
+            "size": 3
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an index_root citing the root: bookkeeping, never a member",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "derived_metric",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              }
+            ],
+            "record_type": "index_root",
+            "seq": 6,
+            "statement": {
+              "as_of_seq": 3,
+              "index": "record_id",
+              "root": "00",
+              "size": 0
+            },
+            "v": 1
+          },
+          "record_id": "8263a4d90bff121d78243235c911eba5abae41cf82bb85fc068976ef06cf1532",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "f5496863c3948bbad8df533475226090aa5ad3c716fb4599b6efbbb6a1c3dd9b",
+            "size": 3
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a disclosure citing the root: bookkeeping",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              }
+            ],
+            "record_type": "disclosure",
+            "seq": 7,
+            "v": 1
+          },
+          "record_id": "9f9503658563acafdc71676e6269a476e4778bce4367c1dd04cc755f672e4dc5",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "f5496863c3948bbad8df533475226090aa5ad3c716fb4599b6efbbb6a1c3dd9b",
+            "size": 3
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "member M2",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "exchange-1"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              }
+            ],
+            "record_type": "exchange",
+            "seq": 8,
+            "v": 1
+          },
+          "record_id": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close counting one member",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
+              "members": 1
+            },
+            "v": 1
+          },
+          "record_id": "b97c9e6dfbfbf1c43f7a04bcfe8692f8700790e83340d68e3224217f11153a49",
+          "expect": "close_count",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close naming M1 as the last",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
+              "members": 2
+            },
+            "v": 1
+          },
+          "record_id": "78fce13f2a66411533be7bc53476cb65c3ea69b954ab979c8883793293365aad",
+          "expect": "close_count",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close naming no root it holds",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "962d17f5b2b056ba6239c47200249423d8df5c8187ae55741cae3b06c21b11a8",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "members": 2
+            },
+            "v": 1
+          },
+          "record_id": "18836e798316cd05c63946b52df09909baa67526e1c044308b56507976621bbb",
+          "expect": "close_unknown_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close with two closes links",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "closes"
+              },
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "members": 2
+            },
+            "v": 1
+          },
+          "record_id": "300a013548585f3b4ef16817be68a7b3f68bd074da5a5efafa9f4a5429214c72",
+          "expect": "close_not_one",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close with no closes link",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "",
+              "members": 0
+            },
+            "v": 1
+          },
+          "record_id": "cc5368e6317abf99750f148b85df899e4ae130813bae07a843fc76e2024e4855",
+          "expect": "close_not_one",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close whose statement has an extra member",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "extra": true,
+              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "members": 2
+            },
+            "v": 1
+          },
+          "record_id": "b444b004375a04f5a3b0655942e37061e7240a415b2041b3369b55d856af700e",
+          "expect": "close_statement",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close whose count is negative",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "members": -2
+            },
+            "v": 1
+          },
+          "record_id": "440f3b1837e01de36fb332c1e42534ed17398e2820c2d613d6815953f51ba05c",
+          "expect": "close_statement",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "8980ec8e24597de0e5658d878095711d0f93688b4eeb8f6ac65b105ea6fa4d07",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "the close: two members ending M2",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "members": 2
+            },
+            "v": 1
+          },
+          "record_id": "a8cbf6150f6940a95cd7dc8534e04023bc27b5e51b5bc0c9ccb3d81bccb464e5",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a second close",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 10,
+            "statement": {
+              "last": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+              "members": 2
+            },
+            "v": 1
+          },
+          "record_id": "41ba7965135ed0666fcf48baeee246632d56a888367f34cdf6c6b30b7a96983a",
+          "expect": "close_again",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member after the close",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "exchange-1"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              }
+            ],
+            "record_type": "exchange",
+            "seq": 10,
+            "v": 1
+          },
+          "record_id": "7093b8c226649d4607c1908c8ba8fc53209bc542cd17ed1f5aa73b4bffe60b79",
+          "expect": "member_after_close",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record citing the root with another id after the close",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "exchange-2"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              }
+            ],
+            "record_type": "exchange",
+            "seq": 10,
+            "v": 1
+          },
+          "record_id": "bc4f2711901c0aa282707549c3aa2e7cdf7017744c0c96cc6e8b893ce34c5370",
+          "expect": "cites_root_without_id",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a disclosure after the close: bookkeeping still runs",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+                "type": "cites"
+              },
+              {
+                "target": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+                "type": "cites"
+              }
+            ],
+            "record_type": "disclosure",
+            "seq": 10,
+            "v": 1
+          },
+          "record_id": "d520cbfb0ad839c717c5bf45c55aa63ab8d48a4e8c854904c660649e7aec73c7",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "17b8073f2502fa9d01b6e938f1789d0ee96cbcc42872c81054473c0709fd22e1",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "another root after the close",
+          "header": {
+            "book_id": "subject-vectors/field",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 11,
+            "statement": {
+              "membership": "field:/correlation/exchange_id",
+              "subject_id": "exchange-3",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "1e076d7d23a064475c25f1cf9b3135543c7cdba69f37b9f2d02a96656150c4e1",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "6f220916b04bc8e5f9af69368c464fd1009137153f0136d887758807af4d7476",
+            "size": 6
+          },
+          "checkpoint_commits": true
+        }
+      ],
+      "correlation": [
+        {
+          "record_id": "4d59da2d5ed6e984c2106051ad0a0f46067bca86db669dac7e6cc8c3dfada63e",
+          "held_under": "s-1"
+        },
+        {
+          "record_id": "67872aa290af4d43db827e910781d843bd6a1c8d08099ec69a5141dc04c369ee",
+          "held_under": ""
+        },
+        {
+          "record_id": "073e9e4ee89170f503c51a8a709fa335eca15f876b66b3acbd3045be4f43a451",
+          "held_under": ""
+        },
+        {
+          "record_id": "c2d4e6c7491edfa6e9ee84ca353c7354edbe857e4bd51acaa88fedb138f4e3af",
+          "held_under": "exchange-1"
+        },
+        {
+          "record_id": "12825020c82ffd11c98e9db63f48f2adc93ce135d4ee0f4969245097c1b2bfb0",
+          "held_under": "exchange-1"
+        },
+        {
+          "record_id": "8263a4d90bff121d78243235c911eba5abae41cf82bb85fc068976ef06cf1532",
+          "held_under": "exchange-1"
+        },
+        {
+          "record_id": "9f9503658563acafdc71676e6269a476e4778bce4367c1dd04cc755f672e4dc5",
+          "held_under": "exchange-1"
+        },
+        {
+          "record_id": "a90a8e8e5b18c2cafee3f35b59afb591c2a26d6f8537ea35511292e373ff7a22",
+          "held_under": "exchange-1"
+        },
+        {
+          "record_id": "a8cbf6150f6940a95cd7dc8534e04023bc27b5e51b5bc0c9ccb3d81bccb464e5",
+          "held_under": ""
+        },
+        {
+          "record_id": "d520cbfb0ad839c717c5bf45c55aa63ab8d48a4e8c854904c660649e7aec73c7",
+          "held_under": "exchange-1"
+        },
+        {
+          "record_id": "1e076d7d23a064475c25f1cf9b3135543c7cdba69f37b9f2d02a96656150c4e1",
+          "held_under": ""
+        }
+      ]
+    },
+    {
+      "name": "statement decoding",
+      "book_id": "subject-vectors/decoding",
+      "steps": [
+        {
+          "note": "a root whose subject_kind is null",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": {
+              "membership": "log",
+              "subject_id": "d",
+              "subject_kind": null
+            },
+            "v": 1
+          },
+          "record_id": "d13c399aa588cbd08dfa0ba7b51c4745d9c4fa2f68f1eb252047064e6b05420f",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          },
+          "checkpoint_commits": false
+        },
+        {
+          "note": "a root whose subject_id is a number",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": {
+              "membership": "log",
+              "subject_id": 7,
+              "subject_kind": "deal"
+            },
+            "v": 1
+          },
+          "record_id": "7f509893a5d001f8b5f70496a6578ed40c7e08bf47e87ed74714884c0e7f9c68",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          },
+          "checkpoint_commits": false
+        },
+        {
+          "note": "a root whose statement is an array",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": [
+              "log"
+            ],
+            "v": 1
+          },
+          "record_id": "668f17c489b0c177bc0ea86cea5976a360abdcc9d13c12b5101c783cd68e720e",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          },
+          "checkpoint_commits": false
+        },
+        {
+          "note": "a root whose statement is null",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": null,
+            "v": 1
+          },
+          "record_id": "dd3b8c9fad5c1a64cbef46994dbda1d967b5c83cc267ffc9d43cb1294fa0fe60",
+          "expect": "malformed_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          },
+          "checkpoint_commits": false
+        },
+        {
+          "note": "the log root, its members named in other cases",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": {
+              "MEMBERSHIP": "log",
+              "Subject_Id": "d",
+              "subject_kind": "deal"
+            },
+            "v": 1
+          },
+          "record_id": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an empty subject's close stating {\"last\":\"\",\"members\":-1}",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 2,
+            "statement": {
+              "last": "",
+              "members": -1
+            },
+            "v": 1
+          },
+          "record_id": "87aaf32e4c67471ad14dc8421e51c04e3ebd8f2e30edbd0021562a7f183b03a2",
+          "expect": "close_statement",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an empty subject's close stating {\"last\":\"\",\"members\":\"0\"}",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 2,
+            "statement": {
+              "last": "",
+              "members": "0"
+            },
+            "v": 1
+          },
+          "record_id": "a25e47ecd18bc05d10f20b80225122ffc20c93f341f4a892d07dedb173924cdd",
+          "expect": "close_statement",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an empty subject's close stating {\"last\":0,\"members\":0}",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 2,
+            "statement": {
+              "last": 0,
+              "members": 0
+            },
+            "v": 1
+          },
+          "record_id": "7ba5383a3690787d770a1e40d7347d74b27a05315cfcd7e01bde31a5edaee634",
+          "expect": "close_statement",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an empty subject's close stating {\"last\":\"\",\"members\":0,\"more\":1}",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 2,
+            "statement": {
+              "last": "",
+              "members": 0,
+              "more": 1
+            },
+            "v": 1
+          },
+          "record_id": "0d2741d14a3c8c43fb0bdbbd7c08b4861fad7eaa004be968bce050e1b14ed13e",
+          "expect": "close_statement",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "c741581c4c64f5986429dcde8d44040bb0e7e0e68a2a5548b23d0e26c2256bbb",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an empty subject's close stating {} (both members left out): admitted",
+          "header": {
+            "book_id": "subject-vectors/decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 2,
+            "statement": {},
+            "v": 1
+          },
+          "record_id": "ea5b8eab50c76aeca64b63eeae89df77c605d73f789d071c0b35bab6f9e43a75",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "f01a2d0f0b50e6b4c2f37856f451caf1912bc5b7abd83a3db3caee5888599d8a",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        }
+      ],
+      "correlation": [
+        {
+          "record_id": "4bb52a47ac3fb6322de9f66960d41dbf76722df3999d1352f82be8e310a02185",
+          "held_under": ""
+        },
+        {
+          "record_id": "ea5b8eab50c76aeca64b63eeae89df77c605d73f789d071c0b35bab6f9e43a75",
+          "held_under": ""
+        }
+      ]
+    },
+    {
+      "name": "close decoding",
+      "book_id": "subject-vectors/close-decoding",
+      "steps": [
+        {
+          "note": "a log root",
+          "header": {
+            "book_id": "subject-vectors/close-decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": {
+              "membership": "log",
+              "subject_id": "c",
+              "subject_kind": "deal"
+            },
+            "v": 1
+          },
+          "record_id": "606a500e9eb1be34ffcab0c2dbce51b22ca97c63191b9993e1522022935757ba",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "556fb4ee781c5f5ac5fd5633f4de8e1d31a78111acab73c76e66ca186d1ab5a8",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an empty subject's close stating null members: admitted",
+          "header": {
+            "book_id": "subject-vectors/close-decoding",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "606a500e9eb1be34ffcab0c2dbce51b22ca97c63191b9993e1522022935757ba",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 2,
+            "statement": {
+              "LAST": null,
+              "Members": null
+            },
+            "v": 1
+          },
+          "record_id": "b8100fb0db6e8e631afed1117c2064b8ea6cdefa30a78cb6ae94a7044603d57e",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "5e0d9b55ab13db79d21ed64a75b0e453cd589e739726aec567922c18e1cc1f55",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        }
+      ],
+      "correlation": [
+        {
+          "record_id": "606a500e9eb1be34ffcab0c2dbce51b22ca97c63191b9993e1522022935757ba",
+          "held_under": ""
+        },
+        {
+          "record_id": "b8100fb0db6e8e631afed1117c2064b8ea6cdefa30a78cb6ae94a7044603d57e",
+          "held_under": ""
+        }
+      ]
+    },
+    {
+      "name": "two subjects",
+      "book_id": "subject-vectors/two",
+      "steps": [
+        {
+          "note": "root a under exchange_id",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": {
+              "membership": "field:/correlation/exchange_id",
+              "subject_id": "a",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "1fd29d6f8784013dd98721efda57936538692490cf84bf1e3871cf34ccf0e2bd",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "a4e7ee214ee2bd3dd1c29c19a804f2f1684d455744bddc1082540519a1bffc37",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "root b under subject_ref",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 2,
+            "statement": {
+              "membership": "field:/subject_ref",
+              "subject_id": "b",
+              "subject_kind": "session"
+            },
+            "v": 1
+          },
+          "record_id": "e4447a4171f57ca055a948af408dad1c1217bff9930f9436ca14317925f7015c",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ad1949758765b16d6b9598eb16a78f5718c78444d824a4dd5a191b9a87640283",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record citing both and carrying both ids",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "a"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "1fd29d6f8784013dd98721efda57936538692490cf84bf1e3871cf34ccf0e2bd",
+                "type": "cites"
+              },
+              {
+                "target": "e4447a4171f57ca055a948af408dad1c1217bff9930f9436ca14317925f7015c",
+                "type": "cites"
+              }
+            ],
+            "record_type": "turn",
+            "seq": 3,
+            "subject_ref": "b",
+            "v": 1
+          },
+          "record_id": "cee59973ba990de2d8444b994f6d7f438e77bf14cbb4fdc7d260e556f73c2e93",
+          "expect": "two_subjects",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ad1949758765b16d6b9598eb16a78f5718c78444d824a4dd5a191b9a87640283",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "the same, citing them in the other order",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "a"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "e4447a4171f57ca055a948af408dad1c1217bff9930f9436ca14317925f7015c",
+                "type": "cites"
+              },
+              {
+                "target": "1fd29d6f8784013dd98721efda57936538692490cf84bf1e3871cf34ccf0e2bd",
+                "type": "cites"
+              }
+            ],
+            "record_type": "turn",
+            "seq": 3,
+            "subject_ref": "b",
+            "v": 1
+          },
+          "record_id": "ac866c6077012c99ccada3d54f2eba058021b7bffa128e6f77f6eb4d504fed81",
+          "expect": "two_subjects",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ad1949758765b16d6b9598eb16a78f5718c78444d824a4dd5a191b9a87640283",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record citing both carrying only a's id",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "a"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "1fd29d6f8784013dd98721efda57936538692490cf84bf1e3871cf34ccf0e2bd",
+                "type": "cites"
+              },
+              {
+                "target": "e4447a4171f57ca055a948af408dad1c1217bff9930f9436ca14317925f7015c",
+                "type": "cites"
+              }
+            ],
+            "record_type": "turn",
+            "seq": 3,
+            "v": 1
+          },
+          "record_id": "5581976cb7c980f4dcaf5c452ec8a13369e5b0d37aeadbf868148264c48df69d",
+          "expect": "cites_root_without_id",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ad1949758765b16d6b9598eb16a78f5718c78444d824a4dd5a191b9a87640283",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member of b whose exchange id names another exchange: held under b",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "other-exchange"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "e4447a4171f57ca055a948af408dad1c1217bff9930f9436ca14317925f7015c",
+                "type": "cites"
+              }
+            ],
+            "record_type": "turn",
+            "seq": 3,
+            "subject_ref": "b",
+            "v": 1
+          },
+          "record_id": "6aebe0110d52f57c142c9e89a1e344b255c17f3cba2b356fbec9d5acf7cf360a",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "9140e74631a4ffe9c7721e9af712d2569e5dfcc9aaf97c0dc6812f53190cce8b",
+            "size": 3
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member of a carrying b's id without citing b",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "a"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "1fd29d6f8784013dd98721efda57936538692490cf84bf1e3871cf34ccf0e2bd",
+                "type": "cites"
+              }
+            ],
+            "record_type": "turn",
+            "seq": 4,
+            "subject_ref": "b",
+            "v": 1
+          },
+          "record_id": "bc0f72c7655fdb36404531addccdfd3467e469cb62484360e5de4899bcd9ac65",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "f14214438b8b3c29c2d8406f3146e1c8f448c9fcaced0ca35a01e5d5d67308a2",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close of b",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "e4447a4171f57ca055a948af408dad1c1217bff9930f9436ca14317925f7015c",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 5,
+            "statement": {
+              "last": "6aebe0110d52f57c142c9e89a1e344b255c17f3cba2b356fbec9d5acf7cf360a",
+              "members": 1
+            },
+            "v": 1
+          },
+          "record_id": "a7a3b14ce93d8d6663b82f61a70df0103f56cac394f8c8412dc4f791b051678e",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "afc8535d11d034a9d1e9d0dd135528e500ffca9b845e398822b67f0fb4d18816",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member of a after b's close",
+          "header": {
+            "book_id": "subject-vectors/two",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "a"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "1fd29d6f8784013dd98721efda57936538692490cf84bf1e3871cf34ccf0e2bd",
+                "type": "cites"
+              }
+            ],
+            "record_type": "turn",
+            "seq": 6,
+            "v": 1
+          },
+          "record_id": "9483d87c1d63072c3d85e3555b56092338c5aacaebbfdf6f440bbc833f626885",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "9fc6e201399b3cae8848d11bfa93f3d6b0b9c2d6253f36121b32dd64438518a7",
+            "size": 6
+          },
+          "checkpoint_commits": true
+        }
+      ],
+      "correlation": [
+        {
+          "record_id": "1fd29d6f8784013dd98721efda57936538692490cf84bf1e3871cf34ccf0e2bd",
+          "held_under": ""
+        },
+        {
+          "record_id": "e4447a4171f57ca055a948af408dad1c1217bff9930f9436ca14317925f7015c",
+          "held_under": ""
+        },
+        {
+          "record_id": "6aebe0110d52f57c142c9e89a1e344b255c17f3cba2b356fbec9d5acf7cf360a",
+          "held_under": "b"
+        },
+        {
+          "record_id": "bc0f72c7655fdb36404531addccdfd3467e469cb62484360e5de4899bcd9ac65",
+          "held_under": "a"
+        },
+        {
+          "record_id": "a7a3b14ce93d8d6663b82f61a70df0103f56cac394f8c8412dc4f791b051678e",
+          "held_under": ""
+        },
+        {
+          "record_id": "9483d87c1d63072c3d85e3555b56092338c5aacaebbfdf6f440bbc833f626885",
+          "held_under": "a"
+        }
+      ]
+    },
+    {
+      "name": "per-subject book",
+      "book_id": "subject-vectors/log",
+      "steps": [
+        {
+          "note": "the log root of deal-1",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": {
+              "membership": "log",
+              "subject_id": "deal-1",
+              "subject_kind": "deal"
+            },
+            "v": 1
+          },
+          "record_id": "00a0eed403e923908a9cc92974855920dbdf2234f2ebe9a9b57c45e06e40c2b7",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "4d5f75b1099278c6ed0f926cd05fe96821651f844855dbe7a926a7d6b7a673a0",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a second root, another id",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 2,
+            "statement": {
+              "membership": "field:/correlation/exchange_id",
+              "subject_id": "e",
+              "subject_kind": "exchange"
+            },
+            "v": 1
+          },
+          "record_id": "4bd9065ab348f73a1e84437e7a7a9ec3f86443fef4a52e397190d98568bfafd6",
+          "expect": "per_subject_book",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "4d5f75b1099278c6ed0f926cd05fe96821651f844855dbe7a926a7d6b7a673a0",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a second root, the same id",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 2,
+            "statement": {
+              "membership": "log",
+              "subject_id": "deal-1",
+              "subject_kind": "deal"
+            },
+            "v": 1
+          },
+          "record_id": "c058995b61138306514b38611c1cb6cb83619547c93c27ae81f410dc6885e721",
+          "expect": "second_root",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "4d5f75b1099278c6ed0f926cd05fe96821651f844855dbe7a926a7d6b7a673a0",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member citing nothing",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [],
+            "record_type": "offer",
+            "seq": 2,
+            "subject_ref": "deal-1",
+            "v": 1
+          },
+          "record_id": "572340789545f6a8a03f77aafada5f6e70c1e5e430b74b54bd62bccf41e191da",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "40c5b8a2fca0eb650e2629cdbfe217f3ceddef52949224560d8ada97f145ba52",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member carrying another exchange id",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "x-9"
+            },
+            "epistemic_type": "observed_event",
+            "links": [],
+            "record_type": "accept",
+            "seq": 3,
+            "v": 1
+          },
+          "record_id": "468a396cab65ad33dcf0cdd617ddfb6356b35e1628db04628a9a4870a6592396",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "3a3a6667cd88a2848b4cc5eb392a5c73895244412526aa9bb939a9a59e4a84cd",
+            "size": 3
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member citing the root",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "correlation": {
+              "exchange_id": "x-9"
+            },
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "00a0eed403e923908a9cc92974855920dbdf2234f2ebe9a9b57c45e06e40c2b7",
+                "type": "cites"
+              }
+            ],
+            "record_type": "accept",
+            "seq": 4,
+            "v": 1
+          },
+          "record_id": "93f14438868f341acddea35eca2765b2d89e585a8f76ee8cc8176adf6991206b",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "abf515e7f707a6f9e01c6e10641eb665541c909023bc2d48b13b64c7095283ea",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a lifecycle record: bookkeeping",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "572340789545f6a8a03f77aafada5f6e70c1e5e430b74b54bd62bccf41e191da",
+                "type": "cites"
+              }
+            ],
+            "record_type": "lifecycle",
+            "seq": 5,
+            "v": 1
+          },
+          "record_id": "649cfb4fd4290b6fe5408f0b6fc58d61b46abcb65ac61f2822f7b43df7cfedc2",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "abf515e7f707a6f9e01c6e10641eb665541c909023bc2d48b13b64c7095283ea",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a disclosure_policy record: bookkeeping",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "disclosure_policy",
+            "seq": 6,
+            "v": 1
+          },
+          "record_id": "02fd63e318da5e4ab347207c7f6357b3cd549e4a42125ea1ebdf364c98a83d92",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "abf515e7f707a6f9e01c6e10641eb665541c909023bc2d48b13b64c7095283ea",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "an evidence_request_answered record: bookkeeping",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "evidence_request_answered",
+            "seq": 7,
+            "v": 1
+          },
+          "record_id": "e7cd46471450ec0910187f770d1fcc7ad50f8333ae36d2ab4cec50bc486d335b",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "abf515e7f707a6f9e01c6e10641eb665541c909023bc2d48b13b64c7095283ea",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a window_open record: bookkeeping, not indexed",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "window_open",
+            "seq": 8,
+            "v": 1
+          },
+          "record_id": "f7e141c25e7a716ad40fbdbb776f0eeb8127e890fce3d6c314b4460e415fb0b1",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "abf515e7f707a6f9e01c6e10641eb665541c909023bc2d48b13b64c7095283ea",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a close counting two members",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "00a0eed403e923908a9cc92974855920dbdf2234f2ebe9a9b57c45e06e40c2b7",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "572340789545f6a8a03f77aafada5f6e70c1e5e430b74b54bd62bccf41e191da",
+              "members": 2
+            },
+            "v": 1
+          },
+          "record_id": "1aa7fffc73885747a04968f1ab3f50396dcf11e397bcd0216351c01a6bf653ae",
+          "expect": "close_count",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "abf515e7f707a6f9e01c6e10641eb665541c909023bc2d48b13b64c7095283ea",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "the close: three members",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [
+              {
+                "target": "00a0eed403e923908a9cc92974855920dbdf2234f2ebe9a9b57c45e06e40c2b7",
+                "type": "closes"
+              }
+            ],
+            "record_type": "subject_close",
+            "seq": 9,
+            "statement": {
+              "last": "93f14438868f341acddea35eca2765b2d89e585a8f76ee8cc8176adf6991206b",
+              "members": 3
+            },
+            "v": 1
+          },
+          "record_id": "3c6f43061e9376fd2d2dbb7103920e88726740dd135b8e09ac0f14b953cd2714",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e04adfe8aad0171228768ba66a8d9571ffd6028a9ec8e0e1e3f1805efae13b01",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member after the close",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [],
+            "record_type": "late",
+            "seq": 10,
+            "v": 1
+          },
+          "record_id": "6e32d14e0dd6fe0a58cd093e6d6ee82246d0507b4dc2991c1bf59ce7af998b25",
+          "expect": "member_after_close",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e04adfe8aad0171228768ba66a8d9571ffd6028a9ec8e0e1e3f1805efae13b01",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a window_close after the close: bookkeeping",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "window_close",
+            "seq": 10,
+            "v": 1
+          },
+          "record_id": "676115add9bb3deb43f0ce5c4a8c5e3da81f28d3e24e96c9d28c30b9c017d870",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e04adfe8aad0171228768ba66a8d9571ffd6028a9ec8e0e1e3f1805efae13b01",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a book_close after the close: bookkeeping, not indexed",
+          "header": {
+            "book_id": "subject-vectors/log",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "book_close",
+            "seq": 11,
+            "v": 1
+          },
+          "record_id": "25d2c823408912bb8097406a46ad2217f00005c529cc3dca0df12e73bb0d55a0",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "e04adfe8aad0171228768ba66a8d9571ffd6028a9ec8e0e1e3f1805efae13b01",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        }
+      ],
+      "correlation": [
+        {
+          "record_id": "00a0eed403e923908a9cc92974855920dbdf2234f2ebe9a9b57c45e06e40c2b7",
+          "held_under": ""
+        },
+        {
+          "record_id": "572340789545f6a8a03f77aafada5f6e70c1e5e430b74b54bd62bccf41e191da",
+          "held_under": "deal-1"
+        },
+        {
+          "record_id": "468a396cab65ad33dcf0cdd617ddfb6356b35e1628db04628a9a4870a6592396",
+          "held_under": "x-9"
+        },
+        {
+          "record_id": "93f14438868f341acddea35eca2765b2d89e585a8f76ee8cc8176adf6991206b",
+          "held_under": "deal-1"
+        },
+        {
+          "record_id": "649cfb4fd4290b6fe5408f0b6fc58d61b46abcb65ac61f2822f7b43df7cfedc2",
+          "held_under": ""
+        },
+        {
+          "record_id": "02fd63e318da5e4ab347207c7f6357b3cd549e4a42125ea1ebdf364c98a83d92",
+          "held_under": ""
+        },
+        {
+          "record_id": "e7cd46471450ec0910187f770d1fcc7ad50f8333ae36d2ab4cec50bc486d335b",
+          "held_under": ""
+        },
+        {
+          "record_id": "f7e141c25e7a716ad40fbdbb776f0eeb8127e890fce3d6c314b4460e415fb0b1",
+          "held_under": ""
+        },
+        {
+          "record_id": "3c6f43061e9376fd2d2dbb7103920e88726740dd135b8e09ac0f14b953cd2714",
+          "held_under": ""
+        },
+        {
+          "record_id": "676115add9bb3deb43f0ce5c4a8c5e3da81f28d3e24e96c9d28c30b9c017d870",
+          "held_under": ""
+        },
+        {
+          "record_id": "25d2c823408912bb8097406a46ad2217f00005c529cc3dca0df12e73bb0d55a0",
+          "held_under": ""
+        }
+      ]
+    },
+    {
+      "name": "pointers",
+      "book_id": "subject-vectors/pointers",
+      "steps": [
+        {
+          "note": "a root whose id sits at /statement/a~1b/~0c",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 1,
+            "statement": {
+              "membership": "field:/statement/a~1b/~0c",
+              "subject_id": "id-1",
+              "subject_kind": "custom"
+            },
+            "v": 1
+          },
+          "record_id": "a05d451ac63b0843bf5e13a94256ee711a2c2b3d4669379ce00fd21612601eaa",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "697cdbccdf6e57b0a9157f9e5f2c2561fda59addd640fd2fab19f6c62d60c4df",
+            "size": 1
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member carrying it there",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "a05d451ac63b0843bf5e13a94256ee711a2c2b3d4669379ce00fd21612601eaa",
+                "type": "cites"
+              }
+            ],
+            "record_type": "custom",
+            "seq": 2,
+            "statement": {
+              "a/b": {
+                "~c": "id-1"
+              }
+            },
+            "v": 1
+          },
+          "record_id": "e10e4ca6564e9a7655e047be7317a7cf85dac222801c8b93d67bdef0af29477d",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ed7f89e1534dec350d92394ce14a537780b3e84f87188942fc3ed815c52588fa",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record carrying it unescaped",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "a05d451ac63b0843bf5e13a94256ee711a2c2b3d4669379ce00fd21612601eaa",
+                "type": "cites"
+              }
+            ],
+            "record_type": "custom",
+            "seq": 3,
+            "statement": {
+              "a~1b": {
+                "~0c": "id-1"
+              }
+            },
+            "v": 1
+          },
+          "record_id": "6391ef7fcdb7f316ef980b180210c65eafe174a0fa47ad5fd75cd5650976125e",
+          "expect": "cites_root_without_id",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ed7f89e1534dec350d92394ce14a537780b3e84f87188942fc3ed815c52588fa",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record carrying a number there",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "a05d451ac63b0843bf5e13a94256ee711a2c2b3d4669379ce00fd21612601eaa",
+                "type": "cites"
+              }
+            ],
+            "record_type": "custom",
+            "seq": 3,
+            "statement": {
+              "a/b": {
+                "~c": 1
+              }
+            },
+            "v": 1
+          },
+          "record_id": "5f5333eda6888d20c65b019666080d32528532002c2796fc648fa85240706a5c",
+          "expect": "cites_root_without_id",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ed7f89e1534dec350d92394ce14a537780b3e84f87188942fc3ed815c52588fa",
+            "size": 2
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root whose id is the second link's target",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 3,
+            "statement": {
+              "membership": "field:/links/1/target",
+              "subject_id": "9d7342e6f130ef28821049ab493afb2a694b5cb7d5e8562838f365f6a45cdccb",
+              "subject_kind": "linked"
+            },
+            "v": 1
+          },
+          "record_id": "ed063cdac5eb4c4db9344ae715d20edd17f101122fab6863d8265929cca8ef22",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "891f58a00753b90862688898c796b21f1142b2a60f85ead8a88b5fe98fff2f2a",
+            "size": 3
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member whose second link targets the id",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "ed063cdac5eb4c4db9344ae715d20edd17f101122fab6863d8265929cca8ef22",
+                "type": "cites"
+              },
+              {
+                "target": "9d7342e6f130ef28821049ab493afb2a694b5cb7d5e8562838f365f6a45cdccb",
+                "type": "supersedes"
+              }
+            ],
+            "record_type": "linked",
+            "seq": 4,
+            "v": 1
+          },
+          "record_id": "676c9c44925784768129542f10a49e9336623bea1a01e91d70f0102c6000d8d7",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ebd45c3f347fcc0c003664fbf52f453e07606ab38c062d2942aeaeac5647b377",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record with one link: no second link",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "ed063cdac5eb4c4db9344ae715d20edd17f101122fab6863d8265929cca8ef22",
+                "type": "cites"
+              }
+            ],
+            "record_type": "linked",
+            "seq": 5,
+            "v": 1
+          },
+          "record_id": "3a4a85ba7b2bc95ae279eaa7186a8df37e2ad28d8c7d5e4da970eec54efc03f2",
+          "expect": "cites_root_without_id",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "ebd45c3f347fcc0c003664fbf52f453e07606ab38c062d2942aeaeac5647b377",
+            "size": 4
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root reading /links/01/target",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 5,
+            "statement": {
+              "membership": "field:/links/01/target",
+              "subject_id": "e85f6dd9c7da4c42cac6a4b41b5bd3f0f50c81d7f74050928b1ab8e51ed83fbe",
+              "subject_kind": "linked"
+            },
+            "v": 1
+          },
+          "record_id": "07f9380a9f42be6e3e252311f543a63399e22f4e27535b6ab1df7bcca30310f6",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "77dddc1bdec96326bf338c5ae8de6619b93e568e50451436eac6ed6e3be898f8",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a record whose second link targets the id: 01 is no array index",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "07f9380a9f42be6e3e252311f543a63399e22f4e27535b6ab1df7bcca30310f6",
+                "type": "cites"
+              },
+              {
+                "target": "e85f6dd9c7da4c42cac6a4b41b5bd3f0f50c81d7f74050928b1ab8e51ed83fbe",
+                "type": "supersedes"
+              }
+            ],
+            "record_type": "linked",
+            "seq": 6,
+            "v": 1
+          },
+          "record_id": "e91adfda2799702d435a0c4d32830fdc8ca028a8dafa2da437e494e6a9121b72",
+          "expect": "cites_root_without_id",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "77dddc1bdec96326bf338c5ae8de6619b93e568e50451436eac6ed6e3be898f8",
+            "size": 5
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a root reading the member named \"\" of the statement",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "record_type": "subject_root",
+            "seq": 6,
+            "statement": {
+              "membership": "field:/statement/",
+              "subject_id": "e-1",
+              "subject_kind": "custom"
+            },
+            "v": 1
+          },
+          "record_id": "4dae76aeb9e7ec70d7588cf4a34de5e9f748fb3872f3ef6e41ea5af24085a3a9",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "433dfe6bfb3b810d8fdae96de34b7a5d14473d00c772fbea34284ccf44539254",
+            "size": 6
+          },
+          "checkpoint_commits": true
+        },
+        {
+          "note": "a member carrying it",
+          "header": {
+            "book_id": "subject-vectors/pointers",
+            "committed_at": "2026-11-27T00:00:00Z",
+            "epistemic_type": "observed_event",
+            "links": [
+              {
+                "target": "4dae76aeb9e7ec70d7588cf4a34de5e9f748fb3872f3ef6e41ea5af24085a3a9",
+                "type": "cites"
+              }
+            ],
+            "record_type": "custom",
+            "seq": 7,
+            "statement": {
+              "": "e-1"
+            },
+            "v": 1
+          },
+          "record_id": "f716459095c3f7efe4b6bcb2991ff229853605153133dc8523a0250d7e4e1f07",
+          "expect": "ok",
+          "subject_id_index": {
+            "index": "subject_id",
+            "root": "f295bbfc28c4f3cf36fd0c2661e7b8b506d60588085769179467d03971a0622a",
+            "size": 7
+          },
+          "checkpoint_commits": true
+        }
+      ],
+      "correlation": [
+        {
+          "record_id": "a05d451ac63b0843bf5e13a94256ee711a2c2b3d4669379ce00fd21612601eaa",
+          "held_under": ""
+        },
+        {
+          "record_id": "e10e4ca6564e9a7655e047be7317a7cf85dac222801c8b93d67bdef0af29477d",
+          "held_under": "id-1"
+        },
+        {
+          "record_id": "ed063cdac5eb4c4db9344ae715d20edd17f101122fab6863d8265929cca8ef22",
+          "held_under": ""
+        },
+        {
+          "record_id": "676c9c44925784768129542f10a49e9336623bea1a01e91d70f0102c6000d8d7",
+          "held_under": "9d7342e6f130ef28821049ab493afb2a694b5cb7d5e8562838f365f6a45cdccb"
+        },
+        {
+          "record_id": "07f9380a9f42be6e3e252311f543a63399e22f4e27535b6ab1df7bcca30310f6",
+          "held_under": ""
+        },
+        {
+          "record_id": "4dae76aeb9e7ec70d7588cf4a34de5e9f748fb3872f3ef6e41ea5af24085a3a9",
+          "held_under": ""
+        },
+        {
+          "record_id": "f716459095c3f7efe4b6bcb2991ff229853605153133dc8523a0250d7e4e1f07",
+          "held_under": "e-1"
+        }
+      ]
+    }
+  ]
+}

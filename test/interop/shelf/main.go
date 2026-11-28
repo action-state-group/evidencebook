@@ -10,6 +10,8 @@
 //	shelf write DIR       the writer phase, on a new DIR/shelf.db
 //	shelf continue DIR    the continuer phase, on DIR/shelf.db
 //	shelf dump DIR        the file's dump on stdout (it reads a copy)
+//	shelf subject DIR     the subject phase on DIR/shelf.db, after continue; its
+//	                      outcomes must be testdata/shelf/subject.json's
 //	shelf handover DIR    the handover of the shelf at its newest stamp on stdout
 //	                      (evidencebook#461 §2.7; it reads a copy)
 //	shelf verify-handover FILE
@@ -52,7 +54,7 @@ type lockHeld struct{ error }
 
 func run(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: shelf write|continue|migrate|recover|plant-tick|plant-migration|plant-migration-checkpointed|plant-fields|dump|handover|record-time|hold|try DIR [ARG], or shelf verify-handover FILE")
+		return fmt.Errorf("usage: shelf write|continue|migrate|recover|plant-tick|plant-migration|plant-migration-checkpointed|plant-fields|dump|handover|record-time|subject|hold|try DIR [ARG], or shelf verify-handover FILE")
 	}
 	ctx := context.Background()
 	dir := args[1]
@@ -97,6 +99,23 @@ func run(args []string) error {
 		}
 		if !bytes.Equal(got, want) {
 			return fmt.Errorf("the record time phase differs from testdata/shelf/record-time.json")
+		}
+		return nil
+	case "subject":
+		// The subject phase on a shelf after the continue phase: its
+		// outcomes must be testdata/shelf/subject.json's (run from the
+		// repository root), byte for byte; the dump afterwards is
+		// after-subject.json.
+		got, err := shelfscript.SubjectJSON(ctx, dir)
+		if err != nil {
+			return err
+		}
+		want, err := os.ReadFile(filepath.Join("testdata", "shelf", "subject.json"))
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(got, want) {
+			return fmt.Errorf("the subject phase differs from testdata/shelf/subject.json")
 		}
 		return nil
 	case "verify-handover":

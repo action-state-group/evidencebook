@@ -15,6 +15,7 @@ implementation and read by every other. Each file is regenerated only with
 | `receive-carriage/script.json` | the MCP and A2A entries of `Shelf.Receive`: for each carriage a track of pushes and edge cases on a fresh shelf, each with the message sent and the message returned (evidencebook#577; `receive-carriage/README.md`) | `interop_push_vectors_test.go` |
 | `handover.json`, `handover-result.json` | the whole-shelf handover of the shelf after the migrate phase, at its newest stamp, and its replay (evidencebook#461 §2.7) | `internal/shelfscript` |
 | `record-time.json`, `after-record-time.json` | the record time phase run on the shelf after the migrate phase, each step's receipt and expected outcome, and the dump after it (evidencebook#461 §2.6) | `internal/shelfscript` |
+| `subject.json`, `after-subject.json` | the subject phase run on the shelf after the continue phase: subject roots, members, closes and checkpoints with each step's expected outcome, and the dump after it (the subject convention v0, evidencebook#116; #1012, #1013) | `internal/shelfscript` |
 
 ## The random source
 

@@ -24,6 +24,13 @@ type subjectVector struct {
 	SubjectID   string `json:"subject_id,omitempty"`
 	MemberCount int    `json:"member_count,omitempty"`
 	Closed      bool   `json:"closed,omitempty"`
+	// HeldByDigest is what a verifier recomputes of the members' outward
+	// closure the bundle does not carry.
+	HeldByDigest []string `json:"held_by_digest,omitempty"`
+	// SubjectsOf is what SubjectsOfRecord reads of each record of a valid
+	// full form, by record id: the subjects it is a verified member of
+	// (records of none are left out).
+	SubjectsOf map[string][]string `json:"subjects_of,omitempty"`
 }
 
 type subjectVectors struct {
@@ -43,6 +50,19 @@ func buildSubjectVectors(t *testing.T) (subjectVectors, map[string][]byte) {
 		vector := subjectVector{File: file, Case: name}
 		if got, err := VerifySubjectBundle(data); err == nil {
 			vector.Valid, vector.Form, vector.Level, vector.SubjectID, vector.MemberCount, vector.Closed = true, got.Form, got.Level, got.Subject.SubjectID, got.MemberCount, got.Closed
+			if len(got.HeldByDigest) > 0 {
+				vector.HeldByDigest = got.HeldByDigest
+			}
+			if got.Bundle != nil {
+				for _, r := range got.Bundle.Records {
+					if ids := SubjectsOfRecord(got.Bundle.Records, r.RecordID); len(ids) > 0 {
+						if vector.SubjectsOf == nil {
+							vector.SubjectsOf = map[string][]string{}
+						}
+						vector.SubjectsOf[r.RecordID] = ids
+					}
+				}
+			}
 		}
 		v.Vectors = append(v.Vectors, vector)
 	}
@@ -95,6 +115,92 @@ func buildSubjectVectors(t *testing.T) (subjectVectors, map[string][]byte) {
 	log, err := deal.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: "deal-1", OwnerCopy: true})
 	require.NoError(t, err)
 	add("full-log.json", "a per-subject book: log_prefix", log.JSON)
+
+	// Forged per-subject books (TestSubjectBundleForgedLogRoot): a log root
+	// after seq 1, and a second log root in the book.
+	for _, forged := range []struct{ file, name string }{
+		{"forged-log-root-late.json", "a forged per-subject book, its log root at seq 2: refused"},
+		{"forged-second-log-root.json", "a forged per-subject book holding a second log root: refused"},
+	} {
+		fbook := newFixture(t, "deal-book", 1).open(t)
+		fbook.forgeSubjects = true
+		if forged.file == "forged-log-root-late.json" {
+			mustAppend(t, fbook, observation("hidden", "before the root"))
+		}
+		_, err := fbook.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "deal", SubjectID: "deal-1", Membership: MembershipLog}, Entry{})
+		require.NoError(t, err)
+		if forged.file == "forged-second-log-root.json" {
+			_, err := fbook.SealSubjectRoot(ctx, SubjectRootStatement{SubjectKind: "deal", SubjectID: "deal-2", Membership: MembershipLog}, Entry{})
+			require.NoError(t, err)
+		}
+		mustAppend(t, fbook, observation("deal-1", "offer"))
+		fbook.forgeSubjects = false
+		bundle, err := fbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: "deal-1", OwnerCopy: true})
+		require.NoError(t, err)
+		add(forged.file, forged.name, bundle.JSON)
+	}
+
+	// Worked case (iv) (TestSubjectBundleMemberAfterCloseFails): a forged
+	// book holding a member after the close. The close counts that member
+	// and names it as the last, so only its place refuses it: its record id
+	// is known before it is sealed because the books are deterministic, and
+	// a book run once with a placeholder gives it.
+	lateBook := func(last string) (*Book, Record, Record) {
+		book := newFixture(t, "holder", 1).open(t)
+		book.forgeSubjects = true
+		root := subjectRoot(t, book, testSubject)
+		mustAppend(t, book, member(root, testSubject, "one"))
+		mustAppend(t, book, Entry{RecordType: RecordTypeSubjectClose, EpistemicType: ProducerClaim, Links: []Link{{Type: Closes, Target: root.RecordID}},
+			Statement: json.RawMessage(`{"last":"` + last + `","members":2}`)})
+		late := mustAppend(t, book, member(root, testSubject, "late"))
+		book.forgeSubjects = false
+		return book, root, late
+	}
+	_, _, placeholder := lateBook("placeholder")
+	lbook, _, late := lateBook(placeholder.RecordID)
+	require.Equal(t, placeholder.RecordID, late.RecordID, "the late member's id does not depend on the close's statement")
+	lateBundle, err := lbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true})
+	require.NoError(t, err)
+	add("member-after-close.json", "(iv) a forged book whose close counts both members and names the last, sealed before it: refused", lateBundle.JSON)
+
+	// A stale proof (TestSubjectBundleRefusesAStaleProof): the current
+	// bundle with an older, honest key range proof and the members it held.
+	sbook := newFixture(t, "holder", 1).open(t)
+	sroot := subjectRoot(t, sbook, testSubject)
+	s1 := mustAppend(t, sbook, member(sroot, testSubject, "one"))
+	old, err := sbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true})
+	require.NoError(t, err)
+	oldVerified, err := VerifyBundle(old.JSON)
+	require.NoError(t, err)
+	var oldExt SubjectExtension
+	require.NoError(t, json.Unmarshal(oldVerified.Extensions[ExtensionSubject], &oldExt))
+	mustAppend(t, sbook, member(sroot, testSubject, "two"))
+	_, err = sbook.CloseSubject(ctx, sroot.RecordID)
+	require.NoError(t, err)
+	// The current bundle discloses the whole log, the older proof's
+	// index_root record included, so only the proof's freshness refuses it:
+	// a member and the close follow that index root.
+	current, err := sbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true, DiscloseLog: true})
+	require.NoError(t, err)
+	add("stale-proof.json", "the current bundle carrying an older, honest key range proof and its one member, the older proof's index root disclosed: refused", editExtension(t, current.JSON, func(ext *SubjectExtension) {
+		ext.Members, ext.Close, ext.Closed, ext.KeyRange, ext.Level = []string{s1.RecordID}, "", false, oldExt.KeyRange, SubjectLevelHolderCommitment
+	}))
+
+	// held_by_digest (TestSubjectBundleHeldByDigestIsChecked): a member
+	// citing a record the book does not hold.
+	hbook := newFixture(t, "holder", 1).open(t)
+	hroot := subjectRoot(t, hbook, testSubject)
+	foreign := member(hroot, testSubject, "one")
+	foreign.Links = append(foreign.Links, Link{Type: Cites, Target: dg("a counterparty's half")})
+	mustAppend(t, hbook, foreign)
+	held, err := hbook.SubjectBundle(ctx, SubjectBundleRequest{SubjectID: testSubject, OwnerCopy: true})
+	require.NoError(t, err)
+	add("held-foreign.json", "a member citing a record the book does not hold: holder_commitment, listed in held_by_digest", held.JSON)
+	add("held-dropped.json", "the same with held_by_digest emptied: refused", editExtension(t, held.JSON, func(ext *SubjectExtension) { ext.HeldByDigest = []string{} }))
+	add("held-added.json", "the same with an unrelated digest added to held_by_digest: refused", editExtension(t, held.JSON, func(ext *SubjectExtension) {
+		ext.HeldByDigest = []string{dg("a counterparty's half"), dg("unrelated")}
+	}))
+	add("held-deep.json", "the same with an enormous closure depth: valid, the walk ends with the closure", editExtension(t, held.JSON, func(ext *SubjectExtension) { ext.ClosureDepth = 1<<53 - 1 }))
 	return v, files
 }
 
@@ -130,5 +236,7 @@ func TestSubjectVectors(t *testing.T) {
 	require.Equal(t, map[string]bool{
 		"full-field.json": true, "full-field-omits-member.json": false, "full-field-log-prefix.json": true,
 		"dishonest-first-level.json": true, "dishonest-log-prefix.json": false, "projection.json": true, "full-log.json": true,
+		"forged-log-root-late.json": false, "forged-second-log-root.json": false, "stale-proof.json": false,
+		"held-foreign.json": true, "held-dropped.json": false, "held-added.json": false, "held-deep.json": true, "member-after-close.json": false,
 	}, valid)
 }
