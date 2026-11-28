@@ -120,7 +120,7 @@ queued() { # label, race|plain, go test -timeout value
   local label=$1 kind=$2 timeout=$3 args=() f
   [[ "$kind" == race ]] && for f in "${race_flags[@]}"; do args+=(--flag "$f"); done
   if [[ -n "$names" ]]; then
-    printf '%s\n' "$names" >"$log.names"
+    printf '%s\n' "$names" >"$log.names" || return 1
     args+=(--names "$log.names")
   fi
   bash "$queue_sh" --label "$label" --timeout "$timeout" --jobs "$jobs" --batches "$per_job" --budget "$budget" \

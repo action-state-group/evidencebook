@@ -54,6 +54,12 @@ for v in "$jobs" "$per_job"; do
   fi
 done
 
+# A shard's names come from a file: one that cannot be read would select no
+# test and pass, so it is an error.
+if [[ -n "$names_file" && ! ( -f "$names_file" && -r "$names_file" && -s "$names_file" ) ]]; then
+  printf 'go-test-queue.sh: --names %s is not a readable, non-empty file\n' "$names_file" >&2
+  exit 2
+fi
 if [[ -n "$budget" && ! "$budget" =~ ^[0-9]+$ ]]; then
   printf 'go-test-queue.sh: --budget takes a number of seconds, not %s\n' "$budget" >&2
   exit 2
@@ -84,9 +90,10 @@ run_queue() {
     "${build[@]}" -o "$bin" "$pkg" || return 1
     printf '%s\t%s\t%s\n' "$n" "$bin" "$pdir" >>"$dir/bins"
     listing=$(cd "$pdir" && "$bin" -test.list '.*') || return 1
-    # A shard keeps only its names; grep finding none is not an error.
+    # A shard keeps only its names; grep finding none (status 1) is not an
+    # error, but one that cannot read them (2) fails the pass.
     { grep -E '^(Test|Example|Fuzz)' <<<"$listing" || true; } |
-      { if [[ -n "$names_file" ]]; then grep -xFf "$names_file" || true; else cat; fi; } |
+      { if [[ -n "$names_file" ]]; then grep -xFf "$names_file" || (($? == 1)); else cat; fi; } |
       awk -v n="$n" '{ print n "\t" $0 }' >>"$dir/tests"
     n=$((n + 1))
   done <<<"$pkgs"

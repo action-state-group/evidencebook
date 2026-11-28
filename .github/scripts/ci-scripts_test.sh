@@ -617,6 +617,23 @@ if qrun "queue: a batch under the budget" 0 "$rec" -- --budget 600 --jobs 1 --ba
   else printf 'ok   queue: a batch under the budget is not warned about\n'; fi
 fi
 rm "$qmod/a/slow_test.go"
+# A shard's names file that is missing or empty fails the pass instead of
+# selecting nothing.
+if qrun "queue: a missing names file" 1 "$qmod/rec-q9" -- --names "$qmod/no-such-names" --jobs 2 -- ./a; then
+  printf 'ok   queue: a names file that is missing fails the pass\n'
+fi
+: > "$qmod/empty-names"
+if qrun "queue: an empty names file" 1 "$qmod/rec-q10" -- --names "$qmod/empty-names" --jobs 2 -- ./a; then
+  printf 'ok   queue: a names file that is empty fails the pass\n'
+fi
+printf 'TestA1\nTestNotThere\n' > "$qmod/some-names"
+rec="$qmod/rec-q11"
+if qrun "queue: a names file" 0 "$rec" -- --names "$qmod/some-names" --jobs 2 -- ./...; then
+  if [[ "$(sort "$rec")" == "a TestA1" ]]; then printf 'ok   queue: a names file selects only its tests\n'; else
+    printf 'FAIL queue: a names file ran:\n%s\n' "$(sort "$rec")"
+    fails=$((fails + 1))
+  fi
+fi
 if qrun "queue: a bad budget" 1 "$qmod/rec-q8" -- --budget 5m -- ./a; then printf 'ok   queue: a budget that is not seconds is an error\n'; fi
 if qrun "queue: no package" 1 "$qmod/rec-q4" -- --jobs 2 --; then printf 'ok   queue: no package named is an error\n'; fi
 if qrun "queue: a bad job count" 1 "$qmod/rec-q5" -- --jobs 0 -- ./a; then printf 'ok   queue: a job count of 0 is an error\n'; fi
