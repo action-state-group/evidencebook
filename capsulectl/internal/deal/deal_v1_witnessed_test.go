@@ -171,6 +171,19 @@ func TestV1WitnessedNamesTheRowsIndependentOf(t *testing.T) {
 		})
 	}
 
+	// own_witness (ops u655, capsule-viewer#513): the row's "own_witness":
+	// true is reported as true; absent, false or a non-boolean is left out.
+	for mark, want := range map[string]any{`,"own_witness":true`: true, `,"own_witness":false`: nil, `,"own_witness":"true"`: nil, ``: nil} {
+		dir := writeJSON(t, `{"witnesses":[`+strings.TrimSuffix(row(``), `}`)+mark+`}]}`)
+		w := v1EntryOf(t, pluginVerify(t, "--bundle", keep, "--stamp-proof", proof, "--witness-directory", dir))["witnessed"].(map[string]any)
+		assert.Equal(t, "verified", w["status"], mark)
+		if want == nil {
+			assert.NotContains(t, w, "own_witness", mark)
+		} else {
+			assert.Equal(t, want, w["own_witness"], mark)
+		}
+	}
+
 	unlistedFirst := editedProof(t, func(p map[string]any) {
 		good := p["witness_receipts"].([]any)[0].(map[string]any)
 		other := map[string]any{}

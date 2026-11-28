@@ -81,8 +81,9 @@ func decodeWitnessRows(raw []byte) witnessRows {
 }
 
 // rowMembers are the witnessed member's members for the receipt of witness
-// URL tsURL: witness, the name of the row dir gives for it, and
-// independent_of, that row's list ([] when the row has none). ok is false
+// URL tsURL: witness, the name of the row dir gives for it, independent_of,
+// that row's list ([] when the row has none), and own_witness, true only
+// when the row says "own_witness": true (capsule-viewer#513). ok is false
 // when dir lists no such witness. independent_of is left out when the row's
 // list is not a list of strings: it is never guessed.
 func (rows witnessRows) rowMembers(dir *witness.Directory, tsURL string) (map[string]any, bool) {
@@ -100,6 +101,11 @@ func (rows witnessRows) rowMembers(dir *witness.Directory, tsURL string) (map[st
 		fields, _ := raw.(map[string]interface{})
 		if list, ok := independentOfList(fields); ok {
 			members["independent_of"] = list
+		}
+		// The directory's publisher runs this witness (u655): only true
+		// counts; absent, false or any other value leaves the member out.
+		if fields["own_witness"] == true {
+			members["own_witness"] = true
 		}
 		break
 	}

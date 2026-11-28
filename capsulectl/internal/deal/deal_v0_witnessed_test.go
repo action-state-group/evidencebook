@@ -343,6 +343,17 @@ func TestV0WitnessedNamesTheChosenReceiptsRow(t *testing.T) {
 	assert.Equal(t, earliestSecond, member(directory, at(firstKey, f.endpoint, nine05), at(secondKey, secondURL, nine01)), "the earlier receipt second")
 	assert.Equal(t, earliestSecond, member(directory, at(secondKey, secondURL, nine01), at(firstKey, f.endpoint, nine05)), "the earlier receipt first")
 
+	// own_witness rides on the chosen row only (ops u655).
+	ownRow1 := rawKeyRow(f.endpoint, f.public)
+	ownRow1["own_witness"] = true
+	own := member(writeDirectory(t, ownRow1, row2), at(firstKey, f.endpoint, nine05), at(secondKey, secondURL, nine01))
+	assert.Equal(t, "second witness", own["witness"])
+	assert.NotContains(t, own, "own_witness", "the earliest receipt's row is not marked")
+	own = member(writeDirectory(t, ownRow1, row2), at(firstKey, f.endpoint, nine05))
+	assert.Equal(t, true, own["own_witness"], "the chosen row is marked")
+	ownFailed := member(writeDirectory(t, ownRow1, row2), bad(f.endpoint))
+	assert.Equal(t, []any{"failed", true}, []any{ownFailed["status"], ownFailed["own_witness"]}, "on failed too")
+
 	failed := member(directory, bad(f.endpoint), bad(secondURL))
 	assert.Equal(t, []any{"failed", "test witness", []any{a}}, []any{failed["status"], failed["witness"], failed["independent_of"]})
 	failed = member(directory, bad(secondURL), bad(f.endpoint))
