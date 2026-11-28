@@ -4,8 +4,10 @@ package deal
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -40,13 +42,39 @@ func auditOpening(t *testing.T) string {
 	return `{"type": "purchase", "who": ` + string(who) + `, "recourse": {"rail": "card", "refundable": true}}`
 }
 
+// auditNoted are personal values of the other classes of spokenClassOrder
+// (deal_card.go) as the holder's store keeps them in an agent message: an
+// address, a pickup place, a card number, a verification code, an identity
+// document and a credential.
+var auditNoted = map[string]string{
+	"home_address":      "12 Larkspur Lane",
+	"pickup_location":   "Locker 4471 at Quarry Mall",
+	"payment_card":      "4111 1111 1111 1111",
+	"verification_code": "739142",
+	"id_document":       "passport X93817265",
+	"credential":        "hunter2-kettle-9931",
+}
+
 // auditDeal is a started deal whose holder, the buyer, holds every personal
-// value of auditPersonal in its own store, and has stated a row met.
+// value of auditPersonal and auditNoted in its own store, and has stated a
+// row met.
 func auditDeal(t *testing.T) *handshakeV1 {
 	t.Helper()
-	h := agreedBoth(t, oneForum)
+	return auditDealWith(t, oneForum, auditOpening(t))
+}
+
+func auditDealWith(t *testing.T, offer func(string) string, opening string) *handshakeV1 {
+	t.Helper()
+	h := agreedBoth(t, offer)
 	h.buyer.act(t)
-	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, auditOpening(t)))
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, opening))
+	var text []string
+	for _, class := range slices.Sorted(maps.Keys(auditNoted)) {
+		text = append(text, class+": "+auditNoted[class])
+	}
+	msg, err := json.Marshal(map[string]string{"from": "agent", "text": strings.Join(text, "; ")})
+	require.NoError(t, err)
+	dealRun(t, "note", "--deal", h.dealID, "--kind", "message", "--input", writeJSON(t, string(msg)))
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
 	// A report rests on a checkpoint: the next tick covers the statement.
 	clockAt(t, cli.DealClock().Add(72*time.Hour))
@@ -69,8 +97,20 @@ func TestAV1AuditCopy(t *testing.T) {
 
 	raw, err := os.ReadFile(file)
 	require.NoError(t, err)
-	for class, v := range auditPersonal {
-		assert.NotContains(t, strings.ToLower(string(raw)), strings.ToLower(v), "the %s the holder holds", class)
+	for _, held := range []map[string]string{auditPersonal, auditNoted} {
+		for class, v := range held {
+			assert.NotContains(t, strings.ToLower(string(raw)), strings.ToLower(v), "the %s the holder holds", class)
+		}
+	}
+	covered := map[string]bool{"name": true, "email": true, "phone": true, "other_contact": true}
+	for class := range auditNoted {
+		covered[class] = true
+	}
+	for _, class := range spokenClassOrder {
+		if class == "address" || class == "pickup_area" {
+			continue // read as home_address and pickup_location are
+		}
+		assert.True(t, covered[class], "the fixture holds a value of class %s", class)
 	}
 	assert.NotContains(t, string(raw), "Outside Auditor", "the reader is named on the holder's record only")
 
@@ -143,6 +183,30 @@ func TestTheAuditGateReadsTheWholeCopy(t *testing.T) {
 	assert.NotEmpty(t, v1Err(t, "report", "--deal", h.dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", refused))
 	_, err = os.Lstat(refused)
 	assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
+}
+
+// A short name the holder holds, such as "Amy", in a signed record the copy
+// would carry (here the offer's item) refuses the audit copy, which is then
+// neither written nor recorded; the counterparty's copy is gated as before.
+func TestAnAuditCopyCarryingAShortNameIsRefused(t *testing.T) {
+	offer := func(key string) string {
+		return strings.Replace(oneForum(key), `"item": "lamp"`, `"item": "lamp for Amy"`, 1)
+	}
+	h := auditDealWith(t, offer, `{"type": "purchase", "who": {"name": "Amy"}, "recourse": {"rail": "card", "refundable": true}}`)
+	disclosures := func() int {
+		var n int
+		require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_disclosures WHERE deal_id=?`, h.dealID).Scan(&n))
+		return n
+	}
+	before := disclosures()
+	file := filepath.Join(t.TempDir(), "audit.json")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", file), "private value")
+	_, err := os.Lstat(file)
+	assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
+	assert.Equal(t, before, disclosures(), "nothing recorded")
+	// The counterparty, who made this deal with Amy's side, gets the offer
+	// it already holds.
+	dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", filepath.Join(t.TempDir(), "cp.json"))
 }
 
 // --share audit, like every shared copy, needs a file and a reader.

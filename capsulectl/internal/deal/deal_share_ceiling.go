@@ -353,5 +353,10 @@ func dealShareGate(data []byte, events []sealedEvent, audience string, own ...st
 	if err := dealPageGate(data, events, allowed...); err != nil {
 		return err
 	}
+	if audience == dealprofile.AudienceAudit {
+		if err := auditShortGate(data, events, allowed...); err != nil {
+			return err
+		}
+	}
 	return dealCeilingGate(data, events, audience, own...)
 }
