@@ -75,8 +75,8 @@ func TestV1WitnessedFromAProofBeside(t *testing.T) {
 	got := pluginVerify(t, "--bundle", keep, "--stamp-proof", proof, "--witness-directory", dir)
 	assert.Equal(t, "VALID", got["verdict"])
 	entry := v1EntryOf(t, got)
-	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z", "independent_of": []any{}}, entry["witnessed"],
-		"the row states no independent_of: [] (evidencebook#1073)")
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z", "independent_of": []any{}, "own_witness": true}, entry["witnessed"],
+		"the row states no independent_of: [] (evidencebook#1073), and marks the witness as its own (u655)")
 	assert.Equal(t, "verified", entry["counterparty_half"].(map[string]any)["status"])
 
 	plain := pluginVerify(t, "--bundle", keep)

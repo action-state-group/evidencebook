@@ -286,7 +286,7 @@ func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
 		}
 	}
 	require.NotNil(t, entry)
-	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z", "independent_of": []any{}}, entry["witnessed"])
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z", "independent_of": []any{}, "own_witness": true}, entry["witnessed"])
 	// The row's independent_of reaches the page as verify reported it
 	// (evidencebook#1073).
 	listed := filepath.Join(t.TempDir(), "witnesses.json")
@@ -312,9 +312,13 @@ func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
 	opened := chrome.open(t, "file://"+file, presentationViews[1])
 	var text string
 	opened.eval(t, `document.getElementById("app").textContent`, &text)
-	// The middle sentence is capsule-viewer#513's: the directory entry of the
-	// witness this sample names does not list it as independent.
-	assert.Contains(t, text, "Time-stamped by Action State's witness at Nov 25, 2026, 2:41 PM UTC (14:41:19 UTC), as capsulectl verify reported on your own book. The directory entry for Action State's witness does not list it as independent of the parties. This file carries no witness receipt, so this page did not check it itself.")
+	// The sample's directory marks the witness as its own (u655), so the page
+	// draws no capsule-viewer#513 sentence for it; a row without the mark
+	// still does (TestV1ReportPageSaysAnUnmarkedWitnessIsNotListed).
+	assert.Contains(t, text, "Time-stamped by Action State's witness at Nov 25, 2026, 2:41 PM UTC (14:41:19 UTC), as capsulectl verify reported on your own book. This file carries no witness receipt, so this page did not check it itself.")
+	// Both of #513's witness sentences, not the ladder's static rung text.
+	assert.NotContains(t, text, "The directory entry for Action State's witness does not list it as independent")
+	assert.NotRegexp(t, `Witness time stamp: Action State's witness[^.]*\. Its directory entry does not list it as independent`, text)
 	assert.NotContains(t, text, "so this page could not check a time-stamp itself", "the header line is left out on this page (capsule-viewer#424)")
 	// The demo's own copy draws the receipt design's top line and its seal
 	// (capsule-viewer#442; the seal's cases:
@@ -323,6 +327,37 @@ func TestV1ReportPageCarriesTheWitnessedResultOnly(t *testing.T) {
 	opened.eval(t, `[document.querySelector("[data-top-line]").getAttribute("data-top-line"), document.querySelector("[data-top-line]").textContent,
   [...document.querySelectorAll("svg[data-seal]")].map((e) => e.getAttribute("data-seal")).join(",")]`, &top)
 	assert.Equal(t, []string{"settled", "Sale settled, as your records show", "done"}, top)
+}
+
+// A directory row without the own_witness mark (u655) is a witness the
+// reader has not marked as its own: verify reports no own_witness, and the
+// page draws capsule-viewer#513's sentence that its directory entry does not
+// list it as independent of the parties (CAPSULECTL_CHROME).
+func TestV1ReportPageSaysAnUnmarkedWitnessIsNotListed(t *testing.T) {
+	usePluginVerify(t)
+	keep, err := os.ReadFile(filepath.Join(witnessedVectors, "keep.json"))
+	require.NoError(t, err)
+	proof, err := readStampProof(filepath.Join(witnessedVectors, "proof.json"))
+	require.NoError(t, err)
+	unmarked := filepath.Join(t.TempDir(), "witnesses.json")
+	require.NoError(t, os.WriteFile(unmarked, []byte(`{"witnesses":[{"name":"Action State's witness","endpoint":"https://witness.agentactioncapsule.org","key_ids":["39bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5"]}]}`), 0o600))
+	page, err := v1ReportPage(t.Context(), keep, "capsulectl deal verify --bundle receipt.html", proof, unmarked, nil)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"status": "verified", "witness": "Action State's witness", "at": "2026-11-25T14:41:19Z", "independent_of": []any{}},
+		v1EntryOf(t, pageVerifyReport(t, page))["witnessed"], "no own_witness without the mark")
+
+	binary := os.Getenv("CAPSULECTL_CHROME")
+	if binary == "" {
+		return
+	}
+	file := filepath.Join(t.TempDir(), "receipt.html")
+	require.NoError(t, os.WriteFile(file, page, 0o600))
+	t.Setenv("TZ", "UTC")
+	chrome := startHeadlessChrome(t, binary)
+	opened := chrome.open(t, "file://"+file, presentationViews[1])
+	var text string
+	opened.eval(t, `document.getElementById("app").textContent`, &text)
+	assert.Contains(t, text, "Time-stamped by Action State's witness at Nov 25, 2026, 2:41 PM UTC (14:41:19 UTC), as capsulectl verify reported on your own book. The directory entry for Action State's witness does not list it as independent of the parties. This file carries no witness receipt, so this page did not check it itself.")
 }
 
 // The receipt design (capsule-viewer#442, Steven 2026-11-26: "we had these
