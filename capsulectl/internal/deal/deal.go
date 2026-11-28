@@ -2967,6 +2967,8 @@ func dealReportCommand() *cobra.Command {
 			if emailPath != "" || bundlePath != "" {
 				return cli.InputError("--share writes only the shared page; --email and --bundle are the user's own copy")
 			}
+		case dealprofile.AudienceAudit:
+			return cli.InputError("--share audit is for an x-deal-v1 deal; this deal is x-deal-v0")
 		default:
 			return cli.InputError("--share must be keep, counterparty or adjudicator")
 		}
@@ -3178,7 +3180,7 @@ func dealReportCommand() *cobra.Command {
 	cmd.Flags().String("deal", "", "The deal id (`deal offer` or `deal receive` printed it; `deal open` for an x-deal-v0 deal)")
 	cmd.Flags().String("html", "", "Write the report as one local, self-contained page to this new file")
 	cmd.Flags().String("email", "", "Write the receipt as a ready-to-send email (.eml, no sender or recipient) to this new file, for the agent host's own email tool to send")
-	cmd.Flags().String("bundle", "", "Write the deal's Evidence Bundle (for `capsulectl deal verify --bundle`) to this new file. On an x-deal-v1 deal: your deal book at the report's checkpoint, with the sealed report beside it; with --share counterparty or adjudicator, a disclose act, put on record before the file is written. A shared bundle carries every record of your deal book with its contents and the other side's records your report relies on: an adjudicator sees all of it. Your own notes are never in a bundle")
+	cmd.Flags().String("bundle", "", "Write the deal's Evidence Bundle (for `capsulectl deal verify --bundle`) to this new file. On an x-deal-v1 deal: your deal book at the report's checkpoint, with the sealed report beside it; with --share counterparty, adjudicator or audit, a disclose act, put on record before the file is written. A shared bundle carries every record of your deal book with its contents and the other side's records your report relies on: an adjudicator sees all of it. Your own notes are never in a bundle")
 	cmd.Flags().String("share", cli.DealAudienceKeep, "Who the copy is for: keep (your own copy, nothing withheld), counterparty or adjudicator (a shared copy, put on record first), or, for an x-deal-v1 deal, audit (a copy with --bundle or --out for an outside reader who is not a party: no personal detail, parties shown by key)")
 	cmd.Flags().String("to", "", "With --share: who the shared copy is for, as sealed in the disclosure record. On an x-deal-v1 adjudicator's copy it is a label for who it is for; the copy is recorded for the adjudicator key the agreement names")
 	addIncludeAgentClaimsFlag(cmd.Flags())

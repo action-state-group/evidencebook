@@ -315,6 +315,12 @@ func runV1Report(c *cobra.Command) (err error) {
 				gated = file
 			}
 			if err := v1ShareGate(gated, events, share, v1OwnIDs(dealID, snap.Book)...); err != nil {
+				if share == dealprofile.AudienceAudit && strings.Contains(err.Error(), "would carry a private value") {
+					// A signed record cannot be cut: when one the copy must
+					// carry holds a personal detail, no audit copy of this
+					// deal can be written, and the holder is told so.
+					return cli.InputError("refusing to write the audit copy: a record it must carry holds a personal detail you keep, and records travel whole, as they were signed, so no audit copy of this deal can be written")
+				}
 				return err
 			}
 			record = func() error {

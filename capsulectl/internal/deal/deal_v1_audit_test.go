@@ -215,7 +215,7 @@ func TestAnAuditCopyCarryingAShortNameIsRefused(t *testing.T) {
 	}
 	before := disclosures()
 	file := filepath.Join(t.TempDir(), "audit.json")
-	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", file), "private value")
+	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", file), "a record it must carry holds a personal detail you keep")
 	_, err := os.Lstat(file)
 	assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
 	assert.Equal(t, before, disclosures(), "nothing recorded")
@@ -249,7 +249,7 @@ func TestAnAuditCopyCarryingAHeldValueOfAnyClassIsRefused(t *testing.T) {
 			var before int
 			require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_disclosures WHERE deal_id=?`, dealID).Scan(&before))
 			file := filepath.Join(t.TempDir(), "audit.json")
-			assert.Contains(t, v1Err(t, "report", "--deal", dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", file), "private value")
+			assert.Contains(t, v1Err(t, "report", "--deal", dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", file), "no audit copy of this deal can be written")
 			_, err := os.Lstat(file)
 			assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
 			var after int
@@ -265,4 +265,9 @@ func TestAV1AuditCopyNeedsAFileAndAReader(t *testing.T) {
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "audit", "--bundle", filepath.Join(t.TempDir(), "a.json")), "and --to")
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "audit", "--to", "Outside Auditor"), "needs --out FILE or --bundle FILE")
 	assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "auditor", "--to", "x", "--out", filepath.Join(t.TempDir(), "a.json")), "keep, counterparty, adjudicator or audit")
+
+	// An x-deal-v0 deal has no audit copy, and says so plainly.
+	legacyV0(t)
+	v0 := dealRun(t, "open", "--input", writeJSON(t, v0BuyerOpen))["deal_id"].(string)
+	assert.Contains(t, v1Err(t, "report", "--deal", v0, "--share", "audit", "--to", "x", "--html", filepath.Join(t.TempDir(), "a.html")), "--share audit is for an x-deal-v1 deal; this deal is x-deal-v0")
 }
