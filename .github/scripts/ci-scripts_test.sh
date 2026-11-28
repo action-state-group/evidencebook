@@ -598,6 +598,26 @@ if qrun "queue: a test past the timeout fails the pass" 1 "$rec" -- --timeout 2s
   fi
 fi
 rm "$qmod/a/hang_test.go"
+# A batch over --budget seconds gets a warning naming it; one under it, none.
+printf 'package a\n\nimport (\n\t"testing"\n\t"time"\n)\n\nfunc TestSlow(t *testing.T) { time.Sleep(2 * time.Second) }\n' > "$qmod/a/slow_test.go"
+rec="$qmod/rec-q6"
+if qrun "queue: a batch over the budget" 0 "$rec" -- --budget 1 --jobs 1 --batches 1 -- ./a; then
+  if grep -q '^::warning::batch-0-0 (.*) took [0-9]*s, over the 1s budget$' "$rec.out"; then
+    printf 'ok   queue: a batch over the budget is warned about\n'
+  else
+    printf 'FAIL queue: no budget warning\n%s\n' "$(tail -20 "$rec.out")"
+    fails=$((fails + 1))
+  fi
+fi
+rec="$qmod/rec-q7"
+if qrun "queue: a batch under the budget" 0 "$rec" -- --budget 600 --jobs 1 --batches 1 -- ./a; then
+  if grep -q '::warning::' "$rec.out"; then
+    printf 'FAIL queue: a batch under the budget was warned about\n'
+    fails=$((fails + 1))
+  else printf 'ok   queue: a batch under the budget is not warned about\n'; fi
+fi
+rm "$qmod/a/slow_test.go"
+if qrun "queue: a bad budget" 1 "$qmod/rec-q8" -- --budget 5m -- ./a; then printf 'ok   queue: a budget that is not seconds is an error\n'; fi
 if qrun "queue: no package" 1 "$qmod/rec-q4" -- --jobs 2 --; then printf 'ok   queue: no package named is an error\n'; fi
 if qrun "queue: a bad job count" 1 "$qmod/rec-q5" -- --jobs 0 -- ./a; then printf 'ok   queue: a job count of 0 is an error\n'; fi
 rm -rf "$qmod"

@@ -18,6 +18,8 @@
 #   --names FILE    run only the top-level tests named in FILE, one per line
 #                   (a shard's share)
 #   --flag F        a build flag, such as -race; repeat for several
+#   --budget S      warn (a GitHub Actions ::warning::) for each batch that
+#                   takes longer than S seconds
 #
 # Every package builds with the flags, those without tests too, as go test
 # builds them. Afterwards it prints the per-batch times and the slowest tests,
@@ -26,7 +28,7 @@
 # (.github/workflows/ci.yml) and capsulectl/scripts/test.sh's queued mode.
 set -euo pipefail
 
-label=tests timeout=10m jobs=1 per_job=4 names_file="" flags=()
+label=tests timeout=10m jobs=1 per_job=4 names_file="" budget="" flags=()
 while (($#)); do
   case "$1" in
     --label) label=$2; shift 2 ;;
@@ -35,6 +37,7 @@ while (($#)); do
     --batches) per_job=$2; shift 2 ;;
     --names) names_file=$2; shift 2 ;;
     --flag) flags+=("$2"); shift 2 ;;
+    --budget) budget=$2; shift 2 ;;
     --) shift; break ;;
     *) printf 'go-test-queue.sh: unknown argument %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -50,6 +53,11 @@ for v in "$jobs" "$per_job"; do
     exit 2
   fi
 done
+
+if [[ -n "$budget" && ! "$budget" =~ ^[0-9]+$ ]]; then
+  printf 'go-test-queue.sh: --budget takes a number of seconds, not %s\n' "$budget" >&2
+  exit 2
+fi
 
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
@@ -141,6 +149,10 @@ WORKER
   fi
   printf '\n== %s: %ds over %d processes, build and listing included; batch times ==\n' "$label" $((SECONDS - start)) "$jobs"
   sort -k3,3nr "$dir/summary" | awk 'NR <= 5'
+  if [[ -n "$budget" ]]; then
+    awk -v budget="$budget" '$3 + 0 > budget + 0 {
+      printf "::warning::%s (%s) took %ds, over the %ss budget\n", $2, $4, $3, budget }' "$dir/summary"
+  fi
   printf '== %s: slowest tests ==\n' "$label"
   awk '/^--- (PASS|FAIL)/ { t = $4; gsub(/[()s]/, "", t); printf "%9.2fs  %s  %s\n", t, $2, $3 }' "$dir/all.log" |
     sort -rn | awk 'NR <= 15'

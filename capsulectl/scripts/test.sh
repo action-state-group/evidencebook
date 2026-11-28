@@ -32,7 +32,7 @@ shard_count=${BASH_REMATCH[2]}
 #   CAPSULE_TEST_PKGS="./a ./b"    only these packages (default ./...); a pull
 #                                  request's race job passes scripts/race-packages.sh's list
 #   CAPSULE_TEST_JOBS=n            run the shard's tests from a queue, in n processes at once
-#                                  (unset: one go test run per pass, as CI runs it)
+#                                  (CI sets one per CPU; unset: one go test run per pass)
 #   CAPSULE_TEST_BATCHES=k         with CAPSULE_TEST_JOBS, k batches per process (default 4)
 #
 # With CAPSULE_TEST_JOBS set, .github/scripts/go-test-queue.sh runs the pass:
@@ -43,8 +43,9 @@ shard_count=${BASH_REMATCH[2]}
 # the lazily built shared stores run once per batch.
 # A shard is every n-th name of the sorted `go test -list` output, so the n
 # shards together run every test; a name two packages share runs in each.
-# Each pass ends with its per-package times and slowest tests, and warns when
-# a package takes longer than CAPSULE_TEST_BUDGET seconds (default 420).
+# Each pass ends with its per-package times (per-batch times when queued) and
+# slowest tests, and warns when a package (a batch, when queued) takes longer
+# than CAPSULE_TEST_BUDGET seconds (default 420).
 # One module: the repository root.
 modules=(.)
 read -r -a packages <<<"${CAPSULE_TEST_PKGS:-./...}"
@@ -122,7 +123,7 @@ queued() { # label, race|plain, go test -timeout value
     printf '%s\n' "$names" >"$log.names"
     args+=(--names "$log.names")
   fi
-  bash "$queue_sh" --label "$label" --timeout "$timeout" --jobs "$jobs" --batches "$per_job" \
+  bash "$queue_sh" --label "$label" --timeout "$timeout" --jobs "$jobs" --batches "$per_job" --budget "$budget" \
     ${args[@]+"${args[@]}"} -- "${packages[@]}"
 }
 
