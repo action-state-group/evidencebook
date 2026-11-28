@@ -79,7 +79,7 @@ without `--json` prints lines). `--help` on each gives every flag.
 | `deal dispute --deal ID --row ROW --out FILE [--forum F] [--withdraw]` | Disputes a row before the agreement's referee, or takes it back. |
 | `deal tick` | The checkpoint cadence's poll. Prints `state` (`ticked` or `not_due`) and `due`. Schedule `cll checkpoint cadence --wait-up-to 5m` every 5 minutes (Setup). |
 | `deal settlement --deal ID` | Each payment row's check over both sides' legs you hold, as your records read it now. |
-| `deal report --deal ID [--bundle FILE] [--out FILE] [--share counterparty\|audit --to NAME]` | Each row's status, read at your last checkpoint. `--bundle` writes an Evidence Bundle; `--share counterparty` makes it the copy for the other side, and `--share audit` the copy for an outside reader who is not a party (see [Sharing a copy](#sharing-a-copy)), each put on record first; `--out` seals the report. |
+| `deal report --deal ID [--bundle FILE] [--out FILE] [--share counterparty --to NAME]` | Each row's status, read at your last checkpoint. `--bundle` writes an Evidence Bundle; `--share counterparty` makes it the copy for the other side, put on record first; `--out` seals the report. |
 | `deal list [--json] [--since D] [--until D]` | Every deal in the store with its state; read-only. |
 | `deal audit-host --executions FILE` | The daily check of host actions (below). |
 | `deal set-version x-deal-v1 --migrate` | Moves a store made before x-deal-v1 was the default to the new layout, once, keeping a backup. The user's step: never run it yourself. |
@@ -616,29 +616,6 @@ copy, with nothing withheld, so they cannot be combined with `--share`.
 |---|---|
 | `keep` (default) | Nothing withheld. No disclosure record: it is the user's own copy. |
 | `counterparty` | Amounts, rails, timestamps and digests only; where the user sells, also the typed records' vocabulary (a check's disposition, an approval's authority, the actions a task allows) and the item's name, so the buyer sees the offer they accepted. No home address, no names, payees or contact details, no card or payment identifiers, no verification codes, no message text, no claim text or sources (except, where the user sells, the agent's own statements to the buyer: its claims of condition, warranty, refund terms or delivery, opened when they hold none of the user's private details), none of the user's own words, and not the user's bounds, whichever side they are on: a buyer's spending limit or a seller's floor (a record that carries a bound is withheld; the floor is only ever sealed as a commitment; the merchant section leaves out an "approved" amount that is only that limit; the gate refuses either bound as the field, or as money in free text, in any written form (`$1,700.00`, `1.700,00 €`, `USD 1 700`, `1.7k dollars`, "lowest is 1700"), compared by value, unless it equals the asked price or an amount paid; a structured amount, such as the close's, is shared by its field's rules even when it equals a bound; a message the agent writes, or a seller's agent claim, that states either is refused before it is sealed). |
-
-**An audit copy (x-deal-v1).** For a reader who is not a party and is not
-entitled to anyone's personal details, such as an external audit, write an
-audit copy (evidencebook#1058):
-
-```sh
-capsulectl --profile deal deal report --deal ID --share audit \
-  --to "the auditor" --bundle audit.json
-```
-
-It keeps what the deal was, how it went and its proof: the rows, the
-statements, disputes and rulings, the outcome, and the signed records they
-rest on, so `capsulectl deal verify --bundle audit.json` passes it as it does
-your own copy. It carries no personal detail: x-deal-v1 records hold a
-party's name, contact and addresses only as commitments, and no opening,
-intent, witness time or witness receipt travels. The gate reads the exact file,
-payment references included, and refuses it if any personal value your store
-holds would be in it. The offer, which gives the item and quantity, travels
-only when it names no way to reach the offerer (an `ask` address): it is
-signed, so it travels whole or not at all. `--to` names the reader on your own
-disclosure record only: the copy itself does not name them. The parties' keys
-stay in the signed records, so a reader can tell the same party across copies;
-an audit copy does not make the parties unlinkable.
 
 A sealed record is disclosed whole or not at all, so a shared copy withholds
 every record holding a string it may not carry. That record still verifies:
