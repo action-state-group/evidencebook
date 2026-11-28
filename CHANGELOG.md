@@ -2,6 +2,780 @@
 
 ## Unreleased
 
+## v0.27.0 (2026-11-26)
+
+Every pull request merged since v0.26.0:
+
+- [#610](https://github.com/action-state-group/evidencebook/pull/610): feat(capsulectl): build, test and release capsulectl-deal from this module
+- [#660](https://github.com/action-state-group/evidencebook/pull/660): fix(capsulectl): round 1 review of the deal move
+- [#688](https://github.com/action-state-group/evidencebook/pull/688): feat(deal): deal admit seals capsule-engine's admission decision for an x-deal-v1 deal (#626)
+- [#690](https://github.com/action-state-group/evidencebook/pull/690): feat: Cadence.HistoryCard2, the shelf's history_card/2 staple (u539) (#626)
+- [#687](https://github.com/action-state-group/evidencebook/pull/687): feat(capsulectl): deal node append and records, a node's own book on the deal shelf (#624)
+- [#694](https://github.com/action-state-group/evidencebook/pull/694): feat(capsulectl): deal init --signing-key-file and --checkpoint-key-file keep an existing key (#624)
+- [#696](https://github.com/action-state-group/evidencebook/pull/696): feat(capsulectl): deal node seal-model-call, a model call as an effect-boundary record of a node book (#624)
+- [#695](https://github.com/action-state-group/evidencebook/pull/695): feat(deal): the staple builds history_card/2 only (u539) (#626)
+- [#699](https://github.com/action-state-group/evidencebook/pull/699): docs(design): check and note on an x-deal-v1 deal, proposed (#626)
+- [#698](https://github.com/action-state-group/evidencebook/pull/698): feat(capsulectl): deal node referee receive, a referee's Result checked and sealed into a node book (#624)
+- [#700](https://github.com/action-state-group/evidencebook/pull/700): feat(capsulectl): deal node request, respond and reply-check, the evidence-request exchange on a node book (#624)
+- [#701](https://github.com/action-state-group/evidencebook/pull/701): feat(deal): deal note on an x-deal-v1 deal, over a local plain event list (#626)
+- [#702](https://github.com/action-state-group/evidencebook/pull/702): feat(capsulectl): deal node checkpoint and bundle, a node book's checkpoint and Evidence Bundle (#624)
+- [#705](https://github.com/action-state-group/evidencebook/pull/705): fix(capsulectl): card register syncs the statement file before linking it to --out (#697)
+- [#706](https://github.com/action-state-group/evidencebook/pull/706): docs(capsulectl): card register sync note in the test, changelog no longer claims the directory is synced (#697)
+- [#707](https://github.com/action-state-group/evidencebook/pull/707): feat(deal): deal check and approval on an x-deal-v1 deal (#626)
+- [#711](https://github.com/action-state-group/evidencebook/pull/711): feat(dealprofile): CheckActs holds a settled amount to the checked one (#626)
+- [#712](https://github.com/action-state-group/evidencebook/pull/712): docs(capsulectl): write-path §13, deal perform, settle and statement on a v1 deal (#626)
+- [#715](https://github.com/action-state-group/evidencebook/pull/715): feat(deal): deal perform and deal statement on an x-deal-v1 deal (#626)
+- [#720](https://github.com/action-state-group/evidencebook/pull/720): ci(capsulectl): split the race tests across ten jobs (#717)
+- [#717](https://github.com/action-state-group/evidencebook/pull/717): feat(dealprofile): export xdealv1.ChangesDetails (#626)
+- [#721](https://github.com/action-state-group/evidencebook/pull/721): feat(deal): deal settle on an x-deal-v1 deal (#626)
+- [#725](https://github.com/action-state-group/evidencebook/pull/725): feat(dealprofile): StatusProvider.ReportSnapshot, the report with its payment checks from one read (#626)
+- [#726](https://github.com/action-state-group/evidencebook/pull/726): feat: BundleRequest.DisclosureRecordedElsewhere, a bundle that leaves the book unchanged (#626)
+- [#723](https://github.com/action-state-group/evidencebook/pull/723): feat(deal): deal settle --sent asks the check again before money leaves (#718)
+- [#727](https://github.com/action-state-group/evidencebook/pull/727): feat(deal): deal report on an x-deal-v1 deal, your own copy (#626)
+- [#731](https://github.com/action-state-group/evidencebook/pull/731): feat(deal): shared copies of an x-deal-v1 report, on record before they are written (#626)
+- [#733](https://github.com/action-state-group/evidencebook/pull/733): feat(deal): deal list shows x-deal-v1 deals (#626)
+- [#734](https://github.com/action-state-group/evidencebook/pull/734): feat(deal): deal report --bundle on an x-deal-v1 deal (#626)
+- [#736](https://github.com/action-state-group/evidencebook/pull/736): feat(deal): deal settlement on an x-deal-v1 deal (#626)
+- [#738](https://github.com/action-state-group/evidencebook/pull/738): test(deal): goldens of capsule-cli rc47's verify --bundle on deal copies (#735)
+- [#741](https://github.com/action-state-group/evidencebook/pull/741): test(report): pass --use-mock-keychain --password-store=basic to headless Chrome
+- [#742](https://github.com/action-state-group/evidencebook/pull/742): fix(xdealv1): hold a refund to its cancel check's cancelled_amount_minor (#719)
+- [#740](https://github.com/action-state-group/evidencebook/pull/740): build(capsulectl,report): require capsule-cli rc48 and capsule-viewer go v0.20.0 (#739)
+- [#745](https://github.com/action-state-group/evidencebook/pull/745): feat(deal): deal offer decline on an x-deal-v1 offer (#626)
+- [#748](https://github.com/action-state-group/evidencebook/pull/748): feat: serve a Terms Pack by the digest of its definition and report over the answer (#606)
+- [#752](https://github.com/action-state-group/evidencebook/pull/752): fix(deal): deal settle and deal perform take the check id deal check prints (#626)
+- [#757](https://github.com/action-state-group/evidencebook/pull/757): fix(dealprofile): the x-deal-v1 payment check runs on the payment's own legs beside a refund (#722)
+- [#756](https://github.com/action-state-group/evidencebook/pull/756): feat(rust): serve a Terms Pack by the digest of its definition, with grants, nested fields and set proofs (#746)
+- [#754](https://github.com/action-state-group/evidencebook/pull/754): feat(capsulectl): serve a Terms Pack by digest and report over the answer (#753)
+- [#761](https://github.com/action-state-group/evidencebook/pull/761): test(deal): the unpriced-card test ignores the deal id when it looks for the amount (#730)
+- [#768](https://github.com/action-state-group/evidencebook/pull/768): feat(report): carry deal receipts into a settlement report (#764)
+- [#769](https://github.com/action-state-group/evidencebook/pull/769): feat(report): Page.IgnoredReceipts lists the receipts no deal cites (#764)
+- [#765](https://github.com/action-state-group/evidencebook/pull/765): build(capsulectl,report): move capsulectl to capsule-cli rc49, capsule-viewer go v0.22.0 and the library at ae9169d4; report to rc49
+- [#763](https://github.com/action-state-group/evidencebook/pull/763): chore(release): crates/evidencebook 0.0.26
+- [#770](https://github.com/action-state-group/evidencebook/pull/770): feat(capsulectl): book report build --receipts carries deal receipts into a settlement report (#764, #767)
+- [#776](https://github.com/action-state-group/evidencebook/pull/776): test(deal): the receipt page check takes the deal-format verdicts from the plugin (#735)
+- [#749](https://github.com/action-state-group/evidencebook/pull/749): feat(deal): x-deal-v1 is the default deal version (#626)
+- [#657](https://github.com/action-state-group/evidencebook/pull/657): docs(dealprofile): x-deal-v1 is the default, x-deal-v0 is frozen (#626)
+- [#760](https://github.com/action-state-group/evidencebook/pull/760): fix(deal): deal audit-host reads x-deal-v1 deals (#758)
+- [#766](https://github.com/action-state-group/evidencebook/pull/766): feat(deal): agree to your own x-deal-v1 offer with a party that keeps no records (#762)
+- [#784](https://github.com/action-state-group/evidencebook/pull/784): feat(report): Receipt.NotClosed marks a deal that had not closed when the page was built (#778)
+- [#786](https://github.com/action-state-group/evidencebook/pull/786): feat(capsulectl): book report build --receipts takes not_closed (#778)
+- [#789](https://github.com/action-state-group/evidencebook/pull/789): ci(capsulectl): run on report/testdata/presentation changes (#778)
+- [#772](https://github.com/action-state-group/evidencebook/pull/772): feat(deal): a card checkout's payment on x-deal-v1, under the merchant's order number (#771)
+- [#793](https://github.com/action-state-group/evidencebook/pull/793): fix(dealprofile): a date in a check's text is not a phone number (#791)
+- [#777](https://github.com/action-state-group/evidencebook/pull/777): feat(xdealv1): checkpoint the adjudicator's case book, one per deal (#615)
+- [#781](https://github.com/action-state-group/evidencebook/pull/781): feat(xdealv1): CheckCase, CheckCaseRecord and SealRuling, an adjudicator's case rules (#779)
+- [#783](https://github.com/action-state-group/evidencebook/pull/783): feat(xdealv1): SharedOperator marks a ruling "not independent (shared operator)" from a controller binding (#780)
+- [#785](https://github.com/action-state-group/evidencebook/pull/785): feat(xdealv1): EntryOf, the entry check over a party's copy (#773, #779)
+- [#792](https://github.com/action-state-group/evidencebook/pull/792): fix(deal): on x-deal-v1, an answer that was not applied authorizes nothing (#790)
+- [#796](https://github.com/action-state-group/evidencebook/pull/796): feat(deal): deal ruling, the adjudicator's verb, and deal dispute --challenge (#773)
+- [#759](https://github.com/action-state-group/evidencebook/pull/759): feat(deal): the deal skill teaches x-deal-v1; the x-deal-v0 procedures move to a legacy file (#626)
+- [#800](https://github.com/action-state-group/evidencebook/pull/800): feat: window books, a shelf split into one book per time window (#689)
+- [#801](https://github.com/action-state-group/evidencebook/pull/801): feat(deal): deal ruling entries, deal receive of a copy, and share gate fixes (#773, #787)
+- [#795](https://github.com/action-state-group/evidencebook/pull/795): feat: Cadence.Receipts, the receipts a shelf holds for a checkpoint (#788)
+- [#804](https://github.com/action-state-group/evidencebook/pull/804): docs(xdealv1): RulingAt comes from Shelf.RecordTimeByKey (#803)
+- [#806](https://github.com/action-state-group/evidencebook/pull/806): feat(report): View.Coverage states the range a report over time windows covers (#689)
+- [#813](https://github.com/action-state-group/evidencebook/pull/813): feat(report): Receipts.Gate, the caller's own check of each carried receipt (#735)
+- [#810](https://github.com/action-state-group/evidencebook/pull/810): feat(deal): deal checkpoint proof, a deal book's stamp proof with its witness receipts (#788)
+- [#809](https://github.com/action-state-group/evidencebook/pull/809): feat(deal): capsulectl-deal reads its own deal formats on capsule-cli rc50 (#735)
+- [#816](https://github.com/action-state-group/evidencebook/pull/816): build(capsulectl,report): release capsulectl v0.1.0-rc50; report to capsule-cli rc50 (#802)
+- [#811](https://github.com/action-state-group/evidencebook/pull/811): feat(capsulectl): book stores split by time window, and reports over a range of windows (#689)
+- [#815](https://github.com/action-state-group/evidencebook/pull/815): fix(deal): an adjudicator's profile is made with one key; a store keyed otherwise is refused before sealing (#814)
+- [#817](https://github.com/action-state-group/evidencebook/pull/817): fix(deal): the share gate reads a card number by its network prefix and the checksum (#787)
+- [#820](https://github.com/action-state-group/evidencebook/pull/820): feat: VerifyWitnessReceiptTime, a verified receipt's registration time (#819)
+- [#824](https://github.com/action-state-group/evidencebook/pull/824): fix(xdealv1): SharedOperator labels a party's own key with no stamped time (#822)
+- [#823](https://github.com/action-state-group/evidencebook/pull/823): feat(deal): a receipt says when the checkpoints stopped (capsule-cli#600)
+- [#821](https://github.com/action-state-group/evidencebook/pull/821): feat(capsulectl): a new book store is split by month windows (#805)
+- [#822](https://github.com/action-state-group/evidencebook/pull/822): feat(deal): a received ruling's stamped time and 'not independent (shared operator)' (#819)
+- [#825](https://github.com/action-state-group/evidencebook/pull/825): feat: a window's grace, for a Close over an earlier window (#807)
+- [#829](https://github.com/action-state-group/evidencebook/pull/829): fix: a refused window policy leaves no shelf file (#827)
+- [#832](https://github.com/action-state-group/evidencebook/pull/832): feat: a bundle recorded elsewhere hands back its disclosure entry (#807)
+- [#831](https://github.com/action-state-group/evidencebook/pull/831): docs(deal): the skill teaches receiving a ruling and challenging it
+- [#826](https://github.com/action-state-group/evidencebook/pull/826): feat(deal): capsulectl-deal emits parent-log-witness/v1 in place of x-cadence-witness/v0 (#737)
+- [#828](https://github.com/action-state-group/evidencebook/pull/828): feat(capsulectl): a window's grace in capsulectl-book (#807)
+- [#840](https://github.com/action-state-group/evidencebook/pull/840): build(capsulectl): pin capsule-cli v0.1.0-rc52; a pack lacking keys pins with a notice (capsule-cli#627)
+- [#836](https://github.com/action-state-group/evidencebook/pull/836): feat: a JSONL book continues in a windowed store, root package (#808)
+- [#837](https://github.com/action-state-group/evidencebook/pull/837): feat(capsulectl): book window convert, a JSONL book continues in a store split by window (#808)
+- [#841](https://github.com/action-state-group/evidencebook/pull/841): feat(deal): a buyer's deal seals the task authority the user confirmed (#839)
+- [#846](https://github.com/action-state-group/evidencebook/pull/846): feat: a shelf whose windows are its journal, with deal books placed in them (#797)
+- [#847](https://github.com/action-state-group/evidencebook/pull/847): feat(capsulectl): a deal store whose journal is split by window (#797)
+- [#848](https://github.com/action-state-group/evidencebook/pull/848): feat(report): the coverage banner names each placed deal and states the report's limit (#797)
+- [#849](https://github.com/action-state-group/evidencebook/pull/849): fix: a placed deal's coverage line names the deal book once; packfile doc comments (#797)
+- [#851](https://github.com/action-state-group/evidencebook/pull/851): build(capsulectl): pin capsule-cli v0.1.0-rc53 and report v0.8.0 (evidencebook-skills#248)
+- [#853](https://github.com/action-state-group/evidencebook/pull/853): test(capsulectl): a windowed deal store fixture with ended months, and the CLI path over it (#852)
+- [#855](https://github.com/action-state-group/evidencebook/pull/855): feat(python): the x-deal-v1 holder's case book rules (#775)
+- [#854](https://github.com/action-state-group/evidencebook/pull/854): feat(rust): register a Standard History card on a SCITT service and check card_registered (#618)
+- [#859](https://github.com/action-state-group/evidencebook/pull/859): feat(python): an adjudicator's case rules and the witness receipt check (#775)
+- [#856](https://github.com/action-state-group/evidencebook/pull/856): feat(rust): the x-deal-v1 case book rules (case log id, proof binding, adjudicator receive) (#774)
+- [#864](https://github.com/action-state-group/evidencebook/pull/864): docs(capsulectl): witness vs countersign for a deal, and the default witness stated once (#862)
+- [#868](https://github.com/action-state-group/evidencebook/pull/868): docs: unpin the Go install lines so they cannot go stale
+- [#873](https://github.com/action-state-group/evidencebook/pull/873): fix(capsulectl): deal compose seals only a refusal's signed members (#872)
+- [#874](https://github.com/action-state-group/evidencebook/pull/874): docs(design): what an on-path party can do with witness_receipts (#872)
+- [#870](https://github.com/action-state-group/evidencebook/pull/870): feat(report)!: open settlement receipts with capsule-viewer's receipt modules (#869)
+- [#863](https://github.com/action-state-group/evidencebook/pull/863): docs(design): the adjudicator gathers four books, and where it runs (#861)
+- [#879](https://github.com/action-state-group/evidencebook/pull/879): refactor(rust): cut checkpoints with checkpointed-local-log's cut_checkpoint
+- [#833](https://github.com/action-state-group/evidencebook/pull/833): feat(goose): the Goose loop reference node runs on capsulectl-deal, its deals on x-deal-v1 (#624)
+- [#877](https://github.com/action-state-group/evidencebook/pull/877): feat(deal): the adjudicator gathers four books (#861)
+- [#889](https://github.com/action-state-group/evidencebook/pull/889): fix(goose): the node's offers carry terms.price_minor, so its deals have a value band on the card (#888)
+- [#881](https://github.com/action-state-group/evidencebook/pull/881): feat(capsulectl): countersign an x-deal-v1 deal (#865)
+- [#885](https://github.com/action-state-group/evidencebook/pull/885): feat(deal): the other party's half for an x-deal-v1 keep copy (#850)
+- [#900](https://github.com/action-state-group/evidencebook/pull/900): docs(dealprofile): agreeing to an adjudicator agrees to answer its full request (#898)
+- [#886](https://github.com/action-state-group/evidencebook/pull/886): feat(capsulectl): your own x-deal-v1 copy carries the other party's half, and deal verify checks it (#850)
+- [#902](https://github.com/action-state-group/evidencebook/pull/902): feat(xdealv1): agreed_at no later than the first witnessed time (agent-action-capsule#696)
+- [#913](https://github.com/action-state-group/evidencebook/pull/913): docs(dealprofile): cite public sources, not internal ruling ids (#901)
+- [#915](https://github.com/action-state-group/evidencebook/pull/915): test(deal): the slow remote checker test bounds the wait, not the check's own work (#905)
+- [#916](https://github.com/action-state-group/evidencebook/pull/916): docs(design): cite rulings by date and public issue, not internal ids (#914)
+- [#910](https://github.com/action-state-group/evidencebook/pull/910): feat(capsulectl): refuse a /3 or /4 card whose deal was agreed after it was witnessed (agent-action-capsule#696)
+- [#896](https://github.com/action-state-group/evidencebook/pull/896): feat(deal): an x-deal-v1 verdict's received_history, in Go, Rust and Python (#666)
+- [#911](https://github.com/action-state-group/evidencebook/pull/911): feat(deal): the Deal API's deal.open as a root-module package (#899)
+- [#912](https://github.com/action-state-group/evidencebook/pull/912): docs(capsulectl): install a release of the two launchers, at the core's version (#895)
+- [#897](https://github.com/action-state-group/evidencebook/pull/897): feat(deal): deal check --history, a verified History in the sealed rules check (#666)
+- [#887](https://github.com/action-state-group/evidencebook/pull/887): fix(deal): an x-deal-v1 holder holds a counterparty agreement only in the other role (#884)
+- [#908](https://github.com/action-state-group/evidencebook/pull/908): feat: the front door's record and report calls, Book.RecordAct and Book.EvaluatePack (#895)
+- [#918](https://github.com/action-state-group/evidencebook/pull/918): refactor(capsulectl): the deal.open verbs call evidencebook's package deal (#899)
+- [#927](https://github.com/action-state-group/evidencebook/pull/927): test(report): an Example of the front door's three calls, rendered and sealed (#895)
+- [#893](https://github.com/action-state-group/evidencebook/pull/893): feat(capsulectl): answer an adjudicator in full and rule over four books (#861)
+- [#924](https://github.com/action-state-group/evidencebook/pull/924): feat(deal): deal check --history reads a stapled history_card/2 (#666)
+- [#931](https://github.com/action-state-group/evidencebook/pull/931): refactor(rust): one copy of the inclusion path and consistency proof parts, shared by the substrate and the shelf
+- [#936](https://github.com/action-state-group/evidencebook/pull/936): docs(design): cite public records, not chat links, and check for them (#861)
+- [#934](https://github.com/action-state-group/evidencebook/pull/934): feat: a sent request's record keeps the commitment held for its responder, in Go and Rust
+- [#922](https://github.com/action-state-group/evidencebook/pull/922): build(capsulectl): require the evidencebook library at main cc061f0e (#895)
+- [#926](https://github.com/action-state-group/evidencebook/pull/926): feat(capsulectl): one release carries the core and both plugins, at one version (#895)
+- [#939](https://github.com/action-state-group/evidencebook/pull/939): fix(capsulectl): release-build.sh finds GNU tar or says what to install, before it builds (#895)
+- [#892](https://github.com/action-state-group/evidencebook/pull/892): fix(deal): read the branch the holder named when the other side forks at its first record (#878)
+- [#880](https://github.com/action-state-group/evidencebook/pull/880): feat(capsulectl): book report build --receipts opens receipts with capsule-viewer's modules; Mesh receipts carried (#869)
+- [#935](https://github.com/action-state-group/evidencebook/pull/935): feat(capsulectl): deal report --html writes an x-deal-v1 deal's receipt page with the binary's own verify report
+- [#921](https://github.com/action-state-group/evidencebook/pull/921): feat(goose): the node's signed settlement disclosure for loop step 06 (#920)
+- [#933](https://github.com/action-state-group/evidencebook/pull/933): feat(capsulectl): deal tick --now stamps at once, whatever the schedule
+- [#942](https://github.com/action-state-group/evidencebook/pull/942): feat(deal): refusals name the package's own calls, with Code and Args (#899)
+- [#943](https://github.com/action-state-group/evidencebook/pull/943): feat(xdealv1): DecideCase reports whether a disputed row is decided by the disputed side's own word
+- [#946](https://github.com/action-state-group/evidencebook/pull/946): test(capsulectl): fix main's red checks (#941): the refused edited-receipt page; a pin that names no anchor
+- [#951](https://github.com/action-state-group/evidencebook/pull/951): fix(capsulectl): the x-deal-v1 page shows local times and one witness line (capsule-viewer#423, #424)
+- [#932](https://github.com/action-state-group/evidencebook/pull/932): ci: pull requests run fast checks; heavy suites run on main and nightly
+- [#949](https://github.com/action-state-group/evidencebook/pull/949): test: assert respond flood progress, not wall-clock latency (#938)
+- [#945](https://github.com/action-state-group/evidencebook/pull/945): refactor(capsulectl): word package deal's coded refusals in the CLI's terms (#899)
+- [#960](https://github.com/action-state-group/evidencebook/pull/960): feat(capsulectl): deal tick bounds the time it spends delivering pending checkpoints (#937)
+- [#957](https://github.com/action-state-group/evidencebook/pull/957): feat(deal): a History card carries a cll witness's anchor receipt, and verify checks it (#891)
+- [#959](https://github.com/action-state-group/evidencebook/pull/959): fix(canary): sign the witness read with the log's checkpoint key
+- [#954](https://github.com/action-state-group/evidencebook/pull/954): fix(capsulectl): an x-deal-v1 payment counts as an earlier payment to its merchant; Everyday Rules limits tested on v1 (#890)
+- [#964](https://github.com/action-state-group/evidencebook/pull/964): feat(deal): x-deal-v0 copies carry no witness chain (u225, #958)
+- [#970](https://github.com/action-state-group/evidencebook/pull/970): refactor(deal): deal check --history reads a stapled history_card/2 only (#962)
+- [#969](https://github.com/action-state-group/evidencebook/pull/969): fix(capsulectl): an x-deal-v0 history act with a broken link to its check marks the rules history incomplete (#955)
+- [#965](https://github.com/action-state-group/evidencebook/pull/965): fix(deal): a witness that timed out reads as slow, never as a consent ask
+- [#971](https://github.com/action-state-group/evidencebook/pull/971): build(deps): draw the receipt page with capsule-viewer 8fe749b (capsule-viewer#437)
+- [#972](https://github.com/action-state-group/evidencebook/pull/972): build(deps): repin capsulectl to capsule-engine 4a490697 (Everyday 0.3.10) and capsule-cli 16ec5bc9 (DeliverWitnessBy)
+- [#974](https://github.com/action-state-group/evidencebook/pull/974): build(deps): the receipt page names capsuleviewer.receipt.wording.en/v1 (capsule-viewer#438)
+- [#975](https://github.com/action-state-group/evidencebook/pull/975): feat(deal): the deal-book acts as library calls (#899 phase 2a)
+- [#952](https://github.com/action-state-group/evidencebook/pull/952): feat(capsulectl): deal ruling check reports whether a dispute is decided by the disputed side's own word; deal ruling --decided-by rules only on that
+
+### Added: the adjudicator gathers four books (#861)
+
+- **The full adjudicator copy.** `ReportCopy.Full` makes `StatusProvider.ReportWithBook` add the whole deal book (`records`) and the copy of the other side's book the party holds (`received`) to an adjudicator's copy. `VerifyFullCopy` checks it, and `VerifyReportBundle` applies the same checks to any copy that carries `records`. An adjudicator's request names it with the derivation `deal_adjudicator_copy/1` (`DerivationAdjudicatorCopy`).
+- **One book's facts.** `Cadence.BookEvidence` hands over one book's facts with their stamp proofs, link openings and receipts, and no status opening. `VerifyBookEvidence` checks them and returns the record times they give, never earlier than the shelf's own. `HandoverTimes` also times a received record (`ReceivedRecordTime`), and `StampProofRecomputes` checks a stamp proof against a book's record ids.
+- **Gathering a case.** `GatherCase` reads a dispute, the case-opening copies and up to two full answers into one case. Each side is read from its own book and from the copy the other side held. Where the two differ, the copy the other side held governs, and both are kept. No branch is read past a fork the held copy does not reach. Each record says what timed it (`CaseRecordTimes`).
+- **The ruling's `sources`.** A ruling from a gathered case names, per side, the last record read from each source, or null for a source not shown, and the position of any fork. It is an OPTIONAL member, so a reader from before it refuses such a ruling. `SealRuling` refuses a gathered ruling against a side of which the case shows no record (none read, no source shown, no fork kept as evidence).
+- **Fixed.** `SealRuling` now seals a ruling whose remedy has an amount. Before, it failed to canonicalize the number.
+
+### Fixed: `deal audit-host` reads x-deal-v1 deals (#758)
+
+- **The bug.** `deal audit-host`, the daily check of host actions, read deals only through the x-deal-v0 path. So every consequential action on an x-deal-v1 deal was listed as `unrecorded`, even when the deal held it.
+- **The fix.** It now also reads each x-deal-v1 deal's own records, as stored and writing nothing. A payment from `deal settle --sent` on covers the host's pay record, matched by deal id, or by amount, currency, merchant and time, exactly as on x-deal-v0. A payment or refund whose send failed covers nothing, and neither does a refund received, which is the other side's act. Each deal in a store holding both versions covers its own actions.
+
+### Changed: `book report coverage` prints each placed deal's line and the report's limit (#797)
+
+- On a report over a deal store's windows, `book report coverage` names a deal placed in a window with no answer, or answered at a tree the chain does not prove, and prints each covered deal's line under `deals`: its answer covers its whole book, records after its window included. `limits` now ends with the report's limit (each answer proves its rows are in the holder's log; the rows' field values are the holder's word; no proof shows that no row was left out), in place of the line "No check shows that an answer holds every row of its window."
+
+### Added: `BundleRequest.DisclosureRecordedElsewhere` (#626)
+
+- A bundle built with `DisclosureRecordedElsewhere` (with `At`, a checkpoint the book already has) leaves the book unchanged: no disclosure record and no new checkpoint.
+- It is for a host that records the disclosure outside the book, as an x-deal-v1 deal book must, since a disclosure record in it is not an x-deal-v1 record and every later report of the book would refuse it.
+- Without `At` it is refused.
+
+### Added: Bundle.DisclosureEntry, the disclosure record a host records elsewhere (#807)
+
+- `Bundle.DisclosureEntry`: a bundle built with `DisclosureRecordedElsewhere` now hands back the disclosure record the book would have appended (naming the bundle's digest and anchor, citing every disclosed record; those records and the anchor are the source book's), so a host records the hand-over where it keeps it, such as the current window's book for a bundle of an earlier window in its grace (evidencebook#807).
+
+### Added: `Cadence.Receipts` (#788)
+
+- `Cadence.Receipts` gives the witness receipts a shelf holds for one of its signed cadence checkpoints. A party sends them beside its stamp proof; x-deal-v1's entry check reads them to see that a witness registered the party's checkpoint. A receipt carries no record content: only the witness's URL, its signed receipt, and the entry hash with its position in the witness's log (leaf index and tree size).
+
+### Added: `book report build --receipts` takes `{"exchange_capsule_id", "not_closed": true}` for a deal that had not closed when the page was built ([#778](https://github.com/action-state-group/evidencebook/issues/778))
+
+- A deal that had not closed (an invoiced exchange with no settlement or delivery recorded yet) has no receipt, and `held` would say its holder chose to keep one off the page. `not_closed` says the deal had not closed when the page was built; capsule-viewer draws "No receipt: this deal had not closed when this page was built." (capsule-viewer#358). Exactly one of `receipt`, `held` and `not_closed` per entry; a deal with no entry still reads "Receipt not carried with this page" (a page built wrong).
+- `capsulectl/go.mod` requires `report` v0.6.0, the release with `Receipt.NotClosed` (evidencebook#784) and capsule-viewer go v0.23.0, whose page runtime draws the line.
+
+### Added: `capsulectl-book book report build --receipts` carries deal receipts into a settlement report (#764)
+
+- `book report build --receipts FILE` takes a JSON list of `{"exchange_capsule_id", "receipt": <the bundle the node served>}` or `{"exchange_capsule_id", "held": true}` (the holder's share policy keeps it off the page) and puts the deal view, the module that opens a deal's receipt, in the page with each receipt, so capsule-viewer's deal-line "Open receipt" control (capsule-viewer#351) has a receipt to open. `report.Build` maps each entry to the one deal whose claims cite its exchange capsule (the part of a claim id before `::`); a deal with no entry reads "Receipt not carried with this page", an id no deal cites is ignored and listed as `ignored_receipts` in the build output, and one the claims of two deals cite is refused, as is a bundle the deal view does not draw. That a bundle is the receipt of its capsule's deal is the caller's word until agent-action-capsule#674 and capsule-viewer#353. Nothing is carried without the flag, which cannot be used with `--permalink` or `--diagnostic`; a composed receipt is not carried yet.
+- `capsulectl/go.mod` requires `report` v0.5.0, the release with `View.Receipts` and `Page.IgnoredReceipts` (evidencebook#768, #769), which also brings the x-deal-v1 refusal `book report build` lacked ([#767](https://github.com/action-state-group/evidencebook/issues/767)): an x-deal-v1 bundle is refused with the pointer to its v1 deal report, and a test holds it. capsule-viewer go v0.22.0 refreshes the page runtime.
+- The deal view's files and module builder moved to `capsulectl/internal/deal/assets`, which `capsulectl-deal` and `capsulectl-book` both link; neither launcher links the other's commands or hooks, and the launcher boundary test now says so by exact package.
+
+### Changed: `capsulectl book report build --receipts` opens receipts with capsule-viewer's receipt modules (#869)
+
+- capsulectl-book requires report v0.9.0. A settlement report built with `--receipts` carries capsule-viewer's receipt modules (`capsuleviewer.receipt.unilateral/v0` and `.seller/v0`, from capsule-viewer's Go package `receipt`, capsule-viewer#383) instead of evidencebook's deal view. A receipt there reads as a shared copy, with the verifier's top line.
+- A Mesh node's receipt can now be carried. It is a producer selection, which `capsulectl deal verify --bundle` calls INCOMPLETE because its interval coverage is withheld as `selection_not_checkable`. Each carried receipt's check admits that INCOMPLETE, and no other: every other claim must pass and the deal section must be read and pass. The report admits it on the page's own verdict (report v0.9.0). Before, every Mesh receipt was refused.
+- capsulectl and report require capsule-viewer go v0.27.2. A receipt's top line says "Checked in this browser by …" when the page's own check ran, and the buyer's receipt shows no Amount card when no signed field carries an amount (capsule-viewer#391). A browser without Ed25519 draws no receipt, only the can't-check line (#392). The page checks a capsulectl-deal copy's standalone report itself, so those receipts draw, and says so ("This page checked it itself: …"); a copy whose report fails reads as not verified (capsule-viewer#398, #410). An x-deal-v1 copy, whose report a page can't yet check, draws only a line saying so and how to check it (capsule-viewer#405). The committed report pages, capsulectl's copies of them and their snapshots change in the viewer's version, commit and embedded runtime.
+
+### Changed: `capsulectl-deal` moves into this repository (#610)
+
+- The `capsulectl-deal` plugin (`capsulectl deal ...`: the deal verbs and a deal profile's SQLite store) moved here from evidencebook-deal with its commit history, to `capsulectl/cmd/capsulectl-deal`, `capsulectl/internal/deal`, `capsulectl/skills/deal` and `capsulectl/examples`. `capsulectl/` is now one module with two launchers, `capsulectl-book` and `capsulectl-deal`, built from one source tree, tested by one CI workflow (eight race shards and two plain shards of `capsulectl/scripts/test.sh`, the deal pages, portability, studio replay and presentation pass jobs, and the nightly full-case race run) and released together: one `capsulectl/vX.Y.Z` tag publishes both launchers, `deal-view-` and `deal-skill-` archives, and one `SHA256SUMS`, with the asset names evidencebook-deal used. Neither launcher links the other's package, so each keeps its own commands, hooks and wording, and `capsulectl` stays core-only. The deal changelog up to the move is `capsulectl/CHANGELOG-deal.md`; its issue and PR numbers are evidencebook-deal's.
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc46` (was rc45): the first release that hands `SetDealV1ReportVerifier` the x-deal-v1 extension. The core-only `capsulectl verify` still reports the x-deal-v1 report rule `NOT_CHECKED`; `capsulectl-deal verify --bundle` runs it.
+- A deal release's notes link is now this repository's `capsulectl/vX.Y.Z` release, and the release workflow refuses a version a shared copy's producer string cannot carry.
+
+### Docs: installing a capsulectl-book and capsulectl-deal release (#895)
+
+- capsulectl/README.md gains "Install a release": the one `capsulectl/$V` release at the core's version, which core pre-releases have none, the downloads, the checksum and attestation checks, the two archives unpacked beside the launchers, and `capsulectl plugin install`.
+
+### Changed: one capsulectl release carries the core and both plugins (#895)
+
+- A `capsulectl/vX` release is now the one capsulectl release a person installs. It carries the core `capsulectl-vX-{os-arch}`, which is capsule-cli's published build of that version carried unchanged, together with the `capsulectl-book` and `capsulectl-deal` launchers and their archives. It has one version and one `SHA256SUMS`. The launchers stay plugins that the core installs.
+- `capsulectl/scripts/release-core-assets.sh` adds the core. It checks the core against its release's `SHA256SUMS` and its attestation, bound to capsule-cli's release workflow, the tag and the commit `go.mod` resolves. It then runs the core and installs both launchers with it. The release workflow runs the script after the plugins' attestation, and the `capsulectl` CI dry run runs it against the core `go.mod` requires.
+- The release notes, `capsulectl/README.md` "Install a release" and `capsulectl/RELEASING.md` give one download set and two provenance checks: the core with `capsulectl-vX.sigstore.json` from capsule-cli, and the plugins with `capsulectl-book-vX.sigstore.json` from this repository. Releases made before this change carry no core.
+
+### Changed: `capsulectl` requires the evidencebook library at cc061f0e (#895)
+
+- `capsulectl/go.mod` requires the `evidencebook` library at cc061f0e (was 7ad15a2d), the main of 2026-11-25. Both launchers are then built against the x-deal-v1 receive role check (#887) and the front door's calls (#908). The old pin already carried the `deal` package (#911). The capsule-cli requirement is unchanged: it stays at main 0043a944, which carries v0.1.0-rc54 and `cli.StapleVerdict` (capsule-cli#638).
+
+### Changed: `capsulectl` pins capsule-cli v0.1.0-rc52, and a wording pack that lacks keys is pinned with a notice (capsule-cli#627)
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc52` (was rc51). `profile update --wording` no longer refuses a pack that lacks keys of the core's or of a plugin's built-in pack (an older plugin on a newer core): it pins the pack, prints a `wording_notice`, and the whole built-in pack is used until the pack is updated; `doctor --install-check` adds a `warnings` entry. A pack whose `card.terms.*` entries could hide a term is still refused (evidencebook#834).
+
+### Changed: `capsulectl` pins capsule-cli v0.1.0-rc53 and report v0.8.0 (evidencebook-skills#248)
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc53` (was rc52; capsule-viewer/go v0.23.1, so `presentation build` draws an `eu-ai-act-obligations-report/v2` report, capsule-cli#630) and `report` `v0.8.0` (was v0.7.0). The report module's own changes since v0.7.0 are the coverage banner that names each placed deal (#848), `capsulectl-deal` emitting `parent-log-witness/v1` (#826) and the rc50 pins (#816); the last two already shipped in capsulectl rc52. New in `capsulectl/v0.1.0-rc53` since rc52: the window-split deal store (#847), the buyer's confirmed task authority (#841) and `book window convert` (#837).
+- `capsulectl/go.mod` also requires the `evidencebook` library at 8ddb2abe (was 3550482e), which carries a placed deal's coverage line and findings naming the deal book once (#849).
+
+### Changed: capsulectl moves to capsule-cli v0.1.0-rc49, capsule-viewer go v0.22.0 and the library at ae9169d4; report to capsule-cli rc49 (#765)
+
+- `capsulectl/go.mod` requires capsule-cli v0.1.0-rc49 (the release capsulectl/v0.1.0-rc49 pairs with), capsule-viewer go v0.22.0 (the receipts viewer `report/go.mod` took in #768) and the evidencebook library at ae9169d4. capsulectl rc49 ships the Terms Pack verbs of #754 (`book result derived-inputs`, `book report derive`, packs in `book/derivations`), which live in capsulectl's own module; the library bump brings the x-deal-v1 refund-leg payment check fix (#757), the derivation proofs test vectors (#756) and the receipts carried into a settlement report (#764).
+- `report/go.mod` moves to capsule-cli rc49. capsulectl's copies of the two pages `book report build` writes (`capsulectl/testdata/presentation/4-monthly-outcome` and `5-monthly-compliance`: `page.html`, `snapshot.json`, `build-snapshot.json`) follow the report module's pages, which the presentation pass reads (it holds the viewer's version text).
+
+### Released: capsulectl-book and capsulectl-deal `capsulectl/v0.1.0-rc50` (#802)
+
+This release pairs with capsule-cli `v0.1.0-rc50` (`capsulectl/go.mod` requires it, with `report` v0.7.0 and capsule-viewer go v0.23.0; `report/go.mod` moves to capsule-cli rc50 too) and is cut from main at f31db8ca. capsule-cli rc50 removed the deal-format verify code from its core, so this is the first capsulectl built on it: capsulectl-deal carries its own copies (#809). x-deal-v1 is the default deal version (#749).
+
+Every pull request merged since `capsulectl/v0.1.0-rc49` that changes capsulectl, `report` or the deal skill:
+
+- [#749](https://github.com/action-state-group/evidencebook/pull/749): feat(deal): x-deal-v1 is the default deal version (#626)
+- [#759](https://github.com/action-state-group/evidencebook/pull/759): feat(deal): the deal skill teaches x-deal-v1; the x-deal-v0 procedures move to a legacy file (#626)
+- [#760](https://github.com/action-state-group/evidencebook/pull/760): fix(deal): deal audit-host reads x-deal-v1 deals (#758)
+- [#766](https://github.com/action-state-group/evidencebook/pull/766): feat(deal): agree to your own x-deal-v1 offer with a party that keeps no records (#762)
+- [#770](https://github.com/action-state-group/evidencebook/pull/770): feat(capsulectl): book report build --receipts carries deal receipts into a settlement report (#764, #767)
+- [#772](https://github.com/action-state-group/evidencebook/pull/772): feat(deal): a card checkout's payment on x-deal-v1, under the merchant's order number (#771)
+- [#776](https://github.com/action-state-group/evidencebook/pull/776): test(deal): the receipt page check takes the deal-format verdicts from the plugin (#735)
+- [#784](https://github.com/action-state-group/evidencebook/pull/784): feat(report): Receipt.NotClosed marks a deal that had not closed when the page was built (#778)
+- [#786](https://github.com/action-state-group/evidencebook/pull/786): feat(capsulectl): book report build --receipts takes not_closed (#778)
+- [#792](https://github.com/action-state-group/evidencebook/pull/792): fix(deal): on x-deal-v1, an answer that was not applied authorizes nothing (#790)
+- [#796](https://github.com/action-state-group/evidencebook/pull/796): feat(deal): deal ruling, the adjudicator's verb, and deal dispute --challenge (#773)
+- [#801](https://github.com/action-state-group/evidencebook/pull/801): feat(deal): deal ruling entries, deal receive of a copy, and share gate fixes (#773, #787)
+- [#806](https://github.com/action-state-group/evidencebook/pull/806): feat(report): View.Coverage states the range a report over time windows covers (#689)
+- [#809](https://github.com/action-state-group/evidencebook/pull/809): feat(deal): capsulectl-deal reads its own deal formats on capsule-cli rc50 (#735)
+- [#810](https://github.com/action-state-group/evidencebook/pull/810): feat(deal): deal checkpoint proof, a deal book's stamp proof with its witness receipts (#788)
+- [#813](https://github.com/action-state-group/evidencebook/pull/813): feat(report): Receipts.Gate, the caller's own check of each carried receipt (#735)
+
+### Changed: capsulectl and report move to capsule-cli v0.1.0-rc48 and capsule-viewer go v0.20.0 (#739)
+
+- `capsulectl-book result build` seals a Result whose claims carry the optional member `reason` (AAC Evidence Result section 4.4; the vendored schema and vectors are capsule-cli#612's), and a Result carrying it round-trips through `disclose` and `verify --bundle`.
+- The report page draws the reason: the runtime's generic Result page shows a claim's `reason` with the pack's `row.<ref>.reason.<code>` words, or the core words for the four core codes (capsule-viewer#345, #348). Only the `report` package's `View.ContractReport` draws that page today; `capsulectl-book report build` does not select it yet. The committed presentation pages in `report/testdata/presentation` carry the new runtime.
+- `capsulectl` requires capsule-cli `v0.1.0-rc48` (was rc47) and capsule-viewer go `v0.20.0` (was v0.19.2); `report` requires capsule-cli `v0.1.0-rc48` (was rc45, whose Result schema refuses `reason`, so `report.Build` could not take such a Result) and capsule-viewer go `v0.20.0`.
+
+### Fixed: `capsulectl/scripts/release-build.sh` checks for GNU tar before it builds (#895)
+
+- The archives need GNU tar. The script now uses `TAR` when it is set, then `tar` if that is GNU tar, then `gtar`. If `TAR` names a tar that is not GNU tar, or neither `tar` nor `gtar` is GNU tar, it refuses before the build and says what to do (macOS: `brew install gnu-tar`, and unset `TAR` or set `TAR=gtar`). Before, macOS's tar failed at the first archive, after the launchers were built, unless `TAR=gtar` was set, which was mentioned only in a comment.
+
+### Added: `capsulectl-book` serves a Terms Pack by digest and reports over the answer (#753, #606)
+
+- `book respond` and `book doctor` read the packs the holder opted in to in the profile's `book/derivations/*.json` (one file per pack: `document`, `recipients`, `forms`, `fields`, `proofs`, read exactly; `proofs` is on unless `false`). A pack not listed stays refused `derivation_unsupported`; a bad file (or a member that is `null`) stops every answer and names itself, and `respond`'s help says so; two files holding one document must declare it alike. `doctor` lists each served digest, its grants, and a pack with no recipient or no proofs.
+- `book result derived-inputs --response ID` prints what the holder answered as the book recorded it: `{response, derivation, anchor, proven, records: [{digest, leaf_index, fields}]}`. `proven` means each row's digest was checked in the holder's log at a signed checkpoint; the field values are the holder's word, and no proof shows that no row was left out.
+- `book report derive --response ID --pack DIGEST --result FILE --out FILE [--allow-unproven]` seals the Evidence Result an evaluator produced over that answer and writes the Evidence Bundle with `contract-report/v1`, which `book report build` renders and `capsulectl verify --bundle` checks. The Result is the requester's; the holder signed its answer. `--result -` reads stdin. It refuses an existing `--out` before sealing, takes the conduct packs and the profile key as `close` does, and reports `result_record_id` when a failure comes after the seal.
+- `capsulectl/go.mod` moves to the evidencebook library at the commit of #748.
+
+### Added: `capsulectl-book` keeps a book store split by time window, and reports over a range of windows (#689)
+
+- `capsulectl book window init --period day|week|month|quarter|year` (default month) creates a profile's book store as one book per window, instead of `store init`. Windows are calendar periods in UTC, and a store's window is fixed when it is created; the command prints `window: month (calendar months, UTC), fixed for this store`. `store init` still creates one JSONL book and leaves a windowed store as it is; an existing JSONL book is unchanged. On a windowed store every write lands in the current window, `respond` answers from the window a request pins (recording the answer in the current one), the profile's Terms Packs and disclosure policy apply in every window, `close` and `reconcile` take a period inside the current window, and `book migrate` is refused.
+- `book window list`, `book window roll` (close ended windows so last period's final checkpoint exists without a new record), `book window chain --from --to --out` (the `window_chain/v1` a requester or auditor is handed) and `book window publish` (deliver each closed window's final checkpoint to the profile's witness; the core's `cll checkpoint status|publish` cover the profile's own log until capsule-cli#622).
+- `book report derive --chain <file> --response <id> ...` seals one Result over a holder's answers, one per window, and writes the bundle only when its coverage has no gap; `book report coverage --bundle --holder-checkpoint-key` checks it and names every gap; `book report build --holder-checkpoint-key` states the covered range on the page and writes no page over a gap. Without witness receipts a chain shows continuity only as the holder signed it, and no check shows that an answer holds every row of its window.
+
+### Added: `capsulectl book window convert`, a JSONL book continues in a store split by window (#808)
+
+- `book window convert --period P [--grace G] --yes` closes a profile's JSONL book for good and creates a windowed store that continues it. The book stays at `book/log.jsonl` and its records never move. The first window starts at the first whole second after the close and is partial (`partial` in `book window list`). The notice states that the conversion is one-way, the same key continues, and it is not a clear. It refuses a reproduced book, an unmigrated `cll.jsonl`, a store already windowed, and a run without `--yes`. A rerun reports the conversion already made.
+- After the conversion, `close` and `reconcile` over a period that begins before it are refused with a hint. The period in progress at the conversion cannot be closed afterwards in either book: close the last whole period before converting, or convert at a period boundary. A record of the old book that a verb names is refused with a hint.
+- `book window chain` from the first window carries the book as the chain's predecessor (chain version 3). Where the profile names a witness, the book's final checkpoint is queued in `book/witness.json`, and `book window publish` delivers it. With no witness, the conversion says the predecessor is unwitnessed. The core owns the partial first window's log.
+
+### Changed: a new `capsulectl-book` store is split by month windows (#805)
+
+- `store init` on a book profile with no store now creates a windowed store with month windows (calendar months in UTC, fixed for good) and prints `capsulectl: window: month (calendar months, UTC), fixed for this store` on stderr. `book window init --period day|week|quarter|year` fixes another window instead, and `--period none` one JSONL book for the store's whole history. A reproduced scratch book (`SOURCE_DATE_EPOCH`) and a profile whose pre-book cll.jsonl still holds entries or a checkpoint stay JSONL, and store init says so; an existing store is unchanged.
+- The book plugin declares a windowed store's window logs to the core (capsule-cli's `OwnsLogID`, capsule-cli#622), so, with capsule-cli v0.1.0-rc51 or later, `cll checkpoint status` and `cll checkpoint publish` work on the current window's checkpoints and `cll proof verify` on any window log's; `book window publish` delivers closed windows' final checkpoints.
+
+### Added: a window's grace in capsulectl-book (#807)
+
+- A windowed book store keeps a grace for a Close over an earlier window (evidencebook#807): `book window init --grace` fixes it with the window (whole days such as `7d`, or a duration such as `36h`, shorter than the period; default 7 days for month, quarter and year windows, 1 day for week, none for day), and `store init` and `book window init` print it (`window: month (calendar months, UTC), closes 7 days after it ends, fixed for this store`). `close` and `reconcile` over a period inside a window in its grace work in that window's book, and `close` names the window it sealed in; its `--bundle-out` there is anchored at that window's checkpoint, and its disclosure record goes in the current window, since a window in grace takes only Closes. `book window list` shows each window's `closes_at` and `in_grace`; `book window roll` and `publish` queue and deliver each window's boundary checkpoint to the witness with its final one; `book window chain` over a window in grace says when it closes.
+
+### Fixed: `capsulectl book card register --out` syncs the statement file before linking it (#697)
+
+- The statement file's contents are flushed to disk before it is linked to `--out`, so a crash or power loss after the link no longer leaves an empty or partial file at `--out`. The directory is not synced, so after a crash the file may still be missing.
+
+### Changed: x-deal-v1 checkpoints the adjudicator's case book, one per deal (#615)
+
+- x-deal-v1: the adjudicator's case book is one per deal and adjudicator, at a log id both parties compute (`xdealv1.CaseLogID`), and a holder refuses a ruling on any other log, so a ruling counts only from that log and a second, different ruling at one place is a fork the status reads (`conflicting_final_rulings`). A case book's stamp proof binds to the adjudicator key the agreement names, so the adjudicator checkpoints with that key; a forked case book makes no checkpoint claim. A ruling is admitted from the adjudicator whoever carries it, so a party can forward the ruling it received with its naming statement. An adjudicator holding a deal's case book admits the parties' deal-book records, to check each named its ruling. `xdealv1.HeldRuling` finds a held ruling by the record digest a statement names, and reports one not held as unavailable. PROFILE.md §4 "The case book", §5. Rust and Python have these rules too (#774, #775). evidencebook#615.
+
+### Added: an adjudicator's case rules in `xdealv1` (#779)
+
+- `xdealv1.CheckCase` reads a dispute and one or both parties' adjudicator copies as a case for one adjudicator. It returns the deal, the row, both sides' keys, what was read of each side's book, the agreement, the forum, the rules digest and the case log. It checks:
+  - the dispute is signed by a party of the deal and names the adjudicator;
+  - each copy is an adjudicator copy whose agreement names the adjudicator;
+  - the copies are one per side, of one offer;
+  - with two copies, each agreement names the other copy's signer, and both name the same adjudicator terms and forums;
+  - with one copy, the other side's key is that agreement's `counterparty_key`;
+  - the dispute is read against its own agreement when that side's copy is given, and otherwise its forum against the agreement's forums.
+- `xdealv1.CheckCaseRecord` reads a later withdrawal or challenge of a case. A withdrawal must be of the case's row, and a challenge must name a ruling the case book holds.
+- `xdealv1.SealRuling` seals a ruling once. The body must be the case's: its row, keys, read and rules digest. The same body again is the existing record. Once a row has a final ruling, it takes no other ruling (`ErrRulingConflict`): the adjudicator never replaces a final ruling, and a challenge of it records disagreement.
+- capsulectl-deal's `deal ruling` and a hosted adjudicator call these functions, so both apply the same rules. Rust and Python: #774, #775.
+
+### Added: x-deal-v1 reports whether a disputed row is decided by the disputed side's own word
+
+- `xdealv1.DecideCase` reads a gathered case (`GatherCase`) for its row and reports one of two things. It reports `Decisive` when the side the dispute is raised against (the side that did not sign the dispute) has itself stated `not_met` on the row, in a record it signed, and has not stated otherwise since. Otherwise it reports `NeedsPerson`, with the reason. The decisive result names the deciding record (digest, record id, seq, record time and what timed it).
+- Anything else needs a person:
+  - no statement on the row, a later statement other than `not_met`, or a latest record stating two values on the row;
+  - none of that side's records read;
+  - a fork in its book, or the copy of its book the other side holds not read (GatherCase finds a fork against that copy);
+  - a sealed ruling's `read` that does not reach that side's book.
+- Free text, such as a perform record's `observed`, decides nothing, and neither does the other side's word. Given a sealed ruling's `read` for that side, the check reads only that far, so checking a sealed ruling again gives the answer it was sealed on.
+- It only reports: the ruling is still sealed by `SealRuling`, and the ruling record does not carry the decision (no wire change).
+- The rule is Ethan's (2026-11-25), with Sherlock2's tightenings (buzz 4ec88700 and 319f98a4).
+- Rust and Python port it with `GatherCase` (#875, #876).
+- `GatherCase` also reads, for each side, the records of that side the other side's opening copy carries. A record there that differs from a source at its seq, or two of them at one seq, is a fork like any other: it shows in `fork_at` and in the ruling's `sources`, and when no held copy settles it, the book read and the ruling's `read` stop before it. A record past the end of the book read is kept in the new `CaseSide.ShownPast`. Before this, a fork shown only in the other side's opening copy was missed (#944).
+
+### Added: the other party's half in an x-deal-v1 keep copy (#850)
+
+- `ForeignBundle` builds an Evidence Bundle of a book log the caller holds but does not own, from the records it received and the owner's own signed checkpoint, through the same producer a book's own bundle uses: every record up to the checkpoint is carried and only the root is disclosed.
+- `xdealv1.HeldCounterpartyHalf`, `MakeCounterpartyHalf` and `VerifyCounterpartyHalf` build and check the bundle extension `x-deal-v1-counterparty-half`: the counterparty's agreement, as such a bundle of their deal book, with the stamp proof that covers it. It is the object the History card reads for "stamped by both", so a receipt made from the copy and the card read one rule. It shows their signed, stamped agreement, not that they confirmed a later record. PROFILE §10 says who may carry it (the holder's own copy only) and what a reader checks.
+
+A date inside a check's text ("2 nights from 2026-12-10") is no longer refused as a raw phone number: a phone-shaped run that is only ISO dates set apart by white space passes the personal-data scan, and a real number beside a date, or a date glued to digits or phone punctuation, is still refused (evidencebook#791).
+
+### Added
+
+- Package `deal` seals a deal's acts and what each side says of them in the holder's deal book (#899): `Store.Perform` (deal.perform, authorized over the deal's journal and gated on the other side's stamp proof), `Store.Statement` (deal.statement), `Store.Settle` for a payee leg (deal.settle), `Store.Dispute`, `Store.WithdrawDispute` and `Store.Challenge` (deal.dispute) and `Store.Status` (deal.status). `Store.Authorize` and `Store.DealJournal` run x-deal-v1's authorization over a deal's journal records, and `Store.SettlementAt` reads a deal-book record's settlement member. A call whose deal book another write moved after it read the book is refused with `CodeRecordRetry`, and the same call made again decides again. Each call made again with the same input returns the record already sealed. `Config.ReceiveProfile` gives the first-act gate its profile, and `Open` creates the `deal_v1_events` and `deal_v1_sends` tables capsulectl-deal writes.
+- `xdealv1.StatusProvider.Status` gives a deal book's status value now, without a stamp. `xdealv1.MerchantOrderType`, `xdealv1.NormalOrigin`, `xdealv1.CardLike` and `xdealv1.CardPrefix` give the profile's private payment reference type and its checks, which `Store.Settle` holds a `payment_ref` to.
+- Seven more `deal.Code` refusals for these calls: `CodeNoAgreement`, `CodeDisputeOpen`, `CodeChallengeUnknownRuling`, `CodeSettleWhichRow`, `CodeSettlePayer`, `CodeSettleRefunded` and `CodeSettleNegative`.
+
+### Added: `capsulectl deal admit`, sealing capsule-engine's admission decision for an x-deal-v1 deal (#626)
+
+- `deal admit --deal ID --input FILE` takes the output of `capsule-engine admission evaluate --admit FILE` and seals its admit body, exactly as printed, in the profile's journal as an x-deal-v1 `admit` record. It then prints the record's digest. Before this, no command wrote the admit that `deal agree` must cite, so an x-deal-v1 deal could not be agreed outside the tests. The refusal follows the engine's `admits_deal` (an ASK, a NO, or a LIMIT whose tier does not hold the deal) and says to answer the asks in capsule-engine. A body that is not exactly the engine's is refused, and so is one that disagrees with the verdict, tier, rows or pack it came with. It cannot tell which counterparty or amount the decision was made for, so pass the output of the run on the deal's own counterparty and amount. Each deal has one admission decision: a second one is refused, and so is a deal already agreed (to decide again, start a new deal). A re-run with the same input prints the same digest. One engine output is sealed for one deal only, since its admit's nonce is drawn for one record. The record carries no deal id (x-deal-v1 PROFILE §3), so the plugin keeps the binding itself.
+- `deal agree` cites the deal's own admission decision when `--admit` is left out. It refuses an `--admit` that `deal admit` sealed for another deal, or that is not the deal's own.
+
+### Added: package `deal`, the Deal API's `deal.open` (#899)
+
+- New package `github.com/action-state-group/evidencebook/deal` seals an x-deal-v1 deal's opening records on the holder's own shelf. A `Store` opened over a shelf and a handle on its SQLite file offers these calls:
+  - `Offer`: an offer or a counter-offer, sent whole.
+  - `CancelOffer` and `DeclineOffer`.
+  - `Admit`: seals capsule-engine's admission decision, read by `ParseAdmission`, which refuses a decision an agreement cannot cite.
+  - `Agree`: the agreement that opens the deal book, returned with its stamp proof.
+  - `NoteReceived`: records what `Shelf.Receive` kept of the other side's records.
+  - `SealInBook`: the one writer of deal-book records.
+- The package also has the read calls `Deal`, `HeldOffer`, `OwnBook`, `NoLayer`, `Repair` and `OfferPair`, and `MarkWritten`. They are there for capsulectl-deal's other verbs and are not a stable API yet.
+- Every call can be run again after a failure without sealing a record twice.
+- The store keeps its state in the tables capsulectl-deal already uses (`deal_versions`, `deal_sent`, `deal_v1`, `deal_v1_offers`, `deal_v1_admits`), with the same schemas, so an existing deal store opens unchanged. capsulectl-deal moves onto these calls in a following change.
+- `xdealv1.SealRuling` now appends through the same place-taking helper as the deal-book writer. Its behaviour is unchanged.
+
+### Changed: a placed deal's coverage line and findings name the deal book once (#797)
+
+- `DealCoverage.Line` reads "deal/…, placed in window 2026-09, is answered over its whole book, …", in place of "deal deal/…, placed in window …, answered over its whole book, …", which named the deal twice. The coverage and chain findings for a placed deal read the same way: "deal/… of window 2026-09 has no answer", in place of "deal deal/… of window 2026-09 has no answer", and likewise for two answers, an unproven tree and a deal whose tree does not extend its close.
+
+### Added: a card checkout's payment on x-deal-v1, under the merchant's order number (#771)
+
+- **`x-deal-v1.merchant_order`** is the profile's one private payment-ref type (x-deal-v1 PROFILE §5): the merchant's order number, trimmed, and the checkout's origin in normal form (scheme and host, lowercased, punycode). `deal settle --payment-ref-type x-deal-v1.merchant_order` takes `--payment-ref-origin ORIGIN`. No other `x-` type is accepted.
+- **When the checkout shows the order number before you pay,** the pay check's `payment_ref` is that number, and it binds the payment as a Lightning hash does: a different `--payment-ref` is refused.
+- **When it does not,** the pay check says `"payment_ref_after_payment": true` and carries no `payment_ref`; the order number is given with `deal settle --status settled`. `deal report` (`row_notes`, beside the report) and `deal settlement` (the row's `notes`) then say the payment reference was recorded after payment. A checkout that failed may leave the order number out.
+- **No card data in a reference:** a `payment_ref` or order number that is a card number (13 to 19 digits, spaces and hyphens set aside, with a card network's prefix and the card checksum) is refused, at `deal check` and at `deal settle`. When the merchant's order number is what looks like a card, the payment is recorded with no reference: the pay check says `"payment_ref_after_payment": true`, `deal settle --status settled` takes `--no-payment-ref`, and the row says no payment reference was recorded.
+- On a deal whose other side keeps no signed records, the payment row says the record is one-sided. When both sides' legs carry the merchant order, the payment check reads them `unjoined`, and the row says why.
+
+### Added: a deal with a party that keeps no signed records of its own, on x-deal-v1 (#762)
+
+- **An offer whose `to` is null** is to a party that runs no deal tool, such as a shop. It stays with you, and there is nothing to send. You agree to it yourself with `deal agree`, at once, once your admission decision and intent are sealed.
+  - The agreement says the other side runs no layer: `counterparty_layer: false`, with no counterparty key, and `seen` null on every record of your book (x-deal-v1 PROFILE §4.7).
+  - Your first payment or act goes ahead without the other side's stamp proof, and is marked so.
+  - The deal reads as any other: settlement (the payment check says why it cannot run: there is no key for the other side), report, bundle, `deal list` ("counterparty: keeps no signed records") and the Standard History card, which counts the deal from its first act.
+- **`deal receive` refuses an offer whose `to` is null,** because no one can answer it.
+- **`deal agree` on an offer you received** now refuses one that names another key, or no key, instead of sealing an agreement the other side would refuse.
+- An offer to no key that an earlier version kept with `deal receive` stays listed as `offer_received`, and can now be neither agreed to nor declined, since no one can answer it.
+
+### Changed: capsulectl-deal reads its own deal formats on capsule-cli v0.1.0-rc50 (#735)
+
+- **`capsulectl book report --receipts` refuses a receipt the deal plugin's `capsulectl deal verify --bundle` does not call VALID**, naming the failing findings, through report v0.7.0's `Receipts.Gate` (#813): capsule-cli rc50's page gate reads no deal section. Only `--receipts` needs the deal plugin installed.
+- `capsulectl/go.mod` requires capsule-cli v0.1.0-rc50, whose core no longer checks deal formats (capsule-cli#609), and report v0.7.0. capsulectl-deal now holds those checks itself, copied from capsule-cli v0.1.0-rc47 and credited: the deal report (x-deal-v0 and x-deal-v1, with the x-deal-v1 report rule), a stripped copy, the cadence chain (x-cadence-witness/v0) and its receipts, a sale's threads (x-deal-sale/v0) and a History selection (x-history-selection/v0). It reads them through the core's extension reader seam (`cli.ExtensionReader`), so the core's own result is never weakened.
+- **`capsulectl deal verify --bundle FILE [--witness-directory FILE]`** is the reader verb: the core's `verify --bundle` with the deal reader. `capsulectl verify --bundle` in the core alone now checks only the neutral parts of a deal copy, and leaves its deal section uninterpreted. The plugin's page gates, its nested verdicts (a sale's threads, a History's deals, a composed page's members) and its share record go through the reader too. The plugin's page writers refuse a copy whose deal section does not verify: `deal report --html` (with `--share` too), `deal note --kind act --html`, `deal close --html` and `deal compose --html`; an x-deal-v1 `deal report --bundle` (with `--share` too) refuses a copy whose standalone report does not verify. The core's generic verbs (`capsulectl presentation list`, `presentation build`, `bundle --html`) read no deal section, so they can build a page for a copy whose deal, or nested deal, fails: a History whose nested deal fails is INVALID through `capsulectl deal verify`, but `presentation build` writes its page.
+- **`capsulectl presentation build`, `presentation list` and `bundle` no longer check deal sections; check a deal copy with `capsulectl deal verify --bundle` or the deal plugin's page verbs.** On capsule-cli rc47 those core verbs refused a page for a copy whose deal section failed; on rc50 they build it, and the page lists each deal kind as "not interpreted by this page's checks" (pinned by `scripts/check-deal-pages.sh`). An optional reader for the core's page verbs is capsule-cli#624.
+- **One difference from rc47, by the seam's design:** a copy with a valid cadence chain beside a failing direct witness receipt now reads INVALID. rc47 let the cadence claim replace the direct one and read VALID; the core now keeps its own failing claim beside the reader's (`reader_witnesses`). Every other copy of the rc47 goldens (#738) reads as rc47 read it.
+- The x-deal-v1 report rule is the plugin's own, no longer registered with the core (`SetDealV1ReportVerifier` is gone from capsule-cli).
+- Every line that told the user to check a deal copy with the core's `capsulectl verify --bundle` now names `capsulectl deal verify --bundle`: the receipt page's verify command, the receipt email's lines, the `deal report --bundle` help, and the deal skill's SKILL.md and README.md.
+
+### Changed: package `deal`'s refusals name its own calls (#899)
+
+- A refusal that tells the caller what to call next names this package's call (`Store.Admit`, `Store.NoteReceived`, `Store.CancelOffer` and the rest), where it named a capsulectl-deal command before; a caller that matched the old text should match `Code` instead.
+- `InputError` and `ConflictError` carry `Code`, of the new type `Code`, and `Args` on those refusals: 16 constants (`CodeAgreeNoAdmit`, `CodeDeclineAgain` and the rest), each with the values its message names, so a caller can tell the refusals apart without matching text, or word them in its own terms. The constants are stable; their values are for the caller's own process.
+
+### Changed: the deal skill teaches x-deal-v1 (#626, B6)
+
+- **SKILL.md teaches the x-deal-v1 flow.** A deal between two parties, each with its own book, in order:
+  - offer, and `deal receive` on the other side;
+  - admission on each side (`deal admit`);
+  - the user's intent with the opening;
+  - the agreement exchange;
+  - the final review (`deal check`), and the user's answer with the card they saw;
+  - the payment (`deal settle --sent`, then `--status`) or another act (`deal perform`);
+  - statements;
+  - reading the deal once a checkpoint covers it.
+
+  Booking (a commit check and `deal perform --act book`, or a payment), signature (a commit check and `deal perform --act sign`), sale, disclosure, cancellation and refund, dispute, later evidence, and what "settled" means without the person's own signature each have their v1 form. The command reference lists the x-deal-v1 verbs.
+- **The x-deal-v0 procedures move, unchanged, to `LEGACY-X-DEAL-V0.md`.** It covers finishing an x-deal-v0 deal already open and a counterparty that runs only x-deal-v0. Cancel-by date and sale threads are there only.
+- **The demo is a two-party x-deal-v1 purchase** (`demo/lamp`, `scripts/run-demo.sh`). It needs no capsule-engine install: its admission decisions are the engine's real output. The x-deal-v0 demo stays as `scripts/run-demo-x-deal-v0.sh`, and the Go tests run both.
+- The `--deal` help of `deal check`, `deal note`, `deal report` and `deal settlement` names `deal offer` and `deal receive` as where a deal id comes from.
+
+### Changed: `capsulectl deal standard-history staple` builds `history_card/2` only (#626)
+
+- Offer staples carry `history_card/2` only: the profile's History card as a sampled chain of its cadence checkpoints, with no deal counts, at any length (`Cadence.HistoryCard2`, #690). `--derivation` stays, with `history_card/2` as its default and only value. `history_card/1` and `standard_history/1` are refused with the reason, because they are no longer stapled, and the standard card stays behind a signed ask (`deal respond`, unchanged). `--deal` is removed, and a staple no longer seals an answered record. The output keeps its shape, `derivation` plus `staple` (`request`, `reply`), with no `deal_id`. This requires evidencebook at b09f2037 (#690).
+- A caller passing `--derivation history_card/1` or `standard_history/1`, or `--deal`, must drop them.
+
+### Fixed: `deal settle` and `deal perform` take the check id `deal check` prints (#626)
+
+On an x-deal-v1 deal, `deal check` prints a `check_id`, but `--check` on `deal settle` and `deal perform` took only the check record's digest, which no command prints. So a person could not pay or act on a v1 deal. `--check` now takes the printed `check_id`, or the digest as before. Found in the hand run before the default flip (#749).
+
+### Added: `capsulectl deal check` and `deal note --kind approval` on an x-deal-v1 deal (#626, B1b part 2)
+
+- `deal check` on an x-deal-v1 deal runs the same check as on an x-deal-v0 deal, with the same card, rules and materiality, over the deal's local steps. It seals the x-deal-v1 journal `check` (with a fresh nonce) and its `verdict`, and on a pass the automatic `standing_intent` approval, each with the deal's id. An act relying on that approval is not relied on until the person's signatures x-deal-v1 §8 lists are held. A check's companion, the payee's fingerprint, stays a local step: an x-deal-v1 `counterparty_profile` record has no member for it.
+- A pay check on an x-deal-v1 deal records `payment_ref`, the reference fixed before paying that the payment will be made under (a Lightning payment hash, an ACP order id, the x402 authorization nonce), and is refused without one: the payer leg cites the check that recorded it. `payment_ref` on any other check is refused, and so is an `offer` check (an offer on an x-deal-v1 deal is `deal offer`). An x-deal-v0 deal refuses `payment_ref`.
+- The pinned rules checker reads an x-deal-v0-shaped record of the check, rebuilt in memory from the local step and never stored, so the same input gives the same rules input on both versions.
+- `deal note --kind approval` on an x-deal-v1 deal needs `--shown-card` for the user's (or the agent card's) answer to a check, so every such approval carries the card commitment the authorization reads. A `confirm_limits` approval answers an intent and keeps its `--said`.
+- A check refuses when the deal's journal holds a record carrying the deal's id, of a kind these verbs write, that no local step names, since such a record would reach the authorization but not the card. The authorization reads the deal's own records and those bound to it, so an unbound record of another deal reaches neither. The refusal says the deal can no longer be checked and a new deal starts over.
+- An x-deal-v1 deal's disclosures count in the cross-deal counterparty memory as an x-deal-v0 deal's do, under the same rule: only what was told with authority counts as told.
+
+### Changed: x-deal-v1 is the default deal version (#626, B5)
+
+- **New deals are x-deal-v1.** With no `deal set-version`, `deal offer` starts a deal, and `deal init` makes a new store in the layout x-deal-v1 needs.
+- **x-deal-v0 is the legacy version.** It is frozen and kept only for a counterparty that runs x-deal-v0 alone, and will be removed once those have moved (evidencebook#656). `deal set-version x-deal-v0` selects it.
+  - Without it, `deal open` and `deal sale new`, which start an x-deal-v0 deal or sale, refuse and say so. A buyer's thread of an x-deal-v0 sale already open (`deal open --sale`) follows the sale's version. On x-deal-v1, a sale to several buyers is one offer from each buyer, one agreement, and `deal offer decline` to the others.
+- **Deals already open keep their version.** An x-deal-v0 deal finishes under x-deal-v0, and its report, export and bundle read as before.
+- **An older store is never moved silently.** `deal offer` on it says to run `deal set-version x-deal-v1 --migrate` once (one-way; a backup is kept), and open deals keep working after the move.
+- **The History card given on a signed ask** (`deal standard-history card`) now counts x-deal-v1 deals by default (`standard_history/3`). `standard_history/1` still counts your x-deal-v0 deals when you ask for it by name, and the card says so when the store holds any. On an older store that holds no x-deal-v1 deal, it names both ways on. The stapled card on offers is unchanged (`history_card/2`).
+- **The canary keeps ticking.** `deal canary run`'s scripted deal is an x-deal-v0 purchase, so a canary profile with no version setting is set to x-deal-v0 on its next run, which says so.
+- **The deal skill's demo and the repository's check scripts** set x-deal-v0 until they move to x-deal-v1.
+
+### Added: `deal list` shows x-deal-v1 deals (#626, B4a)
+
+- **The plain line** keeps v0's columns: kind `deal`; the opened time is the offer's; the last record time is your deal book's last record's (the offer's before the book opens); the counterparty column shows the first 16 characters of the counterparty's key (v0's shows the payee fingerprint); the log id is empty until your book opens.
+- **The state:**
+  - before your book opens, it is the deal's stored state: `offered`, `offer_received`, `agreeing`, `declined` or `cancelled`;
+  - once it opens, it is computed now, and never sealed: `settled` or `open`, as a report says, or `not_checkpointed` while your book has records after its last checkpoint;
+  - any other failure is an error, not a state.
+- **Notes under the table** (on stderr, so the tab-separated lines stay a table), and in `--json` as `settled_note` and `checkpoint_note`:
+  - beside `settled`: "settled: computed from the agent's records; no act carries the person's own signature yet (agent-action-capsule#627)";
+  - beside `not_checkpointed`: "the next cadence tick covers it (about every <interval>), then list again".
+- **Listing writes nothing.**
+- **`--json`** adds `version`, `side`, `role`, `counterparty_key`, `outcome_as_of` (when the state was computed), and the offer's item.
+  - The amount is given only when the offer has exactly one payment row; otherwise it is null, with `payment_rows`.
+  - The summary line says "counterparty: no name recorded (key only)".
+  - An x-deal-v1 deal has no `say` line yet (evidencebook#732).
+- **`--since` / `--until`** list an x-deal-v1 deal when any of its records falls in the range, with its state now, and say so in `x_deal_v1_note`. Such deals are not yet in the range's totals or its disclosures (evidencebook#732).
+
+### Added: `capsulectl deal note` on an x-deal-v1 deal (#626, B1b part 1)
+
+- An x-deal-v1 deal keeps a local list of its plain steps, in the form an x-deal-v0 deal folds, and `deal note` runs the same note code over it. It seals the x-deal-v1 journal record of the same body: `intent`, `message`, `claim`, `evidence`, `change` (as `detail_change`), `disclosure`, and the agent moves (`searched`, `options`, `recommended`, `chose`, `couldnt`, as `agent_move`). Each record carries `deal_id` where the profile puts it.
+- The first intent note opens the deal. `--input` is the intent, and the new `--opening FILE` gives the deal's type, an optional channel, who and recourse; the terms are the offer's, and the party role is the deal's own side.
+- A step whose journal append fails is withdrawn, so a retry records it once. A step left by a process that stopped between its local event and its journal record is finished by the next `deal` command that loads the deal.
+- Note kinds with no x-deal-v1 form refuse and name the verb that records them, or the one that will: `act`, `payment_received` and `delivered` (`deal perform` and `deal settle`, not yet available), `dispute` (`deal dispute`), `ruling`, and `acceptance` and `platform_approval` (`deal sale ...`). `approval` is not available yet: an approval answers a check, and `deal check` serves x-deal-v1 deals in part 2.
+- The plain values stay on this device: the local list never leaves the store, and a copy or share carries only the journal's records, with their commitments. The cross-deal counterparty memory reads x-deal-v1 deals' steps too.
+- `deal check` and `deal note --kind approval` on an x-deal-v1 deal follow in part 2.
+- Each record is checked as an x-deal-v0 step is before it is stored, including the profile's privacy and wording scans. A seller's opening gets the representation defaults a seller's `deal open` gets. A seller agent's claim carries its authority in its own journal body. An email whose sender check cannot reach DNS is refused, not held for the tick.
+
+### Added: `deal offer decline` on an x-deal-v1 offer (#626, B3)
+
+- `deal offer decline OFFER_DIGEST [--reason not_selected|other] [--out FILE]` declines an x-deal-v1 offer sent to your key. It seals a decline in your journal and writes the file to send back to the offer's sender, who reads the deal as declined on `deal receive`.
+- **What it accepts:**
+  - only an offer whose `to` is your key, since a decline is signed by the key the offer was sent to;
+  - not your own offer (`deal offer cancel` withdraws that), not an open offer, and not one sent to another key;
+  - once per offer, whatever the reason, and never once you agreed to it. An agreeing run that stopped before sealing anything does not count as agreeing.
+- **An agreement and a decline exclude each other:** `deal agree` refuses an offer whose decline is under way, and a decline re-run never overtakes an agreement.
+- A stopped decline finishes on its re-run.
+- **A sale to several buyers on x-deal-v1:** each buyer sends the seller an offer, and the seller agrees to one and declines the others as `not_selected`.
+- To decline a held evidence request, use `deal decline`.
+
+### Added: `capsulectl deal perform` and `deal statement` on an x-deal-v1 deal (#626, B2 part 1)
+
+- `deal perform --deal ID --check DIGEST --act ACT --observed HOW --out FILE` seals a perform record in your deal book and writes the file to send to `--out` (required, so the output can list the person's signatures), which the other side counts with `deal receive`.
+  - The act rests on your passing commit check. It is sealed only when that check's verdict has its approval, no detail changed since, and the approval has authorized no other act (`xdealv1.CheckActs`, run on the finished record).
+  - Your first act is refused until you hold the other side's stamp proof on its agreement (`deal receive` brings it); run `deal perform` again then. If the other side runs no stamping, the act is sealed and the output says no stamp proof came.
+  - The output lists the record digests the person must sign with their own key (`person_signature: missing`). Until those signatures are held, no one should rely on this act. The person cannot add them yet: where they travel is still being defined (agent-action-capsule#627).
+- Flags:
+  - `--statement row=value[:remedy]` (repeatable) says how a row went.
+  - `--mark NAME` names the offer's named record this act is.
+  - `--remedy-row ROW` makes the act a remedy for that row.
+- `deal statement --deal ID --statement row=value ...` seals a statement record. A statement can be sent at any time: it does not wait for the other side's stamp proof, and it needs no check.
+- Run again with the same flags, either command rewrites the same file and seals nothing new. A statement that repeats an older one after a different one is sealed again, since a row reads the side's latest. An `--out` that already exists is refused for a new record.
+- An act is recorded as a local step after it is sealed, so the next `deal check`'s spend so far and used approvals count it. A run that stops in between is finished by the next `deal check` or `deal perform`, once.
+- `deal agree` now stamps on the offerer's side too, and its file carries the stamp proof. So a first act on either side is never left waiting on an offerer that has not acted (PROFILE §8).
+
+### Added: `deal report --bundle` on an x-deal-v1 deal (#626, B4c)
+
+- `deal report --deal ID --bundle FILE` writes your deal book's Evidence Bundle, for `capsulectl verify --bundle`. It covers every record of your book at the checkpoint the report rests on, with their payloads.
+- The sealed report travels beside the book, in `x-deal-report/v0`, with `x-deal-v1` naming it and carrying the records its rows rely on, the other side's included.
+- Every audience's bundle carries the same records. An adjudicator's lists no rows.
+- The bundle is checked as a reader checks it before it is written.
+- Making it writes nothing to your book: no disclosure record goes into an x-deal-v1 book.
+- With `--share counterparty|adjudicator --to NAME`, the bundle is a disclose act, as for `--out`: checked to contain none of the plain values kept only on this device, then put on record (the records it carries and the digest of the exact file), then written.
+- **What a shared bundle discloses:** every record of your deal book with its contents, which is what you signed, and the other side's records your report's rows rely on, which is what it sent you, up to the report's checkpoint. For a counterparty that is the deal's own exchange; an adjudicator sees all of it. Your own notes (intent, opening) are never in a book, so never in a bundle: none of your plain values (your words, your limits, the counterparty's details) is in any bundle, its payloads included.
+- `--out` and `--bundle` are one or the other.
+- `deal export` on an x-deal-v1 deal points at `--bundle`.
+- capsulectl-deal now needs capsule-cli v0.1.0-rc47, whose `verify --bundle` finds an x-deal-v1 deal's last step through its disclosed header (capsule-cli#605).
+
+### Added: shared copies of an x-deal-v1 report (#626, B4b part 2)
+
+- `deal report --deal ID --share counterparty|adjudicator --to NAME --out FILE` writes a copy of the report for someone else.
+- An adjudicator's copy:
+  - is only for a deal whose agreement names an adjudicator;
+  - names `--to` as its referee. `--to` is a label for who it is for; the copy is recorded for the adjudicator key the agreement names;
+  - lists no rows, and carries no agent claims (an x-deal-v1 report has no claim fields).
+- As for an x-deal-v0 copy, the copy is a disclose act:
+  1. its exact bytes are checked to contain none of the plain values kept only on this device (your words, your limits, the counterparty's details);
+  2. the bytes are written to a temporary file beside `--out`, whose folder must take a hard link;
+  3. it is put on record: the audience, the recipient and the digest of the exact file;
+  4. only then is it linked into place, which never writes over another file.
+- A refused copy writes and records nothing, and so does an existing `--out`, a folder that cannot be written to, or one on a drive without hard links. If the final link or the folder's sync fails after the copy is put on record, the error says what is on record and what is on disk.
+
+### Added: `capsulectl deal report` on an x-deal-v1 deal (#626, B4b part 1)
+
+- `deal report --deal ID` on an x-deal-v1 deal prints your own copy of the deal's report: each row's status as computed now from what you hold, whether the deal is settled, and what it rests on (PROFILE §10). It counts the other side's records you have received; the other side may hold different records and see a different status. Printing seals and writes nothing.
+- Beside the report, `settled_note` says that no act on the deal carries the person's own signature yet (the format is still being defined: agent-action-capsule#627), so "settled" is computed from the agent's records, which the person has not signed. evidencebook#729 replaces this with a check per act.
+- `--out FILE` also seals the report, standalone and appended to no book, and writes it with its signature to that new file. The sealed report verifies against the deal's agreement, and it must be made with the profile you agreed with.
+- A book with records after its last checkpoint has no report yet: the next cadence tick covers it (about every cadence interval, 5 minutes by default; `deal tick` runs one once it is due), then run `deal report` again. A deal with no agreement of yours recorded yet names `deal agree`.
+- `--html`, `--email`, `--from-bundle`, `--directory` and `--include-agent-claims` do not apply.
+- `deal close` and `deal terms-result` on an x-deal-v1 deal now add "See `deal report`".
+
+### Changed: `capsulectl deal settle --sent` asks a payment's check again before money leaves (#718)
+
+- Two pay checks that each passed before either payment left could, together, go over a limit only one of them fits.
+- `deal settle --sent` on a payment (not a refund) now runs the check's own evaluation again before the money leaves.
+- With a rules checker configured, the checker runs again too. Its history holds every payment counted from the moment it was sent, on this deal and every other x-deal-v1 deal. Without one, only the check's own evaluation is asked again, and that does not count earlier payments.
+- The send is refused, and nothing is sealed, when:
+  - your check now pauses or fails where it passed;
+  - your rules now escalate or deny where they allowed;
+  - a rule now fails that did not before.
+
+  Run `deal check` again. When your rules checker cannot answer, nothing is sent until it answers. A check you approved while the rules could not be checked still sends while they cannot.
+- A payment that failed does not count toward your limits. Its check stays used, so a retry needs a new `deal check`.
+
+### Added: `capsulectl deal settle` on an x-deal-v1 deal (#626, B2 part 2)
+
+- `deal settle` seals a payment leg in your deal book and writes the file to send to `--out`, which the other side counts with `deal receive`. The leg (payer or payee), its terms (the offer as sent) and its amount come from the deal and your check. The settlement member is checked with AAC's structure check before anything is sealed.
+- A payment you make takes two calls.
+  - `deal settle --sent --check DIGEST`, before you hand the payment to the rail. It checks, on the leg as it will be sealed, that your first act has the other side's stamp proof, that the check's approval holds, and the approved amount, so a payment they would refuse never leaves. It then counts the amount toward your limits and seals a "payment sent" evidence record in your journal.
+  - `deal settle --check DIGEST --status settled|failed --out FILE`, when the rail answers. It seals the one payer leg, bound to what was sent: the amount, the refund target and the whole reference. On x402 and the other types whose reference is known only after paying, `--payment-ref` names the rail's own reference. A re-run with other inputs is refused.
+  - While the rail still says pending, nothing more is sealed. While a payment is in flight, no record that changes the deal's details can be sealed, so the payment already sent stays authorized.
+  - A failed payment counts no spend and uses up its check: to try again, run `deal check` for a new one. If the rail's answer is lost, look the payment up on the rail by the reference `--sent` printed, then run `--status`.
+- References:
+  - `--payment-ref-type` and `--payment-ref` name the payment's reference, with the type's qualifiers (`--payment-ref-network` for x402, and so on).
+  - On `ln.payment_hash`, `bolt12.invoice_payment_hash`, `acp.order_id` and `ucp.order_id`, the payer leg's reference is the check's `payment_ref`.
+  - On x402, the leg carries the transaction, and the link from it to the checked nonce is the payer's claim unless a verifier reads it on chain.
+- What you received is a payee leg: `--received` and `--receive-fee` (0 when none was taken), `--status pending|settled|failed`, and `--supersedes` for a later observation.
+- A refund (once a refund leg is in a book, the report no longer matches that row's payment legs against each other, the payment's included: a refund needs its own terms, which are not defined yet):
+  - It is a leg with `--reverses` naming a leg of your own book: the seller's payer leg on its cancel check, and the buyer's refund received.
+  - The buyer's refund received returns what was received once, when settled, and never more than the payment counted.
+  - A failed payment cannot be refunded. A second refund of a leg is refused while another is in flight or done, and a failed refund leaves the leg free to refund again.
+- The rules checker's history now counts x-deal-v1 acts: a payment from its send, and a perform. Each is read as the x-deal-v0-shaped record of its own deal.
+
+### Added: `deal settlement` on an x-deal-v1 deal (#626, B4d)
+
+- `deal settlement --deal ID` on an x-deal-v1 deal prints, for each row whose owed is an amount, in the offer's order:
+  - `report_check`: the report row's verdict (`passed`, `failed`, `not_run`, `not_recomputed`);
+  - `payment.check`: the payment check on the legs, as the library reads your records now (`pass` or `fail`, or `""` with a `reason` when the check ran without a verdict, such as legs not yet agreed or several payments; with `checked_over`, and, when present, `excluded` and the derived settlement);
+  - or `not_run`, when the check did not run, with a plain `not_run_note`:
+    - `no_offer_pair`: this store holds the offer but not its signed copy, so the payment check cannot run here; receive the offer file again (`deal receive`) to keep it;
+    - `no_acceptor_key`: your agreement names no key for the other side (it keeps no signed records of its own), so the payment check cannot run on this deal;
+    - `not_recomputed`: the row is not recomputed, as its verdict says.
+- `rows_state` says whether the rows are listed. Before the deal starts, `rows_note` says so instead of an empty list.
+- Nothing is computed in the plugin, and nothing is written.
+- The output carries `settled_note`: no act carries the person's own signature yet.
+- v0's `--leg`, `--object`, `--payer-key` and `--payee-key` are refused: a v1 deal reads the other side's legs from the records you have received.
+- A deal whose book has not opened names `deal agree`.
+- The checkpoint message of `deal report`, `deal list` and `deal settlement` now ends "then run the command again".
+
+### Fixed: on x-deal-v1, an answer that was not applied authorizes nothing (#790)
+
+- `deal perform` and `deal settle --sent` refuse a check whose answer `deal note --kind approval` marked not applied: a later check or a changed detail came first, or the check was already answered. The refusal says to check again and seal the user's answer to the new check. x-deal-v0 already refused this.
+
+### Added: the x-deal-v1 entry check (#773)
+
+- `xdealv1.EntryOf` reads one party's copy, the bundle `deal report --share ... --bundle` writes, and says whether that party entered a ruling. The copy must carry the whole deal book its report rests on, every record from the agreement to the checkpoint. The states:
+  - `entered`: the party's statement naming the ruling is in its book under the copy's checkpoint, which is signed by the checkpoint key its agreement names, and a receipt from a witness the agreement names verifies over the cadence checkpoint that carries that book checkpoint;
+  - `entered_unwitnessed`: the same, without such a receipt;
+  - `not_entered`: by its signed time, the copy's checkpoint is after the ruling's witnessed stamp, and it holds no such statement;
+  - `not_shown`: the copy's checkpoint is not after the ruling's witnessed stamp, or the ruling has no witnessed stamp.
+
+  The ruling's time is the time a witness the agreement names gave the adjudicator's stamp that covers it, never the ruling's own `at`.
+
+  None of these is a refusal. The proof is the party's own records; the copy, a disclose act, is how they reach the adjudicator.
+- `evidencebook.VerifyWitnessReceipt` verifies a witness receipt for another party's cadence checkpoint, with the check `Cadence.Witnessed` applies to the holder's own.
+- Rust and Python: #774, #775.
+
+### Added: the record and report calls, `Book.RecordAct` and `Book.EvaluatePack` (#895)
+
+- `Book.RecordAct` seals one act of the book owner's agent, in capsule-engine's action form (the JSON `capsule-engine check --action` reads), as an `agent_act` record, a producer claim (the owner's own word, which no one else has checked). The book refuses an `agent_act` record whose act the engine cannot read, whichever call appends it. An act the rules engine cannot read is refused and seals nothing.
+- `Book.EvaluatePack` runs a capsule-engine rules pack (capsule-engine's `guard` engine; this package decides nothing itself) over those acts in log order, each against the earlier ones, and seals the outcome as an Evidence Result v0. Each claim is one rule on one act, tier `recomputed`, grade `self-attested`. A rule that does not apply has no claim and counts in `excluded_not_applicable`, and no rule is rolled up to one verdict. It returns the bundle rooted at the Result, with the contract report, which `report.Build` renders. Rows the engine reports that are no rule of the pack are left out. Running it again over the same acts finds the Result it sealed. Acts to which no rule of the pack applies are refused, since there is no claim to report. The bundle carries every act in the book in full (amount, currency, target, operator, developer), so share it, or the page built from it, only with someone who may see all of them.
+- docs/GUIDE.md opens with "Start here: three calls", which points to record an act, get the report and open a deal (the `deal` package, #899).
+
+### Fixed: a deal still reports after the other side forks at its first record (#878)
+
+- **The bug.** If the other side signed two different agreements as the first record of its deal book and sent both, the holder counted nothing of that book. Its status and every report then failed with "an offerer writes its agreement after the acceptor's it holds". An honest party could not show its deal or answer an adjudicator.
+- **The fix.** The holder now reads the branch its own book names as received (its records' `seen`), on either side of the deal. The deal both sides signed starts from it, and `rests_on.counterparty.fork_at` stays 1, so a page can say the other side's book forked at its first record. This matches the branch the adjudicator reads (`GatherCase`). A holder whose book names neither of two first records reads nothing of that book: the deal reads awaiting before agree_by and not started after, with the fork shown (Steven's ruling u217). `Start` in Go, Rust and Python reads an offerer that counts no acceptor agreement that way instead of refusing it.
+
+### Added: `Cadence.HistoryCard2`, the shelf's `history_card/2` staple (#626)
+
+- `Cadence.HistoryCard2(ctx, n, window)` builds the profile's `history_card/2` over the cadence log as a staple: the finished ticks at the sampled positions `P(n-1, window)` (Evidence Request -03, `history_card/2`), as of tick `n` (0 for the newest finished tick), each with the consistency proof from the one listed before it. It holds no record content and no deal counts, and `CheckStaple` accepts it for the shelf's signer. Only the sampled ticks are read, so it has no tick cap: the cadence's `history_card/1` staple is refused past `DefaultMaxAnswerItems` ticks (#354). Window 0 is `DefaultHistoryWindow`, and a window outside 1 to 64 is `ErrInvalid`. Offer staples carry `history_card/2` only. `Cadence.HistoryCard`, and `Book.Staple`'s `history_card/1` and `standard_history/1`, stay for callers that have not moved yet and are deprecated (removal: #692). Cards answered on a signed ask are unchanged.
+
+### Fixed: an x-deal-v1 holder no longer holds a counterparty agreement of its own role (#884)
+
+- `xdealv1.ReceiveProfile.Admit` holds a counterparty's deal book only when its agreement takes the other role than the holder's agreement, or, at an offerer holding only its offer, the role the offer did not take. Before, such an agreement was held and the History card read the deal as "stamped by both".
+
+### Added: `report.View.Coverage` checks and states the range a report over time windows covers ([#689](https://github.com/action-state-group/evidencebook/issues/689))
+
+- For a report over a holder's time windows (window books, #689), `View.Coverage{HolderCheckpointKey, Witnesses}` has `report.Build` check, from the bundle the page embeds and under the holder's checkpoint key the caller obtained, that the windows link, tile the range the report's window chain states, and each has its answer (`evidencebook.VerifyReportCoverage`). A range with any gap is refused, each gap named, and no page is rendered. A covered range is stated in a banner above the report, in the shell's own `aac-banner` classes, with what the check does not show: without witness receipts the windows' continuity is as the holder signed it (with a witness directory given, that every window's final checkpoint carried a receipt that verified), and no check shows that an answer holds every row of its window. `Page.Coverage` is what the check found.
+- Like a wording layer, the banner lives in the page, not in the bundle, so a page built with one gets no permalink. Coverage without a holder key, on a diagnostic page, or on a report that cites no window chain, is refused.
+- `report` now requires the evidencebook module at the commit that adds window books (#800).
+
+### Changed: the coverage banner names each placed deal and states the report's limit (#797)
+
+- On a report over a deal store's windows (#797), the banner `report.Build` writes for `View.Coverage` also says how many deals are placed in the windows and that each has its answer over its whole book, and lists each deal's line in a collapsible list after the report's limit: its answer covers its whole book, through the checkpoint it is anchored at, records after its window included. A placed deal with no answer, or one answered at a tree the window chain does not prove, is a gap, and no page is rendered. The banner ends with the report's limit (each answer proves its rows are in the holder's log; the rows' field values are the holder's word; no proof shows that no row was left out), in place of "no check shows that an answer holds every row of its window."
+- `report` now requires the evidencebook module at the commit that adds journal windows and placed deals (#846).
+
+### Changed: `report` requires the library at 9ae62286, which has the front door's calls (#895)
+
+- `report/go.mod` requires the `evidencebook` library at 9ae62286 (was 3550482e), which carries `Book.RecordAct` and `Book.EvaluatePack` (#908). A new Example, `Example_frontDoor`, runs the three calls end to end: it records three acts, evaluates them under capsule-engine's Everyday Rules 0.3.8, renders the bundle with `Build` as the contract report (VALID, 21 claims), and seals and checks the page with `SealPage` and `CheckPage`.
+
+### Added: `report.Page.IgnoredReceipts` lists the receipts no deal cites (#764)
+
+- A `View.Receipts` entry whose exchange capsule no deal's claims cite is neither carried nor held (a node hands over every exchange it holds, and the report's window decides which became deals), and `Page.IgnoredReceipts` now lists its exchange capsule ids, in the order given, so a caller that meant to carry one can tell a mis-keyed id from a deal it handed nothing for. A capsule cited by the claims of two deals is still refused.
+
+### Added: `report.Receipts.Gate`, the caller's own check of each carried receipt ([#735](https://github.com/action-state-group/evidencebook/issues/735))
+
+- When set, `Receipts.Gate` runs on each carried receipt bundle after the page gate, and a non-nil error refuses the receipt, so no page is built. capsule-cli's page gate no longer reads deal sections (capsule-cli#609). The caller that defines the receipts' format checks them here, and `report` stays generic and links no format's code. capsulectl-book passes the deal plugin's `capsulectl deal verify --bundle`.
+
+### Added: `report.Receipt.NotClosed` marks a deal that had not closed when the page was built ([#778](https://github.com/action-state-group/evidencebook/issues/778))
+
+- A `Receipt` sets exactly one of `Bundle`, `Held` and the new `NotClosed`: the deal had not closed when the page was built (an invoiced exchange with no settlement or delivery recorded yet), so it has no receipt, and the page says so apart from a held receipt and from a deal with no entry (a page built wrong). `report.Build` hands the deal ids to capsule-viewer's `OfflineOptions.ReceiptsNotClosed` (capsule-viewer#358), so `report` requires capsule-viewer go v0.23.0. A `Receipt` with none or more than one of the three is refused.
+
+### Added: `report.View.Receipts` carries deal receipts into a settlement report (#764)
+
+- `report.Build` takes `View.Receipts`: the receipt module a page opens a deal's receipt with (`capsulectl.deal-view/v0`, its manifest pinning the script and stylesheets; the composed receipt module is refused until a composed bundle, rooted at the composer's composition record, can be bound to its deal) and the receipts the holder hands over, each either a receipt bundle or `Held`, the holder's share policy keeping it off the page ([capsule-viewer#228](https://github.com/action-state-group/capsule-viewer/issues/228)). A receipt names the exchange capsule it was fetched by (`Receipt.Exchange`); `Build` maps it to the one deal (the part of a claim id before `::`) whose claims cite that capsule as evidence. The report never evaluates the policy: the caller states it, and nothing is carried by default, so a `View` with no `Receipts` builds the same page as before. A receipt whose capsule no deal cites is ignored (a node hands over every exchange it holds; the report's window decides which became deals), and a deal no receipt names reads "Receipt not carried with this page".
+- That a bundle is the receipt of the exchange capsule's deal is the caller's word: nothing in a plain receipt names the capsule a Result cites. [agent-action-capsule#674](https://github.com/action-state-group/agent-action-capsule/pull/674) and [capsule-viewer#353](https://github.com/action-state-group/capsule-viewer/issues/353) are to give the Result a digest to check it against.
+- `Build` refuses, before rendering, an exchange capsule that the claims of two deals cite, two receipts for one deal, a bundle that does not pass the page gate (`cli.PageGate`, the verdict a deal page is written under) or that the module's manifest does not take (its `requires` bundle kind and extensions and `forbids` extensions and profiles), receipts on a Result with no deal, and receipts on a diagnostic page. `Page.Permalink` refuses a page with receipts: the permalink carries the bundle alone.
+- `report/go.mod` requires capsule-viewer go v0.22.0, the first release with `OfflineOptions.Receipts` ([capsule-viewer#351](https://github.com/action-state-group/capsule-viewer/pull/351)), which refreshes the page runtime: the three committed report pages under `report/testdata/presentation` are rebuilt.
+
+### Changed: a settlement report opens its receipts with capsule-viewer's receipt modules (#869)
+
+- `report.Receipts.Module` is now `Modules`, the receipt modules the page carries. Each must be one of `report.ReceiptModuleIDs()`: `capsuleviewer.receipt.unilateral/v0` and `capsuleviewer.receipt.seller/v0`, from capsule-viewer's Go package `receipt` (capsule-viewer#383). Each may be given only once, and at least one must be given. A carried receipt must be one that at least one of them draws. `report.ReceiptModuleID` (`capsulectl.deal-view/v0`) is removed, so a settlement report no longer opens receipts with evidencebook's deal view. A composed (two-sided) receipt is still refused, as before. This is a breaking change for callers, which today means capsulectl-book, which moves in the next capsulectl release (#869).
+- `report` requires capsule-viewer/go v0.26.0, whose page runtime opens a carried receipt with those modules. In a report, the owner's copy reads as a shared copy, with the verifier's top line. The committed presentation pages are rebuilt on it.
+- A carried receipt is held to the verdict of the page that opens it. That is capsule-cli's page gate or, for a producer-selected receipt such as a Mesh node's, agent-action-capsule's page verdict (`bundle.VerifyBundleForPage`, `bundle.Verified`), which the page runtime applies. Before, a producer-selected receipt was refused because strict verify calls it INCOMPLETE. Any other unmet check still refuses a receipt.
+- `capsulectl/go.mod` also moves to capsule-viewer go v0.26.0. capsulectl builds report pages with the report module's runtime, and its copies of those pages and their snapshots (`capsulectl/testdata/presentation/4-monthly-outcome` and `5-monthly-compliance`) follow the report module's pages. The only change is the viewer version the page names. capsulectl-book still opens receipts with the deal view until it moves to report v0.9.0.
+
+- `Book.RequestSentWithCommitment` records a sent request as `RequestSent` does and also keeps a JSON object the requester held from the responder when it asked (such as the responder's advertised commitment) as the optional `commitment` member of the `evidence_request` statement (`RequestStatement.Commitment`). The book never reads or checks it. It is the requester's own copy, and the responder does not sign it in this record, so no card, count or check may read it as "the responder committed to X"; only a later step that verifies the object under the responder's key can give it that weight. A record without the member reads as before, and a reader that does not know the member ignores it. Rust has the same as `ask::request_sent_with_commitment` (Mesh-LLM/capsules-plugin#368, row B3).
+
+### Fixed: `xdealv1.SharedOperator` labels a party's own key with no stamped time (#822)
+
+- An adjudicator key equal to a party key is now labeled "not independent (shared operator)" whatever the stamped time, a zero one included. One key is one operator at every time, and only a binding's validity window needs the time. Before, a ruling with no witnessed stamp time went unlabeled even when its adjudicator was a party.
+
+### Added: `xdealv1.SharedOperator` marks a ruling "not independent (shared operator)" from a controller binding ([#780](https://github.com/action-state-group/evidencebook/issues/780))
+
+- `SharedOperator(ruling, agreement, stampedAt, bindings, revocations)` returns `NotIndependentSharedOperator` ("not independent (shared operator)") when a valid controller binding with claim `same_controller_asserted` joins the agreement's adjudicator key to the ruling's buyer or seller key, and "" otherwise. An adjudicator key equal to a party key gets the label with no binding. A binding is judged at the ruling's stamped time, the time of the witnessed checkpoint covering it, which the caller passes in (never the ruling's own `block.at`, which its author sets, so an adjudicator cannot move it out of the binding's window); a revocation after the stamp does not remove the label; a bad signature, an inconclusive result or a binding of another claim shows nothing. There is no positive state: a reader shows this text or nothing, never "independent". It adds no record member and holds no list of any operator's keys. Rust and Python do not have it yet ([#782](https://github.com/action-state-group/evidencebook/issues/782)); showing it on the card is a separate change.
+
+### Fixed: a refused window policy leaves no shelf file (#827)
+
+- `OpenSQLiteShelf` checks a window policy before it touches the disk, so a refused policy leaves no shelf or lock file behind (evidencebook#827).
+
+### Added: a Terms Pack served by the digest of its definition, and the requester's report over the answer (#606)
+
+- `DerivationDefinition` gains `Recipients` (one definition digest granted to several requesters, as a set with `Recipient`), nested `Fields` (a header member or a path into one, such as `statement.generated_at`, which reveals that member only; a path and a field it extends are `ErrInvalid` together) and `Proofs`. With `Proofs`, the answer carries the anchor's signed `cll-checkpoint` and one `cll-inclusion-proof` per record (and the consistency proof when the checkpoint extends an earlier one), and the requester's `RecordResponse` checks them instead of reporting `anchor_inclusion` NOT_CHECKED. Proofs count against the item limit (a holder refuses, for a limit, what the requester's cap would refuse), and a request pinning an exchange half is checked under the artifact's checkpoint. Without `Proofs` an answer is byte for byte what it was, and `testdata/derivation/vectors.json` is unchanged. The holder attests the field values; the proofs show the rows are records of its log at the anchor, never that no row was left out.
+- `Book.DerivedInputs` reads a recorded, verified answer to a derivation named by the digest of its definition (it refuses a refusal, a failed answer and a registered token). `Book.ReportFromDerivation` seals the Evidence Result the caller's evaluator returns, after checking that it is a valid Evidence Result v0 whose every claim cites exactly the response record (the full gate, schema and cross-claim rules) and builds one Evidence Bundle with every payload and the `contract-report/v1` extension (`ExtensionContractReport`); `ReportOptions.Derivation` names the pack the evaluator runs and must be the one answered, an answer without proofs is refused unless `AllowUnproven` (then the view title begins `UnprovenInputsTitle`), and calls for one Result seal it once: the machine view and, with the report page, the human view. The Result is the requester's, signed by its own book; the module runs no pack.
+- `Book.Doctor` lists the digests of the registered derivations it serves.
+- Go only for now: Rust (#746, needed by the Mesh plugin) and Python (#747) have no twin. The interop profile defines no material for a record set (P-13); the proofs use the existing kinds until agent-action-capsule#668 lands.
+
+### Added: a verdict's `received_history` on x-deal-v1 (#666)
+
+- An x-deal-v1 `verdict` body may carry `received_history`: `history_sha256`, the SHA-256 of each History document the rules checker read about the counterparty, and `input_sha256`, the SHA-256 of the JCS form of the checker input's `received_history` member. It binds by digest, never by content (capsule-cli#327, design §5.4), and is read beside v0's closed `body_verdict`, like `nonce`. `xdealv1.VerdictBody.ReceivedHistory` (`ReceivedHistoryDigests`) holds it, and the schema requires it to sit beside `rules` a checker was started on. Its optional `alone_deny: true` marks a verdict that asks (`pause`) over rules that deny, because History alone never makes the verdict NO (capsule-cli#327 design §3, condition 1); the schema allows a pause over a deny only with it. Two positive fixtures outside Appendix A (`received-history/`) and eight negatives cover it. The member is a format door: a reader from an earlier release refuses a verdict that carries it, so readers need this release or later.
+
+### Added: window books, a shelf split into one book per time window (#689)
+
+- `ShelfConfig.Window` (`WindowPolicy`: day, ISO week, month, quarter or year, calendar periods in UTC) splits a shelf into one book per window. The window is fixed when the shelf's file is created: a reopen with another policy or none is refused, a file created without one never gains one, and a windowed file is shelf version 3, which older builds and the Rust and Python shelves refuse. A windowed shelf does not take the facts migration. `ReadShelfWindow` reads a file's policy without opening it.
+- `Shelf.Current` returns the current window's book, the only one that takes records; `Shelf.Roll` closes ended windows and opens the next ones, empty windows included; `Shelf.WindowBook` and `Shelf.Windows` read them. A window book opens with a `window_open` record naming the previous window's final tree and ends with a `window_close` record and a final checkpoint; a record outside its window, or in a closed window, is refused (`ErrWindowClosed`), and a clock that steps back over a boundary is refused (`ErrClockBehind`). The disclosure policy in force is re-stated at the start of each window, and `Shelf.RegisterDerivation` and the unsigned-ask limit apply across windows.
+- `Shelf.Respond` answers from the window book a request's pin names and records the answer in the current window, so an answer's proofs stay inside its window.
+- `Shelf.WindowChain` exports a run of closed windows as a `window_chain/v1` document, and `VerifyWindowChain` checks it alone, naming each break (`chain breaks at <label>`, `window <label> not witnessed`). `Book.RecordWindowChain`, `Book.ReportFromWindows` and `VerifyReportCoverage` build and check a contract report over a range of windows, naming every window without its answer. Without witness receipts a chain shows continuity only as the holder signed it, so a holder could re-cut a window and re-sign those after it. Neither check shows that an answer holds every row of its window.
+
+### Added: a window's grace, for a Close over an earlier window (#807)
+
+- `WindowPolicy.Grace` (zero: none) is how long after a window ends its book still takes a close/v1 Close for a period inside it; the window closes, and its final checkpoint exists, when the grace ends. It is fixed when the store is created, must be shorter than the period's shortest length, and a store with a grace is shelf version 4, which builds without grace refuse. A store created before grace opens with none.
+- When a window ends, the shelf takes its boundary checkpoint, which the next window's open record names. A window chain (version 2) carries each such window's boundary checkpoint, a consistency proof to its final checkpoint, and every record after the boundary; `VerifyWindowChain` names any late record other than a close/v1 for a period inside the window or an index root, and a record left out. `Shelf.WindowChain` over a window still in its grace returns `ErrInGrace`, naming when it closes. `WindowState` gains `InGrace` and `ClosesAt`. A chain does not show that a holder did not delay a window's boundary past its end, so records placed before a late boundary read as in the window.
+
+### Added: a shelf whose windows are its journal, with each deal's book placed in a window (#797)
+
+- `WindowPolicy.Journal` makes a shelf's window books its journal (`journal/<label>`), for a deal holder: the shelf still holds one book per deal, its node and case books, the cadence and book facts. It is fixed when the shelf is created, requires the base `journal`, no grace and no predecessor, and gives shelf file version 6, which earlier builds and the frozen Rust and Python shelves refuse (#844, #845). Such a shelf is created on book facts, so `Migrate` has nothing to do on it.
+- `Shelf.Journal` returns the current window's journal book there. `Shelf.JournalView` and `ExistingJournalView` return a `JournalReader` over every journal window in order, with one seq space; `StatusInput.Journals` carries it to a status provider (`StatusInput.Journal` stays the one journal book of a shelf without windows), and `ExistingJournal` refuses such a shelf. Each journal window's fact is a journal fact, decided by the log's kind. The x-deal-v1 receive cache, status provider and per-deal report read the journal across windows.
+- `Shelf.Place` places a deal's book in the window holding its agreement's time, with a `window_place/v1` record in that window's journal, and appends the book's first record in the same step, so no roll can leave the deal out of its window's close; a placed book that holds records keeps its window as the deal runs on. `Shelf.Placement` reads it and `Shelf.WindowEnded` says a window book has closed, for a cadence host's `Ended`. A journal window's close is `window_close/v2`, which lists each deal placed in it with the deal book's tree at the close. A chain of journal windows carries, per placed deal, its checkpoint at the close, its latest checkpoint and a consistency proof between them (`ChainWindow.Deals`); `VerifyWindowChain` reads closes of versions 1 and 2, checks each deal's proof and returns each window's `Placed` and `Proved` trees.
+- A report over journal windows covers each placed deal too: `Shelf.Respond` answers a pin on a placed deal book's checkpoint from that book, `ReportFromWindows` takes one answer per placed deal, at the tree the chain proves extends its tree at the close (`WindowInputs.Deal` names it), and `VerifyReportCoverage` names a placed deal with no answer, or with an answer at any other tree, an early one or a fork. It returns each covered deal in `ReportCoverage.Deals`, with a line saying the answer covers the deal's whole book through the checkpoint it is anchored at, records after the window included, and the report's limit once in `ReportCoverage.Limit`.
+
+### Added: a JSONL book continues in a windowed store (#808)
+
+- `Book.CloseForWindows` closes a book into a windowed store: a `book_close` record naming the store, then a final checkpoint ending at it, after which the book refuses every append (`ErrBookClosed`). It returns the store's `WindowPolicy`, whose new `Predecessor` (the book's final tree) and `PredecessorPolicy` the shelf keeps (shelf version 5). The store starts at the first whole second after the close (`SuccessorSince`), so its first window is partial (`WindowState.Partial`, and `partial` on the chain's verified window).
+- A chain of such a store is version 3. From the store's first window it carries the predecessor (`ChainPredecessor`, built with `ChainPredecessorFromBook`). `VerifyWindowChain` checks its close record, final checkpoint, key, receipts and tree, and names a missing or altered predecessor or a record after its close. A report over the conversion's period names the part before it as not covered.
+
+### Added: `VerifyWitnessReceiptTime` (#819)
+
+- `VerifyWitnessReceiptTime` is `VerifyWitnessReceipt` with the receipt's registration time (its `iat`), when the receipt verifies and carries one. A receipt with no time gives none. A reader uses it to take the time a witness registered another party's stamp, such as an adjudicator's stamp covering a ruling.
+
+### Changed: x-deal-v1 states what agreeing to an adjudicator commits a party to (#898)
+
+- **PROFILE.md.** An agreement that names an adjudicator agrees to answer its `deal_adjudicator_copy/1` request in full. A party that refuses or does not answer leaves the case to proceed without its answer: its book is read only from the copy the other side holds and any copy it opened the case with, and a ruling may go against it, but only on records it signed itself. This is a statement of the existing rule; no record, check or code changes.
+
+- x-deal-v1 is the default deal record format and x-deal-v0 is frozen ([#626](https://github.com/action-state-group/evidencebook/issues/626)): the status lines of `dealprofile/x-deal-v0/PROFILE.md` and `dealprofile/x-deal-v1/PROFILE.md`, and the design note's §2.5, Q6 and Q7, say so. No record, check or vector changes; books sealed under x-deal-v0 stay readable and verifiable, unchanged.
+
+### Added: `xdealv1.CheckAgreedAt`, agreed no later than witnessed (agent-action-capsule#696)
+
+- A deal's `agreed_at` may be later than its first witnessed time, the record time of the holder's own agreement from a witness the agreement names, by at most `xdealv1.AgreedAtSkew` (300 seconds), as agent-action-capsule `spec/standard-history-v0.md` §11.2 "Agreed no later than witnessed" says. A later one returns `xdealv1.ErrAgreedAfterWitnessed`: the deal entry is not well formed. Vectors: `testdata/deal-v1/agreed-at/vectors.json`.
+
+### Added: `xdealv1.ChangesDetails` (#626)
+
+- `ChangesDetails(Record)` exports the test the authorization applies to each journal record between a check and its act. It matches a `detail_change`; a `message` with a counterparty; an `evidence` with a counterparty or `counterparty_facts`; an `intent` that starts a leg or picks the item; and an `agent_move` that is `chose`.
+- A writer holding a payment in flight runs it on each journal record it would seal, and refuses one that matches until the payer leg is sealed, so the payment already sent stays authorized. `CheckAuthorizations` uses the same function.
+
+### Added: `xdealv1.CheckActs`, which holds a settled amount to the checked one (#626)
+
+- x-deal-v1 §8 keeps x-deal-v0's authorization rules 5 and 6 unchanged. Rule 5 requires an act's amount and currency to equal the checked ones where both carry them.
+- `CheckAuthorizations` reads records, but a settle's leg travels in its Capsule's `settlement` member, which the record does not carry, so it could not compare them.
+- `CheckActs(journal, []ActIn{{Record, Settlement}})` runs the same check and also refuses:
+  - a leg whose asset code differs from the check's `currency`;
+  - a leg whose settled amount differs from the check's `amount_minor`. A payer leg settles its `amount`, and a payee leg settles `received` plus `receive_fee`, and one that states no `receive_fee` is refused.
+- Amounts compare as integers at the larger scale, with `amount_minor` at the currency's minor units. A checked amount in a currency with no known minor units is refused.
+- `CheckAuthorizations` is unchanged and reads an act with no settlement member.
+
+### Fixed: `xdealv1.CheckActs` holds a refund to its cancel check's `cancelled_amount_minor` (#719)
+
+- A seller's outgoing cancel check records the amount as `cancelled_amount_minor` when it states no `amount_minor`, as x-deal-v0's builder does. A refund leg answering such a check is now held to that amount, by the same rule as any other checked amount: a payee leg settles `received` plus `receive_fee`, and must state the fee.
+- `amount_minor`, when stated, is still the amount held to. Only a cancel check is read this way.
+- With a `fee_minor` (other than 0) beside it, who bears the fee is not recorded, so the refund owed is not known. No amount is held, and the new `ActAuthorization.AmountNotHeld` says so, never as a match (evidencebook#743 tracks recording who bears the fee).
+- An act that cites a check of the wrong kind is now told so before any amount is compared.
+- PROFILE.md §8 says the same.
+- `deal settle` no longer sends a new refund on a cancel check that states a cancellation fee. It used to build the full `cancelled_amount_minor`, which picked who bears the fee. It now refuses and says why (evidencebook#743). A refund already sent completes, or is written again, with the amount its send recorded, and a note says that amount is not checked.
+
+### Fixed (breaking): x-deal-v1's payment check runs on the payment's own legs beside a refund (#722)
+
+- **The bug.** `xdealv1.PaymentCheck` stopped with reason `refund_cites_offer` as soon as a refund or remedy leg (`reverses`, `remedy_for`) cited the offer's terms leg. A payer who paid too little could seal a 1-unit refund and turn the payment row from failed into not checked.
+- **The fix.** The check now runs on the payment's own legs. Refund and remedy legs citing the offer's terms leg take no part, and those not superseded are listed in the new `PaymentResult.NotChecked`. A status row counts them in `check_not_checked`. This follows Steven's ruling on #722.
+- A payment leg is now superseded only by a later payment leg answering the same terms leg that AAC's verifier reads beside the offer. Before, a refund, a leg of another terms leg, or a malformed leg carrying `supersedes` could take the payment leg out of the check, which read "not agreed" instead of failed. A refund is still superseded by any later leg of its side.
+- **Breaking.** `ReasonRefundCitesOffer` is removed. The payment, status and report vectors are regenerated, with a new case `short-payment-with-refund-fails` and a new status case `payment-refund-not-checked`.
+
+### Added: `xdealv1.StatusProvider.ReportSnapshot` (#626)
+
+- `ReportSnapshot` returns a v1 report, the book pairs it rests on, and each payment row's payment check, all from one read of the shelf. A host that shows the checks beside the report never shows a check the report did not read.
+- Rows whose owed is an amount but whose check was not run are listed with why: `not_recomputed`, `no_offer_pair` or `no_acceptor_key`.
+- `ReportWithBook` is unchanged and now calls it.
+
 ## v0.26.0 (2026-11-21)
 
 Every pull request merged since v0.25.0:

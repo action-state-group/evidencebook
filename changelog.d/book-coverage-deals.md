@@ -1,3 +1,0 @@
-### Changed: `book report coverage` prints each placed deal's line and the report's limit (#797)
-
-- On a report over a deal store's windows, `book report coverage` names a deal placed in a window with no answer, or answered at a tree the chain does not prove, and prints each covered deal's line under `deals`: its answer covers its whole book, records after its window included. `limits` now ends with the report's limit (each answer proves its rows are in the holder's log; the rows' field values are the holder's word; no proof shows that no row was left out), in place of the line "No check shows that an answer holds every row of its window."
