@@ -675,11 +675,17 @@ cl_run "ci-local: a second run uses the cached action" 0 README.md EB_ACT_ACTION
   check "ci-local: the cached action reaches act" grep -qF "example/act@$act_sha=" "$cl/act.log"
 # Workflows whose action act would fetch itself, into its shared cache, stop
 # the run before act starts.
-cl_refused() { # description, the uses: value, message
-  local what=$1 use=$2 msg=$3 st=0
+cl_refused() { # description, message, a workflow step (YAML at step indent), [a local composite's steps]
+  local what=$1 msg=$2 step=$3 composite=${4:-} st=0
   (cd "$cl/repo" && git checkout -q -B t origin/main &&
-    printf 'on:\n  pull_request:\njobs:\n  r:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: "%s"\n' "$use" > .github/workflows/remote.yml &&
-    git add .github/workflows/remote.yml && git -c user.name=t -c user.email=t@t commit -qm remote)
+    printf 'on:\n  pull_request:\njobs:\n  r:\n    runs-on: ubuntu-latest\n    steps:\n      %s\n' "$step" > .github/workflows/remote.yml &&
+    git add .github/workflows/remote.yml &&
+    if [[ -n "$composite" ]]; then
+      mkdir -p .github/actions/loc &&
+        printf 'name: loc\nruns:\n  using: composite\n  steps:\n    %s\n' "$composite" > .github/actions/loc/action.yml &&
+        git add .github/actions/loc/action.yml
+    fi &&
+    git -c user.name=t -c user.email=t@t commit -qm remote)
   : > "$cl/act.log"
   (cd "$cl/repo" && env PATH="$cl/bin:$PATH" ACT_LOG="$cl/act.log" EB_CI_CACHE="$cl/cache" EB_ACT_ACTION_URL="file://$cl/actions" \
     bash scripts/ci-local.sh) > "$cl/out" 2>&1 || st=$?
@@ -688,9 +694,15 @@ cl_refused() { # description, the uses: value, message
     fails=$((fails + 1))
   fi
 }
-cl_refused "ci-local: an action pinned by tag stops the run" example/act@v1 'pin a full commit sha'
-cl_refused "ci-local: a composite action that uses a remote action stops the run" "example/act@$composite_sha" 'composite action that uses a remote action'
-cl_refused "ci-local: an action that cannot be fetched stops the run" "example/missing@$act_sha" "could not fetch example/missing"
+cl_refused "ci-local: an action pinned by tag stops the run" 'pin a full commit sha' '- uses: "example/act@v1"'
+cl_refused "ci-local: a stand-in pinned by tag stops the run" 'pin a full commit sha' "- uses: 'actions/setup-go@v7'"
+cl_refused "ci-local: a fetched composite action that uses a remote action stops the run" \
+  'composite action that uses the remote action other/thing' "- uses: example/act@$composite_sha"
+cl_refused "ci-local: a local composite action that uses a remote action stops the run" \
+  'composite action that uses the remote action example/act' '- uses: ./.github/actions/loc' "- uses: example/act@$act_sha"
+cl_refused "ci-local: a flow-mapping uses, which the scan cannot read, stops the run" \
+  'flow-mapping uses' "- {uses: example/act@$act_sha}"
+cl_refused "ci-local: an action that cannot be fetched stops the run" "could not fetch example/missing" "- uses: example/missing@$act_sha"
 
 # .github/act/fetch-action.sh on its own.
 fa="$cl/repo/.github/act/fetch-action.sh"
@@ -721,6 +733,19 @@ if ((s1 == 0 && s2 == 0)) && [[ "$(cat "$fc/1.out")" == "$fc/example/act@$act_sh
   printf 'ok   fetch-action.sh: two concurrent fetches share one complete entry\n'
 else
   printf 'FAIL fetch-action.sh: concurrent fetches: exits %d %d; entries: %s\n' "$s1" "$s2" "$(ls -A "$fc/example")"
+  fails=$((fails + 1))
+fi
+# A fetch that stalls is stopped at EB_ACT_FETCH_TIMEOUT and leaves nothing.
+mkdir -p "$fc/bin"
+printf '#!/usr/bin/env bash\n[[ " $* " == *" fetch "* ]] && exec sleep 60\nexec %q "$@"\n' "$(command -v git)" > "$fc/bin/git"
+chmod +x "$fc/bin/git"
+st=0
+SECONDS=0
+PATH="$fc/bin:$PATH" EB_ACT_FETCH_TIMEOUT=1 EB_ACT_ACTION_URL="file://$cl/actions" bash "$fa" example/act "$act_sha" "$fc/stall" > /dev/null 2>&1 || st=$?
+if ((st == 1 && SECONDS < 20)) && [[ -z "$(ls -A "$fc/stall/example" 2> /dev/null)" ]]; then
+  printf 'ok   fetch-action.sh: a stalled fetch stops at EB_ACT_FETCH_TIMEOUT and leaves nothing\n'
+else
+  printf 'FAIL fetch-action.sh: a stalled fetch: exit %d after %ds; left: %s\n' "$st" "$SECONDS" "$(ls -A "$fc/stall/example" 2> /dev/null)"
   fails=$((fails + 1))
 fi
 rm -rf "$fc"
