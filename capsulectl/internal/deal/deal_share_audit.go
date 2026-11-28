@@ -10,7 +10,7 @@ import (
 // match too much as a substring (gateSecrets). An audit copy's reader is no
 // party and gets no personal detail at all (evidencebook#1058), so its gate
 // also reads each such short value the holder's store holds about someone,
-// a name, a word of a name, a phone or handle, as a whole word: "Amy" in
+// a name, a word of a name, a disclosed field or handle, as a whole word: "Amy" in
 // "Gift for Amy" refuses the copy. A single character is no detail on its
 // own and is not read.
 
@@ -21,6 +21,7 @@ var auditCommonWords = map[string]bool{"of": true, "the": true, "and": true, "co
 // auditShortWords are the short identifiers of every party the events name.
 func auditShortWords(events []sealedEvent) []string {
 	var whos []*dealWho
+	var fields, names []string
 	for _, se := range events {
 		e := se.Event
 		if e.Open != nil {
@@ -49,16 +50,29 @@ func auditShortWords(events []sealedEvent) []string {
 		}
 		if e.Disclosure != nil {
 			whos = append(whos, e.Disclosure.Who)
+			for _, f := range e.Disclosure.Fields {
+				fields = append(fields, f.Value)
+				if f.Class == "name" {
+					names = append(names, f.Value)
+				}
+			}
 		}
 	}
 	seen := map[string]bool{}
 	var out []string
 	add := func(v string) {
 		v = strings.ToLower(strings.TrimSpace(foldText(v)))
-		if len(v) >= 2 && len(v) < 4 && !seen[v] {
+		// A number this short (a house number, a unit) names no one on its
+		// own, and the copy is full of them.
+		if len(v) >= 2 && len(v) < 4 && !isDigits(v) && !seen[v] {
 			seen[v] = true
 			out = append(out, v)
 		}
+	}
+	// A disclosed field of any class, whole; a name also word by word. The
+	// words of an address or a place ("at", "on") are not read alone.
+	for _, v := range fields {
+		add(v)
 	}
 	for _, w := range whos {
 		if w == nil {
@@ -67,7 +81,10 @@ func auditShortWords(events []sealedEvent) []string {
 		for _, v := range []string{w.Name, w.Domain, w.Phone, w.Email, w.Payee, w.RelayAddress, w.ProfileID} {
 			add(v)
 		}
-		for _, part := range gateNameWord.FindAllString(strings.ToLower(foldText(w.Name)), -1) {
+		names = append(names, w.Name)
+	}
+	for _, n := range names {
+		for _, part := range gateNameWord.FindAllString(strings.ToLower(foldText(n)), -1) {
 			if !auditCommonWords[part] {
 				add(part)
 			}

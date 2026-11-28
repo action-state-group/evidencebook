@@ -43,16 +43,38 @@ func auditOpening(t *testing.T) string {
 }
 
 // auditNoted are personal values of the other classes of spokenClassOrder
-// (deal_card.go) as the holder's store keeps them in an agent message: an
-// address, a pickup place, a card number, a verification code, an identity
-// document and a credential.
+// (deal_card.go), as the holder's store keeps them in a disclosure note.
 var auditNoted = map[string]string{
 	"home_address":      "12 Larkspur Lane",
+	"address":           "Unit 9, 40 Quarry Road",
 	"pickup_location":   "Locker 4471 at Quarry Mall",
-	"payment_card":      "4111 1111 1111 1111",
-	"verification_code": "739142",
-	"id_document":       "passport X93817265",
+	"pickup_area":       "Quarryside North",
+	"other_contact":     "@kettle_shop_desk",
 	"credential":        "hunter2-kettle-9931",
+	"verification_code": "739142",
+	"payment_card":      "4111 1111 1111 1111",
+	"id_document":       "passport X93817265",
+}
+
+// noteDisclosure seals one disclosure note per field given: each class is
+// covered by its own check.
+func noteDisclosure(t *testing.T, dealID string, fields map[string]string) {
+	t.Helper()
+	for _, class := range slices.Sorted(maps.Keys(fields)) {
+		// The user approves telling it first, as the check asks.
+		action := "share_contact"
+		if slices.Contains([]string{"credential", "verification_code", "payment_card", "id_document"}, class) {
+			action = "share_credentials"
+		}
+		share := dealRun(t, "check", "--deal", dealID, "--input", writeJSON(t, `{"action":"`+action+`","disclosing_to":"counterparty","disclosing":["`+class+`"]}`))
+		if share["verdict"] == "pause" {
+			_, err := answer(t, dealID, share["check_id"].(string), "yes", shownCard(t, share["card"].(string)))
+			require.NoError(t, err)
+		}
+		in, err := json.Marshal(map[string]any{"channel": "web", "fields": []map[string]string{{"class": class, "value": fields[class]}}})
+		require.NoError(t, err)
+		dealRun(t, "note", "--deal", dealID, "--kind", "disclosure", "--input", writeJSON(t, string(in)))
+	}
 }
 
 // auditDeal is a started deal whose holder, the buyer, holds every personal
@@ -68,13 +90,7 @@ func auditDealWith(t *testing.T, offer func(string) string, opening string) *han
 	h := agreedBoth(t, offer)
 	h.buyer.act(t)
 	dealRun(t, "note", "--deal", h.dealID, "--kind", "intent", "--input", writeJSON(t, v1BuyerIntent), "--opening", writeJSON(t, opening))
-	var text []string
-	for _, class := range slices.Sorted(maps.Keys(auditNoted)) {
-		text = append(text, class+": "+auditNoted[class])
-	}
-	msg, err := json.Marshal(map[string]string{"from": "agent", "text": strings.Join(text, "; ")})
-	require.NoError(t, err)
-	dealRun(t, "note", "--deal", h.dealID, "--kind", "message", "--input", writeJSON(t, string(msg)))
+	noteDisclosure(t, h.dealID, auditNoted)
 	dealRun(t, "statement", "--deal", h.dealID, "--statement", "paid_as_agreed=met", "--out", filepath.Join(t.TempDir(), "s.json"))
 	// A report rests on a checkpoint: the next tick covers the statement.
 	clockAt(t, cli.DealClock().Add(72*time.Hour))
@@ -107,9 +123,6 @@ func TestAV1AuditCopy(t *testing.T) {
 		covered[class] = true
 	}
 	for _, class := range spokenClassOrder {
-		if class == "address" || class == "pickup_area" {
-			continue // read as home_address and pickup_location are
-		}
 		assert.True(t, covered[class], "the fixture holds a value of class %s", class)
 	}
 	assert.NotContains(t, string(raw), "Outside Auditor", "the reader is named on the holder's record only")
@@ -171,9 +184,11 @@ func TestTheAuditGateReadsTheWholeCopy(t *testing.T) {
 	written, err := os.ReadFile(file)
 	require.NoError(t, err)
 	assert.Equal(t, written, gotBytes, "the gate read the bytes written, nothing blanked")
-	for class, v := range auditPersonal {
-		leaked := []byte(`{"note":"` + v + `"}`)
-		assert.Error(t, dealShareGate(leaked, gotEvents, dealprofile.AudienceAudit), "the %s refuses an audit copy", class)
+	for _, held := range []map[string]string{auditPersonal, auditNoted} {
+		for class, v := range held {
+			leaked := []byte(`{"note":"` + v + `"}`)
+			assert.Error(t, dealShareGate(leaked, gotEvents, dealprofile.AudienceAudit), "the %s refuses an audit copy", class)
+		}
 	}
 
 	v1ShareGate = func([]byte, []sealedEvent, string, ...string) error {
@@ -207,6 +222,34 @@ func TestAnAuditCopyCarryingAShortNameIsRefused(t *testing.T) {
 	// The counterparty, who made this deal with Amy's side, gets the offer
 	// it already holds.
 	dealRun(t, "report", "--deal", h.dealID, "--share", "counterparty", "--to", "Kettle Shop", "--bundle", filepath.Join(t.TempDir(), "cp.json"))
+}
+
+// Each class's value, held in the holder's store and carried in a signed
+// record the copy would hold (the offer's item), refuses the real audit
+// export: no file, no disclosure record. A short name held as a disclosed
+// field is read as a whole word too.
+func TestAnAuditCopyCarryingAHeldValueOfAnyClassIsRefused(t *testing.T) {
+	values := maps.Clone(auditNoted)
+	values["name"] = "Bo"
+	for _, class := range slices.Sorted(maps.Keys(values)) {
+		v := values[class]
+		t.Run(class, func(t *testing.T) {
+			offer := func(key string) string {
+				return strings.Replace(oneForum(key), `"item": "lamp"`, `"item": "lamp, `+v+`"`, 1)
+			}
+			h := auditDealWith(t, offer, v1Opening)
+			noteDisclosure(t, h.dealID, map[string]string{class: v})
+			var before int
+			require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_disclosures WHERE deal_id=?`, h.dealID).Scan(&before))
+			file := filepath.Join(t.TempDir(), "audit.json")
+			assert.Contains(t, v1Err(t, "report", "--deal", h.dealID, "--share", "audit", "--to", "Outside Auditor", "--bundle", file), "private value")
+			_, err := os.Lstat(file)
+			assert.ErrorIs(t, err, os.ErrNotExist, "nothing written")
+			var after int
+			require.NoError(t, v1DB(t).QueryRow(`SELECT COUNT(*) FROM deal_disclosures WHERE deal_id=?`, h.dealID).Scan(&after))
+			assert.Equal(t, before, after, "nothing recorded")
+		})
+	}
 }
 
 // --share audit, like every shared copy, needs a file and a reader.
