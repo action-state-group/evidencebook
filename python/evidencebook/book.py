@@ -68,6 +68,18 @@ from ._limits import (
 from ._capsule import capsule_preimage, seal_record
 from ._cll import CLLSubstrate, Checkpoint, read_checkpoint
 from ._index import default_indexes
+from .subject import (
+    CLOSES,
+    RECORD_TYPE_BOOK_CLOSE,
+    RECORD_TYPE_SUBJECT_CLOSE,
+    RECORD_TYPE_SUBJECT_ROOT,
+    UNINDEXED,
+    Subjects,
+    SubjectRootStatement,
+    close_statement,
+    correlation_of,
+    read_subject_root,
+)
 from ._time import from_nanos, nanos, parse_ns, profile_time, profile_time_ns, rfc3339_nano, utc
 from .errors import CorruptError, InvalidError, NotFoundError, ReleasedError, UnavailableError
 from .record import (
@@ -580,6 +592,9 @@ class Book:
         self._stated: dict[str, bool] = {}
         self._order: list[str] = []
         self._indexes = default_indexes() if indexes is None else list(indexes)
+        # The subjects the book holds, in the order of their roots (the
+        # subject convention v0, :mod:`evidencebook.subject`).
+        self._subjects = Subjects()
         # A record stored whose log append failed: it keeps its seq and is
         # appended first, before anything new (Go's flushPendingLocked).
         self._pending: tuple[Record, StoredRecord] | None = None
@@ -679,10 +694,46 @@ class Book:
         self._stored[record.record_id] = stored
         self._stated[record.record_id] = "statement" in json.loads(stored.header)
         self._order.append(record.record_id)
-        if record.header.record_type != RECORD_TYPE_INDEX_ROOT:
-            # A root record is proven by the log, not by the index it commits.
+        self._subjects.track(record)
+        # A root record is proven by the log, not by the index it commits; a
+        # window's open and close and a book's close are found by position
+        # (Go addAuthenticated).
+        if record.header.record_type != RECORD_TYPE_INDEX_ROOT and record.header.record_type not in UNINDEXED:
             for index in self._indexes:
                 index.add(record)
+
+    # -- the subject convention v0 ------------------------------------------------------
+
+    def _check_subject_entry(self, h: Header) -> None:
+        self._subjects.check(h, lambda seq: (self._records[i] for i in self._order[seq:]))
+
+    def seal_subject_root(self, statement: SubjectRootStatement, entry: Entry | None = None) -> Record:
+        """Seal a ``subject_root`` record declaring a subject, with the further
+        header members ``entry`` gives (its record type, epistemic type and
+        statement are the book's). Refused when the book already holds a root
+        for the subject id, and for a log root anywhere but the book's first
+        record (Go ``SealSubjectRoot``)."""
+        statement.validate()
+        entry = entry or Entry(RECORD_TYPE_SUBJECT_ROOT, PRODUCER_CLAIM)
+        return self.append(replace(entry, record_type=RECORD_TYPE_SUBJECT_ROOT,
+                                               epistemic_type=PRODUCER_CLAIM, statement=statement.value()))
+
+    def close_subject(self, root: str) -> Record:
+        """Seal the ``subject_close`` of the subject rooted at ``root``: it
+        counts the subject's members and names the last. A member sealed after
+        it is refused, and a subject closes once (Go ``CloseSubject``)."""
+        with self._lock:
+            if self._released:
+                raise ReleasedError("the book is released")
+            # A record left pending joins the log first, so the count is the
+            # one the close's admission computes.
+            self._flush_pending()
+            subject = self._subjects.by_root(root)
+            if subject is None:
+                raise NotFoundError(f"subject_root {root}")
+            after = (self._records[i] for i in self._order[subject.root.seq:])
+            return self._append(Entry(RECORD_TYPE_SUBJECT_CLOSE, PRODUCER_CLAIM, links=(Link(CLOSES, root),),
+                                      statement=close_statement(subject, after).value()))
 
     # -- the basic surface --------------------------------------------------------------
 
@@ -918,6 +969,7 @@ class Book:
             field_commitments=field_commitments, commit_alg=COMMIT_ALG_NONCE256 if field_commitments else "",
         )
         header.validate()
+        self._check_subject_entry(header)
         try:
             header_bytes = jcs(header.value())
         except (TypeError, ValueError) as exc:
@@ -995,9 +1047,17 @@ class Book:
         if self._released:
             raise ReleasedError("the book is released")
         self._flush_pending()
+        # A book closed into a windowed store commits no index root after its
+        # close: its book_close stays its last record (Go, evidencebook#808).
+        closed = bool(self._order) and self._records[self._order[-1]].header.record_type == RECORD_TYPE_BOOK_CLOSE
         for index in self._indexes:
+            if closed:
+                break
             root = index.root()
             if self._roots.get(root["index"]) == root:
+                continue
+            # A lazy index's empty root is left out until it was committed once.
+            if getattr(index, "lazy", False) and root["size"] == 0 and root["index"] not in self._roots:
                 continue
             self._append(Entry(RECORD_TYPE_INDEX_ROOT, DERIVED_METRIC, statement=dict(root, as_of_seq=len(self._order))))
             self._roots[root["index"]] = root
@@ -1308,8 +1368,14 @@ class _View:
         self._anchors = [_decide.AnchorView(cp.anchor_digest, cp.entries, cp.issued_at_ns) for cp in self.checkpoints]
         self._leaves = {record_id: i for i, record_id in enumerate(book._order)}
         self._commitments = []
+        self._subject_roots: dict[str, str] = {}
         for record_id in book._order:
             h = book._records[record_id].header
+            if h.record_type == RECORD_TYPE_SUBJECT_ROOT:
+                try:
+                    self._subject_roots[record_id] = read_subject_root(h.statement).subject_id
+                except InvalidError:
+                    pass
             if h.record_type == RECORD_TYPE_RETENTION_COMMITMENT and isinstance(h.statement, dict):
                 until = h.statement.get("until")
                 if is_profile_time(until) and isinstance(h.statement.get("subject"), dict):
@@ -1337,15 +1403,14 @@ class _View:
     def _matching(self, match: Callable[[Header], bool]) -> list[int]:
         return [i for i in range(len(self.book._order)) if match(self._header(i)) and self.servable(i)]
 
-    def correlated(self, correlation_id: str) -> list[int]:
-        # A record carrying correlation.exchange_id is held under it alone;
-        # only one carrying no exchange_id is held under its subject_ref.
-        def held_under(h: Header) -> str:
-            if h.correlation is not None and h.correlation.exchange_id:
-                return h.correlation.exchange_id
-            return h.subject_ref
+    def correlation_of(self, h: Header) -> str:
+        """The correlation identifier a record is held under (Go
+        ``bookView.correlationOf``): the subject_id of a subject_root it
+        cites; else its correlation.exchange_id; else its subject_ref."""
+        return correlation_of(h, self._subject_roots)
 
-        return self._matching(lambda h: held_under(h) == correlation_id)
+    def correlated(self, correlation_id: str) -> list[int]:
+        return self._matching(lambda h: self.correlation_of(h) == correlation_id)
 
     def citing(self, half: str) -> list[int]:
         return self._matching(lambda h: half in h.links_to(CITES))
