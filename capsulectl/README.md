@@ -104,8 +104,8 @@ file"): that is the receipt modules' folder, not a plugin, and nothing is wrong
 The plugin offers capsule-viewer's History card module
 (`capsuleviewer.standard-history/v0`) to `capsulectl presentation list|build`
 in its handshake. The release's `standard-history-VERSION.tar.gz` holds the
-module's files; unpack it beside the launcher, and a standard_history/1 bundle
-resolves to the module. Where the files came from is in
+module's files; unpack it beside the launcher, and a standard_history/1, /3 or
+/4 bundle resolves to the module. Where the files came from is in
 `internal/book/assets/standard-history/SOURCE.txt`; a release of capsule-viewer
 is re-vendored by copying its `standard-history-module` bundle there.
 

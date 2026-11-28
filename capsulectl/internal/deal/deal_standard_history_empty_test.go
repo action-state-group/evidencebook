@@ -59,9 +59,8 @@ func TestAnEmptyV0CardCarriesAnEmptyDealsArray(t *testing.T) {
 }
 
 // A holder of x-deal-v1 deals with none started gets own /3 and /4 cards
-// whose block carries `deals: []`. The module evidencebook ships (capsule-viewer
-// go/v0.18.3) predates /3 and refuses any /3 or /4 block (its as_of carries
-// coverage_start_time), so it is not run here: evidencebook#1075.
+// whose block carries `deals: []`, and the History card module evidencebook
+// ships draws each as the holder's own card (evidencebook#1075).
 func TestAnEmptyV1CardCarriesAnEmptyDealsArray(t *testing.T) {
 	for _, derivation := range []string{standardhistory.Derivation3, standardhistory.Derivation4} {
 		t.Run(derivation, func(t *testing.T) {
@@ -71,8 +70,43 @@ func TestAnEmptyV1CardCarriesAnEmptyDealsArray(t *testing.T) {
 			dealRun(t, "standard-history", "declare", "--holder-kind", "node")
 			*now = now.Add(time.Hour)
 			require.Equal(t, "ticked", dealRun(t, "tick")["state"])
-			assertEmptyOwnCard(t, derivation)
+			own := assertEmptyOwnCard(t, derivation)
+			assertShippedModuleDraws(t, own)
 		})
+	}
+}
+
+// A holder with a started x-deal-v1 deal gets own /3 and /4 cards the History
+// card module evidencebook ships draws as the holder's own card, the deal in
+// its entries (evidencebook#1075).
+func TestTheShippedModuleDrawsAV1CardWithADeal(t *testing.T) {
+	for _, derivation := range []string{standardhistory.Derivation3, standardhistory.Derivation4} {
+		t.Run(derivation, func(t *testing.T) {
+			h := bothAgreed(t)
+			_, deals := cardUnder(t, h, h.seller, time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), derivation)
+			require.Len(t, deals, 1)
+			own := filepath.Join(t.TempDir(), "own.json")
+			dealRun(t, "standard-history", "card", "--derivation", derivation, "--out", own)
+			entries, ok := shBlock(t, readBundle(t, own))["deals"].([]any)
+			require.True(t, ok, "the own copy carries its deal entries")
+			require.Len(t, entries, 1)
+			assertShippedModuleDraws(t, own)
+		})
+	}
+}
+
+// assertShippedModuleDraws runs the shipped module over the own card at path
+// and requires it to draw the card as the holder's own, with no property
+// failing. A property it cannot check from the card alone stays NOT_CHECKED
+// (counts_recompute of /3 and /4 needs the whole shelf, SH §11.7).
+func assertShippedModuleDraws(t *testing.T, path string) {
+	t.Helper()
+	model := shippedModuleModel(t, path)
+	assert.Equal(t, "card", model.State, "the module draws the card: %+v", model)
+	assert.True(t, model.Own, "as the holder's own copy")
+	require.NotEmpty(t, model.Properties)
+	for name, status := range model.Properties {
+		assert.NotEqual(t, "FAIL", status, name)
 	}
 }
 

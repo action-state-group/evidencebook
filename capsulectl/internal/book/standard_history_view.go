@@ -10,9 +10,10 @@ import (
 
 // The History card is a presentation module of capsule-viewer
 // (capsuleviewer.standard-history/v0, capsule-viewer#134 and #149): the page
-// for a standard_history/1 card this book serves (evidencebook#157). The book
-// offers it to the core's page builder (`capsulectl presentation list|build`)
-// in the handshake, as capsulectl-deal offers the deal view.
+// for a standard_history/1, /3 or /4 card this book serves (evidencebook#157,
+// #1075). The book offers it to the core's page builder (`capsulectl
+// presentation list|build`) in the handshake, as capsulectl-deal offers the
+// deal view.
 //
 // presentation.json is capsule-viewer's own handshake entry for the module,
 // copied from its release bundle (standard-history-module-vVERSION.tar.gz):

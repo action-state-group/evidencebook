@@ -77,6 +77,8 @@ body.cv-kit { margin: 0; }
 .cv-table caption { text-align: left; font-weight: 600; padding-bottom: var(--cv-space-2); }
 .cv-table th, .cv-table td { text-align: left; vertical-align: top; padding: var(--cv-space-2); border-bottom: 1px solid var(--cv-color-border); min-width: 0; }
 .cv-table th { color: var(--cv-color-text-muted); font-weight: 600; background: var(--cv-color-surface-sunken); }
+/* A column header is one short word: never broken mid-word to squeeze a wide table ("Ste" over "p"). */
+.cv-table th { overflow-wrap: normal; }
 @container (max-width: 40rem) {
   .cv-table, .cv-table tbody, .cv-table tr, .cv-table td { display: block; width: 100%; }
   .cv-table caption { display: block; }

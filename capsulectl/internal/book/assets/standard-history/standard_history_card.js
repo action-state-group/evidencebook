@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The History card, in the page: capsuleviewer.standard-history/v0, which
-// draws a standard_history/1 card (agent-action-capsule's
-// spec/standard-history-v0.md, cited as SH) as the History card (9b) canvas
+// draws a standard_history/1, /3 or /4 card (agent-action-capsule's
+// spec/standard-history-v0.md, cited as SH; /3 is its section 11, /4 its section 12) as the History card (9b) canvas
 // draws it, boards HistoryCard9b and SharedHistoryLaptop9b.
 //
 // One self-contained module-slot script (the presentation contract, as
@@ -17,7 +17,7 @@
 // card, as `capsulectl seal` seals a payload, with an x-standard-history/v0
 // block in its extensions carrying what the receiver holds beside the card,
 // each member optional: `policy` {digest, window} and `as_of` {anchor,
-// anchor_time, first_checkpoint_time}, under the names of AAC's reference
+// anchor_time, first_checkpoint_time, and for a /3 or /4 card coverage_start_time}, under the names of AAC's reference
 // check_card. `as_of` may also carry `checkpoint` (the anchor's cll-checkpoint
 // octets, hex, whose SHA-256 is the anchor) and `receipts` (1 to 64 hex
 // strings, each one cll-witness-receipt for the anchor, IP1 6.2.2): the
@@ -26,11 +26,12 @@
 // runs AAC's checkAnchorWitnessed under the reader's own witness list, never one
 // the bundle names (capsule-viewer#183). A block that also carries `deals` (SH 5.2's deal entries) is the
 // holder's own copy, never the card someone else is sent: the page draws it
-// under the PRIVATE banner and recounts the card from those entries. A shared
-// card shows its counts as the holder's statement (SH 6).
+// under the PRIVATE banner and recounts a /1 card from those entries. For a /3 or /4 card the
+// page has no shelf handover (SH 11.7), so it only says whether the entries add up to the card, and
+// counts_recompute stays NOT_CHECKED. A shared card shows its counts as the holder's statement (SH 6).
 //
 // checkCard is the twin of the reference (agent_action_capsule.standard_history
-// .check_card at agent-action-capsule 1037a1c): the same six properties, in
+// .check_card at agent-action-capsule 1037a1c for /1, 38f02a6 for /3, eeed5456 for /4): the same six properties, in
 // the same order, with the same statuses, but for one input JSON.parse cannot
 // tell apart (an assetScale written 2.0; see decade), and for the policy
 // digest and the anchor, compared with ===, which is Python's == for the strings
@@ -53,19 +54,26 @@
 (function (root) {
   "use strict";
 
-  var MANIFEST = {"spec_version": "aac.presentation-manifest/v0", "id": "capsuleviewer.standard-history/v0", "presentation_api": "aac.presentation-api/v0", "runtime_min": "0.1.0", "trust_class": "trusted-executable", "requires": {"bundle_kind": "evidence-bundle/v2", "extensions": {"required": ["x-standard-history/v0"]}}, "forbids": {"profiles": ["spec_version:report/v1", "spec_version:evaluation-summary/v1", "result_version:evidence-result-v0"], "extensions": ["composed/v1", "x-deal-v0", "x-history-selection/v0"]}, "audiences": ["*"], "formats": ["html"], "fallback": false, "priority": 1, "executable": {"carrier": "module-slot", "script_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "style_sha256": ["246cfdc8ae83e682a220a2c13cef8134c7515999365b33965d4e924bb871f3ea", "9b19b91af263a4a725337c5d802dbd196ab5a1db0096c7f90bae80449685c4f1"], "wording_sha256": "c61df39cf41510f95f9d77c2b3efdc3c03de3617f16b284e26d16842396efa02"}}; // @generated MANIFEST
-  var WORDS = {"module.title": "History card", "page.title": "History card", "title": "History card", "title.standard": "Standard", "window.months.one": "last month", "window.months": "last {n} months", "window.all": "everything", "window.dates": "{start} to {end}", "window.dates.all": "Everything up to {end}", "window.no_dates": "The {window} up to the snapshot the card is as of.", "month.1": "Jan", "month.2": "Feb", "month.3": "Mar", "month.4": "Apr", "month.5": "May", "month.6": "Jun", "month.7": "Jul", "month.8": "Aug", "month.9": "Sep", "month.10": "Oct", "month.11": "Nov", "month.12": "Dec", "date": "{month} {day}, {year}", "since": "{month} {year}", "banner.private.label": "PRIVATE", "banner.private.text": "This is your own copy of your History card, with the deal entries it is counted from. Do not forward this file: it is not the card to send. The card others get carries the counts only.", "lead.own": "Your agent helped you buy and sell with other people and their agents. This card is what others can learn about your agent, only as much as you choose to share. The card they get has exactly these counts.", "lead.shared": "This is the History card an agent's holder shares: counts of their deals in a window, and nothing about any one deal.", "card.kicker": "History card · standard", "holder.person": "A person's agent · a person stands behind it, as they declare", "holder.node": "A node's agent · its operator declares it", "holder.since": "keeping records since {month}", "total.of": "{n} of {of}", "total.lead.own": "deals where you had to come through went as agreed.", "total.lead.shared": "deals where the holder had to come through went as agreed.", "total.none": "No deal in this window counts on the card.", "outcome.held": "went as agreed", "outcome.did_not_hold": "didn't", "outcome.undecided": "we couldn't tell", "counts.statement": "These counts are the holder's own statement. This page does not hold the deal entries they are counted from, so it could not recount them.", "counts.statement.entries": "This copy carries the deal entries but not {what}, so the counts were not recounted: they are the holder's own statement.", "counts.recomputed": "Recounted here from the deal entries in this copy: every count matches.", "heading.roles": "Which side", "role.provided.own": "You sold or provided", "role.bought.own": "You bought from people", "role.provided.shared": "Sold or provided", "role.bought.shared": "Bought from people", "role.count": "in {n} of {of}", "count.of": "{n} of {of}", "sentence.did_not_hold": "{n} didn't.", "sentence.undecided": "{n} we couldn't tell.", "heading.sizes": "Size range", "sizes.note": "Each currency on its own: sizes in different currencies are never added up or converted.", "sizes.none": "No counted deal, so no size range.", "size.range": "{low} to under {high} {currency}", "size.zero": "zero amount, {currency}", "heading.happened": "The other side agreed it happened", "happened.stamped_by_both": "Stamped by both sides", "happened.receipt_only": "Your receipt only", "happened.receipt_only.shared": "The holder's receipt only", "happened.no_record": "No record", "happened.note": "Stamped by both sides means the book holds the other side's own record of the deal. A receipt only means the book holds the holder's own receipt, not the other side's record. No record means the book holds neither. A missing record is not a failure.", "heading.disputes": "Disputes", "disputes.not_recorded": "Disputes not recorded yet", "disputes.not_recorded.note": "This card does not record disputes yet, so it says nothing about whether there were any.", "disputes.raised.own": "You raised", "disputes.received.own": "Raised with you", "disputes.raised.shared": "The holder raised", "disputes.received.shared": "Raised with the holder", "disputes.outcomes": "How they ended, of {of}: still open {open} · for {who} {for} · against {who} {against} · split {split} · no finding {no_finding} · withdrawn {withdrawn}", "disputes.forums": "Where, of {of}: a rule both sides agreed {auto} · the network {network} · the payment rail {rail} · somewhere else {external}", "disputes.who.own": "you", "disputes.who.shared": "the holder", "heading.counts": "What is on the card", "counts.what.own": "What counts: deals where you had to come through for someone: pay afterwards, deliver, show up, describe it right.", "counts.what.shared": "What counts: deals where the holder had to come through for someone: pay afterwards, deliver, show up, describe it right.", "counts.not_counted.own": "Not counted: {n} of {of} deals in the window, shop purchases paid up front. Paying a shop up front takes no doing; anyone can. They stay in your book.", "counts.not_counted.shared": "Not counted: {n} of {of} deals in the window, shop purchases paid up front. They stay in the holder's book.", "counts.class_missing": "{n} of {of} counted deals don't say what kind of party they were with. They are counted.", "counts.not_on.own": "Not on it: your name, what you bought or sold, what you paid, who the other side was, anything outside the window.", "counts.not_on.shared": "Not on it: the holder's name, what they bought or sold, what they paid, who the other side was, anything outside the window.", "heading.proves": "What it proves", "proves.sealed": "The card says which snapshot of the holder's log it is as of, and this page checked it against the snapshot carried beside it.", "proves.add_up": "Every count sits inside its total, and the totals agree with each other.", "proves.recomputed": "The counts recount from the deal entries in this copy.", "heading.doesnt": "What it doesn't", "doesnt.who.person": "Who the holder is. Only that a person stands behind the agent, as they declare.", "doesnt.who.node": "Who runs the node. Only what its operator declares.", "doesnt.all": "That these are all the holder's deals. It is the window the holder's policy sets, and shop purchases are not counted.", "doesnt.one": "Anything about a single deal.", "doesnt.statement": "That the counts are right. Without the deal entries they are the holder's own statement.", "doesnt.witness": "That an outside witness saw the snapshot. A card from a default deal profile is signed by its holder. No outside witness recorded its snapshot: the holder has to choose a witness, and none is set by default.", "doesnt.signature": "That the holder's key signed it. This page does not check the signature.", "doesnt.next": "What the other side will do with it. That's up to their rules. Most deal small without it and ask for more before a big one.", "heading.say": "Tell your agent", "say.what_happened": "“What happened with the cleaner?”", "say.what_happened.note": "narrated by your agent from your records · it will offer an EvidenceBook version", "say.report": "“Make an EvidenceBook report”", "say.report.note": "sealed and checked: the same page anyone can verify", "say.receipt": "“Show me the receipt”", "say.receipt.note": "stamped: {n} of {of} deals · your agent’s receipt checks whether their record points at yours", "say.more_less": "“Share more history” · “Share less”", "say.attach": "“Attach my card when I buy or sell”", "say.who_asked": "“Who asked about me?”", "say.settings": "“Show me my sharing settings”", "stamp": "Policy {policy} · snapshot {anchor}", "heading.everything": "Everything on the card", "wording.provenance": "Words: {id} (sha256 {sha})", "refused.title": "This is not a standard History card", "refused.lead": "This card fails a check a standard card must pass, so none of its counts is shown.", "refused.failed": "What failed:", "refused.item": "Failed: {check}", "unreadable.title": "This History card can't be read", "unreadable.lead": "What travels beside the card can't be read, so none of its counts is shown.", "unverified.title": "This History card did not verify", "unverified.lead": "The file around the card did not pass this page's checks, so none of its counts is shown.", "heading.checks": "Which checks ran", "checks.lead": "Each check of the card, and whether this page ran it. A check that needs what the page doesn't hold says so.", "checks.column.check": "Check", "checks.column.status": "Result", "status.pass": "checked", "status.fail": "failed", "status.not_checked": "not checked here", "status.skipped": "not run: an earlier check failed", "property.card_form": "The card has exactly the members a standard card has", "property.counts_integral": "Every count is a whole number, never a fraction or a share", "property.denominator": "Every count carries its total, and the totals agree", "property.window_from_policy": "The window is the one the holder's policy sets", "property.as_of": "The card is as of the snapshot it names", "property.counts_recompute": "The counts recount from the deal entries", "property.anchor_inclusion": "An outside witness saw the snapshot", "checks.held_beside": "The policy and the snapshot this page checks against are the ones carried beside the card, as the holder states them.", "checks.not_held": "Not carried beside the card: {what}.", "checks.not_held.policy": "the policy", "checks.not_held.as_of": "the snapshot's time", "checks.not_held.deals": "the deal entries", "window.as_of": "as of {month} {day} {hh}:{mm} UTC", "lead.level": "Level they see: Standard · {window} · snapshot {date}", "card.not_counted": "{n} of {of} deals in the window are not counted.", "size.under": "under {amount}", "size.between": "{low} – {high}", "size.chip.all": "all as agreed", "size.chip.held": "{n} as agreed", "size.chip.did_not_hold": "{n} didn't", "size.chip.undecided": "{n} unsure", "doesnt.witness_counts": "That a witness checked the counts. A witness you accept recorded this snapshot; it did not check the counts.", "witness.line": "Snapshot recorded {month} {day}, {year} {hh}:{mm} UTC by {witness}", "witness.line.untimed": "Snapshot recorded by {witness}", "witness.came": "A witness receipt came with the card. This page has not checked it against a witness you accept.", "witness.list.heading": "Witnesses you accept", "witness.list.none": "None. Nothing in the card or its bundle can add one.", "witness.list.some": "{names}. Nothing in the card or its bundle can add one.", "witness.list.help": "A list of the witnesses you accept: their names and the hex DER public keys they sign receipts under. It stays on this page only and is gone when the page closes.", "witness.list.label": "Witness list (JSON)", "witness.list.save": "Save", "witness.list.reset": "Back to none", "witness.list.bad": "That is not a witness list, so nothing changed.", "property.anchor_witnessed": "A witness you accept recorded the snapshot", "signature.line": "Signed with key {key}…; this page checked the signature.", "signature.failed.title": "This History card's signature does not check", "signature.failed.lead": "The card names the key it is signed with, but its signature does not check under that key, so none of its counts is shown.", "doesnt.signature_key": "Whose key that is. The card names the key it is signed with; this page cannot tell who holds it.", "doesnt.signature_none": "That anyone signed it. The card carries no signature.", "property.signature": "The card's signature checks under the key it names"}; // @generated WORDS
-  var PACK = {"id": "capsuleviewer.wording.consumer-en/v0", "sha256": "c61df39cf41510f95f9d77c2b3efdc3c03de3617f16b284e26d16842396efa02"}; // @generated PACK
-  var KIT_CSS = "/* SPDX-License-Identifier: Apache-2.0 */\n/*\n * kit.css -- the presentation component kit's stylesheet.\n *\n * The token block below is generated from capsule_viewer/kit/tokens.py\n * (python -m capsule_viewer.kit tokens --write); tests/test_kit_tokens.py\n * fails if the two disagree. Every colour in the component rules is a\n * var(--cv-*) reference -- the same test refuses a literal colour outside the\n * generated block.\n *\n * Phone behaviour lives here, in the primitives: each responsive component is\n * its own size container and reflows on ITS width (@container), so a module\n * that places a MetricGrid or DataTable in a narrow column gets the phone\n * layout without writing a media query. Nothing in the kit scrolls the page\n * sideways: long tokens (digests, ids) wrap anywhere.\n */\n/* BEGIN GENERATED TOKENS (capsule_viewer.kit.tokens) -- do not edit by hand */\n:root {\n  --cv-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;\n  --cv-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;\n  --cv-font-size-sm: 0.8125rem;\n  --cv-font-size-md: 0.9375rem;\n  --cv-font-size-lg: 1.125rem;\n  --cv-line-height: 1.5;\n  --cv-space-1: 0.25rem;\n  --cv-space-2: 0.5rem;\n  --cv-space-3: 0.75rem;\n  --cv-space-4: 1rem;\n  --cv-space-5: 1.5rem;\n  --cv-radius: 0.5rem;\n  --cv-radius-pill: 999px;\n  --cv-color-text: #1b1f27;\n  --cv-color-text-muted: #4d5564;\n  --cv-color-surface: #ffffff;\n  --cv-color-surface-sunken: #f4f5f7;\n  --cv-color-border: #d3d7de;\n  --cv-color-accent: #2445a8;\n  --cv-color-positive-fg: #17603a;\n  --cv-color-positive-bg: #e6f3eb;\n  --cv-color-negative-fg: #a31d1d;\n  --cv-color-negative-bg: #fbe9e9;\n  --cv-color-caution-fg: #6f4700;\n  --cv-color-caution-bg: #fcf1dc;\n  --cv-color-neutral-fg: #3d4452;\n  --cv-color-neutral-bg: #eceef2;\n  --cv-color-info-fg: #1f3c94;\n  --cv-color-info-bg: #e7ecfb;\n}\n/* END GENERATED TOKENS */\n\n.cv-kit { font-family: var(--cv-font-sans); font-size: var(--cv-font-size-md); line-height: var(--cv-line-height); color: var(--cv-color-text); background: var(--cv-color-surface); overflow-wrap: anywhere; }\nbody.cv-kit { margin: 0; }\n.cv-page { max-width: 60rem; margin: 0 auto; padding: var(--cv-space-5) var(--cv-space-4); }\n.cv-kit *, .cv-kit *::before, .cv-kit *::after { box-sizing: border-box; }\n.cv-kit :where(h1, h2, h3, h4, p, ul, ol, dl, dd, figure) { margin: 0; padding: 0; }\n.cv-kit :where(ul, ol) { list-style: none; }\n.cv-mono { font-family: var(--cv-font-mono); font-size: var(--cv-font-size-sm); }\n.cv-muted { color: var(--cv-color-text-muted); }\n\n/* Section */\n.cv-section { margin: 0 0 var(--cv-space-5); }\n.cv-section__title { font-size: var(--cv-font-size-lg); font-weight: 600; margin-bottom: var(--cv-space-3); }\n.cv-section__body { display: flex; flex-direction: column; gap: var(--cv-space-3); min-width: 0; }\n\n/* MetricGrid: as many columns as fit, never narrower than the label needs; one column on a phone. */\n.cv-metrics-wrap { container-type: inline-size; }\n.cv-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr)); gap: var(--cv-space-3); }\n.cv-metric { min-width: 0; border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }\n.cv-metric__label { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); }\n.cv-metric__value { font-size: var(--cv-font-size-lg); font-weight: 600; }\n.cv-metric__note { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); }\n@container (max-width: 24rem) { .cv-metrics { grid-template-columns: 1fr; } }\n\n/* DataTable: a real table when there is room; stacked label/value rows when there is not. */\n.cv-table-wrap { container-type: inline-size; }\n.cv-table { width: 100%; border-collapse: collapse; font-size: var(--cv-font-size-sm); }\n.cv-table caption { text-align: left; font-weight: 600; padding-bottom: var(--cv-space-2); }\n.cv-table th, .cv-table td { text-align: left; vertical-align: top; padding: var(--cv-space-2); border-bottom: 1px solid var(--cv-color-border); min-width: 0; }\n.cv-table th { color: var(--cv-color-text-muted); font-weight: 600; background: var(--cv-color-surface-sunken); }\n@container (max-width: 40rem) {\n  .cv-table, .cv-table tbody, .cv-table tr, .cv-table td { display: block; width: 100%; }\n  .cv-table caption { display: block; }\n  .cv-table thead { display: none; }\n  .cv-table tr { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); margin-bottom: var(--cv-space-2); }\n  .cv-table td { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--cv-space-2); }\n  .cv-table td::before { content: attr(data-label); color: var(--cv-color-text-muted); font-weight: 600; }\n  .cv-table tr > td:last-child { border-bottom: 0; }\n}\n\n/* CalendarGrid: always seven columns; the cells shrink, the text wraps. */\n.cv-calendar { font-size: var(--cv-font-size-sm); }\n.cv-calendar__title { font-weight: 600; margin-bottom: var(--cv-space-2); }\n.cv-calendar__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }\n.cv-calendar__dow { text-align: center; color: var(--cv-color-text-muted); font-weight: 600; padding: var(--cv-space-1) 0; }\n.cv-calendar__day { min-width: 0; min-height: 3rem; border: 1px solid var(--cv-color-border); border-radius: 4px; padding: 2px var(--cv-space-1); background: var(--cv-color-surface); }\n.cv-calendar__day--blank { border-color: transparent; background: transparent; }\n.cv-calendar__num { font-weight: 600; }\n.cv-calendar__mark { display: block; font-size: 0.6875rem; line-height: 1.25; border-radius: 3px; padding: 0 2px; }\n\n/* Tones shared by badges, pills, calendar marks and verification outcomes. */\n.cv-tone--positive { color: var(--cv-color-positive-fg); background: var(--cv-color-positive-bg); }\n.cv-tone--negative { color: var(--cv-color-negative-fg); background: var(--cv-color-negative-bg); }\n.cv-tone--caution { color: var(--cv-color-caution-fg); background: var(--cv-color-caution-bg); }\n.cv-tone--neutral { color: var(--cv-color-neutral-fg); background: var(--cv-color-neutral-bg); }\n.cv-tone--info { color: var(--cv-color-info-fg); background: var(--cv-color-info-bg); }\n\n/* Receipt sides: ours blue, theirs amber (always \"as received\"), a missing side grey and dashed. No side is ever the negative tone: one side missing is not a finding. */\n.cv-sides { display: flex; flex-direction: column; gap: var(--cv-space-2); margin: 0 0 var(--cv-space-3); }\n.cv-sides__case { padding: var(--cv-space-1) var(--cv-space-3); border-radius: var(--cv-radius); font-weight: 600; font-size: var(--cv-font-size-sm); }\n.cv-half { min-width: 0; border-radius: var(--cv-radius); padding: var(--cv-space-1) var(--cv-space-3) var(--cv-space-2); border: 1px solid var(--cv-color-border); }\n.cv-half > .cv-section { margin-bottom: 0; }\n.cv-half__label { font-size: var(--cv-font-size-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cv-color-text-muted); margin-bottom: var(--cv-space-1); }\n.cv-half--ours { background: var(--cv-color-info-bg); border-color: var(--cv-color-info-fg); }\n.cv-half--theirs { background: var(--cv-color-caution-bg); border-color: var(--cv-color-caution-fg); }\n.cv-half--missing { background: var(--cv-color-neutral-bg); border: 1px dashed var(--cv-color-neutral-fg); }\n.cv-actions { display: flex; flex-wrap: wrap; column-gap: var(--cv-space-3); font-size: var(--cv-font-size-sm); font-weight: 600; color: var(--cv-color-info-fg); }\n.cv-actions__heading { font-weight: 400; color: var(--cv-color-text-muted); }\n\n/* DisclosureBadge and VerdictPill. The pill is scoped to the kit wrapper: the page shell's verification banner is a .cv-pill outside it, and a module's stylesheet must not restyle the banner (the frame check refuses the module). */\n.cv-badge, .cv-kit .cv-pill { display: inline-block; max-width: 100%; font-size: var(--cv-font-size-sm); font-weight: 600; border-radius: var(--cv-radius-pill); padding: 0 var(--cv-space-2); border: 1px solid currentColor; }\n.cv-badge { letter-spacing: 0.02em; }\n/* A state label breaks between words, never inside one. */\n.cv-badge, .cv-kit .cv-pill { overflow-wrap: normal; }\n.cv-refusal { color: var(--cv-color-negative-fg); background: var(--cv-color-negative-bg); border: 1px dashed currentColor; }\n\n/* CitationList */\n.cv-citations { display: flex; flex-direction: column; gap: var(--cv-space-2); counter-reset: cv-cite; }\n.cv-citation { counter-increment: cv-cite; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--cv-space-2); }\n.cv-citation::before { content: \"[\" counter(cv-cite) \"]\"; color: var(--cv-color-text-muted); }\n.cv-citation__ref { display: block; color: var(--cv-color-text-muted); }\n\n/* Drilldown: native details/summary -- opens with no script; prints open. */\n.cv-drilldown { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); background: var(--cv-color-surface); }\n.cv-drilldown > summary { cursor: pointer; padding: var(--cv-space-2) var(--cv-space-3); font-weight: 600; color: var(--cv-color-accent); }\n.cv-drilldown__body { padding: 0 var(--cv-space-3) var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-2); min-width: 0; }\n\n/* EvidenceDetails */\n.cv-evidence { display: flex; flex-direction: column; gap: var(--cv-space-2); }\n.cv-evidence__item { border-left: 3px solid var(--cv-color-border); padding-left: var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-1); }\n.cv-evidence__head { display: flex; flex-wrap: wrap; gap: var(--cv-space-2); align-items: baseline; }\n.cv-evidence__label { font-weight: 600; }\n\n/* VerificationDetails */\n.cv-verification { display: flex; flex-direction: column; gap: var(--cv-space-2); }\n.cv-verification__outcome { border-radius: var(--cv-radius); padding: var(--cv-space-2) var(--cv-space-3); font-weight: 600; }\n.cv-checks { display: flex; flex-direction: column; gap: var(--cv-space-1); }\n.cv-check { display: flex; flex-wrap: wrap; gap: var(--cv-space-2); align-items: baseline; }\n\n/* PartyCard */\n.cv-party { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }\n.cv-party__role { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n.cv-party__name { font-weight: 600; }\n.cv-party__facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--cv-space-1) var(--cv-space-3); margin-top: var(--cv-space-2); font-size: var(--cv-font-size-sm); }\n.cv-party__facts dt { color: var(--cv-color-text-muted); }\n.cv-party-wrap { container-type: inline-size; }\n@container (max-width: 20rem) { .cv-party__facts { grid-template-columns: minmax(0, 1fr); } }\n\n/* Timeline: entries in the order given. */\n.cv-timeline { border-left: 2px solid var(--cv-color-border); padding-left: var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-3); }\n.cv-timeline__at { display: block; color: var(--cv-color-text-muted); }\n.cv-timeline__label { font-weight: 600; }\n\n@media print {\n  .cv-kit { background: none; }\n  .cv-drilldown > summary { color: var(--cv-color-text); }\n  /* A closed drilldown still prints its body (Chromium's details-content). */\n  .cv-drilldown::details-content { content-visibility: visible; display: block; }\n  .cv-section, .cv-metric, .cv-party, .cv-table tr, .cv-evidence__item { break-inside: avoid; }\n}\n"; // @generated KIT_CSS
+  var MANIFEST = {"spec_version": "aac.presentation-manifest/v0", "id": "capsuleviewer.standard-history/v0", "presentation_api": "aac.presentation-api/v0", "runtime_min": "0.1.0", "trust_class": "trusted-executable", "requires": {"bundle_kind": "evidence-bundle/v2", "extensions": {"required": ["x-standard-history/v0"]}}, "forbids": {"profiles": ["spec_version:report/v1", "spec_version:evaluation-summary/v1", "result_version:evidence-result-v0"], "extensions": ["composed/v1", "x-deal-v0", "x-history-selection/v0"]}, "audiences": ["*"], "formats": ["html"], "fallback": false, "priority": 1, "executable": {"carrier": "module-slot", "script_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "style_sha256": ["1b600ce6847453be63fd2613dbd07a9f6edc9ec9fe3ac6386ffece284c5ec73c", "9b19b91af263a4a725337c5d802dbd196ab5a1db0096c7f90bae80449685c4f1"], "wording_sha256": "a3a9d1430e9d99bee0ef18fa10db678c9874640519a1450f2f7edf67450dfa17"}}; // @generated MANIFEST
+  var WORDS = {"module.title": "History card", "page.title": "History card", "title": "History card", "title.standard": "Standard", "window.months.one": "last month", "window.months": "last {n} months", "window.all": "everything", "window.dates": "{start} to {end}", "window.dates.all": "Everything up to {end}", "window.no_dates": "The {window} up to the snapshot the card is as of.", "month.1": "Jan", "month.2": "Feb", "month.3": "Mar", "month.4": "Apr", "month.5": "May", "month.6": "Jun", "month.7": "Jul", "month.8": "Aug", "month.9": "Sep", "month.10": "Oct", "month.11": "Nov", "month.12": "Dec", "date": "{month} {day}, {year}", "since": "{month} {year}", "banner.private.label": "PRIVATE", "banner.private.text": "This is your own copy of your History card, with the deal entries it is counted from. Do not forward this file: it is not the card to send. The card others get carries the counts only.", "lead.own": "Your agent helped you buy and sell with other people and their agents. This card is what others can learn about your agent, only as much as you choose to share. The card they get has exactly these counts.", "lead.shared": "This is the History card an agent's holder shares: counts of their deals in a window, and nothing about any one deal.", "card.kicker": "History card · standard", "holder.person": "A person's agent · a person stands behind it, as they declare", "holder.node": "A node's agent · its operator declares it", "holder.since": "keeping records since {month}", "total.of": "{n} of {of}", "total.lead.own": "deals where you had to come through went as agreed.", "total.lead.shared": "deals where the holder had to come through went as agreed.", "total.none": "No deal in this window counts on the card.", "outcome.held": "went as agreed", "outcome.did_not_hold": "didn't", "outcome.undecided": "we couldn't tell", "counts.statement": "These counts are the holder's own statement. This page does not hold the deal entries they are counted from, so it could not recount them.", "counts.statement.entries": "This copy carries the deal entries but not {what}, so the counts were not recounted: they are the holder's own statement.", "counts.recomputed": "Recounted here from the deal entries in this copy: every count matches.", "heading.roles": "Which side", "role.provided.own": "You sold or provided", "role.bought.own": "You bought from people", "role.provided.shared": "Sold or provided", "role.bought.shared": "Bought from people", "role.count": "in {n} of {of}", "count.of": "{n} of {of}", "sentence.did_not_hold": "{n} didn't.", "sentence.undecided": "{n} we couldn't tell.", "heading.sizes": "Size range", "sizes.note": "Each currency on its own: sizes in different currencies are never added up or converted.", "sizes.none": "No counted deal, so no size range.", "size.range": "{low} to under {high} {currency}", "size.zero": "zero amount, {currency}", "heading.happened": "The other side agreed it happened", "happened.stamped_by_both": "Stamped by both sides", "happened.receipt_only": "Your receipt only", "happened.receipt_only.shared": "The holder's receipt only", "happened.no_record": "No record", "happened.note": "Stamped by both sides means the book holds the other side's own record of the deal. A receipt only means the book holds the holder's own receipt, not the other side's record. No record means the book holds neither. A missing record is not a failure.", "heading.disputes": "Disputes", "disputes.not_recorded": "Disputes not recorded yet", "disputes.not_recorded.note": "This card does not record disputes yet, so it says nothing about whether there were any.", "disputes.raised.own": "You raised", "disputes.received.own": "Raised with you", "disputes.raised.shared": "The holder raised", "disputes.received.shared": "Raised with the holder", "disputes.outcomes": "How they ended, of {of}: still open {open} · for {who} {for} · against {who} {against} · split {split} · no finding {no_finding} · withdrawn {withdrawn}", "disputes.forums": "Where, of {of}: a rule both sides agreed {auto} · the network {network} · the payment rail {rail} · somewhere else {external}", "disputes.who.own": "you", "disputes.who.shared": "the holder", "heading.counts": "What is on the card", "counts.what.own": "What counts: deals where you had to come through for someone: pay afterwards, deliver, show up, describe it right.", "counts.what.shared": "What counts: deals where the holder had to come through for someone: pay afterwards, deliver, show up, describe it right.", "counts.not_counted.own": "Not counted: {n} of {of} deals in the window, shop purchases paid up front. Paying a shop up front takes no doing; anyone can. They stay in your book.", "counts.not_counted.shared": "Not counted: {n} of {of} deals in the window, shop purchases paid up front. They stay in the holder's book.", "counts.class_missing": "{n} of {of} counted deals don't say what kind of party they were with. They are counted.", "counts.not_on.own": "Not on it: your name, what you bought or sold, what you paid, who the other side was, anything outside the window.", "counts.not_on.shared": "Not on it: the holder's name, what they bought or sold, what they paid, who the other side was, anything outside the window.", "heading.proves": "What it proves", "proves.sealed": "The card says which snapshot of the holder's log it is as of, and this page checked it against the snapshot carried beside it.", "proves.add_up": "Every count sits inside its total, and the totals agree with each other.", "proves.recomputed": "The counts recount from the deal entries in this copy.", "heading.doesnt": "What it doesn't", "doesnt.who.person": "Who the holder is. Only that a person stands behind the agent, as they declare.", "doesnt.who.node": "Who runs the node. Only what its operator declares.", "doesnt.all": "That these are all the holder's deals. It is the window the holder's policy sets, and shop purchases are not counted.", "doesnt.one": "Anything about a single deal.", "doesnt.statement": "That the counts are right. Without the deal entries they are the holder's own statement.", "doesnt.witness": "That an outside witness saw the snapshot. A card from a default deal profile is signed by its holder. No outside witness recorded its snapshot: the holder has to choose a witness, and none is set by default.", "doesnt.signature": "That the holder's key signed it. This page does not check the signature.", "doesnt.next": "What the other side will do with it. That's up to their rules. Most deal small without it and ask for more before a big one.", "heading.say": "Tell your agent", "say.what_happened": "“What happened with the cleaner?”", "say.what_happened.note": "narrated by your agent from your records · it will offer an EvidenceBook version", "say.report": "“Make an EvidenceBook report”", "say.report.note": "sealed and checked: the same page anyone can verify", "say.receipt": "“Show me the receipt”", "say.receipt.note": "stamped: {n} of {of} deals · your agent’s receipt checks whether their record points at yours", "say.more_less": "“Share more history” · “Share less”", "say.attach": "“Attach my card when I buy or sell”", "say.who_asked": "“Who asked about me?”", "say.settings": "“Show me my sharing settings”", "stamp": "Policy {policy} · snapshot {anchor}", "heading.everything": "Everything on the card", "wording.provenance": "Words: {id} (sha256 {sha})", "refused.title": "This is not a standard History card", "refused.lead": "This card fails a check a standard card must pass, so none of its counts is shown.", "refused.failed": "What failed:", "refused.item": "Failed: {check}", "unreadable.title": "This History card can't be read", "unreadable.lead": "What travels beside the card can't be read, so none of its counts is shown.", "unverified.title": "This History card did not verify", "unverified.lead": "The file around the card did not pass this page's checks, so none of its counts is shown.", "heading.checks": "Which checks ran", "checks.lead": "Each check of the card, and whether this page ran it. A check that needs what the page doesn't hold says so.", "checks.column.check": "Check", "checks.column.status": "Result", "status.pass": "checked", "status.fail": "failed", "status.not_checked": "not checked here", "status.skipped": "not run: an earlier check failed", "property.card_form": "The card has exactly the members a standard card has", "property.counts_integral": "Every count is a whole number, never a fraction or a share", "property.denominator": "Every count carries its total, and the totals agree", "property.window_from_policy": "The window is the one the holder's policy sets", "property.as_of": "The card is as of the snapshot it names", "property.counts_recompute": "The counts recount from the deal entries", "property.anchor_inclusion": "An outside witness saw the snapshot", "checks.held_beside": "The policy and the snapshot this page checks against are the ones carried beside the card, as the holder states them.", "checks.not_held": "Not carried beside the card: {what}.", "checks.not_held.policy": "the policy", "checks.not_held.as_of": "the snapshot's time", "checks.not_held.deals": "the deal entries", "window.as_of": "as of {month} {day} {hh}:{mm} UTC", "lead.level": "Level they see: Standard · {window} · snapshot {date}", "card.not_counted": "{n} of {of} deals in the window are not counted.", "size.under": "under {amount}", "size.between": "{low} – {high}", "size.chip.all": "all as agreed", "size.chip.held": "{n} as agreed", "size.chip.did_not_hold": "{n} didn't", "size.chip.undecided": "{n} unsure", "doesnt.witness_counts": "That a witness checked the counts. A witness you accept recorded this snapshot; it did not check the counts.", "witness.line": "Snapshot recorded {month} {day}, {year} {hh}:{mm} UTC by {witness}", "witness.line.untimed": "Snapshot recorded by {witness}", "witness.came": "A witness receipt came with the card. This page has not checked it against a witness you accept.", "witness.list.heading": "Services you accept", "witness.list.none": "None. Nothing in the card or its bundle can add one.", "witness.list.some": "{names}. Nothing in the card or its bundle can add one.", "witness.list.help": "A list of the witnesses and transparency services you accept (the same list checks a snapshot's witness receipt and a card's registration): their names and the hex DER public keys they sign receipts under. It stays on this page only and is gone when the page closes.", "witness.list.label": "Service list (JSON)", "witness.list.save": "Save", "witness.list.reset": "Back to none", "witness.list.bad": "That is not a service list, so nothing changed.", "property.anchor_witnessed": "A witness you accept recorded the snapshot", "signature.line": "Signed with key {key}…; this page checked the signature.", "signature.failed.title": "This History card's signature does not check", "signature.failed.lead": "The card names the key it is signed with, but its signature does not check under that key, so none of its counts is shown.", "doesnt.signature_key": "Whose key that is. The card names the key it is signed with; this page cannot tell who holds it.", "doesnt.signature_none": "That anyone signed it. The card carries no signature.", "property.signature": "The card's signature checks under the key it names", "v3.remedied": "Put right: {n} of {of} deals that didn't go as agreed. Every part that was not met was made good.", "v3.not_honoured": "Ruling not honoured: {n} of {of} deals that didn't go as agreed. A ruling ordered something and the date passed without it being done.", "v3.coverage": "The holder states these counts are complete from {start}. Before that, they cover the deals carried over when the holder moved to this log.", "v3.local_times": "{n} of {of} counted deals rest at least partly on times no witness named in the deal recorded. Those are never shown as timed by a witness.", "v4.local_times": "{n} of {of} counted deals rest at least partly on times no witness named in the deal recorded, or have no time from a witness at all. None of them is shown as timed by a witness.", "doesnt.all.v4": "That these are all the holder's deals. It is the window the holder's policy sets, shop purchases are not counted, and before {start} the counts are the holder's statement.", "doesnt.all.v4.month": "That these are all the holder's deals. It is the window the holder's policy sets, shop purchases are not counted, and before some day in {start} the counts are the holder's statement.", "counts.not_counted.reasons": "Why, of the {of} not counted: {shop} shop purchases paid up front, and {left_out} left out because no witness named in the agreement timed their records.", "doesnt.all.v3": "That these are all the holder's deals. It is the window the holder's policy sets, shop purchases and deals left out are not counted, and before {start} the counts are the holder's statement.", "sizes.unpriced": "No amount recorded", "sizes.none.priced": "No counted deal has a recorded amount.", "counts.entries.v3": "The deal entries in this copy add up to these counts. This page did not check them against the holder's whole log, so the counts stay the holder's own statement.", "proves.entries.v3": "The deal entries in this copy add up to the counts. This page did not check them against the holder's whole log.", "doesnt.statement.v3": "That the counts are right. This page did not check them against the holder's whole log, so they are the holder's own statement.", "counts.not_counted.v3": "Not counted: {n} of {of} deals in the window.", "v3.coverage.month": "The holder states these counts are complete from some day in {start}. Before that, they cover the deals carried over when the holder moved to this log.", "doesnt.all.v3.month": "That these are all the holder's deals. It is the window the holder's policy sets, shop purchases and deals left out are not counted, and before some day in {start} the counts are the holder's statement.", "registration.line": "Registered with {service} at {month} {day}, {year} {hh}:{mm} UTC by the key this card is signed with", "registration.line.untimed": "Registered with {service} by the key this card is signed with", "registration.note": "This shows the card existed by then. It does not show that the service checked the counts, the deals or the anchor, or that this is the only card that key registered.", "registration.came": "A card statement came with the card. This page has not checked it against a service you accept.", "registration.failed": "A card statement came with the card and failed its check. The card's own checks above are unaffected.", "doesnt.registration": "That the service checked anything in the card, or that this is the only card its key registered. A service you accept logged a statement about this card; that is all it shows.", "property.card_registered": "Registration with a service you accept", "registration.note.untimed": "This shows the card existed when the service logged it; the Receipt states no time. It does not show that the service checked the counts, the deals or the anchor, or that this is the only card that key registered."}; // @generated WORDS
+  var PACK = {"id": "capsuleviewer.wording.consumer-en/v0", "sha256": "a3a9d1430e9d99bee0ef18fa10db678c9874640519a1450f2f7edf67450dfa17"}; // @generated PACK
+  var KIT_CSS = "/* SPDX-License-Identifier: Apache-2.0 */\n/*\n * kit.css -- the presentation component kit's stylesheet.\n *\n * The token block below is generated from capsule_viewer/kit/tokens.py\n * (python -m capsule_viewer.kit tokens --write); tests/test_kit_tokens.py\n * fails if the two disagree. Every colour in the component rules is a\n * var(--cv-*) reference -- the same test refuses a literal colour outside the\n * generated block.\n *\n * Phone behaviour lives here, in the primitives: each responsive component is\n * its own size container and reflows on ITS width (@container), so a module\n * that places a MetricGrid or DataTable in a narrow column gets the phone\n * layout without writing a media query. Nothing in the kit scrolls the page\n * sideways: long tokens (digests, ids) wrap anywhere.\n */\n/* BEGIN GENERATED TOKENS (capsule_viewer.kit.tokens) -- do not edit by hand */\n:root {\n  --cv-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;\n  --cv-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;\n  --cv-font-size-sm: 0.8125rem;\n  --cv-font-size-md: 0.9375rem;\n  --cv-font-size-lg: 1.125rem;\n  --cv-line-height: 1.5;\n  --cv-space-1: 0.25rem;\n  --cv-space-2: 0.5rem;\n  --cv-space-3: 0.75rem;\n  --cv-space-4: 1rem;\n  --cv-space-5: 1.5rem;\n  --cv-radius: 0.5rem;\n  --cv-radius-pill: 999px;\n  --cv-color-text: #1b1f27;\n  --cv-color-text-muted: #4d5564;\n  --cv-color-surface: #ffffff;\n  --cv-color-surface-sunken: #f4f5f7;\n  --cv-color-border: #d3d7de;\n  --cv-color-accent: #2445a8;\n  --cv-color-positive-fg: #17603a;\n  --cv-color-positive-bg: #e6f3eb;\n  --cv-color-negative-fg: #a31d1d;\n  --cv-color-negative-bg: #fbe9e9;\n  --cv-color-caution-fg: #6f4700;\n  --cv-color-caution-bg: #fcf1dc;\n  --cv-color-neutral-fg: #3d4452;\n  --cv-color-neutral-bg: #eceef2;\n  --cv-color-info-fg: #1f3c94;\n  --cv-color-info-bg: #e7ecfb;\n}\n/* END GENERATED TOKENS */\n\n.cv-kit { font-family: var(--cv-font-sans); font-size: var(--cv-font-size-md); line-height: var(--cv-line-height); color: var(--cv-color-text); background: var(--cv-color-surface); overflow-wrap: anywhere; }\nbody.cv-kit { margin: 0; }\n.cv-page { max-width: 60rem; margin: 0 auto; padding: var(--cv-space-5) var(--cv-space-4); }\n.cv-kit *, .cv-kit *::before, .cv-kit *::after { box-sizing: border-box; }\n.cv-kit :where(h1, h2, h3, h4, p, ul, ol, dl, dd, figure) { margin: 0; padding: 0; }\n.cv-kit :where(ul, ol) { list-style: none; }\n.cv-mono { font-family: var(--cv-font-mono); font-size: var(--cv-font-size-sm); }\n.cv-muted { color: var(--cv-color-text-muted); }\n\n/* Section */\n.cv-section { margin: 0 0 var(--cv-space-5); }\n.cv-section__title { font-size: var(--cv-font-size-lg); font-weight: 600; margin-bottom: var(--cv-space-3); }\n.cv-section__body { display: flex; flex-direction: column; gap: var(--cv-space-3); min-width: 0; }\n\n/* MetricGrid: as many columns as fit, never narrower than the label needs; one column on a phone. */\n.cv-metrics-wrap { container-type: inline-size; }\n.cv-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr)); gap: var(--cv-space-3); }\n.cv-metric { min-width: 0; border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }\n.cv-metric__label { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); }\n.cv-metric__value { font-size: var(--cv-font-size-lg); font-weight: 600; }\n.cv-metric__note { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); }\n@container (max-width: 24rem) { .cv-metrics { grid-template-columns: 1fr; } }\n\n/* DataTable: a real table when there is room; stacked label/value rows when there is not. */\n.cv-table-wrap { container-type: inline-size; }\n.cv-table { width: 100%; border-collapse: collapse; font-size: var(--cv-font-size-sm); }\n.cv-table caption { text-align: left; font-weight: 600; padding-bottom: var(--cv-space-2); }\n.cv-table th, .cv-table td { text-align: left; vertical-align: top; padding: var(--cv-space-2); border-bottom: 1px solid var(--cv-color-border); min-width: 0; }\n.cv-table th { color: var(--cv-color-text-muted); font-weight: 600; background: var(--cv-color-surface-sunken); }\n/* A column header is one short word: never broken mid-word to squeeze a wide table (\"Ste\" over \"p\"). */\n.cv-table th { overflow-wrap: normal; }\n@container (max-width: 40rem) {\n  .cv-table, .cv-table tbody, .cv-table tr, .cv-table td { display: block; width: 100%; }\n  .cv-table caption { display: block; }\n  .cv-table thead { display: none; }\n  .cv-table tr { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); margin-bottom: var(--cv-space-2); }\n  .cv-table td { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--cv-space-2); }\n  .cv-table td::before { content: attr(data-label); color: var(--cv-color-text-muted); font-weight: 600; }\n  .cv-table tr > td:last-child { border-bottom: 0; }\n}\n\n/* CalendarGrid: always seven columns; the cells shrink, the text wraps. */\n.cv-calendar { font-size: var(--cv-font-size-sm); }\n.cv-calendar__title { font-weight: 600; margin-bottom: var(--cv-space-2); }\n.cv-calendar__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }\n.cv-calendar__dow { text-align: center; color: var(--cv-color-text-muted); font-weight: 600; padding: var(--cv-space-1) 0; }\n.cv-calendar__day { min-width: 0; min-height: 3rem; border: 1px solid var(--cv-color-border); border-radius: 4px; padding: 2px var(--cv-space-1); background: var(--cv-color-surface); }\n.cv-calendar__day--blank { border-color: transparent; background: transparent; }\n.cv-calendar__num { font-weight: 600; }\n.cv-calendar__mark { display: block; font-size: 0.6875rem; line-height: 1.25; border-radius: 3px; padding: 0 2px; }\n\n/* Tones shared by badges, pills, calendar marks and verification outcomes. */\n.cv-tone--positive { color: var(--cv-color-positive-fg); background: var(--cv-color-positive-bg); }\n.cv-tone--negative { color: var(--cv-color-negative-fg); background: var(--cv-color-negative-bg); }\n.cv-tone--caution { color: var(--cv-color-caution-fg); background: var(--cv-color-caution-bg); }\n.cv-tone--neutral { color: var(--cv-color-neutral-fg); background: var(--cv-color-neutral-bg); }\n.cv-tone--info { color: var(--cv-color-info-fg); background: var(--cv-color-info-bg); }\n\n/* Receipt sides: ours blue, theirs amber (always \"as received\"), a missing side grey and dashed. No side is ever the negative tone: one side missing is not a finding. */\n.cv-sides { display: flex; flex-direction: column; gap: var(--cv-space-2); margin: 0 0 var(--cv-space-3); }\n.cv-sides__case { padding: var(--cv-space-1) var(--cv-space-3); border-radius: var(--cv-radius); font-weight: 600; font-size: var(--cv-font-size-sm); }\n.cv-half { min-width: 0; border-radius: var(--cv-radius); padding: var(--cv-space-1) var(--cv-space-3) var(--cv-space-2); border: 1px solid var(--cv-color-border); }\n.cv-half > .cv-section { margin-bottom: 0; }\n.cv-half__label { font-size: var(--cv-font-size-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cv-color-text-muted); margin-bottom: var(--cv-space-1); }\n.cv-half--ours { background: var(--cv-color-info-bg); border-color: var(--cv-color-info-fg); }\n.cv-half--theirs { background: var(--cv-color-caution-bg); border-color: var(--cv-color-caution-fg); }\n.cv-half--missing { background: var(--cv-color-neutral-bg); border: 1px dashed var(--cv-color-neutral-fg); }\n.cv-actions { display: flex; flex-wrap: wrap; column-gap: var(--cv-space-3); font-size: var(--cv-font-size-sm); font-weight: 600; color: var(--cv-color-info-fg); }\n.cv-actions__heading { font-weight: 400; color: var(--cv-color-text-muted); }\n\n/* DisclosureBadge and VerdictPill. The pill is scoped to the kit wrapper: the page shell's verification banner is a .cv-pill outside it, and a module's stylesheet must not restyle the banner (the frame check refuses the module). */\n.cv-badge, .cv-kit .cv-pill { display: inline-block; max-width: 100%; font-size: var(--cv-font-size-sm); font-weight: 600; border-radius: var(--cv-radius-pill); padding: 0 var(--cv-space-2); border: 1px solid currentColor; }\n.cv-badge { letter-spacing: 0.02em; }\n/* A state label breaks between words, never inside one. */\n.cv-badge, .cv-kit .cv-pill { overflow-wrap: normal; }\n.cv-refusal { color: var(--cv-color-negative-fg); background: var(--cv-color-negative-bg); border: 1px dashed currentColor; }\n\n/* CitationList */\n.cv-citations { display: flex; flex-direction: column; gap: var(--cv-space-2); counter-reset: cv-cite; }\n.cv-citation { counter-increment: cv-cite; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--cv-space-2); }\n.cv-citation::before { content: \"[\" counter(cv-cite) \"]\"; color: var(--cv-color-text-muted); }\n.cv-citation__ref { display: block; color: var(--cv-color-text-muted); }\n\n/* Drilldown: native details/summary -- opens with no script; prints open. */\n.cv-drilldown { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); background: var(--cv-color-surface); }\n.cv-drilldown > summary { cursor: pointer; padding: var(--cv-space-2) var(--cv-space-3); font-weight: 600; color: var(--cv-color-accent); }\n.cv-drilldown__body { padding: 0 var(--cv-space-3) var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-2); min-width: 0; }\n\n/* EvidenceDetails */\n.cv-evidence { display: flex; flex-direction: column; gap: var(--cv-space-2); }\n.cv-evidence__item { border-left: 3px solid var(--cv-color-border); padding-left: var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-1); }\n.cv-evidence__head { display: flex; flex-wrap: wrap; gap: var(--cv-space-2); align-items: baseline; }\n.cv-evidence__label { font-weight: 600; }\n\n/* VerificationDetails */\n.cv-verification { display: flex; flex-direction: column; gap: var(--cv-space-2); }\n.cv-verification__outcome { border-radius: var(--cv-radius); padding: var(--cv-space-2) var(--cv-space-3); font-weight: 600; }\n.cv-checks { display: flex; flex-direction: column; gap: var(--cv-space-1); }\n.cv-check { display: flex; flex-wrap: wrap; gap: var(--cv-space-2); align-items: baseline; }\n\n/* PartyCard */\n.cv-party { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }\n.cv-party__role { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n.cv-party__name { font-weight: 600; }\n.cv-party__facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--cv-space-1) var(--cv-space-3); margin-top: var(--cv-space-2); font-size: var(--cv-font-size-sm); }\n.cv-party__facts dt { color: var(--cv-color-text-muted); }\n.cv-party-wrap { container-type: inline-size; }\n@container (max-width: 20rem) { .cv-party__facts { grid-template-columns: minmax(0, 1fr); } }\n\n/* Timeline: entries in the order given. */\n.cv-timeline { border-left: 2px solid var(--cv-color-border); padding-left: var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-3); }\n.cv-timeline__at { display: block; color: var(--cv-color-text-muted); }\n.cv-timeline__label { font-weight: 600; }\n\n@media print {\n  .cv-kit { background: none; }\n  .cv-drilldown > summary { color: var(--cv-color-text); }\n  /* A closed drilldown still prints its body (Chromium's details-content). */\n  .cv-drilldown::details-content { content-visibility: visible; display: block; }\n  .cv-section, .cv-metric, .cv-party, .cv-table tr, .cv-evidence__item { break-inside: avoid; }\n}\n"; // @generated KIT_CSS
   var CARD_CSS = "/* SPDX-License-Identifier: Apache-2.0\n * The History card (capsuleviewer.standard-history/v0), on top of kit.css.\n * Colours are kit tokens only (var(--cv-*)). One column on a phone; from\n * two 22rem columns' width up, the same sections wrap into two columns\n * (SharedHistoryLaptop9b): nothing is added for the bigger screen. */\n.cv-sh { display: flex; flex-direction: column; gap: var(--cv-space-3); }\n/* The L1 fold-out is the card's sibling, outside .cv-sh's flex gap: its own top margin is the one gap under the card, so the last section keeps no bottom margin of its own (in a single column it would add to it). */\n.cv-sh > .cv-sh__cols > :last-child { margin-bottom: 0; }\n.cv-drilldown[data-sh-level=\"L1\"], .cv-drilldown[data-sh-level=\"L2\"] { margin-top: var(--cv-space-3); }\n/* The PRIVATE banner and a refusal lead are boxes like the card's other boxes: the same corner and padding. The banner gets the tone's own colour as its border; a refusal keeps its dashed one. */\n.cv-notice[data-banner=\"private\"] { border: 1px solid var(--cv-color-caution-fg); }\n.cv-notice[data-banner=\"private\"], .cv-sh > .cv-notice { border-radius: var(--cv-radius); padding: var(--cv-space-3); }\n.cv-sh__cols { columns: 22rem 2; column-gap: var(--cv-space-5); }\n.cv-sh__cols > * { break-inside: avoid; margin: 0 0 var(--cv-space-3); }\n.cv-sh__lead { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }\n.cv-sh__card { border: 2px solid var(--cv-color-text); border-radius: var(--cv-radius); padding: var(--cv-space-3) var(--cv-space-4); display: flex; flex-direction: column; gap: var(--cv-space-2); }\n.cv-sh__kicker { font-size: var(--cv-font-size-sm); letter-spacing: 0.06em; text-transform: uppercase; color: var(--cv-color-text-muted); }\n.cv-sh__headline { font-size: 1.125rem; line-height: 1.3; }\n.cv-sh__total { font-size: 1.875rem; font-weight: 700; line-height: 1.1; }\n.cv-sh__buckets { display: flex; flex-wrap: wrap; column-gap: var(--cv-space-3); row-gap: var(--cv-space-1); }\n.cv-sh__bucket { display: inline-flex; align-items: baseline; gap: var(--cv-space-1); }\n.cv-sh__dot { display: inline-block; flex: none; width: 0.625rem; height: 0.625rem; border-radius: var(--cv-radius-pill); }\n.cv-sh__dot--held { background: var(--cv-color-positive-fg); }\n.cv-sh__dot--did_not_hold { background: var(--cv-color-negative-fg); }\n/* Undecided is never the agreed tone: grey, outlined, dashed. */\n.cv-sh__dot--undecided { background: var(--cv-color-neutral-bg); border: 1px dashed var(--cv-color-neutral-fg); }\n.cv-sh__rows { display: flex; flex-direction: column; }\n.cv-sh__row { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: var(--cv-space-3); padding: var(--cv-space-2) 0; border-top: 1px solid var(--cv-color-border); }\n.cv-sh__row:first-child { border-top: none; }\n.cv-sh__currency { font-weight: 600; margin-top: var(--cv-space-2); }\n.cv-sh__list { display: flex; flex-direction: column; gap: var(--cv-space-1); }\n.cv-sh__list > li { padding-left: var(--cv-space-3); border-left: 3px solid var(--cv-color-border); }\n.cv-sh__say { border: 1px solid var(--cv-color-info-fg); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-info-bg); display: flex; flex-direction: column; gap: var(--cv-space-1); }\n.cv-sh__say-line { font-weight: 600; color: var(--cv-color-info-fg); }\n.cv-sh__titlerow { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: var(--cv-space-3); margin: 0; }\n.cv-sh__meta { font-size: var(--cv-font-size-sm); font-weight: 400; color: var(--cv-color-text-muted); }\n.cv-sh__lead--own { border-color: var(--cv-color-positive-fg); background: var(--cv-color-positive-bg); }\n.cv-sh__lead > p { margin: 0 0 var(--cv-space-1); }\n.cv-sh__lead > p:last-child { margin-bottom: 0; }\n.cv-sh__count:not(.cv-sh__count--text) { border-radius: var(--cv-radius-pill); background: var(--cv-color-neutral-bg); padding: 0 var(--cv-space-2); }\n.cv-sh__bar { display: block; align-self: stretch; height: 0.5rem; border-radius: var(--cv-radius-pill); overflow: hidden; background: var(--cv-color-neutral-bg); }\n.cv-sh__seg--held { fill: var(--cv-color-positive-fg); }\n.cv-sh__seg--did_not_hold { fill: var(--cv-color-negative-fg); }\n/* Undecided is never the agreed tone: grey. */\n.cv-sh__seg--undecided { fill: var(--cv-color-neutral-fg); opacity: 0.45; }\n/* The reader's witness list: the line the card draws, and the editor under the checks. */\n.cv-sh__witness { margin: 0; font-weight: 600; }\n[data-sh-witness-list=\"true\"] textarea { display: block; inline-size: stretch; box-sizing: border-box; margin: var(--cv-space-1) 0; font-size: var(--cv-font-size-sm); }\n[data-sh-witness-list=\"true\"] button { margin-right: var(--cv-space-2); }\n"; // @generated CARD_CSS
 
   var EXTENSION = "x-standard-history/v0";
-  var BLOCK_MEMBERS = ["policy", "as_of", "deals"];
+  var BLOCK_MEMBERS = ["policy", "as_of", "deals", "card_statements"];
   var AS_OF_WITNESS = ["checkpoint", "receipts"];
 
   // ---- the check: SH 4 to 6, the twin of the reference check_card ----------
 
   var DERIVATION = "standard_history/1";
+  // SH 4, 5.3: /2 also counts the counted deals with no recorded amount, in `unpriced`. SH 11: /3 counts each deal's outcome from its term rows.
+  // The check reads all three, as the reference does; the page draws /1, /3 and /4 only (a /2 card is read under /1, so it is not a standard card here).
+  var DERIVATION_2 = "standard_history/2";
+  var DERIVATION_3 = "standard_history/3";
+  // /4 is /3 but for a deal with no witnessed time: it is counted, never left out, and its entry says so in `no_witness_time` (SH 12).
+  var DERIVATION_4 = "standard_history/4";
+  function shelf(d) { return d === DERIVATION_3 || d === DERIVATION_4; }
   var PROPERTIES = ["card_form", "counts_integral", "denominator", "window_from_policy", "as_of", "counts_recompute"];
   var COUNTERPARTY_CLASSES = ["person_agent", "business_agent", "shop_preauth"];
   var NOT_COUNTED = "shop_preauth";
@@ -77,15 +85,38 @@
   var SIDES = ["raised", "received"];
   var DISPUTE_OUTCOMES = ["open", "for", "against", "split", "no_finding", "withdrawn"];
   var FORUMS = ["auto", "network", "rail", "external"];
-  var TALLIES = [
+  var NOT_COUNTED_3 = ["shop_preauth", "no_witness_time"];
+  var ROW_STATUSES = ["not_reached", "not_due", "no_statement", "waiting", "uncontested", "agreed_so_far", "agreed", "in_disagreement", "in_dispute", "ruled"];
+  var VALUED = ["waiting", "uncontested", "agreed_so_far", "agreed", "ruled"];
+  var ROW_VALUES = ["met", "not_met"];
+  var REMEDIES = ["none", "due", "made", "not_honoured"];
+  var UNRULED_REMEDIES = ["none", "made"];
+  var UNMET_STATUSES = ["agreed_so_far", "agreed", "uncontested"];
+  var OWED_BY = ["holder", "counterparty"];
+  var ENTRY_MEMBERS_3 = ["deal", "agreed_at", "counterparty_class", "left_out", "role", "amount", "rows", "happened", "disputes"];
+  var ENTRY_MEMBERS_4 = ["deal", "agreed_at", "counterparty_class", "no_witness_time", "role", "amount", "rows", "happened", "disputes"];
+  var ROW_MEMBERS = ["owed_by", "status", "value", "remedy", "local"];
+  var BASE_TALLIES = [
     ["in_window", ["counted", "not_counted"]],
     ["class_missing", ["count"]],
     ["outcomes", OUTCOMES],
     ["roles", ROLES],
     ["happened", HAPPENED],
   ];
-  var CARD_MEMBERS = ["derivation", "holder_kind", "controller_class", "anchor", "since", "window", "policy", "bands", "disputes"]
-    .concat(TALLIES.map(function (t) { return t[0]; }));
+  // The tallies of the token's card, in the order its counts are drawn.
+  function talliesOf(derivation) {
+    if (!shelf(derivation)) return BASE_TALLIES;
+    var rest = [["remedied", ["count"]], ["not_honoured", ["count"]], ["local_times", ["count"]]];
+    // /4 has no not_counted tally: shop purchases are all it leaves out, and in_window.not_counted already says so (SH 12).
+    return BASE_TALLIES.concat(derivation === DERIVATION_3 ? [["not_counted", NOT_COUNTED_3]] : [], rest);
+  }
+  function membersOf(derivation) {
+    var base = ["derivation", "holder_kind", "controller_class", "anchor", "since", "window", "policy", "bands", "disputes"]
+      .concat(BASE_TALLIES.map(function (t) { return t[0]; }));
+    if (derivation === DERIVATION) return base;
+    if (derivation === DERIVATION_4) return base.concat(["unpriced", "coverage_start", "remedied", "not_honoured", "local_times"]);
+    return derivation === DERIVATION_3 ? base.concat(["unpriced", "coverage_start", "not_counted", "remedied", "not_honoured", "local_times"]) : base.concat(["unpriced"]);
+  }
   var BAND_KEYS = ["currency", "decade"];
   var MAX_COUNT = 9007199254740991; // 2^53 - 1
 
@@ -172,28 +203,65 @@
     return value === "0" ? null : value.length - scale - 1;
   }
 
-  // The deal entry's form (SH 5.2). A malformed entry is an input error, never a count.
-  function checkEntry(deal) {
+  // SH 11.2: a row result, with value and remedy exactly where the status carries them, and local only as true.
+  function checkRow(ref, row) {
+    var bad = function (what) { return new InputError("deal " + ref + ": " + what + " " + JSON.stringify(row)); };
+    if (!isObj(row) || !subset(keys(row), ROW_MEMBERS)) throw bad("malformed row result");
+    if (!has(OWED_BY, row.owed_by) || !has(ROW_STATUSES, row.status)) throw bad("malformed row result");
+    if (own(row, "value") !== has(VALUED, row.status) || (own(row, "value") && !has(ROW_VALUES, row.value))) throw bad("row value");
+    var unmet = has(UNMET_STATUSES, row.status) && row.value === "not_met";
+    var allowed = row.status === "ruled" ? REMEDIES : unmet ? UNRULED_REMEDIES : [];
+    if (own(row, "remedy") !== (allowed.length > 0) || (own(row, "remedy") && !has(allowed, row.remedy))) throw bad("row remedy");
+    if (own(row, "local") && row.local !== true) throw bad("row local");
+  }
+
+  // The deal entry's form (SH 5.2; under /3, 11.2). A malformed entry is an input error, never a count. A /1 entry cannot be filled without an amount (SH 3).
+  function checkEntry(deal, derivation) {
     if (!isObj(deal)) throw new InputError("a deal entry is not an object");
     if (typeof deal.deal !== "string" || !deal.deal) throw new InputError("deal entry without a deal reference");
+    var v3 = shelf(derivation);
+    if (v3 && !subset(keys(deal), derivation === DERIVATION_3 ? ENTRY_MEMBERS_3 : ENTRY_MEMBERS_4)) throw new InputError("deal " + deal.deal + ": a member a /3 or /4 entry does not have");
     time(deal.agreed_at);
     if (own(deal, "counterparty_class") && !has(COUNTERPARTY_CLASSES, deal.counterparty_class)) {
       throw new InputError("unknown counterparty_class: " + JSON.stringify(deal.counterparty_class));
     }
-    [["role", ROLES], ["outcome", OUTCOMES], ["happened", HAPPENED]].forEach(function (p) {
+    [["role", ROLES], ["happened", HAPPENED]].concat(v3 ? [] : [["outcome", OUTCOMES]]).forEach(function (p) {
       if (!has(p[1], deal[p[0]])) throw new InputError("deal " + deal.deal + ": " + p[0] + " " + JSON.stringify(deal[p[0]]));
     });
-    var amount = deal.amount;
-    if (!isObj(amount) || typeof amount.assetCode !== "string" || !CURRENCY.test(amount.assetCode)) {
-      throw new InputError("deal " + deal.deal + ": amount without an SR assetCode");
+    if (v3) {
+      if (derivation === DERIVATION_4 && own(deal, "no_witness_time") && deal.no_witness_time !== true) throw new InputError("deal " + deal.deal + ": no_witness_time " + JSON.stringify(deal.no_witness_time));
+      if (own(deal, "left_out") && deal.left_out !== "no_witness_time") throw new InputError("deal " + deal.deal + ": left_out " + JSON.stringify(deal.left_out));
+      if (!Array.isArray(deal.rows) || deal.rows.length === 0) throw new InputError("deal " + deal.deal + ": rows is not a non-empty array");
+      deal.rows.forEach(function (r) { checkRow(deal.deal, r); });
     }
-    decade(amount);
+    if (own(deal, "amount") || derivation === DERIVATION) {
+      var amount = deal.amount;
+      if (!isObj(amount) || typeof amount.assetCode !== "string" || !CURRENCY.test(amount.assetCode)) {
+        throw new InputError("deal " + deal.deal + ": amount without an SR assetCode");
+      }
+      decade(amount);
+    }
     if (!Array.isArray(deal.disputes)) throw new InputError("deal " + deal.deal + ": disputes is not an array");
     deal.disputes.forEach(function (d) {
       if (!isObj(d) || !has(SIDES, d.side) || !has(DISPUTE_OUTCOMES, d.outcome) || !has(FORUMS, d.forum)) {
         throw new InputError("deal " + deal.deal + ": malformed dispute " + JSON.stringify(d));
       }
     });
+  }
+
+  // SH 11.3 and 11.4: a counted /3 deal's outcome, the first rule that applies, and for a did_not_hold deal whether the holder did not honour a ruling or remedied its unmet rows. Only rows the holder owed can make a deal did_not_hold.
+  function outcomeOf(rows) {
+    var mine = rows.filter(function (r) { return r.owed_by === "holder"; });
+    if (mine.some(function (r) { return r.status === "ruled" && r.remedy === "not_honoured"; })) return { outcome: "did_not_hold", detail: "not_honoured" };
+    var unmet = mine.filter(function (r) { return (has(UNMET_STATUSES, r.status) || r.status === "ruled") && r.value === "not_met"; });
+    var failed = { outcome: "did_not_hold", detail: unmet.every(function (r) { return r.remedy === "made"; }) ? "remedied" : null };
+    // A final unmet row comes before the rows still open, so a dispute cannot hide it.
+    if (unmet.some(function (r) { return r.status !== "agreed_so_far"; })) return failed;
+    if (rows.some(function (r) { return r.status === "in_disagreement" || r.status === "in_dispute" || r.status === "no_statement" || (r.status === "waiting" && r.value === "not_met"); })) return { outcome: "undecided", detail: null };
+    if (unmet.length) return failed;
+    // A row not reached comes after did_not_hold, so it cannot hide an unmet row.
+    if (rows.some(function (r) { return has(["not_reached", "not_due", "waiting", "agreed_so_far"], r.status); })) return { outcome: "undecided", detail: null };
+    return { outcome: "held", detail: null };
   }
 
   function zero(parts) {
@@ -210,37 +278,65 @@
     return x === y ? 0 : x < y ? -1 : 1;
   }
 
-  // The tallies SH 5 derives from the deal entries.
-  function counts(deals, window, anchor) {
+  // The tallies SH 5 (under /3, 11) derives from the deal entries.
+  function counts(deals, window, anchor, derivation) {
+    var v3 = shelf(derivation);
     var t = {};
-    TALLIES.forEach(function (p) { t[p[0]] = zero(p[1]); });
+    talliesOf(derivation).forEach(function (p) { t[p[0]] = zero(p[1]); });
+    if (derivation !== DERIVATION) t.unpriced = zero(OUTCOMES);
     var bands = {};
     var order = [];
     var disputes = {};
     SIDES.forEach(function (side) { disputes[side] = { of: 0, by_outcome: zero(DISPUTE_OUTCOMES), by_forum: zero(FORUMS) }; });
     deals.forEach(function (deal) {
-      checkEntry(deal);
+      checkEntry(deal, derivation);
       if (!inWindow(time(deal.agreed_at), window, anchor)) return;
       t.in_window.of += 1;
-      if (deal.counterparty_class === NOT_COUNTED) {
+      // SH 11.2: under /3 a deal left out is not counted either.
+      var shop = deal.counterparty_class === NOT_COUNTED;
+      if (shop || (derivation === DERIVATION_3 && own(deal, "left_out"))) {
         t.in_window.not_counted += 1;
+        if (derivation === DERIVATION_3) {
+          t.not_counted.of += 1;
+          t.not_counted[shop ? "shop_preauth" : "no_witness_time"] += 1;
+        }
         return;
       }
       t.in_window.counted += 1;
       t.class_missing.of += 1;
       if (!own(deal, "counterparty_class")) t.class_missing.count += 1;
-      [["outcomes", "outcome"], ["roles", "role"], ["happened", "happened"]].forEach(function (p) {
-        t[p[0]].of += 1;
-        t[p[0]][deal[p[1]]] += 1;
-      });
-      var d = decade(deal.amount);
-      var key = JSON.stringify([deal.amount.assetCode, d]);
-      if (!own(bands, key)) {
-        bands[key] = { currency: deal.amount.assetCode, decade: d, of: 0, held: 0, did_not_hold: 0, undecided: 0 };
-        order.push(bands[key]);
+      var result = deal.outcome;
+      if (v3) {
+        var r = outcomeOf(deal.rows);
+        result = r.outcome;
+        if (result === "did_not_hold") {
+          ["remedied", "not_honoured"].forEach(function (name) {
+            t[name].of += 1;
+            if (r.detail === name) t[name].count += 1;
+          });
+        }
+        t.local_times.of += 1;
+        if (deal.rows.some(function (x) { return x.local === true; }) || deal.no_witness_time === true) t.local_times.count += 1;
       }
-      bands[key].of += 1;
-      bands[key][deal.outcome] += 1;
+      [["outcomes", result], ["roles", deal.role], ["happened", deal.happened]].forEach(function (p) {
+        t[p[0]].of += 1;
+        t[p[0]][p[1]] += 1;
+      });
+      var band;
+      if (!own(deal, "amount")) {
+        // SH 5.3: an unpriced deal (/2, /3) is in `unpriced` and in no band.
+        band = t.unpriced;
+      } else {
+        var d = decade(deal.amount);
+        var key = JSON.stringify([deal.amount.assetCode, d]);
+        if (!own(bands, key)) {
+          bands[key] = { currency: deal.amount.assetCode, decade: d, of: 0, held: 0, did_not_hold: 0, undecided: 0 };
+          order.push(bands[key]);
+        }
+        band = bands[key];
+      }
+      band.of += 1;
+      band[result] += 1;
       deal.disputes.forEach(function (x) {
         var tally = disputes[x.side];
         tally.of += 1;
@@ -273,14 +369,18 @@
     return k.every(function (x) { return isNumber(t[x]); });
   }
 
-  function cardForm(card) {
-    if (!isObj(card) || !sameSet(keys(card), CARD_MEMBERS)) return false;
-    if (card.derivation !== DERIVATION || !has(HOLDER_KINDS, card.holder_kind)) return false;
+  function cardForm(card, derivation) {
+    if (!isObj(card) || !sameSet(keys(card), membersOf(derivation))) return false;
+    if (card.derivation !== derivation || !has(HOLDER_KINDS, card.holder_kind)) return false;
     if (card.controller_class !== CONTROLLER_CLASSES[card.holder_kind]) return false;
     if (!["anchor", "policy"].every(function (m) { return typeof card[m] === "string" && HEX64.test(card[m]); })) return false;
     if (typeof card.since !== "string" || !MONTH.test(card.since)) return false;
     if (!windowForm(card.window)) return false;
-    if (!TALLIES.every(function (p) { return tallyForm(card[p[0]], p[1]); })) return false;
+    if (!talliesOf(derivation).every(function (p) { return tallyForm(card[p[0]], p[1]); })) return false;
+    if (derivation !== DERIVATION && !tallyForm(card.unpriced, OUTCOMES)) return false;
+    if (shelf(derivation)) {
+      if (typeof card.coverage_start !== "string" || !MONTH.test(card.coverage_start) || card.coverage_start < card.since) return false;
+    }
     var bands = card.bands;
     if (!Array.isArray(bands)) return false;
     for (var i = 0; i < bands.length; i += 1) {
@@ -335,19 +435,33 @@
   function sum(list, f) { return list.reduce(function (s, x) { return s + f(x); }, 0); }
   function partitions(t, parts) { return own(t, "of") && sum(parts, function (p) { return t[p]; }) === t.of; }
 
-  // SH 4 "Denominators". Run only on a card whose form and counts are PASS.
-  function denominator(card) {
-    for (var i = 0; i < TALLIES.length; i += 1) {
-      var name = TALLIES[i][0], t = card[name];
+  // SH 4 "Denominators" (under /3, 11.6). Run only on a card whose form and counts are PASS.
+  function denominator(card, derivation) {
+    var v3 = shelf(derivation);
+    var tallies = talliesOf(derivation);
+    for (var i = 0; i < tallies.length; i += 1) {
+      var name = tallies[i][0], t = card[name];
       if (!own(t, "of")) return false;
-      if (name === "class_missing") {
+      if (name === "class_missing" || name === "remedied" || name === "not_honoured" || name === "local_times") {
         if (t.count > t.of) return false;
-      } else if (!partitions(t, TALLIES[i][1])) return false;
+      } else if (!partitions(t, tallies[i][1])) return false;
     }
     var counted = card.in_window.counted;
     if (["class_missing", "outcomes", "roles", "happened"].some(function (n) { return card[n].of !== counted; })) return false;
+    if (v3 && (card.local_times.of !== counted || (derivation === DERIVATION_3 && card.not_counted.of !== card.in_window.not_counted))) return false;
     if (card.bands.some(function (band) { return !partitions(band, OUTCOMES) || band.of < 1; })) return false;
-    if (["of"].concat(OUTCOMES).some(function (o) { return sum(card.bands, function (b) { return b[o]; }) !== card.outcomes[o]; })) return false;
+    // SH 4: on a /2 or /3 card the bands and `unpriced` together partition the outcomes.
+    var priced = card.bands.slice();
+    if (derivation !== DERIVATION) {
+      if (!partitions(card.unpriced, OUTCOMES)) return false;
+      priced.push(card.unpriced);
+    }
+    if (["of"].concat(OUTCOMES).some(function (o) { return sum(priced, function (b) { return b[o]; }) !== card.outcomes[o]; })) return false;
+    if (v3) {
+      // SH 11.4: a did_not_hold deal is in at most one of the two counts.
+      var dnh = card.outcomes.did_not_hold;
+      if (["remedied", "not_honoured"].some(function (n) { return card[n].of !== dnh; }) || card.remedied.count + card.not_honoured.count > dnh) return false;
+    }
     return SIDES.every(function (side) {
       var d = card.disputes[side];
       if (!own(d, "of")) return false;
@@ -360,14 +474,17 @@
 
   // The six card properties of SH 6, in order, from what the caller holds:
   // `policy` {digest, window}, `asOf` {anchor, anchor_time,
-  // first_checkpoint_time}, `deals` (every deal entry at the anchor), each
+  // first_checkpoint_time, and under /3 coverage_start_time}, `deals` (every deal entry at the anchor), each
   // optional (null or undefined); a property that needs a missing one is
   // NOT_CHECKED. Throws InputError on a malformed input, never on a malformed card.
-  function checkCard(card, policy, asOf, deals) {
+  // `derivation` is the token the card is checked under (standard_history/1 when omitted).
+  function checkCard(card, policy, asOf, deals, derivation) {
+    if (derivation === undefined) derivation = DERIVATION;
+    if (!has([DERIVATION, DERIVATION_2, DERIVATION_3, DERIVATION_4], derivation)) throw new InputError("not a standard_history token: " + JSON.stringify(derivation));
     var p = {};
-    p.card_form = status(cardForm(card));
+    p.card_form = status(cardForm(card, derivation));
     p.counts_integral = status(countsIntegral(card));
-    p.denominator = p.card_form === "PASS" && p.counts_integral === "PASS" ? status(denominator(card)) : "NOT_CHECKED";
+    p.denominator = p.card_form === "PASS" && p.counts_integral === "PASS" ? status(denominator(card, derivation)) : "NOT_CHECKED";
     if (policy === null || policy === undefined) {
       p.window_from_policy = "NOT_CHECKED";
     } else {
@@ -378,15 +495,25 @@
       p.as_of = "NOT_CHECKED";
     } else {
       time(asOf.first_checkpoint_time);
-      p.as_of = status(isObj(card) && card.anchor === asOf.anchor && card.since === asOf.first_checkpoint_time.slice(0, 7));
+      var ok = isObj(card) && card.anchor === asOf.anchor && card.since === asOf.first_checkpoint_time.slice(0, 7);
+      if (shelf(derivation)) {
+        // SH 11.1, 11.7: the coverage start's month is the card's, and the anchor is at or after it.
+        time(asOf.coverage_start_time);
+        time(asOf.anchor_time);
+        ok = ok && card.coverage_start === asOf.coverage_start_time.slice(0, 7) && asOf.coverage_start_time <= asOf.anchor_time;
+      }
+      p.as_of = status(ok);
     }
-    var ready = deals !== null && deals !== undefined && policy !== null && policy !== undefined && asOf !== null && asOf !== undefined &&
+    // /1 recounts over the policy's window as this page always has; /2 and /3 over the card's own window, as the reference does (it needs no policy).
+    var policyHeld = derivation !== DERIVATION || (policy !== null && policy !== undefined);
+    var ready = deals !== null && deals !== undefined && policyHeld && asOf !== null && asOf !== undefined &&
       ["card_form", "counts_integral", "denominator"].every(function (k) { return p[k] === "PASS"; });
     if (!ready) {
       p.counts_recompute = "NOT_CHECKED";
     } else {
-      var window = own(policy.window, "all") ? { all: true } : { months: policy.window.months };
-      var derived = counts(deals, window, time(asOf.anchor_time));
+      var from = derivation === DERIVATION ? policy.window : card.window;
+      var window = own(from, "all") ? { all: true } : { months: from.months };
+      var derived = counts(deals, window, time(asOf.anchor_time), derivation);
       p.counts_recompute = status(keys(derived).every(function (k) { return equal(card[k], derived[k]); }));
     }
     return p;
@@ -441,17 +568,23 @@
     if (own(b, "as_of")) {
       var a = b.as_of;
       var base = ["anchor", "anchor_time", "first_checkpoint_time"];
-      if (!isObj(a) || !base.every(function (k) { return own(a, k); }) || keys(a).some(function (k) { return !has(base.concat(AS_OF_WITNESS), k); }) || typeof a.anchor !== "string") {
-        throw new InputError("the block's as_of is not {anchor, anchor_time, first_checkpoint_time} with optional checkpoint and receipts");
+      if (!isObj(a) || !base.every(function (k) { return own(a, k); }) || keys(a).some(function (k) { return !has(base.concat(AS_OF_WITNESS, ["coverage_start_time"]), k); }) || typeof a.anchor !== "string") {
+        throw new InputError("the block's as_of is not {anchor, anchor_time, first_checkpoint_time} with optional coverage_start_time, checkpoint and receipts");
       }
       time(a.anchor_time);
+      if (own(a, "coverage_start_time")) time(a.coverage_start_time);
       if (own(a, "checkpoint") && !hexOctets(a.checkpoint)) throw new InputError("the block's as_of.checkpoint is not lowercase hex");
       if (own(a, "receipts") && !(Array.isArray(a.receipts) && a.receipts.length >= 1 && a.receipts.length <= 64 && a.receipts.every(hexOctets))) {
         throw new InputError("the block's as_of.receipts is not 1 to 64 lowercase hex strings");
       }
     }
     if (own(b, "deals") && !Array.isArray(b.deals)) throw new InputError("the block's deals is not an array");
-    return { policy: own(b, "policy") ? b.policy : null, as_of: own(b, "as_of") ? b.as_of : null, deals: own(b, "deals") ? b.deals : null };
+    // card_statements (capsule-viewer#342; SH 13.3) is never checked here and never makes the block unreadable: an entry that is
+    // not a string, or a member that is not an array, stands for a card statement that fails SH 13.1 (a statement that does not
+    // pass changes nothing about the card). The runtime bounds the count and the sizes.
+    var statements = null;
+    if (own(b, "card_statements")) statements = Array.isArray(b.card_statements) ? b.card_statements.map(function (x) { return typeof x === "string" ? x : ""; }) : [""];
+    return { policy: own(b, "policy") ? b.policy : null, as_of: own(b, "as_of") ? b.as_of : null, deals: own(b, "deals") ? b.deals : null, card_statements: statements };
   }
 
   function rootCard(context) {
@@ -522,11 +655,20 @@
     var none = {};
     PROPERTIES.forEach(function (p) { none[p] = "NOT_CHECKED"; });
     if (!bundleVerified(context && context.verification)) return { state: "unverified", own: ownCopy, properties: none };
-    var inputs, card, properties;
+    var inputs, card, properties, derivation, entriesMatch = false;
     try {
       inputs = readBlock(b);
       card = rootCard(context);
-      properties = checkCard(card, inputs.policy, inputs.as_of, inputs.deals);
+      // The token is the card's own; any other reads under /1, where its form fails.
+      derivation = isObj(card) && shelf(card.derivation) ? card.derivation : DERIVATION;
+      properties = checkCard(card, inputs.policy, inputs.as_of, inputs.deals, derivation);
+      // Under /3 the formal counts_recompute needs the whole-shelf handover (SH 11.7), which this page does not have: the entries
+      // only add up to the card or not (entriesMatch), and a match leaves the property NOT_CHECKED. A mismatch of the holder's own
+      // copy with its own card stays FAIL.
+      if (shelf(derivation)) {
+        entriesMatch = properties.counts_recompute === "PASS";
+        if (entriesMatch) properties.counts_recompute = "NOT_CHECKED";
+      }
     } catch (err) {
       if (!(err instanceof InputError)) throw err;
       // The error text can quote a deal entry: it is never drawn.
@@ -536,13 +678,14 @@
     var witnessIn = inputs.as_of && (own(inputs.as_of, "receipts") || own(inputs.as_of, "checkpoint"))
       ? { anchor: inputs.as_of.anchor, checkpoint: own(inputs.as_of, "checkpoint") ? inputs.as_of.checkpoint : null, receipts: own(inputs.as_of, "receipts") ? inputs.as_of.receipts : null }
       : null;
+    var registerIn = inputs.card_statements && inputs.card_statements.length ? inputs.card_statements : null;
     // NOT_CHECKED because an earlier check failed, not because an input is missing.
     var first = ["card_form", "counts_integral"].every(function (k) { return properties[k] === "PASS"; });
     var skipped = [];
     if (!first) skipped.push("denominator");
     if (held.policy && held.as_of && held.deals && !(first && properties.denominator === "PASS")) skipped.push("counts_recompute");
     if (!isStandard(properties)) {
-      return { state: "refused", own: ownCopy, properties: properties, held: held, witnessIn: witnessIn, skipped: skipped, fails: PROPERTIES.filter(function (p) { return properties[p] === "FAIL"; }) };
+      return { state: "refused", own: ownCopy, properties: properties, held: held, witnessIn: witnessIn, registerIn: registerIn, skipped: skipped, fails: PROPERTIES.filter(function (p) { return properties[p] === "FAIL"; }) };
     }
     return {
       state: "card",
@@ -551,10 +694,15 @@
       held: held,
       skipped: skipped,
       witnessIn: witnessIn,
+      registerIn: registerIn,
       covered: rootCovered(context),
       card: card,
+      entriesMatch: entriesMatch,
+      unpriced: own(card, "unpriced") ? card.unpriced : null,
       window: windowText(card.window),
       dates: windowDates(card.window, inputs.as_of),
+      // The coverage start's full date, when the block carries its time; the card itself names only its month.
+      coverageDate: inputs.as_of && own(inputs.as_of, "coverage_start_time") ? dateText(time(inputs.as_of.coverage_start_time)) : null,
       snapshotDate: inputs.as_of ? dateText(time(inputs.as_of.anchor_time)) : null,
       bands: card.bands.map(function (band) { return { currency: band.currency, decade: band.decade, label: bandLabel(band), of: band.of, held: band.held, did_not_hold: band.did_not_hold, undecided: band.undecided }; }),
     };
@@ -614,6 +762,41 @@
     }, function () { return unchecked(); });
   }
 
+  // ---- the registration step (SH 13; capsule-viewer#342) -----------------------
+
+  // The page's model with the card statements' standing, from the runtime's
+  // readerCardRegistered: AAC's card_registered over the statements the block
+  // carries, under the reader's own list, for the key the card is signed with.
+  // It is existence at a time and nothing else (SH 13): the line is shown only
+  // for a PASS on a card drawn as a standard card, and it is a note beside the
+  // level reached, never a property, a level or a change to anchor_inclusion.
+  // A statement that does not pass is a note that one came; none draws nothing
+  // (SH 13.4). A runtime without the check is NOT_CHECKED, never a pass.
+  function withRegistration(m, context) {
+    var EG = root.EvidenceGraph;
+    var set = function (registration) {
+      var out = {};
+      keys(m).forEach(function (k) { out[k] = m[k]; });
+      out.registration = registration;
+      Object.defineProperty(out, "pre", { value: m.pre || m, enumerable: false });
+      return out;
+    };
+    var unchecked = function () { return set({ status: "NOT_CHECKED", shown: false }); };
+    if ((m.state !== "card" && m.state !== "refused") || !m.registerIn) return Promise.resolve(set({ status: "NOT_PRESENT", shown: false }));
+    if (!EG || typeof EG.readerCardRegistered !== "function") return Promise.resolve(unchecked());
+    return Promise.resolve(EG.readerCardRegistered(context, m.registerIn)).then(function (r) {
+      var status = r && has(["PASS", "FAIL", "NOT_PRESENT", "NOT_CHECKED"], r.status) ? r.status : "NOT_CHECKED";
+      // The statements are present, so a runtime that says none is not trusted to say it.
+      if (status === "NOT_PRESENT") status = "NOT_CHECKED";
+      // A pass with no service to name is not one this page can draw: not checked, never a pass.
+      if (status === "PASS" && typeof r.service !== "string") status = "NOT_CHECKED";
+      var shown = m.state === "card" && status === "PASS";
+      var out = { status: status, shown: shown };
+      if (shown) { out.service = r.service; out.at = witnessedAt(r.registration_time); }
+      return set(out);
+    }, unchecked);
+  }
+
   // ---- the signature step (capsule-viewer#211; rule F4.7) ---------------------
 
   // The page's model with the card's signature standing, from the runtime's
@@ -644,7 +827,13 @@
   }
 
   function buildModel(context) {
-    return Promise.resolve(buildModelSync(context)).then(function (m) { return withSignature(m, context); }).then(withWitness);
+    return Promise.resolve(buildModelSync(context)).then(function (m) { return withSignature(m, context); }).then(withWitness).then(function (m) {
+      return withRegistration(m, context);
+    }).then(function (m) {
+      // The context stays with the model: the page runs the registration step again when the reader changes their list.
+      Object.defineProperty(m, "context", { value: context, enumerable: false });
+      return m;
+    });
   }
 
   // ---- drawing (the host's document; kit class names) -------------------------
@@ -737,6 +926,25 @@
     return w.status === "NOT_CHECKED" ? el(doc, "p", { class: "cv-muted", "data-sh-witness": "came" }, [words("witness.came")]) : null;
   }
 
+  // The registration line (SH 13.4): only a PASS on a card drawn as a standard card, which says the key the card is signed with
+  // registered it with the service as the reader's list names it, at the time (or with no time when the Receipt has none), and
+  // nothing about the counts, the deals, the anchor or the key's other cards. A statement that came and did not pass says so;
+  // one this page did not check says so; none draws nothing.
+  function drawRegistration(doc, m) {
+    var r = m.registration;
+    if (!r || r.status === "NOT_PRESENT") return null;
+    if (r.shown) {
+      var text = r.at ? words("registration.line", { month: r.at.month, day: r.at.day, year: r.at.year, hh: r.at.hh, mm: r.at.mm, service: r.service })
+        : words("registration.line.untimed", { service: r.service });
+      return el(doc, "div", { "data-sh-registration": "line" }, [
+        el(doc, "p", { class: "cv-sh__witness" }, [text]),
+        // With no time there is no "by then": the Receipt shows only that the service logged the statement (SH 13).
+        el(doc, "p", { class: "cv-muted" }, [words(r.at ? "registration.note" : "registration.note.untimed")]),
+      ]);
+    }
+    return el(doc, "p", { class: "cv-muted", "data-sh-registration": r.status === "FAIL" ? "failed" : "came" }, [words(r.status === "FAIL" ? "registration.failed" : "registration.came")]);
+  }
+
   // The card's signature line (9b frame 4, "signed"): only a PASS, naming the
   // key the card is signed with.
   function drawSignature(doc, m) {
@@ -763,11 +971,13 @@
         ]),
         outcomeBar(doc, o),
       ];
-    var recounted = m.properties.counts_recompute === "PASS";
-    var missing = ["policy", "as_of"].filter(function (k) { return !m.held[k]; }).map(function (k) { return words("checks.not_held." + k); });
-    var statementText = recounted ? words("counts.recomputed")
+    var v3 = shelf(c.derivation);
+    var recounted = v3 ? m.entriesMatch : m.properties.counts_recompute === "PASS";
+    // A /3 recount needs the snapshot's time but not the policy (it counts over the card's own window).
+    var missing = (shelf(c.derivation) ? ["as_of"] : ["policy", "as_of"]).filter(function (k) { return !m.held[k]; }).map(function (k) { return words("checks.not_held." + k); });
+    var statementText = recounted ? words(v3 ? "counts.entries.v3" : "counts.recomputed")
       : m.held.deals ? words("counts.statement.entries", { what: missing.join(", ") }) : words("counts.statement");
-    var statement = el(doc, "p", { class: "cv-muted", "data-sh-counts": recounted ? "recomputed" : "statement" }, [statementText]);
+    var statement = el(doc, "p", { class: "cv-muted", "data-sh-counts": recounted ? (v3 ? "entries" : "recomputed") : "statement" }, [statementText]);
     var cardBox = el(doc, "div", { class: "cv-sh__card", "data-sh": "card" }, [
       el(doc, "p", { class: "cv-sh__kicker" }, [words("card.kicker")]),
       el(doc, "p", { "data-sh-holder": c.holder_kind }, [holder + " · " + since]),
@@ -775,7 +985,9 @@
     ].concat(total, [
       el(doc, "p", { class: "cv-muted", "data-sh-not-counted-line": "true" }, [words("card.not_counted", { n: c.in_window.not_counted, of: c.in_window.of })]),
       statement,
+    ], v3 ? drawV3Lines(doc, m, v) : [], [
       drawWitness(doc, m),
+      drawRegistration(doc, m),
       drawSignature(doc, m),
       el(doc, "p", { class: "cv-muted cv-mono", "data-sh-stamp": "true" }, [words("stamp", { policy: c.policy.slice(0, 12), anchor: c.anchor.slice(0, 12) })]),
     ]));
@@ -800,6 +1012,28 @@
     return [el(doc, "div", { class: "cv-sh" }, [el(doc, "div", { class: "cv-sh__cols" }, l0)]), l1];
   }
 
+  // SH 11.8: what became of the deals that did not hold, beside the outcomes; the coverage start; the local results. Neither remedied nor not honoured is a segment of the bar.
+  function coverageMonth(c) {
+    return words("since", { month: words("month." + Number(c.coverage_start.slice(5, 7))), year: c.coverage_start.slice(0, 4) });
+  }
+  function coverageLine(m) {
+    var c = m.card;
+    return m.coverageDate
+      ? words("v3.coverage", { start: m.coverageDate })
+      : words("v3.coverage.month", { start: coverageMonth(c) });
+  }
+  function drawV3Lines(doc, m, v) {
+    var c = m.card;
+    var lines = [];
+    if (c.outcomes.did_not_hold > 0) {
+      lines.push(el(doc, "p", { class: "cv-muted", "data-sh-remedied": "true" }, [words("v3.remedied", { n: c.remedied.count, of: c.remedied.of })]));
+      lines.push(el(doc, "p", { class: "cv-muted", "data-sh-not-honoured": "true" }, [words("v3.not_honoured", { n: c.not_honoured.count, of: c.not_honoured.of })]));
+    }
+    lines.push(el(doc, "p", { class: "cv-muted", "data-sh-coverage": "true" }, [coverageLine(m)]));
+    lines.push(el(doc, "p", { class: "cv-muted", "data-sh-local-times": "true" }, [words(c.derivation === DERIVATION_4 ? "v4.local_times" : "v3.local_times", { n: c.local_times.count, of: c.local_times.of })]));
+    return lines;
+  }
+
   function drawRoles(doc, c, v) {
     return section(doc, words("heading.roles"), [el(doc, "div", { class: "cv-sh__rows" }, [
       row(doc, words("role.provided." + v), words("role.count", { n: c.roles.provided, of: c.roles.of }), { "data-role": "provided" }),
@@ -821,7 +1055,10 @@
 
   // One group per currency, in the card's order; a row never names a second currency.
   function drawSizes(doc, m) {
-    if (!m.bands.length) return section(doc, words("heading.sizes"), [el(doc, "p", {}, [words("sizes.none")])], { "data-sh-section": "sizes" });
+    var unpriced = m.unpriced && m.unpriced.of > 0
+      ? el(doc, "div", { class: "cv-sh__row", "data-sh-unpriced": "true" }, [el(doc, "span", {}, [words("sizes.unpriced")]), el(doc, "span", { class: "cv-sh__count cv-sh__count--text" }, [sizeChip(m.unpriced)])])
+      : null;
+    if (!m.bands.length) return section(doc, words("heading.sizes"), [el(doc, "p", {}, [words(unpriced ? "sizes.none.priced" : "sizes.none")]), unpriced], { "data-sh-section": "sizes" });
     var groups = [];
     m.bands.forEach(function (band) {
       var last = groups[groups.length - 1];
@@ -848,6 +1085,7 @@
         ]);
       })));
     });
+    if (unpriced) body.push(el(doc, "div", { class: "cv-sh__rows" }, [unpriced]));
     return section(doc, words("heading.sizes"), body, { "data-sh-section": "sizes" });
   }
 
@@ -891,7 +1129,8 @@
   function drawCounts(doc, c, v) {
     return section(doc, words("heading.counts"), [
       el(doc, "p", {}, [words("counts.what." + v)]),
-      el(doc, "p", { "data-sh-not-counted": "true" }, [words("counts.not_counted." + v, { n: c.in_window.not_counted, of: c.in_window.of })]),
+      el(doc, "p", { "data-sh-not-counted": "true" }, [words(c.derivation === DERIVATION_3 ? "counts.not_counted.v3" : "counts.not_counted." + v, { n: c.in_window.not_counted, of: c.in_window.of })]),
+      c.derivation === DERIVATION_3 ? el(doc, "p", { "data-sh-not-counted-reasons": "true" }, [words("counts.not_counted.reasons", { of: c.not_counted.of, shop: c.not_counted.shop_preauth, left_out: c.not_counted.no_witness_time })]) : null,
       c.class_missing.count ? el(doc, "p", { "data-sh-class-missing": "true" }, [words("counts.class_missing", { n: c.class_missing.count, of: c.class_missing.of })]) : null,
       el(doc, "p", {}, [words("counts.not_on." + v)]),
     ], { "data-sh-section": "counts" });
@@ -902,15 +1141,19 @@
   // A fold-out in L0 (details never nest, so it cannot sit inside L1). Only what ran: the page's own checks, never a witness or a signature.
   function drawProves(doc, m) {
     var items = m.covered && m.properties.as_of === "PASS" ? [words("proves.sealed"), words("proves.add_up")] : [words("proves.add_up")];
-    if (m.properties.counts_recompute === "PASS") items.push(words("proves.recomputed"));
+    if (shelf(m.card.derivation) ? m.entriesMatch : m.properties.counts_recompute === "PASS") items.push(words(shelf(m.card.derivation) ? "proves.entries.v3" : "proves.recomputed"));
     return drilldown(doc, words("heading.proves"), [list(doc, items)], false, { "data-sh-section": "proves" });
   }
 
   function drawDoesnt(doc, m) {
-    var items = [words(m.card.holder_kind === "node" ? "doesnt.who.node" : "doesnt.who.person"), words("doesnt.all"), words("doesnt.one")];
-    if (m.properties.counts_recompute !== "PASS") items.push(words("doesnt.statement"));
+    var v3 = shelf(m.card.derivation);
+    var v4 = m.card.derivation === DERIVATION_4;
+    var items = [words(m.card.holder_kind === "node" ? "doesnt.who.node" : "doesnt.who.person"), v3 ? words(m.coverageDate ? (v4 ? "doesnt.all.v4" : "doesnt.all.v3") : (v4 ? "doesnt.all.v4.month" : "doesnt.all.v3.month"), { start: m.coverageDate || coverageMonth(m.card) }) : words("doesnt.all"), words("doesnt.one")];
+    if (m.properties.counts_recompute !== "PASS") items.push(words(v3 ? "doesnt.statement.v3" : "doesnt.statement"));
     var s = m.signature ? m.signature.status : "NOT_CHECKED";
-    items.push(words(s === "PASS" ? "doesnt.signature_key" : s === "NOT_PRESENT" ? "doesnt.signature_none" : "doesnt.signature"), words(m.witness && m.witness.shown ? "doesnt.witness_counts" : "doesnt.witness"), words("doesnt.next"));
+    items.push(words(s === "PASS" ? "doesnt.signature_key" : s === "NOT_PRESENT" ? "doesnt.signature_none" : "doesnt.signature"), words(m.witness && m.witness.shown ? "doesnt.witness_counts" : "doesnt.witness"));
+    if (m.registration && m.registration.shown) items.push(words("doesnt.registration"));
+    items.push(words("doesnt.next"));
     return section(doc, words("heading.doesnt"), [list(doc, items)], { "data-sh-section": "doesnt" });
   }
 
@@ -968,12 +1211,15 @@
     var w = m.witness;
     var rowNames = PROPERTIES.concat(["anchor_inclusion"]);
     if (w && (w.shown || w.status === "NOT_CHECKED" || w.status === "FAIL")) rowNames.push("anchor_witnessed");
+    // The registration row (SH 13.3): card_registered is reported beside the properties, never as one; a card with no statement has none.
+    var reg = m.registration;
+    if (reg && reg.status !== "NOT_PRESENT") rowNames.push("card_registered");
     // The signature row: PASS, FAIL or not checked here; a card that claims no signature has no row.
     var sig = m.signature;
     if (sig && sig.status !== "NOT_PRESENT") rowNames.push("signature");
     var rows = rowNames.map(function (p) {
       var s = p === "anchor_inclusion" ? "NOT_CHECKED" : p === "anchor_witnessed" ? (w.shown ? "PASS" : w.status === "FAIL" ? "FAIL" : "NOT_CHECKED")
-        : p === "signature" ? sig.status : m.properties[p];
+        : p === "signature" ? sig.status : p === "card_registered" ? (reg.shown ? "PASS" : reg.status === "FAIL" ? "FAIL" : "NOT_CHECKED") : m.properties[p];
       var skip = (m.skipped || []).indexOf(p) >= 0;
       return el(doc, "tr", { "data-property": p, "data-property-status": s, "data-skipped": skip ? "true" : "false" }, [
         el(doc, "td", { "data-label": words("checks.column.check") }, [words("property." + p)]),
@@ -989,7 +1235,7 @@
         el(doc, "tbody", {}, rows),
       ])]),
       held.policy || held.as_of ? el(doc, "p", { class: "cv-muted" }, [words("checks.held_beside")]) : null,
-      m.witnessIn && m.witnessIn.receipts ? drawWitnessList(doc, m, again) : null,
+      (m.witnessIn && m.witnessIn.receipts) || m.registerIn ? drawWitnessList(doc, m, again) : null,
       missing.length ? el(doc, "p", { class: "cv-muted", "data-sh-not-held": "true" }, [words("checks.not_held", { what: missing.join(", ") })]) : null,
       el(doc, "p", { class: "cv-muted" }, [words("wording.provenance", { id: PACK.id, sha: PACK.sha256 || "-" })]),
     ], false, { "data-sh-level": "L2" });
@@ -1004,6 +1250,9 @@
       el(doc, "p", { class: "cv-notice cv-refusal" }, [words(lead)]),
       m.fails && m.fails.length ? el(doc, "p", {}, [words("refused.failed")]) : null,
       m.fails && m.fails.length ? list(doc, m.fails.map(function (p) { return words("refused.item", { check: words("property." + p) }); })) : null,
+      // A refused card is never drawn as registered: only that a statement came, and whether it failed its check.
+      m.state === "refused" && m.registration && m.registration.status !== "NOT_PRESENT"
+        ? drawRegistration(doc, { registration: { status: m.registration.status === "FAIL" ? "FAIL" : "NOT_CHECKED", shown: false } }) : null,
     ]);
   }
 
@@ -1036,7 +1285,9 @@
     var again = function () {
       state.gen += 1;
       var mine = state.gen;
-      withWitness(model.pre || model).then(function (next) {
+      withWitness(model.pre || model).then(function (next) { return withRegistration(next, model.context); }).then(function (next) {
+        // The context goes on to the next redraw: the list can change again.
+        Object.defineProperty(next, "context", { value: model.context, enumerable: false });
         if (mine !== state.gen) return; // a later change of the list is newer than this check
         [host.L0, host.L1, host.L2].forEach(function (region) {
           Array.prototype.slice.call(region.children).forEach(function (child) {
@@ -1076,6 +1327,7 @@
     module: module,
     buildModelSync: buildModelSync,
     withWitness: withWitness,
+    withRegistration: withRegistration,
     withSignature: withSignature,
     checkCard: checkCard,
     isStandard: isStandard,
