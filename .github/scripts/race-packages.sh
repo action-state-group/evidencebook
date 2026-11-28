@@ -30,12 +30,12 @@ full_globs=() ignore_globs=() also=() exclude=()
 case "${1:-}" in
   root)
     module_dir=.
-    full_globs=(go.mod go.sum .github/scripts/race-packages.sh .github/workflows/ci.yml 'testdata/*')
+    full_globs=(go.mod go.sum .github/scripts/race-packages.sh .github/scripts/go-test-queue.sh .github/workflows/ci.yml 'testdata/*')
     ignore_globs=('capsulectl/*' 'report/*' '.github/*' 'changelog.d/*' '*.md' LICENSE)
     ;;
   capsulectl)
     module_dir=capsulectl
-    full_globs=(capsulectl/go.mod capsulectl/go.sum capsulectl/scripts/test.sh .github/scripts/race-packages.sh
+    full_globs=(capsulectl/go.mod capsulectl/go.sum capsulectl/scripts/test.sh .github/scripts/race-packages.sh .github/scripts/go-test-queue.sh
       .github/workflows/capsulectl.yml 'capsulectl/testdata/*' 'capsulectl/third_party/*' 'report/testdata/*'
       'testdata/card-registration/*' 'testdata/live16-ask/*')
     # cmd's tests build the launchers and read internal/deal/testdata.

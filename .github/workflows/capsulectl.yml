@@ -20,7 +20,7 @@ name: capsulectl
 on:
   push:
     branches: [main]
-    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", "testdata/live16-ask/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml", ".github/scripts/race-packages.sh", ".github/scripts/paths-changed.sh"]
+    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", "testdata/live16-ask/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml", ".github/scripts/race-packages.sh", ".github/scripts/go-test-queue.sh", ".github/scripts/paths-changed.sh"]
   # Every pull request, so `capsulectl result` can be a required check; the plan
   # job skips the rest when the pull request touches none of the push paths.
   pull_request:
