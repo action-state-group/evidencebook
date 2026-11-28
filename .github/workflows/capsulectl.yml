@@ -20,7 +20,7 @@ name: capsulectl
 on:
   push:
     branches: [main]
-    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", "testdata/live16-ask/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml", ".github/scripts/race-packages.sh", ".github/scripts/paths-changed.sh"]
+    paths: ["capsulectl/**", "report/testdata/**", "testdata/card-registration/**", "testdata/live16-ask/**", ".github/workflows/capsulectl.yml", ".github/workflows/release.yml", ".github/scripts/race-packages.sh", ".github/scripts/go-test-queue.sh", ".github/scripts/paths-changed.sh"]
   # Every pull request, so `capsulectl result` can be a required check; the plan
   # job skips the rest when the pull request touches none of the push paths.
   pull_request:
@@ -216,7 +216,11 @@ jobs:
           go-version-file: capsulectl/go.mod
           cache-dependency-path: capsulectl/go.sum
       - name: Tests (${{ matrix.part.pass }}, shard ${{ matrix.part.shard }})
-        run: bash scripts/test.sh
+        # From the queue, one process per CPU (GOMAXPROCS when a local gate
+        # sets it): internal/deal's tests run one at a time in a process, so a
+        # shard run as one go test process used one CPU and took 590-638 s of
+        # its timeout on a loaded lane host (evidencebook#1079).
+        run: CAPSULE_TEST_JOBS="${GOMAXPROCS:-$(getconf _NPROCESSORS_ONLN)}" bash scripts/test.sh
 
   result:
     # One result to require in branch protection: the plan succeeded and no

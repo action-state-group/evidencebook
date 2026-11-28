@@ -88,6 +88,7 @@ expect_has "capsulectl: a rename across packages races the old side" ./scripts/b
 expect_has "capsulectl: a rename across packages races the new side" ./internal/book \
   capsulectl capsulectl/scripts/bookdemo/main.go capsulectl/internal/book/moved.go
 expect_lacks "capsulectl: internal/deal is never raced" ./internal/deal capsulectl capsulectl/go.mod
+expect "capsulectl: the shared test queue alone races everything but internal/deal" "$cctl_all" capsulectl .github/scripts/go-test-queue.sh
 
 # root module
 root_all=$(pkgs_of .)
@@ -98,6 +99,7 @@ expect_lacks "root: an xdealv1 change does not race adapter/acp" ./adapter/acp r
 expect_has "root: a Python file the root tests read races the root package" . root python/evidencebook/deal/_data/x-deal-v1-types.json
 expect "root: go.mod races everything" "$root_all" root go.mod
 expect "root: testdata races everything" "$root_all" root testdata/shelf/after-continue.json
+expect "root: the shared test queue alone races everything" "$root_all" root .github/scripts/go-test-queue.sh
 
 # The local policy (scripts/pre-push.sh, evidencebook#973) drops the
 # exclusions, so internal/deal is raced when a change reaches it, through its
@@ -124,6 +126,7 @@ local_has() { # description, want (0 raced, 1 not), package, module, paths...
 local_has "local: a deal change races internal/deal" 0 ./internal/deal capsulectl capsulectl/internal/deal/deal.go
 local_has "local: a packfile change races internal/deal (its tests import it)" 0 ./internal/deal capsulectl capsulectl/internal/packfile/packfile.go
 local_has "local: go.mod races internal/deal" 0 ./internal/deal capsulectl capsulectl/go.mod
+local_has "local: the shared test queue alone races internal/deal" 0 ./internal/deal capsulectl .github/scripts/go-test-queue.sh
 local_has "local: a book change does not race internal/deal" 1 ./internal/deal capsulectl capsulectl/internal/book/book.go
 local_has "local: a bookdemo change does not race internal/deal" 1 ./internal/deal capsulectl capsulectl/scripts/bookdemo/main.go
 
@@ -383,6 +386,7 @@ paths "paths: report/ reaches report" true report report/report.go
 paths "paths: capsulectl/ does not reach report" false report capsulectl/go.mod
 paths "paths: a capsulectl fixture tree reaches capsulectl" true capsulectl testdata/live16-ask/a.json
 paths "paths: the root module does not reach capsulectl" false capsulectl book.go
+paths "paths: the shared test queue reaches capsulectl" true capsulectl .github/scripts/go-test-queue.sh
 if printf 'a\n' | bash "$here/paths-changed.sh" "$here/../workflows/ci.yml" > /dev/null 2>&1; then
   printf 'FAIL paths: a workflow without a one-line push paths list exited 0\n'
   fails=$((fails + 1))
@@ -405,7 +409,8 @@ for wf in ci capsulectl rust report; do
 done
 
 # capsulectl/scripts/test.sh's queued mode (CAPSULE_TEST_JOBS, evidencebook#1038),
-# on a fixture module that holds its own copy of the script: two packages share
+# which runs .github/scripts/go-test-queue.sh (evidencebook#1079), on a fixture
+# module that holds its own copy of test.sh: two packages share
 # a test name, one has an Example, one has no tests, and FAIL_TEST names a
 # test that fails. Every test must run exactly once, in its package's directory.
 qmod=$(mktemp -d)
@@ -433,7 +438,7 @@ want_q=$(printf '%s\n' "a TestA1" "a TestA2" "a TestA3" "a TestA4" "a TestA5" "a
 queued_run() { # description, want exit (0|1), record file, env...
   local what=$1 want=$2 rec=$3 st=0
   shift 3
-  (cd "$qmod" && env RECORD="$rec" CAPSULE_TEST_PASS=plain "$@" bash scripts/test.sh > "$rec.out" 2>&1) || st=1
+  (cd "$qmod" && env RECORD="$rec" CAPSULE_TEST_PASS=plain GO_TEST_QUEUE="$here/go-test-queue.sh" "$@" bash scripts/test.sh > "$rec.out" 2>&1) || st=1
   if ((st != want)); then
     printf 'FAIL %s: exit %d, want %d\n%s\n' "$what" "$st" "$want" "$(tail -20 "$rec.out")"
     fails=$((fails + 1))
@@ -525,6 +530,113 @@ if [[ -z "$(find "$qtmp" -mindepth 1 -maxdepth 1)" ]]; then printf 'ok   queued:
   fails=$((fails + 1))
 fi
 rm -rf "$qtmp"
+printf 'package c\n\nfunc C() {}\n' > "$qmod/c/c.go"
+
+# go-test-queue.sh as the root module's Race tests job calls it (plain -race,
+# a 10-minute timeout per batch; evidencebook#1079), on the same fixture.
+qrun() { # description, want exit (0|1), record file, env..., then -- queue arguments
+  local what=$1 want=$2 rec=$3 st=0 envs=()
+  shift 3
+  while [[ "$1" != -- ]]; do envs+=("$1"); shift; done
+  shift
+  (cd "$qmod" && env RECORD="$rec" ${envs[@]+"${envs[@]}"} bash "$here/go-test-queue.sh" "$@" > "$rec.out" 2>&1) || st=1
+  if ((st != want)); then
+    printf 'FAIL %s: exit %d, want %d\n%s\n' "$what" "$st" "$want" "$(tail -20 "$rec.out")"
+    fails=$((fails + 1))
+    return 1
+  fi
+}
+rec="$qmod/rec-q1"
+if qrun "queue: every test once" 0 "$rec" -- --label race --timeout 10m --flag -race --jobs 3 -- ./...; then
+  if [[ "$(sort "$rec")" == "$want_q" ]] && grep -q '10 of 10 tests reported a result' "$rec.out" &&
+    grep -q 'build and listing included' "$rec.out"; then
+    printf 'ok   queue: every test runs once under -race, and the time printed includes the build\n'
+  else
+    printf 'FAIL queue: tests run:\n%s\n' "$(diff <(echo "$want_q") <(sort "$rec"))"
+    fails=$((fails + 1))
+  fi
+fi
+# A package's TestMain runs in every batch process (each batch is a fresh
+# process), and once more for the binary's -test.list listing.
+cat > "$qmod/a/main_test.go" <<'GO'
+package a
+
+import (
+	"os"
+	"testing"
+)
+
+func TestMain(m *testing.M) {
+	f, err := os.OpenFile(os.Getenv("RECORD")+".main", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err == nil {
+		_, _ = f.WriteString("main\n")
+		_ = f.Close()
+	}
+	os.Exit(m.Run())
+}
+GO
+rec="$qmod/rec-q2"
+if qrun "queue: TestMain per batch" 0 "$rec" -- --jobs 2 --batches 2 -- ./a; then
+  batches=$(sed -n 's/.* tests in \([0-9]*\) batches.*/\1/p' "$rec.out")
+  if [[ -n "$batches" ]] && (($(wc -l < "$rec.main") == batches + 1)) && ((batches > 1)); then
+    printf 'ok   queue: TestMain runs once in each of the %s batches and once for the listing\n' "$batches"
+  else
+    printf 'FAIL queue: TestMain ran %s times over %s batches\n' "$(wc -l < "$rec.main" 2>/dev/null)" "${batches:-?}"
+    fails=$((fails + 1))
+  fi
+fi
+rm "$qmod/a/main_test.go"
+# A test that outlives the timeout fails the pass, and its batch's output says why.
+printf 'package a\n\nimport (\n\t"testing"\n\t"time"\n)\n\nfunc TestHangs(t *testing.T) { time.Sleep(time.Minute) }\n' > "$qmod/a/hang_test.go"
+rec="$qmod/rec-q3"
+if qrun "queue: a test past the timeout fails the pass" 1 "$rec" -- --timeout 2s --jobs 2 -- ./a; then
+  if grep -q 'panic: test timed out after 2s' "$rec.out" && grep -q 'TestHangs' "$rec.out"; then
+    printf 'ok   queue: a test past the timeout fails the pass and prints its batch\n'
+  else
+    printf 'FAIL queue: the timeout is not reported\n%s\n' "$(tail -20 "$rec.out")"
+    fails=$((fails + 1))
+  fi
+fi
+rm "$qmod/a/hang_test.go"
+# A batch over --budget seconds gets a warning naming it; one under it, none.
+printf 'package a\n\nimport (\n\t"testing"\n\t"time"\n)\n\nfunc TestSlow(t *testing.T) { time.Sleep(2 * time.Second) }\n' > "$qmod/a/slow_test.go"
+rec="$qmod/rec-q6"
+if qrun "queue: a batch over the budget" 0 "$rec" -- --budget 1 --jobs 1 --batches 1 -- ./a; then
+  if grep -q '^::warning::batch-0-0 (.*) took [0-9]*s, over the 1s budget$' "$rec.out"; then
+    printf 'ok   queue: a batch over the budget is warned about\n'
+  else
+    printf 'FAIL queue: no budget warning\n%s\n' "$(tail -20 "$rec.out")"
+    fails=$((fails + 1))
+  fi
+fi
+rec="$qmod/rec-q7"
+if qrun "queue: a batch under the budget" 0 "$rec" -- --budget 600 --jobs 1 --batches 1 -- ./a; then
+  if grep -q '::warning::' "$rec.out"; then
+    printf 'FAIL queue: a batch under the budget was warned about\n'
+    fails=$((fails + 1))
+  else printf 'ok   queue: a batch under the budget is not warned about\n'; fi
+fi
+rm "$qmod/a/slow_test.go"
+# A shard's names file that is missing or empty fails the pass instead of
+# selecting nothing.
+if qrun "queue: a missing names file" 1 "$qmod/rec-q9" -- --names "$qmod/no-such-names" --jobs 2 -- ./a; then
+  printf 'ok   queue: a names file that is missing fails the pass\n'
+fi
+: > "$qmod/empty-names"
+if qrun "queue: an empty names file" 1 "$qmod/rec-q10" -- --names "$qmod/empty-names" --jobs 2 -- ./a; then
+  printf 'ok   queue: a names file that is empty fails the pass\n'
+fi
+printf 'TestA1\nTestNotThere\n' > "$qmod/some-names"
+rec="$qmod/rec-q11"
+if qrun "queue: a names file" 0 "$rec" -- --names "$qmod/some-names" --jobs 2 -- ./...; then
+  if [[ "$(sort "$rec")" == "a TestA1" ]]; then printf 'ok   queue: a names file selects only its tests\n'; else
+    printf 'FAIL queue: a names file ran:\n%s\n' "$(sort "$rec")"
+    fails=$((fails + 1))
+  fi
+fi
+if qrun "queue: a bad budget" 1 "$qmod/rec-q8" -- --budget 5m -- ./a; then printf 'ok   queue: a budget that is not seconds is an error\n'; fi
+if qrun "queue: no package" 1 "$qmod/rec-q4" -- --jobs 2 --; then printf 'ok   queue: no package named is an error\n'; fi
+if qrun "queue: a bad job count" 1 "$qmod/rec-q5" -- --jobs 0 -- ./a; then printf 'ok   queue: a job count of 0 is an error\n'; fi
 rm -rf "$qmod"
 
 # scripts/ci-local.sh (evidencebook#1038) against a fake act, in a fixture
