@@ -99,7 +99,8 @@ def _days_in(month: int, year: int) -> int:
     return 30 if month in (4, 6, 9, 11) else 31
 
 
-_TIME = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-](\d{2}):(\d{2}))")
+# ASCII digits only: Unicode digits are not Go's.
+_TIME = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-](\d{2}):(\d{2}))", re.ASCII)
 
 
 def go_time(text: str) -> bool:
@@ -108,7 +109,7 @@ def go_time(text: str) -> bool:
     hours, a fraction only after a period, and an offset under 24:00 with
     minutes under 60."""
     m = _TIME.fullmatch(text)
-    if m is None or not m.group(1).isascii():
+    if m is None:
         return False
     year, month, day, hour, minute, second = (int(m.group(i)) for i in range(1, 7))
     if not 1 <= month <= 12 or not 1 <= day <= _days_in(month, year) or hour > 23 or minute > 59 or second > 59:
