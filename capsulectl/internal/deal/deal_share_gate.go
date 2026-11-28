@@ -456,6 +456,21 @@ var gateStreetWords = map[string]bool{
 }
 
 // gateSecrets are the gate's own needles, read from the deal's local steps.
+// gateEvidenceDetail is the text an evidence record's detail holds. A
+// ruling's detail is its referee's name beside digests (the copies checked,
+// the dispute it answers); the digests are random hex, so the digit runs in
+// them are not secrets, and reading them as such once refused a page whose
+// ruling id happened to hold one ("ruling ba0ce7155ca0").
+func gateEvidenceDetail(ev *dealEvidence) string {
+	if ev.Source == sourceRulingBuyer || ev.Source == sourceRulingSell {
+		var b rulingBody
+		if json.Unmarshal([]byte(ev.Detail), &b) == nil {
+			return b.Referee
+		}
+	}
+	return ev.Detail
+}
+
 func gateSecrets(events []sealedEvent) (secrets, words, placeWords []string) {
 	var places, ids, texts, names []string
 	shown := wrappedShownAmounts(events)
@@ -510,7 +525,7 @@ func gateSecrets(events []sealedEvent) (secrets, words, placeWords []string) {
 		if e.Evidence != nil {
 			whoValues(e.Evidence.Who)
 			ids = append(ids, e.Evidence.SettlementAccounts...)
-			texts = append(texts, e.Evidence.About, e.Evidence.Detail)
+			texts = append(texts, e.Evidence.About, gateEvidenceDetail(e.Evidence))
 			if m := e.Evidence.Email; m != nil {
 				// The merchant's email: its order id, the addresses in its
 				// headers, its subject, its text and its items.

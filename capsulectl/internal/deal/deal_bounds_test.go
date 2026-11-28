@@ -294,8 +294,11 @@ func TestNoSharedCopyCarriesTheFloor(t *testing.T) {
 	id := dealRun(t, "open", "--records", "typed", "--input", writeJSON(t, sellerWithFloor))["deal_id"].(string)
 	for _, audience := range []string{cli.DealAudienceCounterparty, cli.DealAudienceAdjudicator} {
 		_, shared := sharedCopy(t, id, audience, "a recipient")
+		// Read as the gate reads a page: a short value inside a digest, a
+		// nonce or a signature is a random run of hex or base64, not the floor
+		// (a nonce once held "170000" by chance).
 		for _, hidden := range append([]string{"170000", "bounds_openings", "commercial_bounds_opening", "min_total_minor"}, writtenAmounts(1700)...) {
-			assert.NotContains(t, shared, hidden, audience)
+			assert.False(t, gateContains([]byte(shared), []byte(hidden)), "%s: %s", audience, hidden)
 		}
 	}
 	floor := int64(170000)
@@ -308,4 +311,12 @@ func TestNoSharedCopyCarriesTheFloor(t *testing.T) {
 			assert.Error(t, dealCeilingGate([]byte(page), events, audience), audience+": "+page)
 		}
 	}
+}
+
+// The floor check reads a page as the gate does: the floor's digits inside a
+// random nonce (seen in CI) are not the floor; the same digits as a value are.
+func TestTheFloorCheckSkipsANonceThatHoldsItsDigits(t *testing.T) {
+	nonce := `"nonce":"f2be27f16873dd05750ce5f979ab5a170000ed0f7ba6aeda54df447167d7729d"`
+	assert.False(t, gateContains([]byte(nonce), []byte("170000")))
+	assert.True(t, gateContains([]byte(`"min_total_minor":170000`), []byte("170000")))
 }

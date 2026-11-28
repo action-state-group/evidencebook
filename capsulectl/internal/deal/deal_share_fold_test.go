@@ -264,3 +264,21 @@ func FuzzDealSharePageGate(f *testing.F) {
 		assert.NoError(t, dealPageGate(gatePage(t, p.scrub(text)), events), fmt.Sprintf("the scrubber left a trace of %q", s))
 	})
 }
+
+// A ruling's detail is its referee beside digests: the referee is read as text,
+// and the digit runs in its digests are random hex, not secrets. A page whose
+// ruling id held one of them ("ruling ba0ce7155ca0", seen in CI) was refused.
+func TestARulingsDigestsHoldNoSecret(t *testing.T) {
+	dispute := "aa7155bb" + strings.Repeat("c", 56)
+	detail, err := json.Marshal(rulingBody{Referee: "desk 8812", Row: "price_as_offered", Finding: "for_buyer",
+		Copies: []string{strings.Repeat("d", 60) + "4242", strings.Repeat("e", 64)}, Dispute: dispute})
+	require.NoError(t, err)
+	events := append(plantedEvents(), sealedEvent{Event: dealEvent{Kind: "evidence",
+		Evidence: &dealEvidence{Source: sourceRulingBuyer, About: "price_as_offered", Detail: string(detail)}}})
+	assert.NoError(t, dealPageGate(gatePage(t, "ruling ba0ce7155ca0 on \"price as offered\": found for the buyer, see 4242"), events))
+	assert.Error(t, dealPageGate(gatePage(t, "ruled at desk 8812"), events), "the referee is still read as text")
+	// Any other evidence detail is read as text, as before.
+	events = append(plantedEvents(), sealedEvent{Event: dealEvent{Kind: "evidence",
+		Evidence: &dealEvidence{Source: sourceDispute, About: "price_as_offered", Detail: `{"row":"price_as_offered","words":"order 7155 was wrong"}`}}})
+	assert.Error(t, dealPageGate(gatePage(t, "ruling ba0ce7155ca0"), events))
+}
