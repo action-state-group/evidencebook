@@ -191,16 +191,16 @@ func TestTheV3MappingUsesTheHoldersWords(t *testing.T) {
 	assert.Equal(t, "holder", rowResult3("seller", row, rowstatus.Result{Status: "not_due"}).OwedBy)
 	assert.Equal(t, "counterparty", rowResult3("buyer", row, rowstatus.Result{Status: "not_due"}).OwedBy)
 
-	v := xdealv1.StatusValue{Role: "seller", Disputes: []xdealv1.StatusDispute{
+	disputes := []xdealv1.StatusDispute{
 		{Row: "r", Claimant: "seller", Outcome: xdealv1.OutcomeForClaimant, Forum: "f"},
 		{Row: "r", Claimant: "buyer", Outcome: xdealv1.OutcomeForClaimant, Forum: "f"},
 		{Row: "r", Claimant: "buyer", Outcome: xdealv1.OutcomeAgainstClaimant, Forum: "f"},
 		{Row: "r", Claimant: "buyer", Outcome: xdealv1.OutcomeWithdrawn, Forum: "f"},
-	}}
+	}
 	assert.Equal(t, []standardhistory.Dispute{
 		{Side: "raised", Outcome: "for", Forum: "f"}, {Side: "received", Outcome: "against", Forum: "f"},
 		{Side: "received", Outcome: "for", Forum: "f"}, {Side: "received", Outcome: "withdrawn", Forum: "f"},
-	}, disputes3(v))
+	}, disputes3("seller", disputes))
 }
 
 // An unmet row that is not ruled is remedied when the owing side's book holds
@@ -272,8 +272,8 @@ func TestTheV3ForumIsItsClassAndTheCardDerives(t *testing.T) {
 		Deal: "b", AgreedAt: "2026-10-30T00:00:00Z", Role: "provided", Happened: "receipt_only",
 		Amount: standardhistory.Amount{Value: "1", AssetCode: "USD"},
 		Rows:   []standardhistory.Row{{OwedBy: "holder", Status: "not_due"}},
-		Disputes: disputes3(xdealv1.StatusValue{Role: "seller", Disputes: []xdealv1.StatusDispute{
-			{Row: "r", Claimant: "buyer", Outcome: xdealv1.OutcomeOpen, Forum: "auto:twin"}}}),
+		Disputes: disputes3("seller", []xdealv1.StatusDispute{
+			{Row: "r", Claimant: "buyer", Outcome: xdealv1.OutcomeOpen, Forum: "auto:twin"}}),
 	}}
 	asOf := standardhistory.AsOf{Anchor: strings.Repeat("a", 64), AnchorTime: "2026-11-01T00:00:00Z", FirstCheckpointTime: "2026-10-01T00:00:00Z", CoverageStartTime: "2026-10-01T00:00:00Z"}
 	policy := standardhistory.Policy{Digest: strings.Repeat("b", 64), Window: standardhistory.Window{Months: 3}}
