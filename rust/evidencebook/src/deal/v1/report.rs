@@ -21,7 +21,9 @@ use super::status_value::{
 };
 use super::types::*;
 use crate::canonical::jcs;
-use crate::deal::{Error, AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP, REPORT_TYPE};
+use crate::deal::{
+    Error, AUDIENCE_ADJUDICATOR, AUDIENCE_AUDIT, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP, REPORT_TYPE,
+};
 use crate::row_status::{self, Input};
 
 // The report's closed words (design §9).
@@ -243,7 +245,13 @@ pub(crate) fn build_report_rows(
     b: &ReportBooks,
     c: &ReportCopy,
 ) -> Result<(Report, Vec<ReportRow>), Error> {
-    if ![AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_ADJUDICATOR].contains(&c.audience.as_str())
+    if ![
+        AUDIENCE_KEEP,
+        AUDIENCE_COUNTERPARTY,
+        AUDIENCE_ADJUDICATOR,
+        AUDIENCE_AUDIT,
+    ]
+    .contains(&c.audience.as_str())
     {
         return Err(report_err(format!(
             "audience {:?} is not a copy audience",
@@ -373,6 +381,17 @@ pub(crate) fn build_report_rows(
         r.rests_on.witnesses = own.witness_list().to_vec();
         r.disputes = v.disputes.clone();
         r.rulings_unnamed = v.rulings_unnamed;
+    }
+    if c.audience == AUDIENCE_AUDIT {
+        // An audit copy carries no witness evidence (u219,
+        // evidencebook#1058): no witnesses and no record's witnessed time.
+        r.rests_on.witnesses = Vec::new();
+        for row in r.rows.iter_mut() {
+            for src in row.relied_on.iter_mut() {
+                src.time = None;
+                src.witnessed = false;
+            }
+        }
     }
     Ok((r, rows))
 }

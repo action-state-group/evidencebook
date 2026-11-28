@@ -10,7 +10,7 @@ use super::names::*;
 use super::report::Report;
 use super::sent::{pair, verify_capsule};
 use crate::canonical::jcs;
-use crate::deal::names::{REPORT_ACTION_ID, REPORT_TYPE};
+use crate::deal::names::{AUDIENCE_AUDIT, REPORT_ACTION_ID, REPORT_TYPE};
 use crate::deal::Error;
 
 /// A sealed report read against its deal's first record (Go `StageReport`).
@@ -97,6 +97,9 @@ pub fn verify_report(report: &[u8], first: &[u8]) -> Result<ReportRead, Error> {
             }
         }
     }
+    if r.audience == AUDIENCE_AUDIT {
+        audit_withholds(&r).map_err(bad)?;
+    }
     let b = verify_book(first)?;
     let agreement = b.record.agree().is_some_and(|a| a.kind == KIND_AGREEMENT);
     if !agreement || b.seq != 1 {
@@ -155,4 +158,27 @@ fn read_report(payload: &[u8]) -> Result<Report, Error> {
         }
     }
     Ok(r)
+}
+
+/// Refuses an audit copy's report that carries witness evidence
+/// (evidencebook#1058, u219): a witness, a relied_on record's witnessed
+/// time, or a referee (Go `auditWithholds`).
+fn audit_withholds(r: &Report) -> Result<(), String> {
+    if !r.referee.is_empty() {
+        return Err("an audit copy names no referee".into());
+    }
+    if !r.rests_on.witnesses.is_empty() {
+        return Err("an audit copy names no witnesses".into());
+    }
+    for row in &r.rows {
+        for src in &row.relied_on {
+            if src.time.is_some() || src.witnessed {
+                return Err(format!(
+                    "an audit copy gives no witnessed time: row {:?}, relied_on {}",
+                    row.id, src.record
+                ));
+            }
+        }
+    }
+    Ok(())
 }

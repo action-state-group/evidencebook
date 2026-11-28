@@ -76,6 +76,9 @@ REPORT_EXTENSION = "x-deal-report/v0"
 AUDIENCE_KEEP = "keep"
 AUDIENCE_COUNTERPARTY = "counterparty"
 AUDIENCE_ADJUDICATOR = "adjudicator"
+# An x-deal-v1 copy for an outside reader who is not a party (evidencebook#1058):
+# no personal detail, no witness evidence.
+AUDIENCE_AUDIT = "audit"
 
 STEP_RECORD_TYPE = "deal_step"
 REPORT_RECORD_TYPE = "deal_report"

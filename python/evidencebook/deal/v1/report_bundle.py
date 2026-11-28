@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from ..check import StageError, _go_quote
 from . import exact, rawjson
-from ..names import AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP
+from ..names import AUDIENCE_ADJUDICATOR, AUDIENCE_AUDIT, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP
 from .names import ROLE_BUYER, ROLE_SELLER, SIDE_OFFERER, TYPE_PROPOSE
 from .report import ROWS_LISTED, ROWS_NOT_STARTED, ROWS_WITHHELD, SIDE_ADJUDICATOR
 from .report_verify import STAGE_REPORT, ReportRead, verify_report
@@ -152,7 +152,7 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
     if sealed != read.capsule_id:
         raise _bad(f"sealed_report {_go_quote(sealed)} is not the report Capsule's id {read.capsule_id}")
     adj = r["audience"] == AUDIENCE_ADJUDICATOR
-    if r["audience"] not in (AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY) and not adj:
+    if r["audience"] not in (AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_AUDIT) and not adj:
         raise _bad(f"audience {_go_quote(r['audience'])} is not a copy audience")
     if adj != (r.get("referee", "") != ""):
         raise _bad("an adjudicator's copy, and only it, names a referee")
@@ -163,7 +163,7 @@ def verify_report_bundle(report: bytes, ext: bytes) -> ReportRead:
     if not listed and r["rows"]:
         raise _bad(f"a {r['rows_state']} copy lists no rows")
     if not adj and listed != (r["start"]["state"] == STATE_STARTED):
-        raise _bad("a keep or counterparty copy is listed exactly when its deal has started; this one is "
+        raise _bad("a keep, counterparty or audit copy is listed exactly when its deal has started; this one is "
                    f"{_go_quote(r['rows_state'])} at start {_go_quote(r['start']['state'])}")
     if not adj and not listed and r["rows_state"] != ROWS_NOT_STARTED:
         raise _bad(f"rows_state {_go_quote(r['rows_state'])} is not one of listed, not_started, withheld")

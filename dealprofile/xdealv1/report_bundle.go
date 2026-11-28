@@ -83,6 +83,14 @@ func reportWithBook(rb ReportBooks, c ReportCopy, pairs map[string][]byte, in fu
 	if in.offer != nil && c.Audience != dealprofile.AudienceAdjudicator {
 		book.Offer = in.offer
 	}
+	if c.Audience == dealprofile.AudienceAudit && book.Offer != nil {
+		if of, ok := asPropose(rb.Books.Offer.Body); !ok || of.Ask != nil {
+			// The offer travels whole or not at all, and an ask names a
+			// way to reach a party: an audit copy leaves out an offer that
+			// has one (evidencebook#1058).
+			book.Offer = nil
+		}
+	}
 	if c.Full {
 		if c.Audience != dealprofile.AudienceAdjudicator {
 			return Report{}, ReportBook{}, fmt.Errorf("xdealv1: report: only an adjudicator's copy is full")
@@ -196,7 +204,8 @@ func verifyReportBundle(report, ext []byte) (ReportRead, *FullCopy, error) {
 	}
 	adj := r.Audience == dealprofile.AudienceAdjudicator
 	switch {
-	case r.Audience != dealprofile.AudienceKeep && r.Audience != dealprofile.AudienceCounterparty && !adj:
+	case r.Audience != dealprofile.AudienceKeep && r.Audience != dealprofile.AudienceCounterparty &&
+		r.Audience != dealprofile.AudienceAudit && !adj:
 		return bad("audience %q is not a copy audience", r.Audience)
 	case adj != (r.Referee != ""):
 		return bad("an adjudicator's copy, and only it, names a referee")
@@ -205,9 +214,13 @@ func verifyReportBundle(report, ext []byte) (ReportRead, *FullCopy, error) {
 	case r.RowsState != RowsListed && len(r.Rows) > 0:
 		return bad("a %s copy lists no rows", r.RowsState)
 	case !adj && (r.RowsState == RowsListed) != (r.Start.State == StateStarted):
-		return bad("a keep or counterparty copy is listed exactly when its deal has started; this one is %q at start %q", r.RowsState, r.Start.State)
+		return bad("a keep, counterparty or audit copy is listed exactly when its deal has started; this one is %q at start %q", r.RowsState, r.Start.State)
 	case !adj && r.RowsState != RowsListed && r.RowsState != RowsNotStarted:
 		return bad("rows_state %q is not one of listed, not_started, withheld", r.RowsState)
+	}
+
+	if r.Audience == dealprofile.AudienceAudit && x.Book.Records != nil {
+		return bad("an audit copy is not full")
 	}
 
 	first, err := VerifyBook(x.Book.Agreement)

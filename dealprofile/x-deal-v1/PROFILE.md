@@ -558,6 +558,20 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
 - **Audiences.** `keep` and `counterparty` copies list the rows. An `adjudicator` copy names its
   `referee`, has `rows_state` `withheld` and no rows, and carries neither the counterparty's
   prefix, the witnesses, the disputes nor `rulings_unnamed`.
+- **The audit copy** (evidencebook#1058). An `audit` copy is for an outside reader who is not a
+  party, such as an external audit. Its report is the `counterparty` copy's with no witness
+  evidence (u219): it names no `witnesses` and no `referee`, and every `relied_on` entry has
+  `time` `null` and `witnessed` `false`, because the copy withholds the time, which its audience
+  says; a page never reads them as "not witnessed". `xdealv1.VerifyReport` refuses an `audit`
+  report that names a witness, a referee or a witnessed time. It is never full and never carries
+  the counterparty's half. It carries no personal detail: x-deal-v1 records hold a party's name,
+  contact and addresses only as commitments (section 5), and no opening, intent or witness
+  receipt travels. It carries the offer only when the offer names no `ask`: `ask.url` is a way
+  to reach the offerer, a contact, and the signed offer travels whole or not at all, so an audit
+  copy of such a deal shows no item or quantity, and its page says why (Sherlock2's ruling on
+  evidencebook#1058). The parties' keys, the agreement's `rules_url` (the adjudicator's
+  published rules) and the witnesses' URLs in the signed agreement stay: they are not personal,
+  and the keys let a reader link a party across copies, which the copy does not prevent.
 - **Verifying a report.** `xdealv1.VerifyReport` reads a report against its deal's first record,
   the agreement at seq 1 of the holder's deal book. Among its checks (design note §9, "Verifying a
   report"), it refuses a report not signed by the key that signed that record, and a row whose
@@ -570,10 +584,10 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   {"<record id>": <pair>, ...}, "offer": <sent pair>}}`, each pair but the offer a book pair
   `{record, header, payload}`. `agreement`
   is the holder's deal book record at seq 1; `relied_on` holds every record the holder's rows rely
-  on at `as_of`, whatever the copy's `rows_state`, so the owner's (`keep`), counterparty's and
+  on at `as_of`, whatever the copy's `rows_state`, so the owner's (`keep`), counterparty's, audit and
   adjudicator's copies carry the same records, and `{}` when no row relies on one. A bundle for
-  anyone else carries no report and no extension. `offer`, on a keep or counterparty copy, and
-  not carried on an adjudicator's copy (unruled), is the offer the agreement cites as its sent pair `{record,
+  anyone else carries no report and no extension. `offer`, on a keep or counterparty copy, on an audit
+  copy only when it names no `ask`, and not carried on an adjudicator's copy (unruled), is the offer the agreement cites as its sent pair `{record,
   agent_input}` (section 7), as the holder holds it: it gives a receipt the item, quantity and
   price (Steven's u561; evidencebook#1065). The host builds and seals the bundle;
   `xdealv1.StatusProvider.ReportWithBook` returns a report and its book from one snapshot.

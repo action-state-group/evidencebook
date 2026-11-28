@@ -237,7 +237,7 @@ func buildReport(b ReportBooks, c ReportCopy) (Report, []ReportRow, error) {
 		return Report{}, nil, fmt.Errorf("xdealv1: report: "+format, args...)
 	}
 	switch c.Audience {
-	case dealprofile.AudienceKeep, dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator:
+	case dealprofile.AudienceKeep, dealprofile.AudienceCounterparty, dealprofile.AudienceAdjudicator, dealprofile.AudienceAudit:
 	default:
 		return bad("audience %q is not a copy audience", c.Audience)
 	}
@@ -333,6 +333,18 @@ func buildReport(b ReportBooks, c ReportCopy) (Report, []ReportRow, error) {
 		}
 		r.Disputes = v.Disputes
 		r.RulingsUnnamed = v.RulingsUnnamed
+	}
+	if c.Audience == dealprofile.AudienceAudit {
+		// An audit copy carries no witness evidence (u219, evidencebook#1058):
+		// no witnesses, and no record's witnessed time. Its relied_on times
+		// are null because the copy withholds them, which its audience says,
+		// not because no witness saw the record.
+		r.RestsOn.Witnesses = nil
+		for i := range r.Rows {
+			for j := range r.Rows[i].ReliedOn {
+				r.Rows[i].ReliedOn[j].Time, r.Rows[i].ReliedOn[j].Witnessed = nil, false
+			}
+		}
 	}
 	return r, rows, nil
 }

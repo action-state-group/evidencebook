@@ -16,7 +16,7 @@ from typing import Any
 from agent_action_capsule.canonical import jcs
 
 from ... import row_status
-from ..names import AUDIENCE_ADJUDICATOR, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP, REPORT_TYPE
+from ..names import AUDIENCE_ADJUDICATOR, AUDIENCE_AUDIT, AUDIENCE_COUNTERPARTY, AUDIENCE_KEEP, REPORT_TYPE
 from ..report import normalize_referee
 from .check import digest, utc_second
 from . import golenient
@@ -108,7 +108,7 @@ def build_report_rows(books: dict, copy: dict) -> tuple[dict, list[dict]]:
     rbooks = _decode(books, "report_books")
     c = _read_copy(copy)
     audience, nonce, as_of = c["audience"], c["nonce"], c["as_of"]
-    if audience not in (AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_ADJUDICATOR):
+    if audience not in (AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_ADJUDICATOR, AUDIENCE_AUDIT):
         raise _bad(f"audience {_q(audience)} is not a copy audience")
     if not _NONCE.match(nonce):
         raise _bad("the nonce must be 64 lowercase hex")
@@ -179,6 +179,13 @@ def build_report_rows(books: dict, copy: dict) -> tuple[dict, list[dict]]:
             r["disputes"] = v["disputes"]
         if v.get("rulings_unnamed"):
             r["rulings_unnamed"] = v["rulings_unnamed"]
+    if audience == AUDIENCE_AUDIT:
+        # An audit copy carries no witness evidence (u219, evidencebook#1058):
+        # no witnesses and no record's witnessed time.
+        r["rests_on"].pop("witnesses", None)
+        for row in r["rows"]:
+            for src in row["relied_on"]:
+                src["time"], src["witnessed"] = None, False
     return r, rows
 
 

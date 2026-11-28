@@ -118,6 +118,9 @@ pub const REPORT_EXTENSION: &str = "x-deal-report/v0";
 pub const AUDIENCE_KEEP: &str = "keep";
 pub const AUDIENCE_COUNTERPARTY: &str = "counterparty";
 pub const AUDIENCE_ADJUDICATOR: &str = "adjudicator";
+/// An x-deal-v1 copy for an outside reader who is not a party
+/// (evidencebook#1058): no personal detail, no witness evidence.
+pub const AUDIENCE_AUDIT: &str = "audit";
 
 // The evidence record header a step or report carries on a book.
 
